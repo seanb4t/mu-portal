@@ -27,7 +27,7 @@ const checkConfig = () => {
     return true;
   }
   let msg = chalk.red(`Error! Config file not found: ${api.configPath}\n`);
-  msg += 'Please launch Hyper and retry.';
+  msg += 'Please launch MU-Portal and retry.';
   console.error(msg);
   process.exit(1);
 };
@@ -181,7 +181,7 @@ args.command(
   []
 );
 
-args.command('<default>', 'Launch Hyper');
+args.command('<default>', 'Launch MU-Portal');
 
 args.option(['v', 'verbose'], 'Verbose mode', false);
 
@@ -199,7 +199,7 @@ const main = (argv: string[]) => {
   }
 
   const env = Object.assign({}, process.env, {
-    // this will signal Hyper that it was spawned from this module
+    // this will signal MU-Portal that it was spawned from this module
     HYPER_CLI: '1',
     ELECTRON_NO_ATTACH_CONSOLE: '1'
   });
@@ -227,7 +227,7 @@ const main = (argv: string[]) => {
   if (!flags.verbose) {
     options['stdio'] = 'ignore';
     if (process.platform === 'darwin') {
-      //Use `open` to prevent multiple Hyper process
+      //Use `open` to prevent multiple MU-Portal process
       const cmd = `open -b co.zeit.hyper ${args_}`;
       const opts = {
         env
