@@ -12,7 +12,7 @@ import {
   SESSION_SET_CWD,
   SESSION_SEARCH
 } from '../constants/sessions';
-import {sessionState, session, Mutable, ISessionReducer} from '../hyper';
+import {sessionState, session, Mutable, ISessionReducer} from '../muportal';
 
 const initialState: sessionState = Immutable<Mutable<sessionState>>({
   sessions: {},

@@ -21,7 +21,7 @@ import {
   SESSION_SET_CWD
 } from '../constants/sessions';
 import {UPDATE_AVAILABLE} from '../constants/updater';
-import {uiState, Mutable, IUiReducer} from '../hyper';
+import {uiState, Mutable, IUiReducer} from '../muportal';
 
 const allowedCursorShapes = new Set(['BEAM', 'BLOCK', 'UNDERLINE']);
 const allowedCursorBlinkValues = new Set([true, false]);

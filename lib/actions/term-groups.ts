@@ -10,7 +10,7 @@ import {SESSION_REQUEST} from '../constants/sessions';
 import findBySession from '../utils/term-groups';
 import {getRootGroups} from '../selectors';
 import {setActiveSession, ptyExitSession, userExitSession} from './sessions';
-import {ITermState, ITermGroup, HyperState, HyperDispatch, HyperActions} from '../hyper';
+import {ITermState, ITermGroup, HyperState, HyperDispatch, HyperActions} from '../muportal';
 
 function requestSplit(direction: 'VERTICAL' | 'HORIZONTAL') {
   return (activeUid: string) =>

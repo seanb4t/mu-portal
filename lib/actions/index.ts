@@ -1,6 +1,6 @@
 import rpc from '../rpc';
 import {INIT} from '../constants';
-import {HyperDispatch} from '../hyper';
+import {HyperDispatch} from '../muportal';
 
 export default function init() {
   return (dispatch: HyperDispatch) => {

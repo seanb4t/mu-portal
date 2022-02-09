@@ -1,5 +1,5 @@
 import React from 'react';
-import {SearchBoxProps} from '../hyper';
+import {SearchBoxProps} from '../muportal';
 
 const searchBoxStyling: React.CSSProperties = {
   float: 'right',

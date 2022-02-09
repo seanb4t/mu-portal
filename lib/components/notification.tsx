@@ -1,5 +1,5 @@
 import React from 'react';
-import {NotificationProps, NotificationState} from '../hyper';
+import {NotificationProps, NotificationState} from '../muportal';
 
 export default class Notification extends React.PureComponent<NotificationProps, NotificationState> {
   dismissTimer!: NodeJS.Timeout;

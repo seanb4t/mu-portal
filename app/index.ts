@@ -2,7 +2,7 @@
 if (['--help', '-v', '--version'].includes(process.argv[1])) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const {version} = require('./package');
-  const configLocation = process.platform === 'win32' ? `${process.env.userprofile}\\.hyper.js` : '~/.hyper.js';
+  const configLocation = process.platform === 'win32' ? `${process.env.userprofile}\\.mu-portal.js` : '~/.mu-portal.js';
   console.log(`MU-Portal version ${version}`);
   console.log('MU-Portal does not accept any command line arguments. Please modify the config file instead.');
   console.log(`MU-Portal configuration file located at: ${configLocation}`);

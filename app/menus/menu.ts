@@ -5,7 +5,7 @@ import {app, dialog, Menu, BrowserWindow} from 'electron';
 import {getConfig} from '../config';
 import {icon} from '../config/paths';
 import viewMenu from './menus/view';
-import shellMenu from './menus/shell';
+import connectionMenu from './menus/connection';
 import editMenu from './menus/edit';
 import toolsMenu from './menus/tools';
 import windowMenu from './menus/window';
@@ -54,14 +54,14 @@ export const createMenu = (
     void dialog.showMessageBox({
       title: `About ${appName}`,
       message: `${appName} ${appVersion} (${updateChannel})`,
-      detail: `Renderers: ${renderers}\nPlugins: ${pluginList}\n\nCreated by Guillermo Rauch\nCopyright © 2022 Vercel, Inc.`,
+      detail: `Renderers: ${renderers}\nPlugins: ${pluginList}\n\nCreated by Sean Brandt\nCopyright © 2022 Sean Brandt.`,
       buttons: [],
       icon: icon as any
     });
   };
   const menu = [
     ...(process.platform === 'darwin' ? [darwinMenu(commandKeys, execCommand, showAbout)] : []),
-    shellMenu(commandKeys, execCommand),
+    connectionMenu(commandKeys, execCommand),
     editMenu(commandKeys, execCommand),
     viewMenu(commandKeys, execCommand),
     toolsMenu(commandKeys, execCommand),

@@ -8,7 +8,7 @@ import {
 } from '../constants/ui';
 import rpc from '../rpc';
 import {userExitTermGroup, setActiveGroup} from './term-groups';
-import {HyperDispatch} from '../hyper';
+import {HyperDispatch} from '../muportal';
 
 export function closeTab(uid: string) {
   return (dispatch: HyperDispatch) => {

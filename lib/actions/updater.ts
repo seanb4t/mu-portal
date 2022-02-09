@@ -1,6 +1,6 @@
 import {UPDATE_INSTALL, UPDATE_AVAILABLE} from '../constants/updater';
 import rpc from '../rpc';
-import {HyperActions} from '../hyper';
+import {HyperActions} from '../muportal';
 
 export function installUpdate(): HyperActions {
   return {

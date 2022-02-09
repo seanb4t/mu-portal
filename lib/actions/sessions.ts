@@ -15,7 +15,7 @@ import {
   SESSION_SET_XTERM_TITLE,
   SESSION_SEARCH
 } from '../constants/sessions';
-import {HyperState, session, HyperDispatch, HyperActions} from '../hyper';
+import {HyperState, session, HyperDispatch, HyperActions} from '../muportal';
 
 export function addSession({uid, shell, pid, cols, rows, splitDirection, activeUid}: session) {
   return (dispatch: HyperDispatch, getState: () => HyperState) => {

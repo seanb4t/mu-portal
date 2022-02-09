@@ -28,7 +28,7 @@ import {
 
 import {setActiveGroup} from './term-groups';
 import parseUrl from 'parse-url';
-import {HyperState, HyperDispatch, HyperActions, ITermGroups} from '../hyper';
+import {HyperState, HyperDispatch, HyperActions, ITermGroups} from '../muportal';
 import {stat, Stats} from 'fs';
 
 export function openContextMenu(uid: string, selection: any) {

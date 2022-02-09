@@ -1,5 +1,5 @@
 import editMenu from '../menus/menus/edit';
-import shellMenu from '../menus/menus/shell';
+import shellMenu from '../menus/menus/connection';
 import {execCommand} from '../commands';
 import {getDecoratedKeymaps} from '../plugins';
 import {MenuItemConstructorOptions, BrowserWindow} from 'electron';

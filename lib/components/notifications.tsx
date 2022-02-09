@@ -3,7 +3,7 @@ import React from 'react';
 import {decorate} from '../utils/plugins';
 
 import Notification_ from './notification';
-import {NotificationsProps} from '../hyper';
+import {NotificationsProps} from '../muportal';
 
 const Notification = decorate(Notification_, 'Notification');
 

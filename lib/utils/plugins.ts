@@ -25,7 +25,7 @@ import {
   TermGroupOwnProps,
   TermProps,
   Assignable
-} from '../hyper';
+} from '../muportal';
 import {Middleware} from 'redux';
 import {ObjectTypedKeys} from './object';
 import IPCChildProcess from './ipc-child-process';

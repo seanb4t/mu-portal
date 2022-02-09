@@ -11,7 +11,7 @@ export default (
     label: `${app.name}`,
     submenu: [
       {
-        label: 'About Hyper',
+        label: 'About MU-Portal',
         click() {
           showAbout();
         }
