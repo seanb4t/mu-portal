@@ -88,7 +88,7 @@ Two kinds of test use the function:
 
 - One test runs it on the real workspace and expects no violation.
 - One test runs it on a fixture workspace that declares all five allowed edges and expects no violation.
-- One test for each negative case runs it on an edited copy of that fixture and expects exactly one violation, of the rule that the edit breaks.
+- One test for each negative case runs it on an edited copy of that fixture. It expects exactly one violation, of the rule that the edit breaks.
 
 One fixture workspace is on disk, at `crates/mu-cli/tests/fixtures/base/`. It declares all five allowed edges. Its root has the three shared tables from Decision 1, because Cargo refuses a member that inherits from a table that is absent. It lists `spikes` and `outside` under `exclude`. Without those entries, Cargo makes a crate in either directory a member, and a negative case breaks two rules.
 
@@ -174,6 +174,11 @@ The model lives in `architecture/` as LikeC4 source files. The first model has t
 The documentation site loads the model through the LikeC4 Vite plugin. Each view is embedded on an MDX page in the Architecture section. The LikeC4 documentation shows this setup: the plugin in the Astro configuration, and a small Astro component that wraps the React view from `likec4:react`.
 
 CI must fail on a model error. Task 4.2 finds the LikeC4 command that reports model errors and records it here. If no such command exists, the site build is the check. Task 4.5 proves the chosen check with a deliberate model error.
+
+Task 4.2 read the LikeC4 documentation and found both details:
+
+- The Vite plugin takes the model directory in its `workspace` option. The Astro configuration sets it to `../architecture`.
+- The model check is `likec4 validate <directory>`. It exits with a non-zero status on a model error. `docs/package.json` holds it as the script `model:check`, so CI and a contributor run `pnpm model:check`.
 
 The crate layout view is a copy of the allowlist in the boundary test. Nothing compares the two in this change, so the copy is unenforced. Task 6.4 opens the issue that tracks the collapse: generate the relations of the view from the allowlist. Until that issue lands, the Contributing page tells the reader to change both together.
 

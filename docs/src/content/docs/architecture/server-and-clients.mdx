@@ -1,0 +1,12 @@
+---
+title: Server and clients
+description: The paired devices, the API and the parts of the server.
+sidebar:
+  order: 2
+---
+
+import LikeC4View from '../../../components/LikeC4View.astro';
+
+Each client sends commands to the API and reads one event stream from it. The API is the only way into the server. Inside the server, a game session holds one telnet connection, and the journal records each event.
+
+<LikeC4View viewId="serverAndClients" />

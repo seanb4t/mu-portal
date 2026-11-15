@@ -30,27 +30,27 @@
 
 ## 4. Documentation site and architecture model
 
-- [ ] 4.1 Add `docs/` from the Starlight starter, with `docs/.node-version` and the `packageManager` field. Keep the starter's `docs/.gitignore`. Make sure that `pnpm build` in `docs/` passes with the default page and that `git status` then shows no generated file.
-- [ ] 4.2 Read the current LikeC4 documentation for two details: the Vite plugin option that sets the model directory, and the command that reports model errors. Record both in `design.md` under Decision 7. If no such command exists, record that the site build is the check.
-- [ ] 4.3 Add the LikeC4 model in `architecture/` with the system context view. Configure the Vite plugin, add the Astro component that wraps the view, and embed the view on one MDX page. Make sure that the built page contains the view.
-- [ ] 4.4 Add the server-and-clients view and the crate layout view, each embedded on a page in the Architecture section. Make sure that the check from task 4.2 reports no error and that `pnpm build` passes.
-- [ ] 4.5 Add a relation to an element that does not exist in the model. Make sure that the check from task 4.2 exits with a non-zero status. Remove the relation and make sure that the check passes again.
+- [x] 4.1 Add `docs/` from the Starlight starter, with `docs/.node-version` and the `packageManager` field. Keep the starter's `docs/.gitignore`. Make sure that `pnpm build` in `docs/` passes with the default page and that `git status` then shows no generated file.
+- [x] 4.2 Read the current LikeC4 documentation for two details: the Vite plugin option that sets the model directory, and the command that reports model errors. Record both in `design.md` under Decision 7. If no such command exists, record that the site build is the check.
+- [x] 4.3 Add the LikeC4 model in `architecture/` with the system context view. Configure the Vite plugin, add the Astro component that wraps the view, and embed the view on one MDX page. Make sure that the built page contains the view.
+- [x] 4.4 Add the server-and-clients view and the crate layout view, each embedded on a page in the Architecture section. Make sure that the check from task 4.2 reports no error and that `pnpm build` passes.
+- [x] 4.5 Add a relation to an element that does not exist in the model. Make sure that the check from task 4.2 exits with a non-zero status. Remove the relation and make sure that the check passes again.
 
 ## 5. Documentation content
 
-- [ ] 5.1 Add the Overview page and one Decisions page for each project-wide decision from the exploration. The pages are in the list below. Each page names its source, as Decision 6 describes. The Decisions pages for the diagram policy and for spikes hold no rules and link to their Contributing pages. Make sure that each page appears in the site sidebar.
+- [x] 5.1 Add the Overview page and one Decisions page for each project-wide decision from the exploration. The pages are in the list below. Each page names its source, as Decision 6 describes. The Decisions pages for the diagram policy and for spikes hold no rules and link to their Contributing pages. Make sure that each page appears in the site sidebar.
   - server-centered shape, one binary with verbs, ConnectRPC API, pairing, embedded Tailscale
   - where the server runs, alternate-screen client, Lua 5.4, world-type profiles
   - structured journal, importers, diagram policy, license
-- [ ] 5.2 Add the Contributing pages: build and test, workspace layout, spikes, diagram policy, OpenSpec and the GitHub Project. The workspace layout page names `tests/workspace_boundary.rs` and the crate layout view, and tells the reader to change both in the same change. The diagram policy page is the single owner of the rules from Decision 8. The spikes page holds the rules for a spike: one question, a time limit, a written decision, and a name taken from its issue. The OpenSpec page states that a change that implements a verb modifies the not-implemented requirement. Make sure that each command on the build page runs as written.
-- [ ] 5.3 Replace the README body with the project name, its status and a link to the Contributing pages. Make sure that each link resolves.
+- [x] 5.2 Add the Contributing pages: build and test, workspace layout, spikes, diagram policy, OpenSpec and the GitHub Project. The workspace layout page names `tests/workspace_boundary.rs` and the crate layout view, and tells the reader to change both in the same change. The diagram policy page is the single owner of the rules from Decision 8. The spikes page holds the rules for a spike: one question, a time limit, a written decision, and a name taken from its issue. The OpenSpec page states that a change that implements a verb modifies the not-implemented requirement. Make sure that each command on the build page runs as written.
+- [x] 5.3 Replace the README body with the project name, its status and a link to the Contributing pages. Make sure that each link resolves.
 
 ## 6. Continuous integration
 
-- [ ] 6.1 Add `.github/workflows/ci.yml` with the `rust` job on Linux and macOS and the three commands from Decision 11. The job reads `rust-toolchain.toml` and states no Rust version. Pin each action by commit SHA with its version in a comment, taken from the current documentation of the action.
-- [ ] 6.2 Add the `docs` job on Linux with the three commands from Decision 11. The model check is the one that task 4.2 chose. The job reads `docs/.node-version` and states no version. Give the `pnpm` setup action the path `docs/package.json`, with the input name from the current documentation of the action.
-- [ ] 6.3 Add `renovate.json` that extends the Renovate best-practices preset. Read the preset in the Renovate documentation. If the preset does not pin GitHub Actions to digests, add the digest preset. Make sure that the configuration passes the Renovate configuration validator.
-- [ ] 6.4 Add two parked GitHub issues to the mu-portal Project: Open Knowledge Format alignment, and the collapse of the crate layout view into the boundary test allowlist. Make sure that both issues appear in the Project with the status Parked.
+- [x] 6.1 Add `.github/workflows/ci.yml` with the `rust` job on Linux and macOS and the three commands from Decision 11. The job reads `rust-toolchain.toml` and states no Rust version. Pin each action by commit SHA with its version in a comment, taken from the current documentation of the action.
+- [x] 6.2 Add the `docs` job on Linux with the three commands from Decision 11. The model check is the one that task 4.2 chose. The job reads `docs/.node-version` and states no version. Give the `pnpm` setup action the path `docs/package.json`, with the input name from the current documentation of the action.
+- [x] 6.3 Add `renovate.json` that extends the Renovate best-practices preset. Read the preset in the Renovate documentation. If the preset does not pin GitHub Actions to digests, add the digest preset. Make sure that the configuration passes the Renovate configuration validator.
+- [x] 6.4 Add two parked GitHub issues to the mu-portal Project: Open Knowledge Format alignment, and the collapse of the crate layout view into the boundary test allowlist. Make sure that both issues appear in the Project with the status Parked.
 - [ ] 6.5 Open a pull request. Make sure that both jobs pass on it. After the merge, make sure that the Renovate dependency list names the Rust toolchain, the Node version, `pnpm`, each action and each crate. Add a custom manager for a pin that is absent.
 
 ## 7. Integration
