@@ -1,0 +1,9 @@
+# Each of these tests runs `cargo deny` in a copy of the repository. cargo-deny
+# fetches one advisory database for the whole machine, and two fetches at the
+# same time fail. The tests therefore run one at a time.
+[test-groups]
+advisory-database = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'binary(dev_workflow) and test(/^(check_|deny_)/)'
+test-group = 'advisory-database'

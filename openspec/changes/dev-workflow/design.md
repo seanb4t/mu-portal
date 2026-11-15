@@ -255,7 +255,9 @@ The license test adds a crate to the workspace of its copy. A new member changes
 | The ruleset names the aggregate check | `ruleset_requires_ci_ok` |
 | The aggregate check covers every job | `ci_ok_covers_every_job` |
 
-The twelve workflow tests take about 18 seconds on the machine of the owner.
+The twelve workflow tests take about 35 seconds on the machine of the owner.
+
+The tests that run `cargo deny` run one at a time, through a test group in `.config/nextest.toml`. `cargo-deny` fetches one advisory database for the whole machine, and two fetches at the same time fail. In the first build the tests ran in parallel, and a failed fetch in one copy made `mise` cancel the other tasks there. The test then saw the wrong task fail, once on the machine of the owner and once in CI.
 
 Each defect test is not vacuous for two reasons. The test `check_passes_on_clean_tree` runs the same task on a copy with no defect, and it passes. Each defect test also asserts which task failed, or which text the output holds. The plan asked for a run of each test with its defect removed. That run is not possible by an edit of the shared helper, because the copy holds the edited helper too, and every copy then fails the format check.
 
