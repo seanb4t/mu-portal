@@ -26,7 +26,7 @@
 - [x] 4.1 Add `CONTRIBUTING.md` as a pointer to the Contributing pages, with `mise` as the first tool to install. Replace the link list in the Contributing section of `README.md` with one link to `CONTRIBUTING.md`. Make sure that each link resolves and that `CONTRIBUTING.md` states no rule.
 - [x] 4.2 Add `SECURITY.md`, and turn on private vulnerability reporting for the repository. Make sure that the GitHub API reports the feature as enabled.
 - [x] 4.3 Add `CODE_OF_CONDUCT.md` with the unchanged text of the Contributor Covenant and the contact address from Decision 9. Make sure that the file names its source and its release, and that the address in the file equals the address in Decision 9.
-- [ ] 4.4 Add `.github/ISSUE_TEMPLATE/` with a bug report and an idea template, and add `.github/pull_request_template.md`. Make sure that the new-issue page of the repository offers both templates after the push.
+- [x] 4.4 Add `.github/ISSUE_TEMPLATE/` with a bug report and an idea template, and add `.github/pull_request_template.md`. Make sure that the new-issue page of the repository offers both templates after the push.
 - [x] 4.5 Add a Decisions page for the dependency policy, and a Decisions page for the developer workflow with `mise` and `hk`. Make sure that both pages appear in the site sidebar and that `mise run docs:check` passes.
 
 ## 5. CI
