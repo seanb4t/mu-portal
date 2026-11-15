@@ -38,7 +38,12 @@ A production change that builds on a spike does these things. The design rule in
 4. Write new code under the tests of the change. Do not copy spike code. Read the spike code as an example only.
 5. Copy the recorded evidence, for example transcripts and results, into the crate of the change as test data. Do not put it in a directory named `spikes`, because the boundary test fails an include of a path with that name.
 
-No file in `crates/` can include a file from `spikes/`. The [boundary test](/contributing/workspace/#the-boundary-test) enforces this rule. Review covers two cases that the test cannot see. One is a read of a spike file at run time, for example with `fs::read`. The other is an include through a macro with a new name.
+No file in `crates/` can include a file from `spikes/`. The [boundary test](/contributing/workspace/#the-boundary-test) enforces this rule. Review covers the cases that the test cannot see:
+
+- a read of a spike file at run time, for example with `fs::read`
+- an include through a macro with a new name
+- a symbolic link from a crate into `spikes/`
+- a path that `stringify!` builds from several tokens
 
 ## Deleting a spike
 

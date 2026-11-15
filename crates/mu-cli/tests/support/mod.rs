@@ -29,6 +29,32 @@ pub fn repo_file(relative: &str) -> String {
     fs::read_to_string(&path).unwrap_or_else(|error| panic!("{relative} is readable: {error}"))
 }
 
+/// The text of each level-two heading of a Markdown page, in order, read with a Markdown parser.
+pub fn h2_headings(text: &str) -> Vec<String> {
+    use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+
+    let mut headings = Vec::new();
+    let mut heading: Option<String> = None;
+    for event in Parser::new_ext(text, Options::ENABLE_YAML_STYLE_METADATA_BLOCKS) {
+        match event {
+            Event::Start(Tag::Heading {
+                level: HeadingLevel::H2,
+                ..
+            }) => heading = Some(String::new()),
+            Event::End(TagEnd::Heading(HeadingLevel::H2)) => {
+                headings.extend(heading.take());
+            }
+            Event::Text(text) | Event::Code(text) => {
+                if let Some(heading) = heading.as_mut() {
+                    heading.push_str(&text);
+                }
+            }
+            _ => {}
+        }
+    }
+    headings
+}
+
 /// The metadata of the Cargo workspace of `manifest`, without its dependencies.
 pub fn workspace_metadata(manifest: &Path) -> cargo_metadata::Metadata {
     cargo_metadata::MetadataCommand::new()

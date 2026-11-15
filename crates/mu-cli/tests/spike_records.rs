@@ -22,7 +22,6 @@ struct Page {
 impl Page {
     /// Reads a page with a Markdown parser. Code spans keep their backticks in `source`.
     fn parse(name: &str, text: &str) -> Self {
-        let mut headings = Vec::new();
         let mut source = String::new();
         let mut heading: Option<String> = None;
         let mut section: Option<String> = None;
@@ -33,9 +32,7 @@ impl Page {
                     ..
                 }) => heading = Some(String::new()),
                 Event::End(TagEnd::Heading(HeadingLevel::H2)) => {
-                    let text = heading.take().unwrap_or_default();
-                    headings.push(text.clone());
-                    section = Some(text);
+                    section = heading.take();
                 }
                 Event::Text(text) | Event::Code(text) if heading.is_some() => {
                     heading.get_or_insert_default().push_str(&text);
@@ -55,14 +52,16 @@ impl Page {
                     | TagEnd::List(_)
                     | TagEnd::CodeBlock
                     | TagEnd::BlockQuote(_)
-                    | TagEnd::TableCell,
+                    | TagEnd::TableCell
+                    | TagEnd::Heading(_)
+                    | TagEnd::HtmlBlock,
                 ) => source.push('\n'),
                 _ => {}
             }
         }
         Self {
             name: name.to_owned(),
-            headings,
+            headings: support::h2_headings(text),
             source,
         }
     }
@@ -113,13 +112,14 @@ fn has_sections_in_order(page: &Page) -> bool {
 }
 
 /// True if `text` holds `<words> <n>` with a number.
+/// True if `text` holds `<words> <n>` with a number, as whole words. A line end counts as a space.
 fn names_numbered(text: &str, words: &str) -> bool {
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let needle = format!("{words} ");
     text.match_indices(&needle).any(|(start, _)| {
-        text[start + needle.len()..]
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_digit())
+        let before = text[..start].chars().next_back();
+        let after = text[start + needle.len()..].chars().next();
+        !before.is_some_and(char::is_alphanumeric) && after.is_some_and(|c| c.is_ascii_digit())
     })
 }
 
@@ -340,14 +340,22 @@ fn spike_sources_name_issue_and_pull_request() {
         );
     }
 
-    assert!(source_names_issue_and_pull_request(&record(
-        "The spike of issue 3, merged in pull request 29."
-    )));
+    for source in [
+        "The spike of issue 3, merged in pull request 29.",
+        "The spike of issue 3, merged in pull request\n29.",
+        "The spike of issue 3, merged in pull\nrequest 29.",
+    ] {
+        assert!(
+            source_names_issue_and_pull_request(&record(source)),
+            "{source:?} names both"
+        );
+    }
     for source in [
         "The spike of issue 3.",
         "Merged in pull request 29.",
         "The spike of the issue, merged in pull request 5.",
         "The spike of issue 5, merged in a pull request.",
+        "The spike of reissue 3, merged in pull request 29.",
     ] {
         assert!(
             !source_names_issue_and_pull_request(&record(source)),

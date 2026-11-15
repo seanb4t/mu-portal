@@ -863,8 +863,9 @@ fn design_rules_name_spikes_page(config: &str) -> bool {
 
 /// True if the page has the level-two heading `Using a spike` that the design rule names.
 fn has_using_a_spike(page: &str) -> bool {
-    page.lines()
-        .any(|line| line.trim_end() == "## Using a spike")
+    support::h2_headings(page)
+        .iter()
+        .any(|heading| heading == "Using a spike")
 }
 
 #[test]
@@ -882,6 +883,10 @@ fn design_rules_cover_spikes() {
     assert!(
         !has_using_a_spike("Using a spike\n"),
         "plain text breaks the rule"
+    );
+    assert!(
+        !has_using_a_spike("```\n## Using a spike\n```\n"),
+        "a heading in a code block breaks the rule"
     );
 
     let config = |rules: &[&str]| {

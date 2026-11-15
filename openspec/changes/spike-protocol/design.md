@@ -42,7 +42,7 @@ Non-Goals:
 | The change copies the recorded evidence into its own crate as test data | The plan review, from the tasks of the change |
 | Production code does not copy spike code | Review alone |
 | Production code includes no spike file at build time | The test `real_workspace_has_no_violation` in `workspace_boundary.rs`. The test `spike_include_fails` tests the check itself |
-| Production code reads no spike file at run time, for example with `fs::read`, or includes one through a macro with a new name | Review alone. The spikes page says so beside the boundary test |
+| Production code reads no spike file at run time, for example with `fs::read`, or includes one through a macro with a new name, a symbolic link or a `stringify!` of several tokens | Review alone. The spikes page says so beside the boundary test |
 | Delete the crate after the last change that cites its page is archived | Review alone, at the archive of that change |
 
 ### Where each test goes
@@ -63,21 +63,21 @@ The test reads each page with `pulldown-cmark`, a Markdown parser, and does not 
 
 - The headings are the level-two headings of the page, compared by their text.
 - The Source section is the text of the events after the heading Source, up to the next level-two heading or the end of the page.
-- A crate name counts only as a whole path, or as a path under it. Before `spikes/` the character must be a backtick, a space, a line end or the start of the text. After `spikes/<crate>` it must be a backtick, a slash, a space, a line end or the end of the text. A full stop also ends the path, but only if the sentence ends there. The Source text has a line end at each line break and at the end of each block, for example a paragraph or a list item, but not at the end of emphasis or a link, so a name at the start of a wrapped line counts. So `spikes/telnet-engine/transcripts` names `telnet-engine`, and `spikes/telnet-engine-v2` and `spikes/telnet-engine.v2` do not.
+- A crate name counts only as a whole path, or as a path under it. Before `spikes/` the character must be a backtick, a space, a line end or the start of the text. After `spikes/<crate>` it must be a backtick, a slash, a space, a line end or the end of the text. A full stop also ends the path, but only if the sentence ends there. The Source text has a line end at each line break and at the end of each block: a paragraph, a list item, a list, a code block, a block quote, a table cell, a heading or an HTML block. It has no line end at the end of emphasis or a link, so a name at the start of a wrapped line counts. So `spikes/telnet-engine/transcripts` names `telnet-engine`, and `spikes/telnet-engine-v2` and `spikes/telnet-engine.v2` do not.
 
 ### How the boundary test finds an include of a spike file
 
 The check reads each `.rs` file in the member directories that `violations()` already takes from `cargo_metadata`. It turns the text into tokens with `proc-macro2` (`TokenStream::from_str`), the token library that Rust parsers use. It then walks the tokens, also into the body of every macro and every bracket group. A token walk sees code as code, so spaces, line ends and a string that only looks like a macro do not change the result. A walk of a `syn` syntax tree does not work here, because `syn` does not look into the body of a macro such as `assert_eq!`.
 
-- Macros: a token `include`, `include_str` or `include_bytes`, then `!`, then a group, is an include. The check compares the identifier without a raw prefix (`syn::ext::IdentExt::unraw`), so `r#include_str!` is also an include. The check joins the values of all string literals in that group, in order and at any depth. `syn::Lit` decodes each literal, so an escape such as `\x73` and a raw string give their real value. A path that `concat!` builds from parts is then one string.
-- Attributes: a `#` then a bracket group that holds the ident `path` is a path attribute. That covers `#[path = "..."]` and `path` inside a `cfg_attr`, at any depth. The check joins the string literals in that group.
+- Macros: a token `include`, `include_str` or `include_bytes`, then `!`, then a group, is an include. The check compares the identifier without a raw prefix (`syn::ext::IdentExt::unraw`), so `r#include_str!` is also an include. The check joins the values of all string and char literals in that group, in order and at any depth, and the token text of each `stringify!` group, as `concat!` does. `syn::Lit` decodes each literal, so an escape such as `\x73` and a raw string give their real value. A path that `concat!` builds from parts is then one string. The token text of a `stringify!` of several tokens has spaces between the tokens, so that case is left to review.
+- Attributes: a `#`, or a `#!` for an inner attribute, then a bracket group that holds `path = "..."` is a path attribute. That covers `#[path = "..."]` and `path` inside a `cfg_attr`, at any depth. The check takes only the string after `path =`, so a string in the predicate of a `cfg_attr` does not join into the path.
 - A joined string fails when one of its path components is `spikes`, so `../../spikes/x.rs`, `../../spikes` and `spikes` fail, and `oldspikes/x.rs` passes. The rule for path dependencies resolves a path and tests that it starts with `<workspace root>/spikes`. The include check cannot resolve every path in the same way, because a path that `concat!` builds from `env!("CARGO_MANIFEST_DIR")` has no fixed base. So the check uses the stricter rule by component. One cost is that a directory named `spikes` inside a crate also fails. The spikes page says that copied evidence must not go in such a directory.
 - If a file does not turn into tokens, it is a `Violation::Untokenized { file }`, so the check never skips a file in silence.
 - `Violation::SpikeInclude { file }` names the file only. A line number would need the `span-locations` feature of `proc-macro2`, and the file is enough to find the include.
 
 The fixtures of the check are files that the test writes into a `TreeCopy`. In the source of `workspace_boundary.rs` each fixture is a plain string literal. A string literal is one token, so the walk does not see an include in it, and the check of the real tree passes with no exception.
 
-A macro with a new name, for example `macro_rules! inc { ... }` called as `inc!(...)`, hides the include from the check. Review covers that case, and the spikes page says so.
+A macro with a new name, for example `macro_rules! inc { ... }` called as `inc!(...)`, hides the include from the check. A symbolic link from a crate into `spikes/` also hides it, because the check reads the files that the link points to as files of the crate. Review covers these cases, and the spikes page says so.
 
 ### The design rule points to the page
 

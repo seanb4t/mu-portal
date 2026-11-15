@@ -229,8 +229,7 @@ fn reaches_spikes(tokens: TokenStream) -> bool {
             };
             matches!(trees.get(next), Some(TokenTree::Group(group))
                 if group.delimiter() == Delimiter::Bracket
-                    && holds_ident(group.stream(), "path")
-                    && is_spike_path(&joined_strings(group.stream())))
+                    && path_value(group.stream()).is_some_and(|path| is_spike_path(&path)))
         }
         TokenTree::Group(group) => reaches_spikes(group.stream()),
         _ => false,
@@ -241,12 +240,25 @@ fn is_punct(tree: Option<&TokenTree>, c: char) -> bool {
     matches!(tree, Some(TokenTree::Punct(punct)) if punct.as_char() == c)
 }
 
-fn holds_ident(tokens: TokenStream, name: &str) -> bool {
-    tokens.into_iter().any(|tree| match tree {
-        TokenTree::Ident(ident) => ident == name,
-        TokenTree::Group(group) => holds_ident(group.stream(), name),
-        _ => false,
-    })
+/// The value of `path = "..."` in an attribute, at any depth, for example inside `cfg_attr`.
+fn path_value(tokens: TokenStream) -> Option<String> {
+    let trees: Vec<TokenTree> = tokens.into_iter().collect();
+    trees
+        .iter()
+        .enumerate()
+        .find_map(|(index, tree)| match tree {
+            TokenTree::Ident(ident) if ident == "path" && is_punct(trees.get(index + 1), '=') => {
+                match trees.get(index + 2) {
+                    Some(TokenTree::Literal(literal)) => match syn::Lit::new(literal.clone()) {
+                        syn::Lit::Str(string) => Some(string.value()),
+                        _ => None,
+                    },
+                    _ => None,
+                }
+            }
+            TokenTree::Group(group) => path_value(group.stream()),
+            _ => None,
+        })
 }
 
 /// The values of all string literals in `tokens`, at any depth, joined in order.
@@ -488,6 +500,7 @@ fn spike_include_fails() {
         "#[path = \"../../spikes/x.rs\"]\nmod x;",
         "#[cfg_attr(all(), path = \"../../spikes/x.rs\")]\nmod x;",
         "#[cfg_attr(all(), cfg_attr(all(), path = \"../../spikes/x.rs\"))]\nmod x;",
+        "#[cfg_attr(feature = \"a\", path = \"spikes/x.rs\")]\nmod x;",
         "const A: &str = include_str! (\"../../spikes/x.txt\");",
         "const A: &str = include_str!(\n    \"../../spikes/x.txt\"\n);",
         "const A: &str = include_str!(concat!(\"../../spi\", \"kes/x\"));",
