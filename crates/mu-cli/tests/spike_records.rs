@@ -78,7 +78,6 @@ fn has_sections_in_order(page: &Page) -> bool {
     page.headings == SECTIONS
 }
 
-/// True if `text` holds `<words> <n>` with a number.
 /// True if `text` holds `<words> <n>` with a number, as whole words. A line end counts as a space.
 fn names_numbered(text: &str, words: &str) -> bool {
     let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -176,6 +175,7 @@ fn spike_crates_have_decision_pages() {
         "`spikes/pane`",
         "- The code is spikes/pane\n- The data is elsewhere.",
         "### Code\n\nThe code is `spikes/pane`.",
+        "| Code |\n|---|\n|spikes/pane|",
     ] {
         assert!(
             crates_without_one_page(&one, &[record(source)]).is_empty(),
