@@ -38,7 +38,7 @@
 
 - [x] 6.1 Add `crates/mu-cli/tests/repo_config.rs` with the eight configuration tests from Decision 7 and the breaking texts that the decision lists. Choose a maintained YAML reader and record its name in `design.md`. Make sure that `cargo nextest run -p mu-cli --test repo_config --locked` passes.
 - [x] 6.2 Add `crates/mu-cli/tests/dev_workflow.rs` with the workflow tests from Decision 7. The license test asserts that the output names the added crate and its license. Add the task `test:workflow`. Record the run time in `design.md`. Make sure that `mise run test:workflow` passes. For each defect test, remove the defect once and make sure that the test then fails.
-- [x] 6.3 Update the `context` field of `openspec/config.yaml`. The one-test command uses `cargo nextest` and runs an ignored test too. The library row for the toolchain pins names `mise.toml`. Make sure that the one-test command runs `deny_rejects_disallowed_license` by name.
+- [x] 6.3 Update the `context` field of `openspec/config.yaml`. The one-test command uses `cargo nextest` and runs an ignored test too. The library row for the toolchain pins names `mise.toml`. Make sure that the one-test command runs `dependency_policy_holds` by name.
 - [x] 6.4 Add a Renovate group for `hk` to `renovate.json`, with a custom manager for the package pins in `hk.pkl`. Make sure that `npx --yes --package renovate -- renovate-config-validator renovate.json` exits with status 0.
 
 - [x] 6.5 Add the commit format guard from Decision 8: the `commit-msg` hook, the task `lint:pr-title` and the `commits` job in CI. Make sure that the `commits` job passes on the pull request.
@@ -56,4 +56,6 @@
 - Run `/sb:openspec-review dev-workflow implementation` before task group 7, and treat a changes-requested verdict as a blocker.
 - After the merge, read the Renovate dependency list. It must name each tool in `mise.toml` and the `hk` package pins. Open an issue for a pin that is absent.
 - Archive the change after the implementation review passes.
+- After the merge, delete the ruleset `protect-main`. The owner asked for it.
+- After the merge, make sure that the new-issue page offers both issue templates (task 4.4).
 - Close GitHub issue #18.

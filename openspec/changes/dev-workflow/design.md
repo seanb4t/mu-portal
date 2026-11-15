@@ -244,10 +244,11 @@ Enforcement: none. These files are text for people, and a reviewer reads them.
 
 - a change needs a pull request, with no required approval, because the project has one maintainer
 - the only merge method is a squash, so the title of the pull request is the commit message on `main`
+- each review thread must be resolved, and an unattributed change needs an extra approval. Both settings come from the ruleset `protect-main` of the owner
 - the check `ci-ok` must pass
 - no force push and no deletion
 
-Task 7.2 applied the file with the GitHub API. The repository now has two active rulesets, `protect-main` and `main`. They do not conflict, and `main` adds the required check. The owner decides whether to remove `protect-main`.
+Task 7.2 applied the file with the GitHub API. The repository now has two active rulesets, `protect-main` and `main`. They do not conflict, and `main` adds the required check. The owner decided that `main` takes over the two settings that only `protect-main` had, and that `protect-main` is deleted after the merge of this change.
 
 Task 7.2 applies the file with the GitHub API. The task runs after the pull request of this change is open, because `ci-ok` exists only from this change.
 

@@ -12,6 +12,8 @@ const CHECK_TASKS: [&str; 5] = ["fmt", "lint", "test", "doc", "deny"];
 const AGGREGATE_JOB: &str = "ci-ok";
 const AGGREGATE_ACTION: &str = "re-actors/alls-green@";
 const PULL_REQUEST_JOB: &str = "commits";
+const PULL_REQUEST_RULE: &str =
+    r#"{"type": "pull_request", "parameters": {"allowed_merge_methods": ["squash"]}}"#;
 
 fn repo_file(relative: &str) -> String {
     let path = support::repo_root().join(relative);
@@ -385,8 +387,15 @@ fn ruleset_requires_aggregate(ruleset: &str, workflow: &str) -> bool {
         .flatten()
         .filter_map(|check| check["context"].as_str())
         .collect();
+    // The title check guards the commit on main only if a squash is the one merge method.
+    let squash_only = ruleset["rules"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|rule| rule["type"] == "pull_request")
+        .any(|rule| rule["parameters"]["allowed_merge_methods"] == serde_json::json!(["squash"]));
     let name = reported_name(&yaml(workflow), AGGREGATE_JOB);
-    contexts.len() == 1 && name.as_deref() == Some(contexts[0])
+    squash_only && contexts.len() == 1 && name.as_deref() == Some(contexts[0])
 }
 
 /// What keeps the aggregate job from covering every job: a job it does not need, or no `always()`.
@@ -767,7 +776,7 @@ fn ruleset_requires_ci_ok() {
             .map(|context| format!("{{\"context\": \"{context}\"}}"))
             .collect();
         format!(
-            "{{\"rules\": [{{\"type\": \"required_status_checks\", \"parameters\": {{\"required_status_checks\": [{}]}}}}]}}",
+            "{{\"rules\": [{PULL_REQUEST_RULE}, {{\"type\": \"required_status_checks\", \"parameters\": {{\"required_status_checks\": [{}]}}}}]}}",
             checks.join(", ")
         )
     };
@@ -786,6 +795,9 @@ fn ruleset_requires_ci_ok() {
         workflow
     ));
     assert!(!ruleset_requires_aggregate("{\"rules\": []}", workflow));
+    // A merge commit or a rebase puts the commits of the branch on main, not the title.
+    let with_merge = ruleset(&["ci-ok"]).replace("[\"squash\"]", "[\"squash\", \"merge\"]");
+    assert!(!ruleset_requires_aggregate(&with_merge, workflow));
 }
 
 #[test]
