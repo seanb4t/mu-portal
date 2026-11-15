@@ -67,8 +67,24 @@ fn mise_run(task: &str, copy: &TreeCopy) -> Output {
     run("mise", &["run", task], copy.root())
 }
 
+/// The output of a command with the color sequences removed. CI turns colors on.
 fn text(output: &Output) -> String {
-    stdout(output) + &stderr(output)
+    let raw = stdout(output) + &stderr(output);
+    let mut text = String::with_capacity(raw.len());
+    let mut characters = raw.chars();
+    while let Some(character) = characters.next() {
+        if character == '\u{1b}' {
+            // A color sequence is ESC, `[`, parameters and one final letter.
+            for next in characters.by_ref() {
+                if next.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else {
+            text.push(character);
+        }
+    }
+    text
 }
 
 /// Asserts that the task failed and that mise names `failed_task` as a failed task.
