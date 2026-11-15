@@ -15,7 +15,6 @@ workspace = true
 clap = { workspace = true }
 
 [dev-dependencies]
-anstream = { workspace = true }
 cargo_metadata = { workspace = true }
 proptest = { workspace = true }
 serde-saphyr = { workspace = true }
@@ -26,13 +25,3 @@ toml = { workspace = true }
 [[bin]]
 name = "mu"
 path = "src/main.rs"
-
-[features]
-# Turns on the slow tests of the developer workflow. `mise run test:workflow` sets it.
-workflow-tests = []
-
-# Each of these tests runs a mise task on a copy of the repository. The feature
-# keeps them out of the `test` task, which a copy runs too.
-[[test]]
-name = "dev_workflow"
-required-features = ["workflow-tests"]

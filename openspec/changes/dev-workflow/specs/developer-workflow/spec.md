@@ -7,83 +7,53 @@ Defines how a contributor and CI install the project tools and run the project c
 ## ADDED Requirements
 
 ### Requirement: One task runs every check
-The repository SHALL provide one task, `check`, that runs every check of the Rust workspace: formatting, lints, tests, documentation and dependency policy. The task SHALL exit with status 0 on a tree with no defect. If one check fails, the task SHALL exit with a non-zero status.
+The repository SHALL provide one task, `check`, that runs every check of the Rust workspace: formatting, lints, tests, documentation and dependency policy. A lint warning and a documentation warning SHALL each fail their task. The tests SHALL include the doc tests.
 
-#### Scenario: Clean tree
-- **WHEN** a contributor runs `mise run check` on a tree with no defect
-- **THEN** the exit status is 0
-
-#### Scenario: Formatting defect
-- **GIVEN** a copy of the tree in which one Rust source file is not formatted
-- **WHEN** a contributor runs `mise run check` in that copy
-- **THEN** the exit status is not 0
-
-#### Scenario: Lint defect
-- **GIVEN** a copy of the tree with one added function that Clippy warns about
-- **WHEN** a contributor runs `mise run check` in that copy
-- **THEN** the exit status is not 0
-
-#### Scenario: Test defect
-- **GIVEN** a copy of the tree with one added test that fails
-- **WHEN** a contributor runs `mise run check` in that copy
-- **THEN** the exit status is not 0
-
-#### Scenario: Doc test defect
-- **GIVEN** a copy of the tree with one added doc test that fails
-- **WHEN** a contributor runs `mise run check` in that copy
-- **THEN** the exit status is not 0
-
-#### Scenario: Documentation defect
-- **GIVEN** a copy of the tree with one added doc comment that links to an item that does not exist
-- **WHEN** a contributor runs `mise run check` in that copy
-- **THEN** the exit status is not 0
-
-### Requirement: Dependency policy
-The repository SHALL provide a task, `deny`, that rejects a crate in the dependency tree whose license is not in the allowed list. The allowed list SHALL be a file in the repository. The policy SHALL apply to a crate that cannot be published as it applies to every other crate. The `check` task SHALL run the `deny` task.
-
-#### Scenario: Crate with a license that is not allowed
-- **GIVEN** a copy of the tree with one added workspace crate that cannot be published and whose license is `GPL-3.0-only`
-- **AND** a lock file in that copy that lists the added crate
-- **WHEN** a contributor runs `mise run deny` in that copy
-- **THEN** the exit status is not 0
-- **AND** the output names the added crate and its license
-
-#### Scenario: The check task runs the dependency policy
+#### Scenario: The check task runs each check
 - **WHEN** a reader lists the tasks that the `check` task depends on in `mise.toml`
 - **THEN** the list holds `fmt`, `lint`, `test`, `doc` and `deny`
 
-### Requirement: Hooks run the checks
-The repository SHALL provide git hooks through `hk`. The hook checks SHALL exit with a non-zero status for a Rust source file that is not formatted.
+#### Scenario: A warning fails the lint task and the doc task
+- **WHEN** a reader reads the `lint` task and the `doc` task in `mise.toml`
+- **THEN** the `lint` task gives Clippy the arguments `-D warnings` and turns on every feature
+- **AND** the `doc` task sets `RUSTDOCFLAGS` to `-D warnings`
 
-#### Scenario: Hook check on a formatting defect
-- **GIVEN** a copy of the tree in which one Rust source file is not formatted
-- **WHEN** a contributor runs `mise run hooks:check` in that copy
-- **THEN** the exit status is not 0
+#### Scenario: The test task runs the doc tests
+- **WHEN** a reader reads the `test` task in `mise.toml`
+- **THEN** the task holds a `cargo nextest run` command for the workspace
+- **AND** the task holds a `cargo test` command with `--doc`
 
-#### Scenario: Hook check on a clean tree
-- **WHEN** a contributor runs `mise run hooks:check` on a tree with no defect
-- **THEN** the exit status is 0
+### Requirement: Dependency policy
+The repository SHALL hold the dependency policy in `deny.toml`, and the `check` task SHALL run it. The policy SHALL allow no copyleft license. The policy SHALL apply to a crate that cannot be published and to a dependency behind an optional feature. The policy SHALL refuse a wildcard dependency and an unknown source.
 
-### Requirement: Commit messages are conventional commits
-The repository SHALL provide a git hook that refuses a commit whose message is not in the Conventional Commits format. The repository SHALL provide a task, `lint:pr-title`, that fails for a pull request title that is not in that format. The CI workflow SHALL run that task for each pull request.
+#### Scenario: The policy file holds the policy
+- **WHEN** a reader reads `deny.toml`
+- **THEN** the allowed list holds at least one license and no license of the GPL, AGPL, LGPL or SSPL families
+- **AND** the option that ignores a private crate is off
+- **AND** the dependency tree is read with all features on
+- **AND** a wildcard dependency, an unknown registry and an unknown git source are each denied
 
-#### Scenario: Commit with a plain message
-- **GIVEN** a copy of the tree, as a git repository with the hooks installed
-- **WHEN** a contributor commits with the message `fixed stuff`
-- **THEN** git refuses the commit
+### Requirement: Hooks call the tasks
+The repository SHALL provide git hooks through `hk`. The steps before a commit SHALL call the `fmt` task and the `lint:actions` task. The hook before a push SHALL call the `check` task. The hook for a commit message SHALL hold the conventional commit check.
 
-#### Scenario: Commit with a conventional message
-- **GIVEN** a copy of the tree, as a git repository with the hooks installed
-- **WHEN** a contributor commits with the message `fix: handle the empty verb`
-- **THEN** git accepts the commit
+#### Scenario: The hook file wires the tasks
+- **WHEN** a reader reads `hk.pkl`
+- **THEN** a top-level step calls `mise run fmt` and another calls `mise run lint:actions`
+- **AND** the `pre-push` hook calls `mise run check`
+- **AND** the `commit-msg` hook holds the conventional commit check
 
-#### Scenario: Pull request title that is not conventional
-- **WHEN** the `lint:pr-title` task runs with the title `Add the pair verb`, with the title `feat add the pair verb`, or with an empty title
-- **THEN** the exit status is not 0
+### Requirement: Pull request titles are conventional commits
+The repository SHALL provide a task, `lint:pr-title`, that checks a pull request title against the Conventional Commits format. The task SHALL give the title to the check in a file, so that no title is read as an option. The CI workflow SHALL run the task for each pull request, and again after an edit of the title.
 
-#### Scenario: Conventional pull request title
-- **WHEN** the `lint:pr-title` task runs with the title `feat(cli): add the pair verb`
-- **THEN** the exit status is 0
+#### Scenario: The title reaches the check as a file
+- **WHEN** a reader reads the `lint:pr-title` task in `mise.toml`
+- **THEN** the task writes the `PR_TITLE` variable to a file
+- **AND** the task gives that file to the conventional commit check, and not the title
+
+#### Scenario: CI checks the title of each pull request
+- **WHEN** a reader reads `.github/workflows/ci.yml`
+- **THEN** one step runs `mise run lint:pr-title` with the title of the pull request in the `PR_TITLE` variable
+- **AND** the workflow runs for the `edited` event of a pull request
 
 ### Requirement: CI runs the tasks
 Each command step of the CI workflow SHALL be one `mise` task that `mise.toml` defines. The workflow SHALL NOT state a check command that a task already holds. The workflow SHALL NOT state the release of a tool that a pin file holds.

@@ -45,13 +45,9 @@ mise run docs:check
 
 This task installs the packages of the site, reports errors in the architecture model and builds the site into `docs/dist/`. To read the site while you edit, run `pnpm dev` in `docs/`.
 
-## Slow tests
+## What the tests cover
 
-```sh
-mise run test:workflow
-```
-
-These tests copy the repository, add one defect to the copy and make sure that a check fails. They are behind the Cargo feature `workflow-tests`. They take longer than the other tests, so no hook runs them.
+The project tests what it owns: its code, its configuration and its requirements. A test does not prove that a tool works. For example, a test makes sure that the `lint` task turns each warning into an error. No test proves that Clippy finds a defect.
 
 ## Continuous integration
 

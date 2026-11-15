@@ -41,14 +41,14 @@
 - [x] 6.3 Update the `context` field of `openspec/config.yaml`. The one-test command uses `cargo nextest` and runs an ignored test too. The library row for the toolchain pins names `mise.toml`. Make sure that the one-test command runs `deny_rejects_disallowed_license` by name.
 - [x] 6.4 Add a Renovate group for `hk` to `renovate.json`, with a custom manager for the package pins in `hk.pkl`. Make sure that `npx --yes --package renovate -- renovate-config-validator renovate.json` exits with status 0.
 
-- [x] 6.5 Add the commit format guard from Decision 8: the `commit-msg` hook, the task `lint:pr-title`, the `commits` job in CI, and the tests `commit_hook_checks_the_message`, `pr_title_task_rejects_plain_title` and `pr_title_task_accepts_conventional_title`. Make sure that `mise run test:workflow` passes.
-- [x] 6.6 Put the workflow tests behind the Cargo feature `workflow-tests`, and remove each `#[ignore]` attribute. Make sure that `cargo nextest run --workspace --locked` runs no test of `dev_workflow` and that `mise run test:workflow` runs all of them.
+- [x] 6.5 Add the commit format guard from Decision 8: the `commit-msg` hook, the task `lint:pr-title` and the `commits` job in CI. Make sure that the `commits` job passes on the pull request.
+- [x] 6.6 Remove `dev_workflow.rs`, its Cargo feature, the task `test:workflow` and its CI step, because those tests prove the behavior of tools that the project does not own. Add the configuration tests `check_tasks_fail_on_warnings`, `test_task_runs_the_doc_tests`, `dependency_policy_holds`, `hooks_call_the_tasks`, `pr_title_reaches_the_check_as_a_file` and `ci_checks_the_pr_title`. Make sure that `cargo nextest run -p mu-cli --test repo_config --locked` passes.
 
 ## 7. Integration
 
 - [x] 7.1 Add two parked GitHub issues to the mu-portal Project: release tooling, and the name of the binary. Make sure that both issues appear in the Project with the status Parked.
 - [x] 7.2 Open a pull request. Add `.github/rulesets/main.json` and apply it with the GitHub API, as Decision 10 describes. Make sure that the check `ci-ok` passes on the pull request and that the GitHub API lists the ruleset as active.
-- [x] 7.3 From a clean clone, run `mise install`, `mise run check`, `mise run docs:check` and `mise run test:workflow` in order. Make sure that each command exits with status 0 on macOS.
+- [x] 7.3 From a clean clone, run `mise install`, `mise run check` and `mise run docs:check` in order. Make sure that each command exits with status 0 on macOS.
 - [x] 7.4 Run `openspec validate dev-workflow --strict`. Make sure that it passes.
 
 ## Workflow follow-up

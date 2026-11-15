@@ -64,7 +64,3 @@ run = ["pnpm install --frozen-lockfile", "pnpm model:check", "pnpm build"]
 [tasks."hooks:check"]
 description = "Run the hook checks on every file"
 run = "hk check --all"
-
-[tasks."test:workflow"]
-description = "Run the slow tests of the developer workflow"
-run = "cargo nextest run -p mu-cli --features workflow-tests --test dev_workflow --locked"

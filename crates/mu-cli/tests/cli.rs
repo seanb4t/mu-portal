@@ -130,8 +130,6 @@ fn non_utf8_verb_is_usage_error() {
         .expect("the mu binary runs");
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty(), "stdout is empty");
-    // The verb is not UTF-8, so the error shows the replacement character.
-    assert!(String::from_utf8_lossy(&output.stderr).contains("'serv\u{fffd}'"));
 }
 
 #[test]

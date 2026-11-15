@@ -35,7 +35,7 @@ None.
 ## Impact
 
 - **New tool files**: `mise.toml`, `hk.pkl` and `deny.toml`.
-- **New tests**: two Rust test files in `crates/mu-cli/tests/`, one for the configuration and one for the workflow.
+- **New tests**: one Rust test file in `crates/mu-cli/tests/` for the configuration of the repository.
 - **New community files**: `CONTRIBUTING.md`, `SECURITY.md` and `CODE_OF_CONDUCT.md`.
 - **New GitHub files**: `.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md` and `.github/rulesets/main.json`.
 - **Changed files**: `.github/workflows/ci.yml`, the root `Cargo.toml`, each crate manifest and `docs/package.json`. The Contributing page for the build also changes. If Renovate does not read a new pin, `renovate.json` changes too.

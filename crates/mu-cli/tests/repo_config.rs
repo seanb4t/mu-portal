@@ -201,21 +201,170 @@ fn hk_pins_match(hk_pkl: &str, mise: &str) -> bool {
     pins.len() == 4 && pins.iter().all(|pin| pin == release)
 }
 
-/// True if the manifest keeps the workflow tests behind a feature. Without one, the `test`
-/// task of each copy runs them, and each of them makes a copy.
-fn workflow_tests_need_feature(manifest: &str) -> bool {
-    toml(manifest)
-        .get("test")
+/// The commands of one task of a `mise.toml`.
+fn commands_of(mise: &str, task: &str) -> Vec<String> {
+    let mise = toml(mise);
+    mise.get("tasks")
+        .and_then(|tasks| tasks.get(task))
+        .into_iter()
+        .flat_map(task_commands)
+        .collect()
+}
+
+/// True if the `lint` task makes each Clippy warning an error, with every feature on.
+fn lint_task_denies_warnings(mise: &str) -> bool {
+    commands_of(mise, "lint").iter().any(|command| {
+        let (cargo, clippy) = command.split_once(" -- ").unwrap_or((command, ""));
+        cargo.starts_with("cargo clippy")
+            && cargo
+                .split_whitespace()
+                .any(|word| word == "--all-features")
+            && clippy.split_whitespace().collect::<Vec<_>>() == ["-D", "warnings"]
+    })
+}
+
+/// True if the `doc` task makes each rustdoc warning an error.
+fn doc_task_denies_warnings(mise: &str) -> bool {
+    let mise = toml(mise);
+    let flags = mise
+        .get("tasks")
+        .and_then(|tasks| tasks.get("doc"))
+        .and_then(|doc| doc.get("env"))
+        .and_then(|env| env.get("RUSTDOCFLAGS"))
+        .and_then(toml::Value::as_str);
+    flags.is_some_and(|flags| flags.split_whitespace().collect::<Vec<_>>() == ["-D", "warnings"])
+}
+
+/// True if the `test` task runs the doc tests too. cargo-nextest does not run them.
+fn test_task_runs_doc_tests(mise: &str) -> bool {
+    let commands = commands_of(mise, "test");
+    let has = |start: &str, word: &str| {
+        commands.iter().any(|command| {
+            command.starts_with(start) && command.split_whitespace().any(|part| part == word)
+        })
+    };
+    has("cargo nextest run", "--workspace") && has("cargo test", "--doc")
+}
+
+/// What a `deny.toml` holds against the dependency policy of the project.
+fn dependency_policy_gaps(deny: &str) -> Vec<&'static str> {
+    const COPYLEFT: [&str; 4] = ["GPL", "AGPL", "LGPL", "SSPL"];
+    let deny = toml(deny);
+    let text = |path: [&str; 2]| {
+        deny.get(path[0])
+            .and_then(|table| table.get(path[1]))
+            .and_then(toml::Value::as_str)
+    };
+    let flag = |path: [&str; 2]| {
+        deny.get(path[0])
+            .and_then(|table| table.get(path[1]))
+            .and_then(toml::Value::as_bool)
+    };
+    let licenses = deny.get("licenses");
+    let allowed: Vec<&str> = licenses
+        .and_then(|licenses| licenses.get("allow"))
         .and_then(toml::Value::as_array)
         .into_iter()
         .flatten()
-        .filter(|target| target.get("name").and_then(toml::Value::as_str) == Some("dev_workflow"))
-        .any(|target| {
-            target
-                .get("required-features")
-                .and_then(toml::Value::as_array)
-                .is_some_and(|features| !features.is_empty())
+        .filter_map(toml::Value::as_str)
+        .collect();
+    let ignores_private = licenses
+        .and_then(|licenses| licenses.get("private"))
+        .and_then(|private| private.get("ignore"))
+        .and_then(toml::Value::as_bool)
+        .unwrap_or(false);
+
+    let mut gaps = Vec::new();
+    if allowed.is_empty() {
+        gaps.push("no allowed license");
+    }
+    if allowed
+        .iter()
+        .any(|license| COPYLEFT.iter().any(|prefix| license.starts_with(prefix)))
+    {
+        gaps.push("a copyleft license is allowed");
+    }
+    if ignores_private {
+        gaps.push("a private crate is not checked");
+    }
+    if flag(["graph", "all-features"]) != Some(true) {
+        gaps.push("optional dependencies are not checked");
+    }
+    if text(["bans", "wildcards"]) != Some("deny") {
+        gaps.push("a wildcard dependency is allowed");
+    }
+    if text(["sources", "unknown-registry"]) != Some("deny")
+        || text(["sources", "unknown-git"]) != Some("deny")
+    {
+        gaps.push("an unknown source is allowed");
+    }
+    gaps
+}
+
+/// The text of one hook block of an `hk.pkl`, from its name to the next hook or the end.
+fn hook_block<'a>(hk_pkl: &'a str, hook: &str) -> &'a str {
+    let Some(start) = hk_pkl.find(&format!("[\"{hook}\"]")) else {
+        return "";
+    };
+    let rest = &hk_pkl[start..];
+    let end = rest[1..]
+        .find("\n    [\"")
+        .map_or(rest.len(), |offset| offset + 1);
+    &rest[..end]
+}
+
+/// What an `hk.pkl` lacks: a step that calls a task, or a hook.
+fn hook_gaps(hk_pkl: &str) -> Vec<&'static str> {
+    let steps = hk_pkl.split("\nhooks {").next().unwrap_or(hk_pkl);
+    let mut gaps = Vec::new();
+    if !steps.contains("check = \"mise run fmt\"") {
+        gaps.push("no format step that calls the fmt task");
+    }
+    if !steps.contains("check = \"mise run lint:actions\"") {
+        gaps.push("no workflow step that calls the lint:actions task");
+    }
+    if !hook_block(hk_pkl, "commit-msg").contains("Builtins.check_conventional_commit") {
+        gaps.push("no commit-msg hook with the conventional commit check");
+    }
+    if !hook_block(hk_pkl, "pre-push").contains("check = \"mise run check\"") {
+        gaps.push("no pre-push hook that calls the check task");
+    }
+    gaps
+}
+
+/// True if the `lint:pr-title` task gives the title to the check in a file. A title that is
+/// an argument can be read as an option.
+fn pr_title_task_reads_a_file(mise: &str) -> bool {
+    let commands = commands_of(mise, "lint:pr-title");
+    let writes_file = commands
+        .iter()
+        .any(|command| command.starts_with("printf") && command.contains("\"$PR_TITLE\" >"));
+    let checks_file = commands.iter().any(|command| {
+        command.starts_with("hk util check-conventional-commit") && !command.contains("PR_TITLE")
+    });
+    writes_file && checks_file
+}
+
+/// What keeps CI from checking the title of each pull request, after an edit too.
+fn pr_title_gaps(workflow: &str) -> Vec<&'static str> {
+    let workflow = yaml(workflow);
+    let mut gaps = Vec::new();
+    let edited = workflow["on"]["pull_request"]["types"]
+        .as_array()
+        .is_some_and(|types| types.iter().any(|event| event == "edited"));
+    if !edited {
+        gaps.push("the workflow does not run for an edited title");
+    }
+    let title_step = jobs(&workflow).into_iter().any(|(_, job)| {
+        job["steps"].as_array().into_iter().flatten().any(|step| {
+            step["run"] == "mise run lint:pr-title"
+                && step["env"]["PR_TITLE"] == "${{ github.event.pull_request.title }}"
         })
+    });
+    if !title_step {
+        gaps.push("no step gives the title to the lint:pr-title task");
+    }
+    gaps
 }
 
 /// The name that GitHub reports for a job: its `name`, or its id.
@@ -451,25 +600,158 @@ fn hk_pins_match_mise() {
 }
 
 #[test]
-fn workflow_tests_need_a_feature() {
-    assert!(workflow_tests_need_feature(&repo_file(
-        "crates/mu-cli/Cargo.toml"
+fn check_tasks_fail_on_warnings() {
+    let mise = repo_file("mise.toml");
+    assert!(lint_task_denies_warnings(&mise));
+    assert!(doc_task_denies_warnings(&mise));
+
+    let lint = |run: &str| format!("[tasks.lint]\nrun = \"{run}\"\n");
+    assert!(lint_task_denies_warnings(&lint(
+        "cargo clippy --all-features --locked -- -D warnings"
+    )));
+    assert!(!lint_task_denies_warnings(&lint(
+        "cargo clippy --all-features --locked"
+    )));
+    assert!(!lint_task_denies_warnings(&lint(
+        "cargo clippy --locked -- -D warnings"
+    )));
+    assert!(!lint_task_denies_warnings(&lint(
+        "cargo clippy --all-features -- -W warnings"
     )));
 
-    let target = |features: &str| format!("[[test]]\nname = \"dev_workflow\"\n{features}");
-    assert!(workflow_tests_need_feature(&target(
-        "required-features = [\"workflow-tests\"]\n"
+    let doc = |env: &str| format!("[tasks.doc]\n{env}run = \"cargo doc --locked\"\n");
+    assert!(doc_task_denies_warnings(&doc(
+        "env = { RUSTDOCFLAGS = \"-D warnings\" }\n"
     )));
-    assert!(!workflow_tests_need_feature(&target("")));
-    assert!(!workflow_tests_need_feature(&target(
-        "required-features = []\n"
+    assert!(!doc_task_denies_warnings(&doc("")));
+    assert!(!doc_task_denies_warnings(&doc(
+        "env = { RUSTDOCFLAGS = \"-W warnings\" }\n"
     )));
-    assert!(!workflow_tests_need_feature(
-        "[[test]]\nname = \"other\"\nrequired-features = [\"x\"]\n"
-    ));
-    assert!(!workflow_tests_need_feature(
-        "[package]\nname = \"mu-cli\"\n"
-    ));
+}
+
+#[test]
+fn test_task_runs_the_doc_tests() {
+    assert!(test_task_runs_doc_tests(&repo_file("mise.toml")));
+
+    let test = |run: &str| format!("[tasks.test]\nrun = {run}\n");
+    assert!(test_task_runs_doc_tests(&test(
+        "[\"cargo nextest run --workspace --locked\", \"cargo test --workspace --doc --locked\"]"
+    )));
+    assert!(!test_task_runs_doc_tests(&test(
+        "\"cargo nextest run --workspace --locked\""
+    )));
+    assert!(!test_task_runs_doc_tests(&test(
+        "\"cargo test --workspace --doc --locked\""
+    )));
+}
+
+#[test]
+fn dependency_policy_holds() {
+    let none: Vec<&str> = Vec::new();
+    assert_eq!(dependency_policy_gaps(&repo_file("deny.toml")), none);
+
+    let policy = |licenses: &str, rest: &str| {
+        format!(
+            "[graph]\nall-features = true\n[licenses]\nallow = [{licenses}]\n[bans]\nwildcards = \"deny\"\n[sources]\nunknown-registry = \"deny\"\nunknown-git = \"deny\"\n{rest}"
+        )
+    };
+    assert_eq!(dependency_policy_gaps(&policy("\"MIT\"", "")), none);
+    assert_eq!(
+        dependency_policy_gaps(&policy("\"MIT\", \"GPL-3.0-only\"", "")),
+        ["a copyleft license is allowed"]
+    );
+    assert_eq!(
+        dependency_policy_gaps(&policy("\"LGPL-2.1-or-later\"", "")),
+        ["a copyleft license is allowed"]
+    );
+    assert_eq!(
+        dependency_policy_gaps(&policy("", "")),
+        ["no allowed license"]
+    );
+    assert_eq!(
+        dependency_policy_gaps(&policy("\"MIT\"", "[licenses.private]\nignore = true\n")),
+        ["a private crate is not checked"]
+    );
+    assert_eq!(
+        dependency_policy_gaps("[licenses]\nallow = [\"MIT\"]\n"),
+        [
+            "optional dependencies are not checked",
+            "a wildcard dependency is allowed",
+            "an unknown source is allowed"
+        ]
+    );
+}
+
+#[test]
+fn hooks_call_the_tasks() {
+    let none: Vec<&str> = Vec::new();
+    assert_eq!(hook_gaps(&repo_file("hk.pkl")), none);
+
+    let steps = "steps {\n    [\"fmt\"] {\n        check = \"mise run fmt\"\n    }\n    [\"actions\"] {\n        check = \"mise run lint:actions\"\n    }\n}\n";
+    let commit = "    [\"commit-msg\"] {\n        steps {\n            [\"conventional\"] = Builtins.check_conventional_commit\n        }\n    }\n";
+    let push = "    [\"pre-push\"] {\n        steps {\n            [\"check\"] {\n                check = \"mise run check\"\n            }\n        }\n    }\n";
+    let pkl = |steps: &str, hooks: &str| format!("{steps}\nhooks {{\n{hooks}}}\n");
+    assert_eq!(hook_gaps(&pkl(steps, &format!("{commit}{push}"))), none);
+    assert_eq!(
+        hook_gaps(&pkl(steps, push)),
+        ["no commit-msg hook with the conventional commit check"]
+    );
+    assert_eq!(
+        hook_gaps(&pkl(steps, commit)),
+        ["no pre-push hook that calls the check task"]
+    );
+    // A raw command in a step is not a call of the task.
+    let raw = steps.replace("mise run fmt", "cargo fmt --check");
+    assert_eq!(
+        hook_gaps(&pkl(&raw, &format!("{commit}{push}"))),
+        ["no format step that calls the fmt task"]
+    );
+    // The check task in the wrong hook does not count for the pre-push hook.
+    let wrong_hook = commit.replace(
+        "Builtins.check_conventional_commit",
+        "check = \"mise run check\"",
+    );
+    assert_eq!(hook_gaps(&pkl(steps, &wrong_hook)).len(), 2);
+}
+
+#[test]
+fn pr_title_reaches_the_check_as_a_file() {
+    assert!(pr_title_task_reads_a_file(&repo_file("mise.toml")));
+
+    let task = |run: &str| format!("[tasks.\"lint:pr-title\"]\nrun = \'\'\'\n{run}\n\'\'\'\n");
+    assert!(pr_title_task_reads_a_file(&task(
+        "printf '%s\\n' \"$PR_TITLE\" > \"$title_file\"\nhk util check-conventional-commit \"$title_file\""
+    )));
+    // The title as an argument can be read as an option, for example `--help`.
+    assert!(!pr_title_task_reads_a_file(&task(
+        "hk util check-conventional-commit \"$PR_TITLE\""
+    )));
+    assert!(!pr_title_task_reads_a_file(&task(
+        "cog verify \"$PR_TITLE\""
+    )));
+}
+
+#[test]
+fn ci_checks_the_pr_title() {
+    let none: Vec<&str> = Vec::new();
+    assert_eq!(pr_title_gaps(&repo_file(".github/workflows/ci.yml")), none);
+
+    let workflow = |types: &str, env: &str| {
+        format!(
+            "on:\n  pull_request:\n{types}jobs:\n  commits:\n    steps:\n      - run: mise run lint:pr-title\n{env}"
+        )
+    };
+    let types = "    types: [opened, edited, synchronize, reopened]\n";
+    let env = "        env:\n          PR_TITLE: ${{ github.event.pull_request.title }}\n";
+    assert_eq!(pr_title_gaps(&workflow(types, env)), none);
+    assert_eq!(
+        pr_title_gaps(&workflow("", env)),
+        ["the workflow does not run for an edited title"]
+    );
+    assert_eq!(
+        pr_title_gaps(&workflow(types, "")),
+        ["no step gives the title to the lint:pr-title task"]
+    );
 }
 
 #[test]

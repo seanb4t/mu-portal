@@ -49,17 +49,6 @@ impl TreeCopy {
         Self { dir }
     }
 
-    /// Copies the listed files, each a path relative to `from`.
-    pub fn of_files<P: AsRef<Path>>(from: &Path, files: &[P]) -> Self {
-        let dir = TempDir::new().unwrap();
-        for file in files {
-            let target = dir.path().join(file);
-            fs::create_dir_all(target.parent().unwrap()).unwrap();
-            fs::copy(from.join(file), target).unwrap();
-        }
-        Self { dir }
-    }
-
     /// The root of the copy.
     pub fn root(&self) -> &Path {
         self.dir.path()
