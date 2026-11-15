@@ -32,8 +32,8 @@
 ## 4. The spikes page
 
 - [x] 4.1 Rewrite `docs/src/content/docs/contributing/spikes.md` with the parts Running a spike, The decision page, Using a spike and Deleting a spike, from the proposal. Name the tests from 1.3, 2.1 and 3.1 where the page states a rule that they enforce. Say that the results of a spike go under Reason and that a page has only the four sections. Say that review covers reads at run time and an include through a macro with a new name. Make sure that `mise run docs:check` passes, and that `uv run ~/.agents/plugins/sb/skills/review-lint/scripts/review_lint.py --base origin/main` exits 0.
-- [ ] 4.2 Run `/sb:openspec-review spike-protocol implementation` and treat changes-requested as a blocker. Make sure that `review.md` has the verdict approve.
-- [ ] 4.3 Run `mise run check`. Make sure that it passes.
+- [x] 4.2 Run `/sb:openspec-review spike-protocol implementation` and treat changes-requested as a blocker. Make sure that `review.md` has the verdict approve.
+- [x] 4.3 Run `mise run check`. Make sure that it passes.
 
 ## Workflow follow-up
 

@@ -1,19 +1,94 @@
 ---
-verdict: changes-requested
-phase: plan
-reviewed_at: 2026-11-15T14:36:52+00:00
-head: 8ffb9c97a4a474a0233fb6a2f48df72d33f845c3
+verdict: approve-with-notes
+phase: implementation
+reviewed_at: 2026-11-15T15:52:39+00:00
+head: 619693e1fb7f365e24c955d0b272658d3d11e3aa
 lenses:
-  spec-lint: ok
+  spec-lint: not-applicable
   approach: ok
   fit: ok
   test-coverage: ok
-  test-honesty: not-applicable
+  test-honesty: ok
   invariants: ok
 ---
 # Review
 
 ## Findings
+
+| id | lens | severity | scope | claim | evidence | action |
+|---|---|---|---|---|---|---|
+| app-1 | approach | should-fix | deviates-design | The design says the Source text gets a line end at the end of each table cell, but h2_sections builds its parser without Options::ENABLE_TABLES, so pulldown-cmark never emits a table cell and a GFM table in Source is read as one paragraph. A crate named in a cell such as \|spikes/pane\| does not count, though the rendered page shows it in a cell of its own. | design.md > How the test reads a decision page — "a code block, a block quote, a table cell, a heading or an HTML block"; scope basis: design.md > How the test reads a decision page — "The Source text has a line end at each line break and at the end of each block" | Add Options::ENABLE_TABLES to the parser options in h2_sections and add a passing text with the crate in a table cell to spike_crates_have_decision_pages, or remove the table cell from the design and from the TagEnd match. |
+| inv-1 | invariants | should-fix | in-change | The path attribute check compares the identifier with "path" and does not unraw it, so #[r#path = "../../spikes/x.rs"] mod x; passes the check. A probe confirmed the pass, and rustc accepts the attribute. No fixture passes a raw path identifier, though the macro rule covers r#include_str!. | crates/mu-cli/tests/workspace_boundary.rs:250 — "if ident == "path" && is_punct(trees.get(index + 1), '=') => {" | Compare ident.unraw() with "path" in path_value, and add the fixtures #[r#path = "../../spikes/x.rs"] mod x; and #[cfg_attr(all(), r#path = "../../spikes/x.rs")] mod x; to the failing list of spike_include_fails. |
+| inv-2 | invariants | should-fix | in-change | joined_strings compares the identifier with "stringify" without unraw, so include_str!(concat!("../../", r#stringify!(spikes), "/x")) passes the check. A probe confirmed the pass, and rustc compiles it. The spikes page leaves only a stringify! of several tokens to review. | crates/mu-cli/tests/workspace_boundary.rs:278 — "if ident == "stringify" && is_punct(trees.get(index + 1), '!') =>" | Compare ident.unraw() with "stringify" in joined_strings, and add the fixture include_str!(concat!("../../", r#stringify!(spikes), "/x")) to the failing list of spike_include_fails. |
+| ctl-not-run | test-coverage | should-fix | in-change | covered row 'No include of a spike file' has no verification run | review > not-run — "crates/mu-cli/tests/workspace_boundary.rs: spike_include_fails and real_workspace_has_no_violation" | run the covering test and record it in verification-runs.txt |
+| fit-1 | fit | note | in-change | names_crate and names_numbered in spike_records.rs repeat the whole-word match shape of holds_release in repo_config.rs: match_indices of a needle, then a test of the character before and the text after. Only the two boundary tests vary, so the parameter is the pair of boundary predicates. | crates/mu-cli/tests/spike_records.rs:40 — "text.match_indices(&needle).any(\|(start, _)\| {" | If a fourth whole-word match comes, move the shape to support/mod.rs as one function that takes the needle, a test of the character before and a test of the text after. Keep the three boundary rules as the arguments. Until then, the three copies can stay. |
+| inv-3 | invariants | note | in-change | The design states that the token walk gives the same result whatever the spaces and line ends between tokens. That is an invariance over every Rust text, and the test checks it with only two fixtures, a space before the bracket and a path on the next line. | design.md > How the boundary test finds an include of a spike file — "A token walk sees code as code, so spaces, line ends and a string that only looks like a macro do not change the result." | Add a proptest property, in the style of the proptest! block in crates/mu-cli/tests/cli.rs, that inserts random whitespace and line ends between the tokens of each failing and passing fixture and asserts that include_violation gives the same result. |
+| inv-4 | invariants | note | in-change | names_numbered and names_crate must give the same answer when a line wrap moves inside or around the name, a claim over every page text. The tests check three hand-picked wraps. | crates/mu-cli/tests/spike_records.rs:84 — "let text = text.split_whitespace().collect::<Vec<_>>().join(" ");" | Add a proptest property, in the style of the proptest! block in crates/mu-cli/tests/cli.rs, that replaces each space of a passing Source text with a line end or several spaces and asserts that source_names_issue_and_pull_request and crates_without_one_page give the same result. |
+
+## Coverage matrix
+
+| scenario | covered by | status | verified |
+|---|---|---|---|
+| Each spike crate has a decision page | crates/mu-cli/tests/spike_records.rs: spike_crates_have_decision_pages | covered | pass |
+| The decision page of a spike has the sections in order | crates/mu-cli/tests/spike_records.rs: spike_pages_have_sections_in_order | covered | pass |
+| The Source section names the issue and the pull request | crates/mu-cli/tests/spike_records.rs: spike_sources_name_issue_and_pull_request | covered | pass |
+| No include of a spike file | crates/mu-cli/tests/workspace_boundary.rs: spike_include_fails and real_workspace_has_no_violation | covered | not-run |
+| The design rules name the spikes page | crates/mu-cli/tests/repo_config.rs: design_rules_cover_spikes | covered | pass |
+
+### Not run
+
+- No include of a spike file: Fixtures for each macro, path attribute, cfg_attr nesting, concat, stringify, raw, escape, and Untokenized; passing cases included.
+
+## Verification runs
+
+- exit 0: `cargo nextest run -p mu-cli --locked --test spike_records -E test(=spike_crates_have_decision_pages)`
+- exit 0: `cargo nextest run -p mu-cli --locked --test spike_records -E test(=spike_pages_have_sections_in_order)`
+- exit 0: `cargo nextest run -p mu-cli --locked --test spike_records -E test(=spike_sources_name_issue_and_pull_request)`
+- exit 0: `cargo nextest run -p mu-cli --locked --test workspace_boundary -E test(=spike_include_fails)`
+- exit 0: `cargo nextest run -p mu-cli --locked --test workspace_boundary -E test(=real_workspace_has_no_violation)`
+- exit 0: `cargo nextest run -p mu-cli --locked --test repo_config -E test(=design_rules_cover_spikes)`
+
+## Dropped
+
+None.
+
+## Lens notes
+
+- approach: Each of the three requirements has a decision that produces it, and each scenario THEN is produced by code at head: spike_records.rs for the decision record, include_violation and the Violation variants in workspace_boundary.rs for the include rule, and design_rules_name_spikes_page with the rule at openspec/config.yaml line 52.
+- approach: The Risks claims hold at head: syn 3.0.10 is the one syn in Cargo.lock and serves serde_derive, clap_derive and others; IdentExt::unraw, Lit::new and LitStr::value are not gated on a syn feature; the check task depends on deny.
+- approach: The rejected alternatives hold: syn keeps a macro body as tokens, and a line number from a proc-macro2 span needs the span-locations feature.
+- approach: spike_crates_have_decision_pages asserts that the spikes workspace has crates. No design decision names that check; the spikes page records it under Deleting a spike.
+- approach: The Context sentence that each decision page names its pull request since pull request 35 is history that the tree at head cannot show; the three spike pages name pull requests 29, 30 and 32 in Source at head.
+- fit: The rulebook gives parameterization-candidate the severity suggestion. The envelope allows only blocker, should-fix and note, so fit-1 uses note.
+- fit: The helpers that the design places in support/mod.rs are each called where the design says: repo_file from repo_config.rs and spike_records.rs, workspace_metadata from violations() and real_crates(), files_under from copy_tree, include_violations and real_pages, h2_sections from spike_records.rs, and h2_headings from repo_config.rs.
+- fit: No walker or Markdown crate (walkdir, ignore, glob, comrak, markdown) is in Cargo.lock, so files_under and h2_sections do not duplicate a locked crate. The three new dev-dependencies enter through [workspace.dependencies] and are named with workspace = true in crates/mu-cli/Cargo.toml, as the library rows require.
+- fit: The include check uses the component rule (is_spike_path) and the dependency check keeps the prefix rule (path.starts_with(&spikes)). These are two mechanisms for one concept, but design.md names both and gives the reason, so this is not a finding.
+- fit: Outside this lens: spike_records.rs lines 81 and 82 are two doc comments for names_numbered, and the first one is an older version of the second one.
+- invariants: I1: Each spike crate is named as spikes/<crate>, or a path under it, in the Source section of exactly one page \| enforced at crates/mu-cli/tests/spike_records.rs:54 crates_without_one_page with names_crate:38 \| boundary test spike_crates_have_decision_pages, 0 pages, 1 page and 2 pages, plus -v2, .v2, oldspikes, emphasis and section-outside-Source cases
+- invariants: I2: A decision page of a spike has exactly the headings Decision, Reason, Not tested, Source in order \| enforced at spike_records.rs:77 has_sections_in_order (equality with SECTIONS) \| boundary test spike_pages_have_sections_in_order, with a missing, reordered, fifth and duplicate heading
+- invariants: I3: The Source section holds issue <n> and pull request <n> as whole words \| enforced at spike_records.rs:83 names_numbered \| boundary test spike_sources_name_issue_and_pull_request, with reissue, no number, a wrapped line and a pull request outside Source
+- invariants: I4: The Source text has a line end at each block end and none at an emphasis or link end \| enforced at crates/mu-cli/tests/support/mod.rs:34 h2_sections \| boundary test the emphasis and wrapped-line cases of spike_crates_have_decision_pages
+- invariants: I5: No include macro, raw or not, in a crates/ Rust file names a path with a spikes component \| enforced at crates/mu-cli/tests/workspace_boundary.rs:217 reaches_spikes and :303 is_spike_path \| boundary test spike_include_fails; gap: r#stringify! (inv-2)
+- invariants: I6: No path attribute, also inside cfg_attr, names a path with a spikes component \| enforced at workspace_boundary.rs:244 path_value \| boundary test spike_include_fails; gap: r#path (inv-1)
+- invariants: I7: A Rust file that does not tokenize is reported as Untokenized, never skipped \| enforced at workspace_boundary.rs include_violation Err arm \| boundary test spike_include_fails, unterminated string. A probe also gave Untokenized for an invalid escape and an unterminated block comment. A non-UTF-8 or unreadable .rs file panics at line 201; that is loud, not silent.
+- invariants: I8: One rule of rules.design holds both builds on a spike and Using a spike, and the spikes page has the H2 Using a spike \| enforced at crates/mu-cli/tests/repo_config.rs design_rules_name_spikes_page and has_using_a_spike \| boundary test design_rules_cover_spikes, with two rules, each text missing, another heading, plain text and a fenced heading
+- invariants: I9: The spike crate set is the cargo_metadata member set of spikes/Cargo.toml and is never empty while a spike exists \| enforced at spike_records.rs:99 real_crates and the non-empty assert at :162 \| boundary test none needed; spikes/Cargo.toml is a virtual workspace, so no member directory equals the root
+- invariants: Probe: the enforcement functions were copied into a probe crate under the handoff directory (inv-probe/) and run on edge inputs with the locked versions proc-macro2 1.0.107, syn 3.0.10 and pulldown-cmark 0.13.6. rustc 2024 compiled #[r#path = ...] mod x; and concat!(.., r#stringify!(spikes), ..) without warnings.
+- invariants: Probe: #[cfg_attr(not(path = "a"), path = "../../spikes/x.rs")] also passes the check, because path_value takes the first path = at any depth. Not raised as a finding: under cargo the unknown cfg name path gives an unexpected_cfgs warning, and the lint task runs clippy with -D warnings (mise.toml:24).
+- invariants: Probe: a backslash path such as ..\\\\..\\\\spikes\\\\x passes is_spike_path on Unix. Not raised: CI runs only ubuntu-latest and macos-latest (.github/workflows/ci.yml:24).
+- invariants: Read: #[doc = include_str!("../../spikes/README.md")] is caught. The # arm returns false, and the Group arm then walks the bracket group. No fixture covers that common pattern.
+- invariants: Read: names_crate does not count a name followed by a comma, colon or closing parenthesis, and names_numbered does not count Issue 3 or issue #3. Both match the allowed sets in the design and spec. A miss makes the test fail, not pass, so it fails safe.
+- invariants: Read: the copy_tree rewrite no longer copies empty directories. No fixture has an empty directory or a symbolic link, so no check is weakened.
+- test-coverage: Tasks 1.2, 2.2 and 4.1 are docs edits with no scenario. Tasks 4.2 and 4.3 are unchecked.
+- test-coverage: No library-only or orphan test found in the changed test files.
+- test-honesty: Read spike_records.rs, spike_include_fails in workspace_boundary.rs and design_rules_cover_spikes in repo_config.rs. Each asserts on the rule output with breaking and passing texts that reach the spec THEN. No tautology, mock echo, disabled test or vacuous gate found.
+- test-honesty: Helpers in support/mod.rs and the rest of repo_config.rs were not read.
+
+## Plan review (2026-11-15)
+
+Verdict changes-requested at head 8ffb9c97a4a474a0233fb6a2f48df72d33f845c3.
+
+### Findings
 
 | id | lens | severity | scope | claim | evidence | action |
 |---|---|---|---|---|---|---|
@@ -34,7 +109,7 @@ lenses:
 | inv-8 | invariants | note | in-change | The whole-path name rule is an invariant over all surrounding texts and crate names: spikes/<crate> counts exactly when the character before and after is in the two allowed sets. | design.md > How the test reads a decision page — "A crate name counts only as a whole path." | Add a proptest (see crates/mu-cli/tests/cli.rs) that wraps spikes/<generated name> in generated text with generated neighbour characters and asserts the match agrees with the two character sets. |
 | tes-1 | test-coverage | note | in-change | Tasks 1.3 do not say each spike_records test also runs on the real docs and spikes tree, so the real pages may go unchecked. | tasks.md > 1. The spike records — "one function per rule over the text of the files." | In task 1.3, state that each of the three tests also runs its rule on the real decision pages and the real spike crates. |
 
-## Coverage matrix
+### Coverage matrix
 
 | scenario | covered by | status | verified |
 |---|---|---|---|
@@ -47,44 +122,3 @@ lenses:
 ### Not run
 
 Plan phase: no verification runs.
-
-## Verification runs
-
-None.
-
-## Dropped
-
-None.
-
-## Lens notes
-
-- approach: Checked at head and found true: the three spike crates and spikes/Cargo.toml members = ["*"]; repo_file and yaml() are private helpers in repo_config.rs; violations() calls MetadataCommand with no_deps() and takes member directories from manifest_path.parent(); copy_tree is private in support/mod.rs; output-pane.md has no Not tested section; syn 3.0.10 is in Cargo.lock through clap_derive, serde_derive and thiserror-impl; deny.toml allows MIT and Apache-2.0; mise check depends on deny; Macro::parse_body_with exists in syn 3.0.10.
-- approach: At head, each of the three spike decision pages names its pull request in Source. The history claim that this holds since pull request 35 was not checked against git, because this lens has no git access.
-- approach: The design gives no matching rule for the texts issue <n> and pull request <n>, for example the boundary before the word or what counts as a number. Only the breaking texts in task 1.3 fix this behavior.
-- approach: No Rust file in crates/ holds include!, include_str!, include_bytes!, #[path or cfg_attr at head, so the real-tree check starts with no violations.
-- fit: The rulebook gives forward-misfit and parameterization-candidate the severity `suggestion`, but the envelope allows only blocker, should-fix or note. fit-3 uses `note`.
-- fit: Library rows were read from openspec/config.yaml context: crate versions, shared package fields, toolchain pins, check commands, test helpers and command definition. The change keeps to them: syn enters through [workspace.dependencies], and the new helpers go to crates/mu-cli/tests/support/mod.rs.
-- fit: The moves of repo_file, workspace_metadata and files_under to support/mod.rs each have two call sites, so they are valid collapses and not new abstractions with one call site.
-- fit: Cargo.lock has no walkdir, ignore, glob or Markdown crate, so files_under and the heading parse do not duplicate a crate that is already locked.
-- fit: For the approach lens: Violation::SpikeInclude carries a line. Outside a proc macro, proc-macro2 gives real line numbers only with its span-locations feature, and task 2.0 names only the syn features full and visit.
-- invariants: I1: Each spike crate is named as a whole path in the Source of exactly one decision page \| enforced at spike_crates_have_decision_pages (task 1.3, planned) \| boundary test zero pages, two pages, -v2, oldspikes, name outside Source (planned); slash and line start missing (inv-6)
-- invariants: I2: The second-level headings of a spike page are exactly Decision, Reason, Not tested, Source \| enforced at spike_pages_have_sections_in_order (planned) \| boundary test missing heading, wrong order, fifth heading, Source twice (planned)
-- invariants: I3: The Source section holds issue <n> and pull request <n> \| enforced at spike_sources_name_issue_and_pull_request (planned) \| boundary test each missing, no number, text in Reason (planned). The design states no word boundary before issue, so a text such as reissue 5 would count; no test decides it.
-- invariants: I4: No include macro argument in a main-workspace file reaches spikes/ \| enforced at Violation::SpikeInclude (planned) \| boundary test the three macros, spaces, line break, concat with spikes in one literal (planned); nested in another macro and split literals unenforced (inv-2, inv-3)
-- invariants: I5: No path attribute, inside cfg_attr too, reaches spikes/ \| enforced at Violation::SpikeInclude (planned) \| boundary test plain path, one cfg_attr, path to a directory (planned); nested cfg_attr missing (inv-5)
-- invariants: I6: The include check sees every .rs file of every member \| enforced at none stated for a parse error \| boundary test none (inv-4)
-- invariants: I7: The real tree passes the include check \| enforced at real_workspace_has_no_violation \| boundary test the fixtures are plain string literals; held also because syn does not look inside macro bodies.
-- invariants: I8: The design rules hold one rule with both builds on a spike and Using a spike \| enforced at design_rules_cover_spikes (planned) \| boundary test split over two rules, each text missing (planned)
-- invariants: I9: The syn and any proc-macro2 dev-dependency come from [workspace.dependencies] \| enforced at the existing Violation::DependencyNotFromWorkspace in workspace_boundary.rs \| boundary test local_dev_dependency_version_fails
-- invariants: Probe (scratch crate under the handoff dir, syn 3.0.10, the visitor of the design): include_str! at item level and in #![doc = ...] were seen; inside assert_eq! and vec! they were not seen.
-- invariants: Probe: a call of Span::start with syn features full and visit failed to compile with E0599; with proc-macro2 span-locations it returned line 3. cargo tree of the repository shows no crate enabling span-locations.
-- invariants: Probe: syn 3.0.10 parse_file parsed every .rs file under crates/ at head; nested cfg_attr stays as raw tokens of the outer list.
-- invariants: The design calls the component test the same as the path-dependency test of workspace_boundary.rs, but that one is starts_with on the resolved workspace_root/spikes path; the component test is wider (it also fails fixtures/spikes/x), which is the safe direction.
-- invariants: A heading inside a fenced code block of a decision page (a bash comment starting with ## ) would count as a heading by the line rule of the design; no page has one at head.
-- spec-lint: All three spec requirements have WHEN and THEN lines in every scenario, and each THEN names an observable (a Source section, a heading list, a macro argument or attribute path, a rules.design entry).
-- spec-lint: Every requirement has a task: the decision records (1.2, 1.3, 4.1), the include boundary (2.1, 2.2) and the design rule (3.1). Each scenario has a named test in the tasks.
-- spec-lint: Every tracked task ends with a 'Make sure that' check that names a mise task or a cargo command. Targets checked: mise tasks check, deny and docs:check exist in mise.toml; crate mu-cli, the tests repo_config and workspace_boundary, and spikes/Cargo.toml (members glob) exist. spike_records.rs is created by task 1.3.
-- spec-lint: No BREAKING marker appears in proposal.md, the spec delta or any other change artifact, so there is no breaking-mismatch. design.md has no open-questions section, so there is no assumed answer to check.
-- spec-lint: The Workflow follow-up bullet is not a checkbox task, so it was not checked as a tracked task.
-- test-coverage: The change has no BREAKING requirement.
-- test-coverage: Proposal.md was not read; the delta spec, design and tasks were enough for the matrix.
