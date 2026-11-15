@@ -47,9 +47,9 @@
 ## 7. Integration
 
 - [x] 7.1 Add two parked GitHub issues to the mu-portal Project: release tooling, and the name of the binary. Make sure that both issues appear in the Project with the status Parked.
-- [ ] 7.2 Open a pull request. Add `.github/rulesets/main.json` and apply it with the GitHub API, as Decision 10 describes. Make sure that the check `ci-ok` passes on the pull request and that the GitHub API lists the ruleset as active.
-- [ ] 7.3 From a clean clone, run `mise install`, `mise run check`, `mise run docs:check` and `mise run test:workflow` in order. Make sure that each command exits with status 0 on macOS.
-- [ ] 7.4 Run `openspec validate dev-workflow --strict`. Make sure that it passes.
+- [x] 7.2 Open a pull request. Add `.github/rulesets/main.json` and apply it with the GitHub API, as Decision 10 describes. Make sure that the check `ci-ok` passes on the pull request and that the GitHub API lists the ruleset as active.
+- [x] 7.3 From a clean clone, run `mise install`, `mise run check`, `mise run docs:check` and `mise run test:workflow` in order. Make sure that each command exits with status 0 on macOS.
+- [x] 7.4 Run `openspec validate dev-workflow --strict`. Make sure that it passes.
 
 ## Workflow follow-up
 

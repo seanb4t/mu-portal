@@ -7,7 +7,7 @@ See proposal.md for the motivation. The state of the repository after `project-f
 - The check commands exist twice: in `.github/workflows/ci.yml` and on the Contributing page for the build. The implementation review of `project-foundation` reported that copy.
 - Three files pin tools: `rust-toolchain.toml`, `docs/.node-version` and the `packageManager` field of `docs/package.json`.
 - The clone of the owner has `core.hooksPath` set to `.husky`. That directory holds only the `husky` helper, and no file in the repository configures a hook.
-- The `main` branch has no protection.
+- The `main` branch had no classic branch protection at the time of the plan. The owner had added a ruleset named `protect-main` by hand, which the plan did not see, because the plan read only the classic protection. That ruleset requires a pull request and a squash merge. It requires no check.
 - `mise`, `hk`, `cargo-deny` and `cargo-nextest` are on the machine of the owner. The repository does not pin them.
 - Every test is a Rust integration test in `crates/mu-cli/tests/`. The boundary test there has a helper that copies a tree into a temporary directory and breaks it in one place.
 
@@ -290,6 +290,8 @@ Enforcement: none. These files are text for people, and a reviewer reads them.
 - the only merge method is a squash, so the title of the pull request is the commit message on `main`
 - the check `ci-ok` must pass
 - no force push and no deletion
+
+Task 7.2 applied the file with the GitHub API. The repository now has two active rulesets, `protect-main` and `main`. They do not conflict, and `main` adds the required check. The owner decides whether to remove `protect-main`.
 
 Task 7.2 applies the file with the GitHub API. The task runs after the pull request of this change is open, because `ci-ok` exists only from this change.
 
