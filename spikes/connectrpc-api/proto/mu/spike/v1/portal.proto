@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package mu.spike.v1;
+
+// The API shape of the spike: unary commands and one server stream.
+service PortalService {
+  // Appends one line to the event log and returns its sequence number.
+  rpc Send(SendRequest) returns (SendResponse);
+
+  // Streams the log from `from_seq`, then each new event as it arrives.
+  rpc Subscribe(SubscribeRequest) returns (stream Event);
+}
+
+message SendRequest {
+  string text = 1;
+}
+
+message SendResponse {
+  uint64 seq = 1;
+}
+
+// `from_seq` is the first sequence number the client wants. 0 and 1 both
+// mean the start of the log.
+message SubscribeRequest {
+  uint64 from_seq = 1;
+}
+
+message Event {
+  uint64 seq = 1;
+  string text = 2;
+}
