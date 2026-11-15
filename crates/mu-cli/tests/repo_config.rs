@@ -11,6 +11,7 @@ mod support;
 const CHECK_TASKS: [&str; 5] = ["fmt", "lint", "test", "doc", "deny"];
 const AGGREGATE_JOB: &str = "ci-ok";
 const AGGREGATE_ACTION: &str = "re-actors/alls-green@";
+const PULL_REQUEST_JOB: &str = "commits";
 
 fn repo_file(relative: &str) -> String {
     let path = support::repo_root().join(relative);
@@ -271,6 +272,21 @@ fn aggregate_gaps(workflow: &str) -> Vec<String> {
             "{AGGREGATE_JOB} does not give the job results to {AGGREGATE_ACTION}"
         ));
     }
+    // Only the job that runs for a pull request alone can be skipped, and no job can fail.
+    let lenient = aggregate["steps"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|step| {
+            let with = &step["with"];
+            !with["allowed-failures"].is_null()
+                || with["allowed-skips"]
+                    .as_str()
+                    .is_some_and(|skips| skips != PULL_REQUEST_JOB)
+        });
+    if lenient {
+        gaps.push(format!("{AGGREGATE_JOB} allows a failed or a skipped job"));
+    }
     if aggregate["if"].as_str() != Some("always()") {
         gaps.push(format!("{AGGREGATE_JOB} has no always() condition"));
     }
@@ -522,6 +538,22 @@ fn ci_ok_covers_every_job() {
             "    steps:\n      - run: mise run check\n"
         )),
         ["ci-ok does not give the job results to re-actors/alls-green@"]
+    );
+    for allowed in [
+        "          allowed-failures: docs\n",
+        "          allowed-skips: rust\n",
+    ] {
+        let lenient = format!("{step}{allowed}");
+        assert_eq!(
+            aggregate_gaps(&workflow("[rust, docs]", always, &lenient)),
+            ["ci-ok allows a failed or a skipped job"],
+            "{allowed}"
+        );
+    }
+    let skips_commits = format!("{step}          allowed-skips: commits\n");
+    assert_eq!(
+        aggregate_gaps(&workflow("[rust, docs]", always, &skips_commits)),
+        none
     );
     assert_eq!(aggregate_gaps("jobs:\n  rust: {}\n"), ["no ci-ok job"]);
 }

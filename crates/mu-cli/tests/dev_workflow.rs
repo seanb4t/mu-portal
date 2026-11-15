@@ -229,7 +229,13 @@ fn pr_title_task_accepts_conventional_title() {
 
 #[test]
 fn pr_title_task_rejects_plain_title() {
-    for title in ["Add the pair verb", "feat add the pair verb", ""] {
+    for title in [
+        "Add the pair verb",
+        "feat add the pair verb",
+        "",
+        "--help",
+        "-h",
+    ] {
         let output = pr_title_task(title);
         assert!(
             !output.status.success(),

@@ -1,5 +1,9 @@
 # Dependency policy of the workspace, read by `cargo deny check`.
 
+[graph]
+# A crate behind a feature that is off by default is in the policy too.
+all-features = true
+
 [advisories]
 unmaintained = "all"
 unsound = "all"

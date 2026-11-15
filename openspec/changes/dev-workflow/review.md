@@ -1,19 +1,133 @@
 ---
 verdict: approve-with-notes
-phase: plan
-reviewed_at: 2026-11-15T02:03:58+00:00
-head: e04b4783b6fe8b4e986eb980949a9c5aa52ec6ad
+phase: implementation
+reviewed_at: 2026-11-15T02:58:46+00:00
+head: 357afa8ed52e650a583b91f382f96f57e89a0b92
 lenses:
-  spec-lint: ok
+  spec-lint: not-applicable
   approach: ok
   fit: ok
   test-coverage: ok
-  test-honesty: not-applicable
+  test-honesty: ok
   invariants: ok
 ---
 # Review
 
 ## Findings
+
+| id | lens | severity | claim | evidence | action |
+|---|---|---|---|---|---|
+| app-1 | approach | should-fix | Decision 8 rests on the claim that the repository merges with a squash and that the pull request title becomes the commit message on main. Nothing in the change produces that. The ruleset file does not restrict the merge method, and no task or file sets the squash commit title to the pull request title. With the GitHub default for the squash title, a pull request with one commit takes the message of that commit, which CI does not check. A merge commit or a rebase also brings unchecked branch commits to main. | design.md > 8. Commit format — "The repository merges with a squash, so the title becomes the commit message on `main`. The commits of the branch do not" | Make the premise true in the repository. Add allowed_merge_methods with the one value squash to the pull_request rule of .github/rulesets/main.json, and record in Decision 8 and in the apply step of task 7.2 that the repository setting for the squash commit title is the pull request title. Add a breaking text to ruleset_requires_ci_ok, or a new rule, that fails when the merge method list allows more than a squash. |
+| app-2+inv-3 | approach,invariants | should-fix | app-2: Decision 8 says the commits job checks the title of the pull request, the title that the squash puts on main. The workflow listens to pull_request with the default activity types, which are opened, synchronize and reopened, not edited. A contributor can edit the title after the last push. The commits job then does not run again, ci-ok stays green from the earlier title, and the edited title reaches main unchecked.; inv-3: The commits job checks the title at open, synchronize and reopen only. The workflow trigger lists no edited type, so a title edited after the check passed is never checked, and ci-ok stays green for the merge that uses the new title. | .github/workflows/ci.yml:4 — "  pull_request:" | app-2: Give the pull_request trigger the types opened, edited, synchronize and reopened, and record in Decision 6 or Decision 8 that an edit of the title runs the workflow again. Add a rule to repo_config.rs that fails for a pull_request trigger without the edited type.; inv-3: Give the pull_request trigger types: [opened, edited, synchronize, reopened], and extend ci_ok_covers_every_job or a new rule so a trigger without edited fails. |
+| app-3+inv-8 | approach,invariants | should-fix | app-3: Decision 5 says the code uses #[expect] with a reason and not #[allow], and that allow_attributes and allow_attributes_without_reason enforce it. The shared test module uses an inner #![allow(dead_code)]. The Clippy lint allow_attributes checks outer attributes only, so the lints do not enforce the rule for an inner attribute, and design.md records no deviation for this module.; inv-8: Decision 5 says the two allow_attributes lints enforce #[expect] over #[allow]. clippy::allow_attributes skips inner attributes: a probe crate with both lints at deny failed clippy -D warnings for an outer #[allow] and passed an inner #![allow]. The shared test module carries such an inner #![allow]. | crates/mu-cli/tests/support/mod.rs:3 — "#![allow(dead_code, reason = "each test binary uses a part of this module")]" | app-3: Record in Decision 5 that the lints cover outer attributes only, and that the shared module of the tests keeps one inner allow, because an expect fails in each test binary that uses the whole module. Or move each unused helper so that the module needs no allow.; inv-8: State in Decision 5 that an inner #![allow] with a reason is the one exception the lints do not see, and that it is a review rule; or replace the inner attribute with per-item #[expect] where the binaries allow it. |
+| app-4 | approach | should-fix | Decision 6 says that each job installs the tools with the mise action. The ci-ok job, one of the five jobs that the decision lists, has one step, the aggregate action, and no mise action. | design.md > 6. CI — "Each job installs the tools with the `mise` action." | Change the sentence in Decision 6 to say that each job except ci-ok installs the tools with the mise action. |
+| fit-1 | fit | should-fix | dev_workflow.rs sets the mise trust variable for a copy in three places. run sets it, and pr_title_task and commit_in_copy build their own Command from command() and set it again. | crates/mu-cli/tests/dev_workflow.rs:34 — ".env("MISE_TRUSTED_CONFIG_PATHS", directory)" | Set MISE_TRUSTED_CONFIG_PATHS (and CARGO_TARGET_DIR) once in command(), which all three callers already use. Then pr_title_task and commit_in_copy add only their own variable and arguments. |
+| fit-2 | fit | should-fix | The developer-workflow Decisions page states the CI step rule, the commit format rule and the main branch rule that the build page also states. The diagram-policy Decisions page instead names the decision and points to the one page that states the rules. | docs/src/content/docs/decisions/developer-workflow.md:12 — "CI runs the same tasks. Each step of the CI workflow is one `mise` task." | Keep the three rules on the build page alone. In developer-workflow.md, state only the decision (mise for tools and tasks, hk for hooks, a required aggregate check) and keep the link, as diagram-policy.md does. |
+| fit-3 | fit | should-fix | The yaml step of hk.pkl states a raw check command. It is neither a mise task nor an hk builtin, but the other custom steps in hk.pkl call a mise task. Decision 3 explains only why the step does not use the yq builtin. It gives no reason why the step is not a task. | hk.pkl:19 — "check = "yq eval '.' {{files}} > /dev/null"" | Add a task such as lint:yaml to mise.toml that parses the files it receives, and make the hk step call mise run lint:yaml with the files. Otherwise, name the yaml step in Decision 1 as the one check command outside mise.toml and give the reason. |
+| inv-1 | invariants | should-fix | The lint:pr-title task passes the title --help (and -h): cog parses the title as an option, prints its help and exits 0. A probe of PR_TITLE=--help mise run lint:pr-title exited 0; the rejected-title test never passes an option-like title. | mise.toml:33 — "run = 'cog verify "$PR_TITLE"'" | Change the task to cog verify -- "$PR_TITLE" (a probe showed cog verify -- --help exits 1 and cog verify -- 'feat: ok' exits 0), and add --help to the titles of pr_title_task_rejects_plain_title. |
+| inv-2 | invariants | should-fix | The deny task resolves the default features only, so a crate with a license outside the list that sits behind a non-default feature passes. A probe with this deny.toml and a GPL-3.0-only optional path dependency: cargo deny --locked check licenses exited 0, and with --all-features it exited 4. | mise.toml:49 — "run = "cargo deny --locked check"" | Add [graph] all-features = true to deny.toml (or --all-features to the deny task), and give deny_rejects_disallowed_license a second copy in which the GPL crate is an optional dependency behind a feature. |
+| inv-4 | invariants | should-fix | Decision 8 depends on every merge to main being a squash whose message is the pull request title. No file enforces it: the pull_request rule of the ruleset names no allowed merge method, so a merge commit or a rebase merge brings unchecked branch commits to main, and nothing pins the squash title to the PR title. | .github/rulesets/main.json:15 — ""type": "pull_request"," | Add allowed_merge_methods: ["squash"] to the pull_request parameters of main.json, assert it in ruleset_requires_ci_ok or a new rule, and state in Decision 10 the repository setting that makes the squash title the PR title. |
+| inv-5 | invariants | should-fix | The spec says ci-ok fails unless every other job succeeded, but aggregate_gaps reads only needs, the action, its jobs input and always(). It never reads allowed-failures or allowed-skips, so a ci-ok with allowed-failures: rust, or allowed-skips: rust, passes the rule. | crates/mu-cli/tests/repo_config.rs:267 — "&& step["with"]["jobs"].as_str() == Some("${{ toJSON(needs) }}")" | Make aggregate_gaps report any allowed-failures input and any allowed-skips entry other than commits, and add both as breaking texts in ci_ok_covers_every_job. |
+| inv-6 | invariants | should-fix | The loop guard is that the test task never enables the feature workflow-tests. workflow_tests_need_feature checks only that the target has a required feature. It passes a manifest whose default feature list holds workflow-tests, and nothing reads the test task for --all-features or --features. | crates/mu-cli/tests/repo_config.rs:216 — ".is_some_and(\|features\| !features.is_empty())" | Extend the rule: each required feature is absent from [features].default, and no command of the test task holds --all-features or the feature name. Add both as breaking texts. |
+| inv-7 | invariants | should-fix | Goal: main holds only commits that passed the checks. ruleset_requires_aggregate reads only the required check contexts. A ruleset file with enforcement disabled or evaluate, a ref condition that leaves out main, or no pull_request rule passes the test. | .github/rulesets/main.json:4 — ""enforcement": "active"," | Assert enforcement == active, a ref_name include of ~DEFAULT_BRANCH or refs/heads/main, and the pull_request rule in ruleset_requires_ci_ok, each with one breaking text. |
+| inv-9 | invariants | should-fix | cargo_commands_without_locked strips only leading NAME=value words. A Cargo command behind env, mise exec -- or bash -c does not start with cargo and escapes the rule; no breaking text passes such a prefix. | crates/mu-cli/tests/repo_config.rs:134 — ".skip_while(\|word\| word.contains('=') && !word.starts_with('-'))" | Match a cargo word anywhere in each command (or strip env and mise exec -- prefixes), and add env RUSTFLAGS=x cargo test --workspace as a breaking text in cargo_tasks_use_locked. |
+| inv-10 | invariants | note | holds_release is a rule over unbounded text: a release with a digit, or a dot and a digit, on either side never matches, and the same release with a non-digit neighbor always matches. Five hand-picked texts test it. | crates/mu-cli/tests/repo_config.rs:89 — "fn holds_release(text: &str, release: &str) -> bool {" | Add a proptest (the repository already uses proptest, see crates/mu-cli/tests/cli.rs line 174) that builds a text from a prefix, a release and a suffix, and asserts the match by the neighbor class. |
+
+## Coverage matrix
+
+| scenario | covered by | status | verified |
+|---|---|---|---|
+| Clean tree | crates/mu-cli/tests/dev_workflow.rs: check_passes_on_clean_tree | covered | pass |
+| Formatting defect | crates/mu-cli/tests/dev_workflow.rs: check_fails_on_formatting_defect | covered | pass |
+| Lint defect | crates/mu-cli/tests/dev_workflow.rs: check_fails_on_lint_defect | covered | pass |
+| Test defect | crates/mu-cli/tests/dev_workflow.rs: check_fails_on_failing_test | covered | pass |
+| Doc test defect | crates/mu-cli/tests/dev_workflow.rs: check_fails_on_failing_doc_test | covered | pass |
+| Documentation defect | crates/mu-cli/tests/dev_workflow.rs: check_fails_on_broken_doc_link | covered | pass |
+| Crate with a license that is not allowed | crates/mu-cli/tests/dev_workflow.rs: deny_rejects_disallowed_license | covered | pass |
+| The check task runs the dependency policy | crates/mu-cli/tests/repo_config.rs: check_runs_every_task | covered | pass |
+| Hook check on a formatting defect | crates/mu-cli/tests/dev_workflow.rs: hooks_check_fails_on_formatting_defect | covered | pass |
+| Hook check on a clean tree | crates/mu-cli/tests/dev_workflow.rs: hooks_check_passes_on_clean_tree | covered | pass |
+| Commit with a plain message | crates/mu-cli/tests/dev_workflow.rs: commit_hook_checks_the_message | covered | pass |
+| Commit with a conventional message | crates/mu-cli/tests/dev_workflow.rs: commit_hook_checks_the_message | covered | pass |
+| Pull request title that is not conventional | crates/mu-cli/tests/dev_workflow.rs: pr_title_task_rejects_plain_title | covered | pass |
+| Conventional pull request title | crates/mu-cli/tests/dev_workflow.rs: pr_title_task_accepts_conventional_title | covered | pass |
+| Workflow steps | crates/mu-cli/tests/repo_config.rs: ci_steps_are_tasks | covered | pass |
+| No tool release in the workflow | crates/mu-cli/tests/repo_config.rs: ci_states_no_tool_release | covered | pass |
+| The ruleset names the aggregate check | crates/mu-cli/tests/repo_config.rs: ruleset_requires_ci_ok | covered | pass |
+| The aggregate check covers every job | crates/mu-cli/tests/repo_config.rs: ci_ok_covers_every_job | covered | pass |
+
+### Not run
+
+None.
+
+## Verification runs
+
+- exit 0: `cargo nextest run -p mu-cli --all-features --test dev_workflow --locked -E test(=check_passes_on_clean_tree)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test dev_workflow --locked -E test(=check_fails_on_formatting_defect)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test dev_workflow --locked -E test(=check_fails_on_lint_defect)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test dev_workflow --locked -E test(=check_fails_on_failing_test)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test dev_workflow --locked -E test(=check_fails_on_failing_doc_test)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test dev_workflow --locked -E test(=check_fails_on_broken_doc_link)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test dev_workflow --locked -E test(=deny_rejects_disallowed_license)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test repo_config --locked -E test(=check_runs_every_task)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test dev_workflow --locked -E test(=hooks_check_fails_on_formatting_defect)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test dev_workflow --locked -E test(=hooks_check_passes_on_clean_tree)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test dev_workflow --locked -E test(=commit_hook_checks_the_message)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test dev_workflow --locked -E test(=pr_title_task_rejects_plain_title)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test dev_workflow --locked -E test(=pr_title_task_accepts_conventional_title)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test repo_config --locked -E test(=ci_steps_are_tasks)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test repo_config --locked -E test(=ci_states_no_tool_release)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test repo_config --locked -E test(=ruleset_requires_ci_ok)`
+- exit 0: `cargo nextest run -p mu-cli --all-features --test repo_config --locked -E test(=ci_ok_covers_every_job)`
+
+## Dropped
+
+None.
+
+## Lens notes
+
+- approach: Each of the six requirements has a decision that produces it, and each scenario has the task, file or field that its THEN needs at head: mise.toml, hk.pkl, deny.toml, ci.yml, the ruleset file, repo_config.rs and dev_workflow.rs.
+- approach: The two GitHub behaviors in app-1 and app-2 (the squash title default and the default pull_request activity types) are from the GitHub documentation as known to this lens, not from a page read in this run, so their confidence is 0.6. The live repository settings were not read.
+- approach: The hk behaviors that Decision 3 cites (top-level steps build the pre-commit and check hooks, the builtin cocogitto_commit_msg, hk install --mise through the git configuration) and the Decision 1 claim that cargo-nextest is not in the mise registry were not checked against the tool sources: no local copy of the hk 2.12.0 package or the mise registry was found.
+- approach: Task 6.3 still says that the one-test command runs an ignored test, while task 6.6 removed each ignore attribute. openspec/config.yaml uses --all-features, which turns on workflow-tests. This is task wording and not a design fault.
+- approach: Task 5.1 says the four jobs from Decision 6, while Decision 6 lists five jobs, ci-ok included. This is task wording and not a design fault.
+- fit: I read the library rows in openspec/config.yaml. The change uses the workspace dependency table for serde-saphyr, serde_json, toml and anstream. It uses the shared test module for TreeCopy, stdout and stderr, and an existing action (re-actors/alls-green) for the aggregate check. It writes none of these by hand.
+- fit: The copy helper moved from workspace_boundary.rs to tests/support/mod.rs as Decision 7 says, and cli.rs now takes stdout and stderr from it. I found no copy of the helper left behind.
+- fit: Renovate reads mise.toml through its built-in mise manager. The custom regex manager covers only the hk.pkl pins, and the hk group joins the two. I found no second manager for one pin.
+- fit: Every CI job repeats the checkout step and the mise-action step. I did not report this. It is the usual GitHub Actions shape, and Renovate updates each SHA pin.
+- invariants: I1: check exits non-zero when any of fmt, lint, test, doc or deny fails \| enforced at mise.toml tasks.check depends \| boundary test check_runs_every_task (four of five) and the six check_fails_* workflow tests
+- invariants: I2: the license policy applies to a crate with publish = false \| enforced at deny.toml (no [licenses.private] ignore) \| boundary test deny_rejects_disallowed_license
+- invariants: I3: the license policy covers every crate of the dependency tree \| enforced at mise.toml deny task with default features only \| boundary test none for a feature-gated crate (inv-2)
+- invariants: I4: lint:pr-title fails for each non-conventional title \| enforced at cog verify in mise.toml \| boundary test pr_title_task_rejects_plain_title, which misses an option-like title (inv-1)
+- invariants: I5: the commit-msg hook refuses a non-conventional message \| enforced at hk.pkl Builtins.cocogitto_commit_msg \| boundary test commit_hook_checks_the_message, both sides
+- invariants: I6: each CI run step is exactly mise run <defined task> \| enforced at repo_config.rs steps_that_are_not_tasks \| boundary test ci_steps_are_tasks (&&, ;, two lines, undefined task)
+- invariants: I7: ci.yml states no tool release from mise.toml or rust-toolchain.toml \| enforced at releases_in_workflow \| boundary test ci_states_no_tool_release, both sides of each neighbor edge
+- invariants: I8: each Cargo command in a task has --locked, cargo fmt excepted \| enforced at cargo_commands_without_locked \| boundary test cargo_tasks_use_locked, missing the env prefix edge (inv-9)
+- invariants: I9: the four hk pins in hk.pkl equal the hk release in mise.toml \| enforced at hk_pins_match \| boundary test hk_pins_match_mise (tag vs package, all four vs mise, one line absent)
+- invariants: I10: the workflow tests never run inside the test task \| enforced at workflow_tests_need_feature \| boundary test workflow_tests_need_a_feature, missing the default-feature edge (inv-6)
+- invariants: I11: the ruleset requires exactly one check, the reported name of ci-ok \| enforced at ruleset_requires_aggregate \| boundary test ruleset_requires_ci_ok (zero, one, two, renamed)
+- invariants: I12: ci-ok fails unless every other job succeeded \| enforced at aggregate_gaps plus alls-green \| boundary test ci_ok_covers_every_job, which does not read allowed-failures or allowed-skips (inv-5)
+- invariants: I13: each member inherits lints, rust-version and publish \| enforced at workspace_boundary.rs inherits_from_workspace \| boundary test missing_* and local_* for each field
+- invariants: I14: [workspace.package] holds publish = false \| enforced at workspace_is_private \| boundary test publishable_workspace_fails (true and a registry list); publish = [] is also rejected, which is stricter than Cargo and safe
+- invariants: I15: the squash title of a merge is the checked PR title \| enforced at none \| boundary test none (inv-3, inv-4)
+- invariants: I16: no #[allow] attribute in the workspace \| enforced at clippy::allow_attributes, outer attributes only \| boundary test none (inv-8)
+- invariants: Probes are under the handoff directory in inv-probes/: cog verify on --help, -h, --version, 'feat: ', 'feat:x' and a two-line title; cargo deny on an optional GPL path dependency.
+- invariants: I17: one Renovate pull request moves the hk release of mise.toml and both hk.pkl pins \| enforced at renovate.json group hk \| boundary test none beyond the validator; hk_pins_match_mise catches a split update, and the Renovate dependency list is a workflow follow-up.
+- invariants: I18: docs/.node-version and the packageManager field are gone, so the Node and pnpm pins exist once \| enforced at none (review rule, as Decision 2 says) \| boundary test none; git grep at head finds neither.
+- invariants: Decision 9 states no enforcement by design; CODE_OF_CONDUCT.md line 40 holds the address of Decision 9.
+- invariants: Probe of clippy: inv-probes/allow-inner, an outer #[allow] fails and an inner #![allow] passes with both allow_attributes lints at deny.
+- invariants: No weakened check: the LintsNotInherited variant became NotInherited with the field, and missing_lints_fails and local_lints_fail still assert it.
+- test-coverage: Tests were not run by this lens; the controller runs them.
+- test-coverage: dev_workflow tests sit behind the workflow-tests feature, so plain nextest does not run them. Run mise run test:workflow to get the matrix results.
+- test-coverage: The spec states that the CI workflow runs lint:pr-title for each pull request. No scenario covers this, but ci_ok_covers_every_job and ci_steps_are_tasks check the commits job indirectly.
+- test-honesty: Read dev_workflow.rs, repo_config.rs and the five new workspace_boundary tests. Each asserts the spec THEN (exit status, named failing task, crate and license in output). No disabled tests, no assertion-free tests, no continue-on-error or \|\| true in mise.toml, hk.pkl, workflows or deny.toml.
+- test-honesty: repo_config.rs rules run against the real files and against broken texts, so they can fail.
+
+## Plan review (2026-11-15)
+
+Verdict approve-with-notes at head e04b4783b6fe8b4e986eb980949a9c5aa52ec6ad.
+
+### Findings
 
 | id | lens | severity | claim | evidence | action |
 |---|---|---|---|---|---|
@@ -46,7 +160,7 @@ lenses:
 | app-8 | approach | note | The mitigation for the ruleset blocking a direct push names only a manual switch in the repository page. No task or file holds it. | design.md > Risks / Trade-offs — "The owner can turn the ruleset off in the repository page in an emergency." | Add the emergency step to the Contributing page for the build in task 5.2, next to the ruleset instruction. |
 | inv-14 | invariants | note | The release matcher of ci_states_no_tool_release works over an unbounded domain of release strings and the text around them. Two properties hold. A release with a non-digit, non-dot character on each side always matches. A release with a digit or a dot-then-digit on either side never matches. | crates/mu-cli/tests/cli.rs:178 — "proptest! {" | Use proptest, which is already in [workspace.dependencies] and used in crates/mu-cli/tests/cli.rs. Generate release triples and their surrounding characters, and check the matcher function of the rule against both properties. |
 
-## Coverage matrix
+### Coverage matrix
 
 | scenario | covered by | status | verified |
 |---|---|---|---|
@@ -68,53 +182,3 @@ lenses:
 ### Not run
 
 Plan phase: no verification runs.
-
-## Verification runs
-
-None.
-
-## Dropped
-
-None.
-
-## Lens notes
-
-- approach: Every requirement (one check task, dependency policy, hooks, CI runs the tasks, main requires the checks) has a decision that produces it. No scenario was found that is unproducible.
-- approach: Cited repository facts hold at head: two copies of the check commands (ci.yml lines 27-29, build.md lines 17-20), the three pin files, the copy helper copy_tree and Fixture in workspace_boundary.rs, the boundary test's Apache-2.0 and UnlistedMember rules that make check fail for the GPL crate, the current all=warn and unsafe_code entries, the skill's lint levels and priorities, Decision 4 and Decision 11 of project-foundation, and the untracked .husky/_ helper.
-- approach: The five-warnings probe in Decision 5 matches the source by reading alone: verb_names lacks #[must_use]; Cli.verb, Cli.client, enum Verb and the main.rs crate root have no doc comment. Clippy was not run.
-- approach: Decision 2 says each tool release exists in one file, but Decision 3 places the hk release in mise.toml and four more times in hk.pkl. The test hk_pins_match_mise covers it, but the sentence in Decision 2 does not hold as written.
-- approach: Decision 5 calls the inheritance rule one function over the fields lints, rust-version and publish with the form <field>.workspace = true. lints is a top-level table, but rust-version and publish are keys of [package]. The current code reads manifest.get("lints") at the top level (workspace_boundary.rs line 130). The design does not name the two places.
-- approach: If mise does not read rust-toolchain.toml, Decision 2 relies on rustup installing the toolchain on the first Cargo command. But Decision 1 runs the Cargo tasks of check in parallel, and the current ci.yml line 26 runs rustup toolchain install as its own step. The design does not cover concurrent first installs. This could not be checked against the rustup documentation without network access.
-- approach: Not checked against documentation (no network tool): cargo-deny option names and --locked placement, hk import-line form, mise task depends semantics, the mise action inputs, and GitHub's handling of a skipped required check.
-- fit: diff-files.txt is empty, as expected in the plan phase. The components were read against the repository at head.
-- fit: CONTRIBUTING.md as a pointer page matches the existing pattern of spikes/README.md, and the README collapse of the Contributing link list is a collapse, not a copy.
-- fit: The inheritance rule of Decision 5 matches the existing LintsNotInherited shape in workspace_boundary.rs, which reads the manifest and not cargo_metadata.
-- fit: The library rows were read from openspec/config.yaml context. No new third-party crate is named, so whether the YAML and JSON readers of task 6.1 enter through [workspace.dependencies] is left to the boundary test.
-- invariants: I1: mise run check exits non-zero when any of fmt, lint, test, doc, deny fails \| enforced at mise depends semantics on the check task \| boundary test check_fails_on_formatting_defect, check_fails_on_lint_defect, check_fails_on_failing_test, check_fails_on_failing_doc_test, check_fails_on_broken_doc_link (no test fails check through deny; check_runs_every_task covers the dependency statically)
-- invariants: I2: check depends on fmt, lint, test, doc and deny \| enforced at check_runs_every_task \| boundary test none named (inv-3)
-- invariants: I3: each Cargo command in a task has --locked, except cargo fmt \| enforced at cargo_tasks_use_locked \| boundary test two commands with only the first locked (inv-10)
-- invariants: I4: each CI run step is exactly mise run <task> or mise exec -- hk check --all \| enforced at ci_steps_are_tasks \| boundary test &&, two lines, plain cargo test; no unknown-task edge (inv-9)
-- invariants: I5: ci.yml holds no release from mise.toml or rust-toolchain.toml, full or with no patch number, and not inside a longer number \| enforced at ci_states_no_tool_release \| boundary test full, no patch, one longer-number side (inv-7, inv-8)
-- invariants: I6: the four hk releases in hk.pkl equal the hk release in mise.toml \| enforced at hk_pins_match_mise \| boundary test tag differs from package release inside one line (inv-6)
-- invariants: I7: [workspace.package] holds publish = false \| enforced at workspace_is_private \| boundary test none named (inv-4)
-- invariants: I8: each member inherits lints, rust-version and publish with workspace = true \| enforced at the inheritance rule in crates/mu-cli/tests/workspace_boundary.rs (today lines 129-138 for lints only) \| boundary test missing_* and local_* for each field (task 3.3); both edges, absent and local value, are named
-- invariants: I9: each test in dev_workflow.rs has #[ignore], so check inside a copy never starts the workflow tests \| enforced at workflow_tests_are_ignored and nextest skipping ignored tests by default \| boundary test none named (inv-2)
-- invariants: I10: a crate with a license outside the allowed list fails deny, publish = false included \| enforced at deny.toml without the private-ignore option \| boundary test deny_rejects_disallowed_license with a GPL-3.0-only crate that cannot be published
-- invariants: I11: ci-ok fails unless every needed job result is success \| enforced at the ci:ok jq expression and if: always() \| boundary test ci_ok_covers_every_job (static, covers needs and condition); expression edges untested (inv-1)
-- invariants: I12: the ruleset requires exactly one check, the reported name of ci-ok \| enforced at ruleset_requires_ci_ok \| boundary test job name differs from id; count edges missing (inv-5)
-- invariants: I13: the hk check hook runs the pre-commit steps \| enforced at none (inv-11)
-- invariants: I14: an hk step never restates a task command \| enforced at none (inv-12)
-- invariants: I15: Renovate reads each pin \| enforced at none before the merge (inv-13)
-- invariants: I16: each tool release exists in one file outside ci.yml \| enforced at review alone, as Decision 2 states; no finding, because the design names its guard
-- invariants: I17: the live ruleset equals .github/rulesets/main.json \| enforced at review alone, as Decision 9 states; no finding
-- invariants: I18: a toolchain below rust-version fails every Cargo task \| enforced at Cargo's own rust-version check \| boundary test none needed for this change
-- invariants: The probes are under the handoff directory, in probes/: jq 1.8.2 on four NEEDS files plus unset, empty and {} env.NEEDS (release-lines.txt and run-steps.txt are rg probes). No repository test was run.
-- invariants: A search for proptest returned one line of openspec/changes/dev-workflow/review.md, because the search did not exclude it. That line was not used, and the file was not read.
-- spec-lint: All nine requirements' scenarios have a WHEN or GIVEN line, a THEN line and a concrete observable. All 14 spec scenarios map to a named test in design.md Decision 7 with no gap.
-- spec-lint: No BREAKING marker appears in proposal.md or the delta spec, so there is no breaking-mismatch. The proposal's branch-rule effect (a direct push to main stops working) has no marker; the marker rule is literal, so this is not a finding.
-- spec-lint: Every task in tasks.md ends with a check, and each named build target exists or is created by an earlier task: mise tasks, docs/package.json scripts model:check and build, crates/mu-cli/tests/workspace_boundary.rs, the Contributing pages build.md and workspace.md, and rust-toolchain.toml.
-- spec-lint: Task 6.2 ends with the sentence 'For each defect test, remove the defect once and make sure that the test then fails.' The config.yaml rule asks that each task end with a check that starts with 'Make sure that'. This is a form deviation outside the classes of this lens, reported here only.
-- spec-lint: Design facts about GitHub Actions (a job after a failed needed job is skipped, and a skipped required check counts as a pass) and about Cargo (refusal of a toolchain older than rust-version) have no read-documentation task, which the config.yaml design rule asks for. Reported here only.
-- spec-lint: One Grep hit incidentally printed a line of review.md. That line was not used and review.md was not read.
-- test-coverage: Tasks 6.1 and 6.2 reach the scenarios through the Decision 7 scenario-to-test table and the commands cargo nextest run -p mu-cli --test repo_config and mise run test:workflow; no task lists the scenarios by name.
-- test-coverage: The delta spec has no BREAKING requirement, so no breaking-unproven finding applies.

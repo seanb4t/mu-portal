@@ -30,7 +30,8 @@ run = "actionlint"
 
 [tasks."lint:pr-title"]
 description = "Check that the pull request title is a conventional commit"
-run = 'cog verify "$PR_TITLE"'
+# `--` keeps a title that starts with a dash from being read as an option.
+run = 'cog verify -- "$PR_TITLE"'
 
 [tasks.test]
 description = "Run the tests and the doc tests"

@@ -120,11 +120,12 @@ Alternative: `lefthook` or `pre-commit`. Both can call `mise` tasks too. `hk` is
 
 ### 4. Dependency policy with `cargo-deny`
 
-`deny.toml` has four parts:
+`deny.toml` has five parts:
 
 - **advisories**: fail for a crate with a known vulnerability, and for an unmaintained crate.
 - **licenses**: an allowed list. The first list is `Apache-2.0`, `MIT`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `Unicode-3.0` and `Zlib`. A crate with a GPL license fails, which the license decision of the project requires. The file does not turn on the option that ignores a private crate. A probe showed that this option lets a GPL crate with `publish = false` pass.
 - **bans**: warn for two releases of one crate. Fail for a wildcard dependency. The file turns on the option that allows a path dependency with no version. A probe showed that the ban otherwise rejects a dependency between two workspace crates, which the boundary test allows.
+- **graph**: read the dependency tree with all features on, so a crate behind an optional feature is in the policy.
 - **sources**: allow crates.io only. A git source needs an entry in this file.
 
 `cargo-deny` and the boundary test both read the license of a workspace crate. The overlap is deliberate, and the two rules differ. The boundary test requires exactly `Apache-2.0` for a workspace crate. `deny.toml` holds the wider list for every crate in the dependency tree. A workspace crate therefore passes both only with `Apache-2.0`.
@@ -183,7 +184,7 @@ The `commits` job does not run for a push to `main`. The aggregate action theref
 
 Every `run` step is therefore `mise run` and one task. The `ci-ok` step is a `uses` step, so the step rule does not apply to it.
 
-Each job installs the tools with the `mise` action. The Rust job also uses a build cache action. Each action is pinned by commit SHA, as `project-foundation` decided. Task 5.1 reads the documentation of both actions for their inputs.
+Each job except `ci-ok` installs the tools with the `mise` action. The Rust job also uses a build cache action. Each action is pinned by commit SHA, as `project-foundation` decided. Task 5.1 reads the documentation of both actions for their inputs.
 
 The `mise` action replaces the Node setup action and the `pnpm` setup action.
 
@@ -267,7 +268,7 @@ Each commit message and each pull request title follows the Conventional Commits
 - The `commit-msg` hook refuses a commit with another message. A hook is a choice of each clone.
 - The `commits` job in CI checks the title of the pull request. The repository merges with a squash, so the title becomes the commit message on `main`. The commits of the branch do not reach `main`, and CI does not check them.
 
-Enforcement: the `commits` job, which `ci-ok` needs. The ruleset requires `ci-ok`.
+Enforcement: the `commits` job, which `ci-ok` needs. The ruleset requires `ci-ok`. The workflow also runs for the `edited` event of a pull request, so a new title is checked again. The task passes the title after `--`, so a title such as `--help` is a title and not an option.
 
 Release notes and a changelog tool are not in this change. They need a release process, and the parked issue for release tooling holds them. `changie`, `git-cliff` and `release-plz` are the candidates.
 
@@ -286,6 +287,7 @@ Enforcement: none. These files are text for people, and a reviewer reads them.
 `.github/rulesets/main.json` holds a repository ruleset for `main`:
 
 - a change needs a pull request, with no required approval, because the project has one maintainer
+- the only merge method is a squash, so the title of the pull request is the commit message on `main`
 - the check `ci-ok` must pass
 - no force push and no deletion
 
