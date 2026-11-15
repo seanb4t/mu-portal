@@ -36,7 +36,7 @@ A production change that builds on a spike does these things. The design rule in
 2. Read each review thread of that pull request. A thread can hold a defect that the spike code still has.
 3. Turn each item under Not tested into a task or a non-goal of the change.
 4. Write new code under the tests of the change. Do not copy spike code. Read the spike code as an example only.
-5. Copy the recorded evidence, for example transcripts and results, into the crate of the change as test data.
+5. Copy the recorded evidence, for example transcripts and results, into the crate of the change as test data. Do not put it in a directory named `spikes`, because the boundary test fails an include of a path with that name.
 
 No file in `crates/` can include a file from `spikes/`. If an include macro or a `path` attribute in a Rust file names a path under `spikes/`, the boundary test fails that file. The include macros are `include!`, `include_str!` and `include_bytes!`, and the test also looks inside other macros and `cfg_attr`. Review covers two cases that the test cannot see. One is a read of a spike file at run time, for example with `fs::read`. The other is an include through a macro with a new name.
 

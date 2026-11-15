@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
+use syn::ext::IdentExt as _;
 
 use support::TreeCopy;
 
@@ -215,7 +216,7 @@ fn include_violation(file: String, text: &str) -> Option<Violation> {
 fn reaches_spikes(tokens: TokenStream) -> bool {
     let trees: Vec<TokenTree> = tokens.into_iter().collect();
     trees.iter().enumerate().any(|(index, tree)| match tree {
-        TokenTree::Ident(ident) if INCLUDE_MACROS.contains(&ident.to_string().as_str()) => {
+        TokenTree::Ident(ident) if INCLUDE_MACROS.contains(&ident.unraw().to_string().as_str()) => {
             is_punct(trees.get(index + 1), '!')
                 && matches!(trees.get(index + 2), Some(TokenTree::Group(group))
                     if is_spike_path(&joined_strings(group.stream())))
@@ -253,20 +254,14 @@ fn joined_strings(tokens: TokenStream) -> String {
     tokens
         .into_iter()
         .map(|tree| match tree {
-            TokenTree::Literal(literal) => string_value(&literal.to_string()).unwrap_or_default(),
+            TokenTree::Literal(literal) => match syn::Lit::new(literal) {
+                syn::Lit::Str(string) => string.value(),
+                _ => String::new(),
+            },
             TokenTree::Group(group) => joined_strings(group.stream()),
             _ => String::new(),
         })
         .collect()
-}
-
-/// The text of a plain or raw string literal, without its quotes.
-fn string_value(literal: &str) -> Option<String> {
-    let raw = literal.strip_prefix('r').map(|rest| rest.trim_matches('#'));
-    raw.unwrap_or(literal)
-        .strip_prefix('"')?
-        .strip_suffix('"')
-        .map(str::to_owned)
 }
 
 /// True if a path component of `path` is `spikes`.
@@ -484,6 +479,10 @@ fn spike_include_fails() {
         "const A: &str = include_str!(concat!(\"../../spi\", \"kes/x\"));",
         "#[path = \"../../spikes\"]\nmod x {}",
         "fn f() { assert_eq!(include_str!(\"../../spikes/x\"), \"\"); }",
+        "const A: &str = include_str!(r#\"../../spikes/x\"#);",
+        "#[path = r\"../../spikes/x.rs\"]\nmod x;",
+        "const A: &str = include_str!(\"../../\\x73pikes/x\");",
+        "const A: &str = r#include_str!(\"../../spikes/x\");",
     ];
     for text in failing {
         assert_eq!(

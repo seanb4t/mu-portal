@@ -31,7 +31,7 @@ None.
 - `docs/src/content/docs/contributing/spikes.md`, `docs/src/content/docs/contributing/workspace.md` and `docs/src/content/docs/decisions/output-pane.md`.
 - `openspec/config.yaml`, the `design` rules.
 - A new test file `crates/mu-cli/tests/spike_records.rs`, a new violation in `workspace_boundary.rs`, a new test in `repo_config.rs`, and shared helpers in `crates/mu-cli/tests/support/mod.rs`.
-- `proc-macro2` and `pulldown-cmark` as new dev-dependencies of `mu-cli`, through `[workspace.dependencies]`.
+- `proc-macro2`, `syn` and `pulldown-cmark` as new dev-dependencies of `mu-cli`, through `[workspace.dependencies]`.
 
 ## Not in this change
 

@@ -389,6 +389,7 @@ dependencies = [
  "pulldown-cmark",
  "serde-saphyr",
  "serde_json",
+ "syn",
  "tempfile",
  "toml",
 ]

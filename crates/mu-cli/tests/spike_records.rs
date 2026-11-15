@@ -65,9 +65,14 @@ fn names_crate(text: &str, krate: &str) -> bool {
     let needle = format!("spikes/{krate}");
     text.match_indices(&needle).any(|(start, _)| {
         let before = text[..start].chars().next_back();
-        let after = text[start + needle.len()..].chars().next();
-        matches!(before, None | Some('`' | ' ' | '\n'))
-            && matches!(after, None | Some('`' | '/' | ' ' | '.' | '\n'))
+        let rest = &text[start + needle.len()..];
+        let ends = |c: Option<char>| matches!(c, None | Some('`' | ' ' | '\n'));
+        let after = match rest.chars().next() {
+            // A full stop ends the path only when the sentence ends with it.
+            Some('.') => ends(rest.chars().nth(1)),
+            next => next == Some('/') || ends(next),
+        };
+        ends(before) && after
     })
 }
 
@@ -183,6 +188,8 @@ fn spike_crates_have_decision_pages() {
         "spikes/pane",
         "See `spikes/pane/results`.",
         "The code is spikes/pane.",
+        "The code is in\nspikes/pane.",
+        "`spikes/pane`",
     ] {
         assert!(
             crates_without_one_page(&one, &[record(source)]).is_empty(),
@@ -199,6 +206,10 @@ fn spike_crates_have_decision_pages() {
         (
             "a longer name",
             vec![record("The code is `spikes/pane-v2`.")],
+        ),
+        (
+            "a dotted name",
+            vec![record("The code is `spikes/pane.v2`.")],
         ),
         (
             "a longer parent",
