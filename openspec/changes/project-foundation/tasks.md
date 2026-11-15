@@ -2,30 +2,31 @@
 
 ## 1. Workspace and license
 
-- [ ] 1.1 Replace `LICENSE` with the unchanged Apache-2.0 text. Make sure that the file contains "Apache License" and "Version 2.0, January 2004".
-- [ ] 1.2 Add `rust-toolchain.toml` with the current stable release, `rustfmt` and `clippy`. Make sure that `rustc --version` in the repository reports the pinned release.
-- [ ] 1.3 Add the root virtual workspace with `[workspace.package]`, `[workspace.lints]` and `[workspace.dependencies]`, as Decision 1 describes. Add `spikes` to `exclude`. Make sure that `cargo metadata --no-deps` reads the manifest with no error.
-- [ ] 1.4 Add the crates `mu-proto`, `mu-core`, `mu-tui` (empty libraries) and `mu-cli` (binary `mu`), each with inherited package fields and lints. Make sure that `cargo build --workspace` passes and produces `target/debug/mu`.
-- [ ] 1.5 Add the violation function and the allowlist in `crates/mu-cli/tests/workspace_boundary.rs`, with `cargo_metadata` and `toml` as development dependencies. Add the test `real_workspace_has_no_violation`. Make sure that it passes.
-- [ ] 1.6 Add the fixture with all five allowed edges and the test `allowed_edges_have_no_violation`. Add the negative fixtures from Decision 2 and one test for each. The test names are in the list below. Make sure that each negative test finds exactly one violation and that `cargo test -p mu-cli --test workspace_boundary` passes.
+- [x] 1.1 Replace `LICENSE` with the unchanged Apache-2.0 text. Make sure that the file contains "Apache License" and "Version 2.0, January 2004".
+- [x] 1.2 Add `rust-toolchain.toml` with the current stable release, `rustfmt` and `clippy`. Make sure that `rustc --version` in the repository reports the pinned release.
+- [x] 1.3 Add the root virtual workspace with `[workspace.package]`, `[workspace.lints]` and `[workspace.dependencies]`, as Decision 1 describes. Add `spikes` to `exclude`. Make sure that `cargo metadata --no-deps` reads the manifest with no error.
+- [x] 1.4 Add the crates `mu-proto`, `mu-core`, `mu-tui` (empty libraries) and `mu-cli` (binary `mu`), each with inherited package fields and lints. Make sure that `cargo build --workspace` passes and produces `target/debug/mu`.
+- [x] 1.5 Add the violation function and the allowlist in `crates/mu-cli/tests/workspace_boundary.rs`, with `cargo_metadata` and `toml` as development dependencies. Add the test `real_workspace_has_no_violation`. Make sure that it passes.
+- [x] 1.6 Add the fixture with all five allowed edges and the test `allowed_edges_have_no_violation`. Add the negative cases from Decision 2 and one test for each. The test names are in the list below. Make sure that each negative test finds exactly one violation and that `cargo test -p mu-cli --test workspace_boundary` passes.
   - `optional_tui_to_core_fails`, `build_tui_to_core_fails`, `dev_tui_to_core_fails`, `renamed_tui_to_core_fails`, `target_tui_to_core_fails`
-  - `local_dependency_version_fails`
+  - `git_tui_to_core_fails`
+  - `local_dependency_version_fails`, `local_dev_dependency_version_fails`, `local_target_dependency_version_fails`, `renamed_local_dependency_version_fails`
   - `core_to_tui_fails`, `proto_dependency_fails`, `spike_dependency_fails`, `outside_path_dependency_fails`, `unlisted_member_fails`
   - `missing_license_fails`, `wrong_license_fails`, `missing_lints_fails`, `local_lints_fail`
-- [ ] 1.7 Keep the Node template in `.gitignore` and add `target/` and `.archify/`. Make sure that `git status` shows no new file after `cargo build --workspace` and after `cargo test --workspace`.
+- [x] 1.7 Keep the Node template in `.gitignore` and add `target/` and `.archify/`. Make sure that `git status` shows no new file after `cargo build --workspace` and after `cargo test --workspace`.
 
 ## 2. Command grammar
 
-- [ ] 2.1 Add `clap` through `[workspace.dependencies]`. Define the single binary `mu` with its three verbs `client`, `server` and `version`, as Decision 3 describes: the explicit name `mu`, a doc comment on each verb, no `help` subcommand, and an optional subcommand with `client` as the default. Put the client arguments in one empty arguments struct that the `client` verb and the top-level command share. Make sure that `mu --help` lists exactly the three verbs.
-- [ ] 2.2 Add one function for a verb without an implementation. It takes the verb name, writes `<verb>: not implemented` to stderr and returns exit status 1. Call it from `client` and `server`. Make sure that `mu server` writes `server: not implemented` and exits with status 1.
-- [ ] 2.3 Add the version output: the `version` verb prints the string from `Command::render_long_version` and adds no second newline. Make sure that `mu version` and `mu --version` both print the line `mu`, one space, and the package version.
-- [ ] 2.4 Add integration tests in `crates/mu-cli/tests/cli.rs` that run the built binary, one test for each scenario in `specs/cli-entrypoint/spec.md`: `help_lists_verbs`, `help_for_one_verb`, `no_verb_equals_client`, `version_verb`, `version_flag_matches_verb`, `unknown_verb_is_usage_error`, `server_not_implemented`, `client_not_implemented`, `stub_verbs_leave_files_alone`. The two version tests compare the whole line, not a part of it. Make sure that `cargo test -p mu-cli --test cli` passes.
-- [ ] 2.5 Add the property test `unknown_verb_property` in the same file, with `proptest`. The strategy is the pattern `[a-z][a-z0-9_]{0,15}` with the verb names removed. The test reads the verb names from the command definition in the library target. That domain has no NUL byte, which a process argument cannot hold, and no leading dash. Add the fixed case `help_is_not_a_verb` for `mu help`. For each string it expects exit status 2, an empty stdout and the string on stderr. Make sure that it passes.
-- [ ] 2.6 Make sure that `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings` pass.
+- [x] 2.1 Add `clap` through `[workspace.dependencies]`. Define the single binary `mu` with its three verbs `client`, `server` and `version`, as Decision 3 describes: the explicit name `mu`, a doc comment on each verb, no `help` subcommand, and an optional subcommand with `client` as the default. Put the client arguments in one empty arguments struct that the `client` verb and the top-level command share. Make sure that `mu --help` lists exactly the three verbs.
+- [x] 2.2 Add one function for a verb without an implementation. It takes the verb name, writes `<verb>: not implemented` to stderr and returns exit status 1. Call it from `client` and `server`. Make sure that `mu server` writes `server: not implemented` and exits with status 1.
+- [x] 2.3 Add the version output: the `version` verb prints the string from `Command::render_long_version` and adds no second newline. Make sure that `mu version` and `mu --version` both print the line `mu`, one space, and the package version.
+- [x] 2.4 Add integration tests in `crates/mu-cli/tests/cli.rs` that run the built binary, one test for each scenario in `specs/cli-entrypoint/spec.md`: `help_lists_verbs`, `help_for_one_verb`, `no_verb_equals_client`, `version_verb`, `version_flag_matches_verb`, `unknown_verb_is_usage_error`, `server_not_implemented`, `client_not_implemented`, `stub_verbs_leave_files_alone`. The two version tests compare the whole line, not a part of it. Make sure that `cargo test -p mu-cli --test cli` passes.
+- [x] 2.5 Add the property test `unknown_verb_property` in the same file, with `proptest`. The strategy is the pattern `[a-z][a-z0-9_]{0,15}` with the verb names removed. The test reads the verb names from the command definition in the library target. That domain has no NUL byte, which a process argument cannot hold, and no leading dash. Add the fixed case `help_is_not_a_verb` for `mu help`, and the fixed cases `verb_names_are_exact` for strings next to a verb name. For each string it expects exit status 2, an empty stdout and the string on stderr. Make sure that it passes.
+- [x] 2.6 Make sure that `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings` pass.
 
 ## 3. Spikes workspace
 
-- [ ] 3.1 Add `spikes/Cargo.toml` as a separate workspace. Add `spikes/README.md` as a short pointer to the Contributing page for spikes. Make sure that `cargo build --workspace` at the root does not compile anything in `spikes/`.
+- [x] 3.1 Add `spikes/Cargo.toml` as a separate workspace. Add `spikes/README.md` as a short pointer to the Contributing page for spikes. Make sure that `cargo build --workspace` at the root does not compile anything in `spikes/`.
 
 ## 4. Documentation site and architecture model
 

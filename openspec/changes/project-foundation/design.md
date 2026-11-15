@@ -64,17 +64,18 @@ The function calls `cargo_metadata` with the `no_deps` option, so the call write
 
 The function reads the declared dependencies of each package, not the resolved graph. Declared dependencies include optional ones and all three kinds: normal, build and development. The resolved graph leaves out an optional dependency behind a feature that is off.
 
-The function sorts each declared dependency of a member into one of two classes by its source in the `cargo_metadata` output:
+The function sorts each declared dependency of a member into one of three classes:
 
-- A third-party dependency has a registry source or a git source.
-- A path dependency has no source and has a path.
+- A member dependency names a workspace member or a crate in the allowlist. The source does not matter: a path, a git URL and a registry all count. The edge rule applies to it.
+- A path dependency has a path and does not name a member. The spike rule or the outside-path rule applies to it.
+- A third-party dependency is every other dependency. The dependency-table rule applies to it.
 
-The dependency-table rule applies to third-party dependencies alone. The other dependency rules apply to path dependencies alone. Each dependency therefore breaks one rule at most.
+Each dependency therefore breaks one rule at most. The dependency-table rule reads the manifest alone and uses the key of each entry, so a renamed entry is still found.
 
 The function reports a violation for each of these:
 
 - A workspace member that the allowlist in Decision 1 does not name.
-- A path dependency between two members that the allowlist does not list.
+- A member dependency that the allowlist does not list.
 - A path dependency whose path is under `spikes/`. A spike is found by its manifest path, because a spike is not a workspace member.
 - A path dependency on a crate that is not a member and is not under `spikes/`. The `no_deps` option hides the dependencies of such a crate, so a member can reach a forbidden crate through it.
 - A member whose license is not `Apache-2.0`.
@@ -87,14 +88,16 @@ Two kinds of test use the function:
 
 - One test runs it on the real workspace and expects no violation.
 - One test runs it on a fixture workspace that declares all five allowed edges and expects no violation.
-- One test for each negative fixture runs it on that fixture and expects exactly one violation, of the rule that the fixture breaks.
+- One test for each negative case runs it on an edited copy of that fixture and expects exactly one violation, of the rule that the edit breaks.
 
-The fixtures live under `crates/mu-cli/tests/fixtures/`. Each fixture root has the three shared tables from Decision 1, because Cargo refuses a member that inherits from a table that is absent. The fixture for the spike rule lists its `spikes` directory under `exclude`, as the real root does. Without that entry, Cargo makes the spike a member and the fixture breaks two rules.
+One fixture workspace is on disk, at `crates/mu-cli/tests/fixtures/base/`. It declares all five allowed edges. Its root has the three shared tables from Decision 1, because Cargo refuses a member that inherits from a table that is absent. It lists `spikes` and `outside` under `exclude`. Without those entries, Cargo makes a crate in either directory a member, and a negative case breaks two rules.
 
-The negative fixtures are:
+Each negative test copies the base fixture into a temporary directory and makes one edit. The negative cases therefore differ from the base by that edit alone, and the repository holds one fixture and not one for each case.
 
-- a `mu-tui` to `mu-core` dependency of each kind: optional, build, development, renamed and target-specific
-- a third-party dependency with its own version and no `workspace = true`
+The negative cases are:
+
+- a `mu-tui` to `mu-core` dependency of each kind: optional, build, development, renamed, target-specific and by git URL
+- a third-party dependency with its own version and no `workspace = true`, in each of these forms: normal, development, target-specific and renamed
 - a `mu-core` to `mu-tui` dependency
 - a `mu-proto` dependency on a member
 - a path dependency into `spikes/`
@@ -103,7 +106,7 @@ The negative fixtures are:
 - a member with no license, and a member with the license `MIT`
 - a member with no `[lints]` table, and a member with a local `[lints.rust]` table and no `workspace = true`
 
-The fixtures make each negative case a permanent test. Nobody has to break the real workspace by hand to prove the rule.
+The tests make each negative case permanent. Nobody has to break the real workspace by hand to prove the rule.
 
 Alternative: a `cargo-deny` ban. Rejected for now, because it adds a tool and cannot express two of the rules: the member allowlist and the inherited `[lints]` table. If `cargo-deny` arrives later, that change can move the dependency and license rules to it.
 
