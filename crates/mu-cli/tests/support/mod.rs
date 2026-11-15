@@ -23,16 +23,41 @@ pub fn stderr(output: &Output) -> String {
     String::from_utf8(output.stderr.clone()).expect("stderr is UTF-8")
 }
 
+/// The text of a file of the repository, by its path from the repository root.
+pub fn repo_file(relative: &str) -> String {
+    let path = repo_root().join(relative);
+    fs::read_to_string(&path).unwrap_or_else(|error| panic!("{relative} is readable: {error}"))
+}
+
+/// The metadata of the Cargo workspace of `manifest`, without its dependencies.
+pub fn workspace_metadata(manifest: &Path) -> cargo_metadata::Metadata {
+    cargo_metadata::MetadataCommand::new()
+        .manifest_path(manifest)
+        .no_deps()
+        .exec()
+        .expect("cargo metadata reads the workspace")
+}
+
+/// Every file under `dir`, at any depth.
+pub fn files_under(dir: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    for entry in fs::read_dir(dir).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_type().unwrap().is_dir() {
+            files.extend(files_under(&entry.path()));
+        } else {
+            files.push(entry.path());
+        }
+    }
+    files
+}
+
 fn copy_tree(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap();
-    for entry in fs::read_dir(from).unwrap() {
-        let entry = entry.unwrap();
-        let target = to.join(entry.file_name());
-        if entry.file_type().unwrap().is_dir() {
-            copy_tree(&entry.path(), &target);
-        } else {
-            fs::copy(entry.path(), target).unwrap();
-        }
+    for file in files_under(from) {
+        let target = to.join(file.strip_prefix(from).unwrap());
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::copy(&file, target).unwrap();
     }
 }
 

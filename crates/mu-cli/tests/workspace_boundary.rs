@@ -5,8 +5,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use cargo_metadata::MetadataCommand;
-
 use support::TreeCopy;
 
 mod support;
@@ -67,11 +65,7 @@ fn allowed(from: &str) -> Option<&'static [&'static str]> {
 
 /// Returns each rule that the workspace at `root` breaks.
 fn violations(root: &Path) -> Vec<Violation> {
-    let metadata = MetadataCommand::new()
-        .manifest_path(root.join("Cargo.toml"))
-        .no_deps()
-        .exec()
-        .expect("cargo metadata reads the workspace");
+    let metadata = support::workspace_metadata(&root.join("Cargo.toml"));
     let spikes = metadata.workspace_root.join("spikes");
     let members = metadata.workspace_packages();
     let member_directories: Vec<_> = members

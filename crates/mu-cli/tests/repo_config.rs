@@ -4,9 +4,10 @@
 
 use serde_json::Value as Json;
 use std::collections::BTreeSet;
-use std::fs;
 
 mod support;
+
+use support::repo_file;
 
 const CHECK_TASKS: [&str; 5] = ["fmt", "lint", "test", "doc", "deny"];
 const AGGREGATE_JOB: &str = "ci-ok";
@@ -14,11 +15,6 @@ const AGGREGATE_ACTION: &str = "re-actors/alls-green@";
 const PULL_REQUEST_JOB: &str = "commits";
 const PULL_REQUEST_RULE: &str =
     r#"{"type": "pull_request", "parameters": {"allowed_merge_methods": ["squash"]}}"#;
-
-fn repo_file(relative: &str) -> String {
-    let path = support::repo_root().join(relative);
-    fs::read_to_string(&path).unwrap_or_else(|error| panic!("{relative} is readable: {error}"))
-}
 
 fn yaml(text: &str) -> Json {
     serde_saphyr::from_str(text).expect("the text is YAML")

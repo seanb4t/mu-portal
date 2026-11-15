@@ -29,6 +29,13 @@ The ratatui widget used more processor time than direct writes, but both used a 
 
 Mouse capture is on, so the pane does its own selection. The terminal selection is still available with the modifier key of the terminal.
 
+## Not tested
+
+- A visual check of the image, of a copy by drag and of a live resize in Ghostty and Rex. The spike measured the frames in code, and no person looked at them.
+- Linux. All measurements come from one Apple M4 Max with a release build.
+- Output from a game. The spike made its lines with a generator of MUD-like text.
+- A wrap of all lines on more than one thread. The spike measured one thread only.
+
 ## Source
 
 The spike of issue 3, merged in pull request 29. The code is `spikes/output-pane`. The command `cargo run --release -p output-pane -- bench` in `spikes/` gives the current measurements.
