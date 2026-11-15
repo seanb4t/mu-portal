@@ -1,0 +1,22 @@
+{
+  "name": "mu-portal-docs",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "model:check": "likec4 validate ../architecture"
+  },
+  "dependencies": {
+    "@astrojs/react": "^7.1.9",
+    "@astrojs/starlight": "^0.43.1",
+    "astro": "^7.3.6",
+    "likec4": "^1.60.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "sharp": "^0.35.3"
+  },
+  "private": true,
+  "packageManager": "pnpm@12.18.0"
+}

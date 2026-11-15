@@ -1,0 +1,14 @@
+---
+title: Crate layout
+description: The four crates and their allowed dependencies.
+sidebar:
+  order: 3
+---
+
+import LikeC4View from '../../../components/LikeC4View.astro';
+
+The workspace has four crates. `mu-tui` does not depend on `mu-core`, so the terminal client cannot reach the server engine except through the API.
+
+This view is a copy of the allowlist in `crates/mu-cli/tests/workspace_boundary.rs`. The test is the source of the rule. The [workspace layout](/contributing/workspace/) page explains how to change both.
+
+<LikeC4View viewId="crateLayout" />

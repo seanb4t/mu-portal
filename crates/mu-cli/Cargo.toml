@@ -1,0 +1,23 @@
+[package]
+name = "mu-cli"
+description = "The mu binary and its verbs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+clap = { workspace = true }
+
+[dev-dependencies]
+cargo_metadata = { workspace = true }
+proptest = { workspace = true }
+tempfile = { workspace = true }
+toml = { workspace = true }
+
+[[bin]]
+name = "mu"
+path = "src/main.rs"

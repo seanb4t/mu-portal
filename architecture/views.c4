@@ -1,0 +1,19 @@
+views {
+  view index {
+    title 'System context'
+    description 'The player, the clients, the server and the games.'
+    include player, games, mu, mu.terminal, mu.devices, mu.server
+  }
+
+  view serverAndClients of mu {
+    title 'Server and clients'
+    description 'The paired devices, the API and the parts of the server.'
+    include *, server.*
+  }
+
+  view crateLayout of workspace {
+    title 'Crate layout'
+    description 'The four crates and their allowed dependencies.'
+    include *
+  }
+}

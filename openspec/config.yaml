@@ -1,0 +1,52 @@
+schema: spec-driven-reviewed
+
+# Constraints that an agent cannot infer from the code.
+context: |
+  Product shape: one binary, `mu`, carries every function as a verb. One
+  server serves zero to many clients for one person. A client reaches the
+  server only through the API, so `mu-tui` never depends on `mu-core`. The
+  allowlist in `crates/mu-cli/tests/workspace_boundary.rs` is the source of
+  the crate dependency rules.
+
+  Platforms: Linux and macOS are both first-class. Designs and tasks cover
+  both.
+
+  Working rules: the Contributing pages in `docs/src/content/docs/contributing/`
+  own the rules for diagrams, spikes, OpenSpec and the GitHub Project. Read
+  the page before an artifact depends on one of those rules, and do not
+  restate a rule in an artifact. Each change is tracked by one GitHub issue.
+
+  Dependencies and pins: a third-party crate enters through
+  `[workspace.dependencies]`. Each version pin is in a file that Renovate
+  reads, and no workflow states a toolchain version a second time.
+
+  Prose: artifacts and documentation use plain English and follow the
+  simple-english rules. Live documentation states no version literal.
+
+  One-test commands: cargo: `cargo test -p <crate> --test <file> -- --exact <test name>`
+
+  Library rows: crate versions: Cargo.toml ([workspace.dependencies]).
+  shared package fields and lints: Cargo.toml ([workspace.package], [workspace.lints]).
+  toolchain pins: rust-toolchain.toml, docs/.node-version, docs/package.json (packageManager).
+  command definition: crates/mu-cli/src/lib.rs (the clap command and its verb list).
+
+rules:
+  proposal:
+    - Name the GitHub issue that tracks the change
+    - State what is not in the change
+  specs:
+    - Write each scenario so that a test on the built binary or on another observable output can decide it
+  design:
+    - For each rule, state what enforces it - a test, a CI step or review alone
+    - For each fact about a third-party tool that is not checked against its current documentation, add a task that reads that documentation before the work depends on it
+  tasks:
+    - End each task with a check that starts with "Make sure that"
+    - Name the test for each spec scenario
+
+operations:
+  apply:
+    guidance:
+      - Before the final task group, run /sb:openspec-review <change> implementation and treat changes-requested as a blocker
+  archive:
+    guidance:
+      - Archive only with an implementation-phase review.md whose verdict is not changes-requested; the sb plugin's gate refuses otherwise

@@ -1,0 +1,16 @@
+specification {
+  element actor {
+    style {
+      shape person
+    }
+  }
+  element system
+  element externalSystem {
+    style {
+      color muted
+    }
+  }
+  element client
+  element part
+  element crate
+}
