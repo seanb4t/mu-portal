@@ -31,4 +31,4 @@ Mouse capture is on, so the pane does its own selection. The terminal selection 
 
 ## Source
 
-The spike of issue 3. The code is `spikes/output-pane`. The command `cargo run --release -p output-pane -- bench` in `spikes/` gives the current measurements.
+The spike of issue 3, merged in pull request 29. The code is `spikes/output-pane`. The command `cargo run --release -p output-pane -- bench` in `spikes/` gives the current measurements.
