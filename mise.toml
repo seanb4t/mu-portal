@@ -9,7 +9,6 @@ idiomatic_version_file_enable_tools = ["rust"]
 actionlint = "1.7.12"
 cargo-deny = "0.20.2"
 "cargo:cargo-nextest" = "0.9.152"
-cocogitto = "7.0.0"
 hk = "2.12.0"
 node = "26.13.1"
 pnpm = "12.18.0"
@@ -30,8 +29,12 @@ run = "actionlint"
 
 [tasks."lint:pr-title"]
 description = "Check that the pull request title is a conventional commit"
-# `--` keeps a title that starts with a dash from being read as an option.
-run = 'cog verify -- "$PR_TITLE"'
+# The checker reads a file, so a title that starts with a dash is never an option.
+run = '''
+title_file="$(mktemp)"
+printf '%s\n' "$PR_TITLE" > "$title_file"
+hk util check-conventional-commit "$title_file"
+'''
 
 [tasks.test]
 description = "Run the tests and the doc tests"

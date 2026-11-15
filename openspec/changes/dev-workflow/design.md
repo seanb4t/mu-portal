@@ -36,7 +36,7 @@ See proposal.md for the motivation. The state of the repository after `project-f
 
 A root `mise.toml` has two parts:
 
-- `[tools]` pins `hk`, `cargo-deny`, `cargo-nextest`, `cocogitto`, `actionlint`, Node and `pnpm`. It also pins each tool that an `hk` step needs, which task 2.1 finds.
+- `[tools]` pins `hk`, `cargo-deny`, `cargo-nextest`, `actionlint`, Node and `pnpm`. It also pins each tool that an `hk` step needs, which task 2.1 finds.
 - `[tasks]` defines the check commands. No other file states them.
 
 The tasks are:
@@ -46,7 +46,7 @@ The tasks are:
 | `fmt` | `cargo fmt --check` |
 | `lint` | `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` |
 | `lint:actions` | `actionlint` |
-| `lint:pr-title` | `cog verify` on the title in the `PR_TITLE` variable |
+| `lint:pr-title` | the conventional commit check of `hk` on the title in the `PR_TITLE` variable |
 | `test` | `cargo nextest run --workspace --locked`, and then `cargo test --workspace --doc --locked` |
 | `doc` | `cargo doc --workspace --no-deps --locked`, with `RUSTDOCFLAGS=-D warnings` |
 | `deny` | `cargo deny --locked check` |
@@ -90,7 +90,7 @@ Renovate must read each pin. Task 6.4 runs the Renovate validator. The check of 
 | Hook | Steps |
 |---|---|
 | `pre-commit` and `check` | `mise run fmt`, `mise run lint:actions`, the `hk` builtins for TOML and merge conflict markers, and a YAML step that parses each file with `yq` |
-| `commit-msg` | the `hk` builtin for `cocogitto`, which checks the commit message |
+| `commit-msg` | the `hk` builtin that checks the commit message |
 | `pre-push` | `mise run check` |
 
 `hk.pkl` states the first list once, as its top-level steps. `hk` builds the `pre-commit` hook and the `check` hook from that one list, so the two cannot differ. CI runs the `check` hook on every file through the task `hooks:check`.
@@ -263,12 +263,12 @@ Alternative: a Python test under `uv`. Rejected, because it adds two tools for o
 
 ### 8. Commit format
 
-Each commit message and each pull request title follows the Conventional Commits format. `cocogitto` is the one tool that decides what the format is, in the hook and in CI.
+Each commit message and each pull request title follows the Conventional Commits format. The conventional commit check of `hk` decides what the format is, in the hook and in CI. The first build used `cocogitto`. It stops with an error on a machine with no git identity, and a CI runner has none.
 
 - The `commit-msg` hook refuses a commit with another message. A hook is a choice of each clone.
 - The `commits` job in CI checks the title of the pull request. The repository merges with a squash, so the title becomes the commit message on `main`. The commits of the branch do not reach `main`, and CI does not check them.
 
-Enforcement: the `commits` job, which `ci-ok` needs. The ruleset requires `ci-ok`. The workflow also runs for the `edited` event of a pull request, so a new title is checked again. The task passes the title after `--`, so a title such as `--help` is a title and not an option.
+Enforcement: the `commits` job, which `ci-ok` needs. The ruleset requires `ci-ok`. The workflow also runs for the `edited` event of a pull request, so a new title is checked again. The task writes the title to a file and gives the file to the check, so a title such as `--help` is a title and not an option.
 
 Release notes and a changelog tool are not in this change. They need a release process, and the parked issue for release tooling holds them. `changie`, `git-cliff` and `release-plz` are the candidates.
 
