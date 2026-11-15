@@ -1,0 +1,34 @@
+# buf 1.75.0, against: cargo run -p connectrpc-api -- 127.0.0.1:8095 mu.sock
+$ buf curl --protocol connect Send {"text":"from connect"} over TCP
+{
+  "seq": "1"
+}
+$ buf curl --protocol grpc --http2-prior-knowledge Send {"text":"from grpc"} over TCP
+{
+  "seq": "2"
+}
+$ buf curl --protocol grpcweb Send {"text":"from grpcweb"} over TCP
+{
+  "seq": "3"
+}
+$ buf curl --protocol connect --http2-prior-knowledge --unix-socket mu.sock Send {"text":"over unix"}
+{
+  "seq": "4"
+}
+$ buf curl --protocol connect Subscribe {"from_seq":2} over TCP, stopped by the user
+{
+  "seq": "2",
+  "text": "from grpc"
+}
+{
+  "seq": "3",
+  "text": "from grpcweb"
+}
+{
+  "seq": "4",
+  "text": "over unix"
+}
+{
+   "code": "canceled",
+   "message": "terminated signal received"
+}
