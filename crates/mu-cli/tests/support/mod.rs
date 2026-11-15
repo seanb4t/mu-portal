@@ -36,7 +36,8 @@ pub fn h2_sections(text: &str) -> Vec<(String, String)> {
 
     let mut sections: Vec<(String, String)> = Vec::new();
     let mut heading: Option<String> = None;
-    for event in Parser::new_ext(text, Options::ENABLE_YAML_STYLE_METADATA_BLOCKS) {
+    let options = Options::ENABLE_YAML_STYLE_METADATA_BLOCKS | Options::ENABLE_TABLES;
+    for event in Parser::new_ext(text, options) {
         match event {
             Event::Start(Tag::Heading {
                 level: HeadingLevel::H2,

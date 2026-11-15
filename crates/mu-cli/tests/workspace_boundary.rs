@@ -247,7 +247,9 @@ fn path_value(tokens: TokenStream) -> Option<String> {
         .iter()
         .enumerate()
         .find_map(|(index, tree)| match tree {
-            TokenTree::Ident(ident) if ident == "path" && is_punct(trees.get(index + 1), '=') => {
+            TokenTree::Ident(ident)
+                if ident.unraw() == "path" && is_punct(trees.get(index + 1), '=') =>
+            {
                 match trees.get(index + 2) {
                     Some(TokenTree::Literal(literal)) => match syn::Lit::new(literal.clone()) {
                         syn::Lit::Str(string) => Some(string.value()),
@@ -275,7 +277,7 @@ fn joined_strings(tokens: TokenStream) -> String {
                 _ => {}
             },
             TokenTree::Ident(ident)
-                if ident == "stringify" && is_punct(trees.get(index + 1), '!') =>
+                if ident.unraw() == "stringify" && is_punct(trees.get(index + 1), '!') =>
             {
                 if let Some(TokenTree::Group(group)) = trees.get(index + 2) {
                     joined.push_str(&group.stream().to_string());
@@ -513,6 +515,8 @@ fn spike_include_fails() {
         "const A: &str = r#include_str!(\"../../spikes/x\");",
         "const A: &str = include_str!(concat!(\"../../spike\", 's', \"/x\"));",
         "const A: &str = include_str!(concat!(\"../../\", stringify!(spikes), \"/x\"));",
+        "const A: &str = include_str!(concat!(\"../../\", r#stringify!(spikes), \"/x\"));",
+        "#[r#path = \"../../spikes/x.rs\"]\nmod x;",
     ];
     for text in failing {
         assert_eq!(
