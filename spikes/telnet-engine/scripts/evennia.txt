@@ -1,0 +1,7 @@
+# Sent one line at a time after the server goes quiet.
+connect admin mu-spike-admin
+look
+who
+say Plain text, then UTF-8: café ✓ 日本 😀
+say |rRed|n |[500Orange|n
+quit

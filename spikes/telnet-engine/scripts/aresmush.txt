@@ -1,0 +1,7 @@
+# Sent one line at a time after the server goes quiet.
+connect Headwiz change_me!
+tos/agree
+look
+who
+emit Plain text, then UTF-8: café ✓ 日本 😀
+quit
