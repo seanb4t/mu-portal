@@ -1,0 +1,25 @@
+0	start	term=xterm-256color term_program=rex kitty_keyboard=true
+251	resize	89x56
+6443	key	KeyEvent { code: Char('h'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+6443	key	KeyEvent { code: Char('e'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+6443	key	KeyEvent { code: Char('l'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+6443	key	KeyEvent { code: Char('l'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+6443	key	KeyEvent { code: Char('o'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+6443	key	KeyEvent { code: Enter, modifiers: KeyModifiers(SHIFT), kind: Press, state: KeyEventState(0x0) } -> Newline
+6443	key	KeyEvent { code: Char('w'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+6443	key	KeyEvent { code: Char('o'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+6443	key	KeyEvent { code: Char('r'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+6444	key	KeyEvent { code: Char('l'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+6444	key	KeyEvent { code: Char('d'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+6444	key	KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Submit
+6444	submit	input=0 bytes=11 lines=2 text=hello\nworld
+6466	key	KeyEvent { code: Enter, modifiers: KeyModifiers(ALT), kind: Press, state: KeyEventState(0x0) } -> Newline
+6489	key	KeyEvent { code: Char('j'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) } -> Newline
+6511	key	KeyEvent { code: F(2), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> SwitchFocus
+6511	key	KeyEvent { code: Char('x'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+6511	key	KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Submit
+6511	submit	input=1 bytes=1 lines=1 text=x
+6511	key	KeyEvent { code: F(2), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> SwitchFocus
+27239	key	KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Submit
+27239	submit	input=0 bytes=2 lines=2 text=\n\n
+51893	key	KeyEvent { code: Char('c'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) } -> Quit

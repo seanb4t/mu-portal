@@ -1,0 +1,17 @@
+1	start	term=xterm-256color term_program=rex kitty_keyboard=true
+20491	key	KeyEvent { code: F(2), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> SwitchFocus
+24069	key	KeyEvent { code: Char('x'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+25636	key	KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Submit
+25636	submit	input=1 bytes=1 lines=1 text=x
+29139	key	KeyEvent { code: F(2), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> SwitchFocus
+74779	key	KeyEvent { code: Char('日'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+74780	key	KeyEvent { code: Char('本'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+74781	key	KeyEvent { code: Char('語'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+77536	key	KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Submit
+77536	submit	input=0 bytes=9 lines=1 text=日本語
+91175	key	KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Submit
+91176	submit	input=0 bytes=0 lines=0 text=
+91829	key	KeyEvent { code: Char('f'), modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Edit
+92151	key	KeyEvent { code: Enter, modifiers: KeyModifiers(0x0), kind: Press, state: KeyEventState(0x0) } -> Submit
+92151	submit	input=0 bytes=1 lines=1 text=f
+104311	key	KeyEvent { code: Char('c'), modifiers: KeyModifiers(CONTROL), kind: Press, state: KeyEventState(0x0) } -> Quit
