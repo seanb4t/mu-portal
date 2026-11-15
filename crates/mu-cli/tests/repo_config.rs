@@ -1,5 +1,5 @@
 //! Rules of the repository configuration: the CI workflow, the `mise` tasks,
-//! the `hk` pins and the ruleset of `main`. Each rule is a function over the
+//! the `hk` pins, the ruleset of `main` and the plan rules in `openspec/config.yaml`. Each rule is a function over the
 //! text of the files, so a test can also pass it a text that breaks the rule.
 
 use serde_json::Value as Json;
@@ -846,4 +846,54 @@ fn ci_ok_covers_every_job() {
         none
     );
     assert_eq!(aggregate_gaps("jobs:\n  rust: {}\n"), ["no ci-ok job"]);
+}
+
+/// True if one rule of `rules.design` names both a change that builds on a spike and the part
+/// "Using a spike" of the spikes page.
+fn design_rules_name_spikes_page(config: &str) -> bool {
+    yaml(config)["rules"]["design"]
+        .as_array()
+        .is_some_and(|rules| {
+            rules
+                .iter()
+                .filter_map(Json::as_str)
+                .any(|rule| rule.contains("builds on a spike") && rule.contains("Using a spike"))
+        })
+}
+
+#[test]
+fn design_rules_cover_spikes() {
+    assert!(design_rules_name_spikes_page(&repo_file(
+        "openspec/config.yaml"
+    )));
+
+    let config = |rules: &[&str]| {
+        let list: String = rules
+            .iter()
+            .map(|rule| ["    - ", rule, "\n"].concat())
+            .collect();
+        format!("rules:\n  design:\n{list}")
+    };
+    assert!(design_rules_name_spikes_page(&config(&[
+        "If the change builds on a spike, follow Using a spike"
+    ])));
+    for (case, rules) in [
+        (
+            "two rules",
+            vec![
+                "If the change builds on a spike, read it",
+                "Follow Using a spike",
+            ],
+        ),
+        (
+            "no Using a spike",
+            vec!["If the change builds on a spike, read its page"],
+        ),
+        ("no builds on a spike", vec!["Follow Using a spike"]),
+    ] {
+        assert!(
+            !design_rules_name_spikes_page(&config(&rules)),
+            "{case} breaks the rule"
+        );
+    }
 }

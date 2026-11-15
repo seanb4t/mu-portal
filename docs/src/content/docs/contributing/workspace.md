@@ -35,6 +35,8 @@ The test fails for each of these:
 - a crate that the allowlist does not name
 - a dependency between two crates that the allowlist does not list
 - a dependency on a crate in `spikes/`
+- a Rust file in a crate that includes a file from `spikes/` with `include!`, `include_str!`, `include_bytes!` or a `path` attribute, also inside another macro or a `cfg_attr`
+- a Rust file that the test cannot read as Rust tokens
 - a path dependency on a crate outside the workspace
 - a crate with a license that is not Apache-2.0
 - a crate that does not inherit the lints, the minimum Rust release or the `publish` field from the workspace

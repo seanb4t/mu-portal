@@ -14,7 +14,7 @@
 ## 2. The include boundary
 
 - [x] 2.0 Read the current documentation of `proc-macro2` (`TokenStream::from_str`, `TokenTree`, `Literal`) and of `pulldown-cmark` (`Parser`, heading events) with Context7. Add both to `[workspace.dependencies]` and as dev-dependencies of `crates/mu-cli`. Make sure that `mise run deny` passes.
-- [ ] 2.1 Add `Violation::SpikeInclude { file }` and `Violation::Untokenized { file }` to `crates/mu-cli/tests/workspace_boundary.rs`. Read each `.rs` file in the member directories, listed with `support::files_under`, as `proc-macro2` tokens by the rules of the design. Add the check to the real-tree test `real_workspace_has_no_violation`. Add the test `spike_include_fails` (scenario: no include of a spike file). It writes fixture files into a `TreeCopy`, each from a plain string literal. The fixtures:
+- [x] 2.1 Add `Violation::SpikeInclude { file }` and `Violation::Untokenized { file }` to `crates/mu-cli/tests/workspace_boundary.rs`. Read each `.rs` file in the member directories, listed with `support::files_under`, as `proc-macro2` tokens by the rules of the design. Add the check to the real-tree test `real_workspace_has_no_violation`. Add the test `spike_include_fails` (scenario: no include of a spike file). It writes fixture files into a `TreeCopy`, each from a plain string literal. The fixtures:
   - one failing file for each of `include!`, `include_str!` and `include_bytes!`
   - one failing file with `#[path = "../../spikes/x.rs"]` before `mod x;`, and one with `#[cfg_attr(all(), path = "../../spikes/x.rs")]`
   - one failing file with a space before the bracket, one with the path on the next line, one with `include_str!(concat!("../../spi", "kes/x"))`, one with `#[path = "../../spikes"] mod x { }`, one with `assert_eq!(include_str!("../../spikes/x"), "")`, one with a `path` inside a `cfg_attr` inside another `cfg_attr`, and one file that does not tokenize, which gives `Untokenized`
@@ -23,11 +23,11 @@
   - one passing file with an include of a path outside `spikes/`, and one with `include_str!("../oldspikes/x.txt")`
 
   Make sure that `cargo nextest run -p mu-cli --test workspace_boundary --locked` passes.
-- [ ] 2.2 Add the new failure to the list in `docs/src/content/docs/contributing/workspace.md`, under "The boundary test". Make sure that `mise run docs:check` passes.
+- [x] 2.2 Add the new failure to the list in `docs/src/content/docs/contributing/workspace.md`, under "The boundary test". Make sure that `mise run docs:check` passes.
 
 ## 3. The plan rule
 
-- [ ] 3.1 Add a `design` rule to `openspec/config.yaml` for a change that builds on a spike. The rule tells the design to follow the part "Using a spike" of the spikes page, and does not repeat its steps. Add the test `design_rules_cover_spikes` (scenario: the design rules name the spikes page) to `repo_config.rs`, and read `rules.design` with `yaml()`. Its breaking texts put `builds on a spike` and `Using a spike` in two different rules, leave out `Using a spike`, and leave out `builds on a spike`. Make sure that `cargo nextest run -p mu-cli --test repo_config --locked -E 'test(=design_rules_cover_spikes)'` passes.
+- [x] 3.1 Add a `design` rule to `openspec/config.yaml` for a change that builds on a spike. The rule tells the design to follow the part "Using a spike" of the spikes page, and does not repeat its steps. Add the test `design_rules_cover_spikes` (scenario: the design rules name the spikes page) to `repo_config.rs`, and read `rules.design` with `yaml()`. Its breaking texts put `builds on a spike` and `Using a spike` in two different rules, leave out `Using a spike`, and leave out `builds on a spike`. Make sure that `cargo nextest run -p mu-cli --test repo_config --locked -E 'test(=design_rules_cover_spikes)'` passes.
 
 ## 4. The spikes page
 

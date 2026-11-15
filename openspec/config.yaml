@@ -49,6 +49,7 @@ rules:
   design:
     - For each rule, state what enforces it - a test, a CI step or review alone
     - For each fact about a third-party tool that is not checked against its current documentation, add a task that reads that documentation before the work depends on it
+    - If the change builds on a spike, follow the part "Using a spike" of the Contributing page for spikes
   tasks:
     - End each task with a check that starts with "Make sure that"
     - Name the test for each spec scenario
