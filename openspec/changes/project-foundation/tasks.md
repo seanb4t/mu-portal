@@ -55,8 +55,8 @@
 
 ## 7. Integration
 
-- [ ] 7.1 From a clean clone, run the commands on the Contributing build page in order. Make sure that the build, the tests and the site build all pass on macOS.
-- [ ] 7.2 Run `openspec validate project-foundation --strict`. Make sure that it passes.
+- [x] 7.1 From a clean clone, run the commands on the Contributing build page in order. Make sure that the build, the tests and the site build all pass on macOS.
+- [x] 7.2 Run `openspec validate project-foundation --strict`. Make sure that it passes.
 
 ## Workflow follow-up
 
