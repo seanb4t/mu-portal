@@ -1,0 +1,7 @@
+# Sent one line at a time after the server goes quiet.
+connect One
+look
+WHO
+think Plain text, then UTF-8: café ✓ 日本 😀
+think [ansi(hr,Red)] [ansi(#ff8800,Orange)]
+QUIT
