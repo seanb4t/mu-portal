@@ -84,7 +84,7 @@ The function reports a violation for each of these:
 
 The allowlist in the test file is the single source of the rule. The table in Decision 1 and the LikeC4 crate layout view are copies of it.
 
-Two kinds of test use the function:
+Three kinds of test use the function:
 
 - One test runs it on the real workspace and expects no violation.
 - One test runs it on a fixture workspace that declares all five allowed edges and expects no violation.
@@ -139,7 +139,7 @@ This change adds `renovate.json`, because the Renovate onboarding is still open.
 
 ### 5. Spikes are a second workspace
 
-`spikes/` has its own `Cargo.toml` workspace. Its member list is the glob `*`, so each spike crate is a member with no edit to that file. The root workspace lists `spikes` under `exclude`. A spike is one crate in `spikes/`, named after its GitHub issue. A spike can depend on a crate in `crates/` by path. No crate in `crates/` can depend on a spike. The test from Decision 2 enforces that rule.
+`spikes/` has its own `Cargo.toml` workspace. Its member list is the glob `*`, so each spike crate is a member with no edit to that file. It excludes `target`, because the glob also matches the build directory after the first build. The root workspace lists `spikes` under `exclude`. A spike is one crate in `spikes/`, named after its GitHub issue. A spike can depend on a crate in `crates/` by path. No crate in `crates/` can depend on a spike. The test from Decision 2 enforces that rule.
 
 The rules for a spike are written once, on the Contributing page for spikes. `spikes/README.md` is a short pointer to that page.
 

@@ -117,7 +117,7 @@ fn help_is_not_a_verb() {
 
 #[test]
 fn verb_names_are_exact() {
-    for near in ["s", "serv", "servers", "Server", "CLIENT", "versio"] {
+    for near in ["", "s", "serv", "servers", "Server", "CLIENT", "versio"] {
         assert_usage_error(&mu(&[near]), near);
     }
 }

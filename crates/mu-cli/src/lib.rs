@@ -50,7 +50,12 @@ pub fn run(cli: Cli) -> ExitCode {
         Some(Verb::Client(args)) => client(args),
         Some(Verb::Server) => not_implemented("server"),
         Some(Verb::Version) => {
-            print!("{}", Cli::command().render_long_version());
+            // A closed stdout is not an error of the verb, as it is not for `--version`.
+            let _ = write!(
+                std::io::stdout(),
+                "{}",
+                Cli::command().render_long_version()
+            );
             ExitCode::SUCCESS
         }
     }
