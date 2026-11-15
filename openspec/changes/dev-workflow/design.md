@@ -60,6 +60,14 @@ The table in this file is a working copy for the review. After the archive, `mis
 
 Enforcement: three configuration tests from Decision 7. `ci_steps_are_tasks` fails for a CI step that is not a task. `cargo_tasks_use_locked` fails for a Cargo command in a task that has no `--locked`, with `cargo fmt` as the one exception. `check_runs_every_task` fails if `check` does not depend on each of the five tasks.
 
+Task 1.1 read the `mise` documentation:
+
+- `mise` reads `rust-toolchain.toml` only with the setting `idiomatic_version_file_enable_tools = ["rust"]`. `mise.toml` sets it, so `mise.toml` lists no Rust release. Page: `docs/lang/rust.md`.
+- A task lists other tasks in `depends`. `mise` runs them in parallel, and their order in the list sets no sequence. Pages: `docs/tasks/index.md` and `docs/tasks/task-configuration.md`.
+- A task runs in the directory of `mise.toml`. The `dir` key changes it, and `docs:check` uses `dir = "docs"`. Page: `docs/tasks/task-configuration.md`.
+
+`cargo-nextest` is not in the `mise` registry, so `mise.toml` names it with the `cargo:` backend.
+
 Alternative: `just` or `make`. Rejected, because neither installs tools, and the owner already uses `mise` on every machine.
 
 Alternative: `cargo xtask`. Rejected, because the docs site checks are not Rust, and a task runner in Rust must build before the first check runs.
@@ -93,9 +101,18 @@ The hook before a commit stays fast, because a slow hook is a hook that people s
 
 Renovate updates `mise.toml` and `hk.pkl` through two managers. Task 6.4 adds a Renovate group for `hk`, so one pull request moves all of them and the test stays green.
 
+Task 2.1 read the `hk` documentation and the output of `hk builtins`:
+
+- The builtins are `taplo` for TOML and `check_merge_conflict` for conflict markers. `taplo` needs the `taplo` tool, which `mise.toml` now pins. `check_merge_conflict` needs no tool. Page: `docs/builtins.md`.
+- The `yq` builtin is a formatter, and its check fails for a file that it would rewrite. The YAML step is therefore a custom step that only parses each file with `yq`. `mise.toml` pins `yq`.
+- A custom step has a `glob` and a `check` command. The command can be `mise run <task>`. Page: `docs/configuration.md`.
+- The two import lines of `hk.pkl` hold the release in the download tag and after `hk@`. `hk` needs no separate `pkl` program. Page: `docs/pirate/pkl_introduction.md`.
+
+`hk install --mise` installs the hooks through the git configuration, not through files in `.git/hooks`.
+
 A contributor installs the hooks once with `hk install --mise`. The hooks are opt-in for each clone, as every git hook is. CI is the gate that nobody can skip.
 
-The `.husky` directory in the clone of the owner is not tracked. Task 2.3 removes it and lets `hk install` set the hook path.
+The `.husky` directory in the clone of the owner is not tracked. Task 2.3 removed it and unset `core.hooksPath`. That clone also held hook files from Husky 4 in `.git/hooks`, written in 2022. They became active again without the hook path, so task 2.3 moved them to `.git/hooks.husky-v4.bak`.
 
 Alternative: `lefthook` or `pre-commit`. Both can call `mise` tasks too. `hk` is the choice of the owner, and it comes from the author of `mise`, so the two tools change together.
 
@@ -148,6 +165,8 @@ The `lint` task turns each warning into an error, so these levels fail the build
 
 A higher priority overrides a lower one. A later lint that must be weaker than the `all` group therefore needs a priority above 10.
 
+One detail differs from the skill's example. The two rustc groups, `future_incompatible` and `nonstandard_style`, have the priority -1. Clippy refuses a lint group with the same priority as a single lint, and `unsafe_code` and `missing_docs` are single lints at the default priority.
+
 ### 6. CI
 
 `.github/workflows/ci.yml` has four jobs:
@@ -197,6 +216,8 @@ The rule `workflow_tests_are_ignored` stops a loop. A workflow test without the 
 
 The tests read `ci.yml` with a YAML reader and the ruleset with a JSON reader. They do not search those files as text. The release search is the one exception, because a release can appear in any string.
 
+Task 6.1 chose `serde-saphyr` as the YAML reader, with `serde_json` for the value type and for the ruleset. `serde_yaml` is no longer maintained.
+
 **Workflow tests** in `dev_workflow.rs` are slow. Each one copies the tracked files into a temporary directory, adds one defect, and runs a task there. Three details of the copy:
 
 - The copy is a git repository, because `hk` reads the file list from git.
@@ -223,6 +244,10 @@ The license test adds a crate to the workspace of its copy. A new member changes
 | No tool release in the workflow | `ci_states_no_tool_release` |
 | The ruleset names the aggregate check | `ruleset_requires_ci_ok` |
 | The aggregate check covers every job | `ci_ok_covers_every_job` |
+
+The nine workflow tests take about 18 seconds on the machine of the owner.
+
+Each defect test is not vacuous for two reasons. The test `check_passes_on_clean_tree` runs the same task on a copy with no defect, and it passes. Each defect test also asserts which task failed, or which text the output holds. The plan asked for a run of each test with its defect removed. That run is not possible by an edit of the shared helper, because the copy holds the edited helper too, and every copy then fails the format check.
 
 Alternative: a Python test under `uv`. Rejected, because it adds two tools for one file and leaves the test pattern of the repository.
 
