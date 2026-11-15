@@ -861,11 +861,28 @@ fn design_rules_name_spikes_page(config: &str) -> bool {
         })
 }
 
+/// True if the page has the level-two heading `Using a spike` that the design rule names.
+fn has_using_a_spike(page: &str) -> bool {
+    page.lines()
+        .any(|line| line.trim_end() == "## Using a spike")
+}
+
 #[test]
 fn design_rules_cover_spikes() {
     assert!(design_rules_name_spikes_page(&repo_file(
         "openspec/config.yaml"
     )));
+    assert!(has_using_a_spike(&repo_file(
+        "docs/src/content/docs/contributing/spikes.md"
+    )));
+    assert!(
+        !has_using_a_spike("## Using spikes\n"),
+        "another heading breaks the rule"
+    );
+    assert!(
+        !has_using_a_spike("Using a spike\n"),
+        "plain text breaks the rule"
+    );
 
     let config = |rules: &[&str]| {
         let list: String = rules

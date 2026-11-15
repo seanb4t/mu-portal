@@ -4,7 +4,6 @@
 //! function over text, so a test can also pass it a text that breaks the rule.
 
 use std::fmt::Write as _;
-use std::fs;
 
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
@@ -48,7 +47,16 @@ impl Page {
                     source.push_str(&code);
                     source.push('`');
                 }
-                Event::SoftBreak | Event::HardBreak | Event::End(_) => source.push('\n'),
+                Event::SoftBreak
+                | Event::HardBreak
+                | Event::End(
+                    TagEnd::Paragraph
+                    | TagEnd::Item
+                    | TagEnd::List(_)
+                    | TagEnd::CodeBlock
+                    | TagEnd::BlockQuote(_)
+                    | TagEnd::TableCell,
+                ) => source.push('\n'),
                 _ => {}
             }
         }
@@ -120,27 +128,36 @@ fn source_names_issue_and_pull_request(page: &Page) -> bool {
     names_numbered(&page.source, "issue") && names_numbered(&page.source, "pull request")
 }
 
+/// The path of each spike crate under `spikes/`, from the directory of its manifest.
 fn real_crates() -> Vec<String> {
     let metadata =
         support::workspace_metadata(&support::repo_root().join("spikes").join("Cargo.toml"));
     metadata
         .workspace_packages()
         .iter()
-        .filter_map(|package| package.manifest_path.parent()?.file_name())
-        .map(str::to_owned)
+        .filter_map(|package| {
+            let directory = package.manifest_path.parent()?;
+            Some(
+                directory
+                    .strip_prefix(&metadata.workspace_root)
+                    .ok()?
+                    .to_string(),
+            )
+        })
         .collect()
 }
 
 fn real_pages() -> Vec<Page> {
-    let dir = support::repo_root().join(DECISIONS);
-    let mut pages: Vec<Page> = fs::read_dir(&dir)
-        .expect("the decisions directory is readable")
-        .map(|entry| entry.expect("the entry is readable").path())
+    let root = support::repo_root();
+    let mut pages: Vec<Page> = support::files_under(&root.join(DECISIONS))
+        .into_iter()
         .filter(|path| path.extension().is_some_and(|ext| ext == "md"))
         .map(|path| {
+            let relative = path
+                .strip_prefix(root)
+                .expect("the page is in the repository");
             let name = path.file_name().unwrap().to_string_lossy().into_owned();
-            let text = fs::read_to_string(&path).expect("the page is readable");
-            Page::parse(&name, &text)
+            Page::parse(&name, &support::repo_file(&relative.to_string_lossy()))
         })
         .collect();
     pages.sort_by(|a, b| a.name.cmp(&b.name));
@@ -190,6 +207,7 @@ fn spike_crates_have_decision_pages() {
         "The code is spikes/pane.",
         "The code is in\nspikes/pane.",
         "`spikes/pane`",
+        "- The code is spikes/pane\n- The data is elsewhere.",
     ] {
         assert!(
             crates_without_one_page(&one, &[record(source)]).is_empty(),
@@ -210,6 +228,10 @@ fn spike_crates_have_decision_pages() {
         (
             "a dotted name",
             vec![record("The code is `spikes/pane.v2`.")],
+        ),
+        (
+            "a name in emphasis",
+            vec![record("The code is *spikes/pane*x.")],
         ),
         (
             "a longer parent",

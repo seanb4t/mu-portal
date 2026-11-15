@@ -41,7 +41,7 @@ Non-Goals:
 | Each Not tested item becomes a task or a non-goal | The plan review |
 | The change copies the recorded evidence into its own crate as test data | The plan review, from the tasks of the change |
 | Production code does not copy spike code | Review alone |
-| Production code includes no spike file at build time | The test `spike_include_fails` in `workspace_boundary.rs` |
+| Production code includes no spike file at build time | The test `real_workspace_has_no_violation` in `workspace_boundary.rs`. The test `spike_include_fails` tests the check itself |
 | Production code reads no spike file at run time, for example with `fs::read`, or includes one through a macro with a new name | Review alone. The spikes page says so beside the boundary test |
 | Delete the crate after the last change that cites its page is archived | Review alone, at the archive of that change |
 
@@ -51,11 +51,11 @@ Non-Goals:
 - The include check is a boundary rule, so it goes in `workspace_boundary.rs` as the new violations `Violation::SpikeInclude { file }` and `Violation::Untokenized { file }`. The workspace page lists it with the other failures of the boundary test.
 - `design_rules_cover_spikes` reads tool configuration, so it goes in `repo_config.rs` and reads `rules.design` with its `yaml()` helper.
 - `repo_file` moves from `repo_config.rs` to `support/mod.rs`, so both `repo_config.rs` and `spike_records.rs` call it.
-- Two more helpers go in `support/mod.rs`. `workspace_metadata(manifest)` runs `cargo_metadata` with `no_deps()`, and `violations()` in `workspace_boundary.rs` and `spike_records.rs` both call it. `files_under(dir)` lists the files under a directory, and `copy_tree` and the include check both call it.
+- Two more helpers go in `support/mod.rs`. `workspace_metadata(manifest)` runs `cargo_metadata` with `no_deps()`, and `violations()` in `workspace_boundary.rs` and `spike_records.rs` both call it. `files_under(dir)` lists the files under a directory, and `copy_tree`, the include check and the page list of `spike_records.rs` call it. `spike_records.rs` reads each page with `repo_file`.
 
 ### How the test finds a spike crate
 
-The test calls `workspace_metadata` on `spikes/Cargo.toml` and takes `workspace_packages()`. That is the member set that Cargo reads, so the test copies no glob from `spikes/Cargo.toml`. The crate path is the directory of each package manifest, as in `workspace_boundary.rs`, so a package name that differs from its directory does not matter.
+The test calls `workspace_metadata` on `spikes/Cargo.toml` and takes `workspace_packages()`. That is the member set that Cargo reads, so the test copies no glob from `spikes/Cargo.toml`. The crate path is the directory of each package manifest, relative to the spikes workspace root, as in `workspace_boundary.rs`. A crate at `spikes/a/b` is then sought as `spikes/a/b`, so a package name that differs from its directory does not matter.
 
 ### How the test reads a decision page
 
@@ -63,7 +63,7 @@ The test reads each page with `pulldown-cmark`, a Markdown parser, and does not 
 
 - The headings are the level-two headings of the page, compared by their text.
 - The Source section is the text of the events after the heading Source, up to the next level-two heading or the end of the page.
-- A crate name counts only as a whole path, or as a path under it. Before `spikes/` the character must be a backtick, a space, a line end or the start of the text. After `spikes/<crate>` it must be a backtick, a slash, a space, a line end or the end of the text. A full stop also ends the path, but only if the sentence ends there. The Source text has a line end at each line break and at the end of each block, so a name at the start of a wrapped line counts. So `spikes/telnet-engine/transcripts` names `telnet-engine`, and `spikes/telnet-engine-v2` and `spikes/telnet-engine.v2` do not.
+- A crate name counts only as a whole path, or as a path under it. Before `spikes/` the character must be a backtick, a space, a line end or the start of the text. After `spikes/<crate>` it must be a backtick, a slash, a space, a line end or the end of the text. A full stop also ends the path, but only if the sentence ends there. The Source text has a line end at each line break and at the end of each block, for example a paragraph or a list item, but not at the end of emphasis or a link, so a name at the start of a wrapped line counts. So `spikes/telnet-engine/transcripts` names `telnet-engine`, and `spikes/telnet-engine-v2` and `spikes/telnet-engine.v2` do not.
 
 ### How the boundary test finds an include of a spike file
 
@@ -86,7 +86,7 @@ The rule in `openspec/config.yaml` names the part "Using a spike" of the spikes 
 ## Risks / Trade-offs
 
 - [A later spike needs another heading, for example "Results"] → The spikes page says that the results go under Reason, as the three pages do now. If a spike needs another section, its change also changes the requirement.
-- [`proc-macro2`, `syn` and `pulldown-cmark` are new dev-dependencies] → `proc-macro2` and `syn` are already in `Cargo.lock` through other crates, and `syn` takes only its `derive` feature, which holds the literal types. All three enter through `[workspace.dependencies]` like any other crate, and `cargo deny` checks their licenses in the `check` task.
+- [`proc-macro2`, `syn` and `pulldown-cmark` are new dev-dependencies] → `proc-macro2` and `syn` are already in `Cargo.lock` through other crates, and `syn` takes no feature, because its literal types and `IdentExt` need none. All three enter through `[workspace.dependencies]` like any other crate, and `cargo deny` checks their licenses in the `check` task.
 - [`cargo_metadata` on the spikes workspace is slower than a directory list] → The call uses `no_deps()`, so Cargo resolves no dependency.
 
 ## Migration Plan

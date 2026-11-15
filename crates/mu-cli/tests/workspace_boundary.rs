@@ -250,18 +250,32 @@ fn holds_ident(tokens: TokenStream, name: &str) -> bool {
 }
 
 /// The values of all string literals in `tokens`, at any depth, joined in order.
+/// `concat!` joins string and char literals and the text of `stringify!`, so this does too.
 fn joined_strings(tokens: TokenStream) -> String {
-    tokens
-        .into_iter()
-        .map(|tree| match tree {
-            TokenTree::Literal(literal) => match syn::Lit::new(literal) {
-                syn::Lit::Str(string) => string.value(),
-                _ => String::new(),
+    let trees: Vec<TokenTree> = tokens.into_iter().collect();
+    let mut joined = String::new();
+    let mut index = 0;
+    while let Some(tree) = trees.get(index) {
+        match tree {
+            TokenTree::Literal(literal) => match syn::Lit::new(literal.clone()) {
+                syn::Lit::Str(string) => joined.push_str(&string.value()),
+                syn::Lit::Char(char) => joined.push(char.value()),
+                _ => {}
             },
-            TokenTree::Group(group) => joined_strings(group.stream()),
-            _ => String::new(),
-        })
-        .collect()
+            TokenTree::Ident(ident)
+                if ident == "stringify" && is_punct(trees.get(index + 1), '!') =>
+            {
+                if let Some(TokenTree::Group(group)) = trees.get(index + 2) {
+                    joined.push_str(&group.stream().to_string());
+                    index += 2;
+                }
+            }
+            TokenTree::Group(group) => joined.push_str(&joined_strings(group.stream())),
+            _ => {}
+        }
+        index += 1;
+    }
+    joined
 }
 
 /// True if a path component of `path` is `spikes`.
@@ -483,6 +497,8 @@ fn spike_include_fails() {
         "#[path = r\"../../spikes/x.rs\"]\nmod x;",
         "const A: &str = include_str!(\"../../\\x73pikes/x\");",
         "const A: &str = r#include_str!(\"../../spikes/x\");",
+        "const A: &str = include_str!(concat!(\"../../spike\", 's', \"/x\"));",
+        "const A: &str = include_str!(concat!(\"../../\", stringify!(spikes), \"/x\"));",
     ];
     for text in failing {
         assert_eq!(
