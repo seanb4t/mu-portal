@@ -46,4 +46,4 @@ A fixed reservation of two cells for each risky grapheme, with no probe, stopped
 
 ## Source
 
-The spike of issue 8. The code is `spikes/char-width`, and the reports of each terminal are in `spikes/char-width/results`. The command `cargo run --release -p char-width -- probe` in `spikes/` runs the probe in the current terminal.
+The spike of issue 8, merged in pull request 30. The code is `spikes/char-width`, and the reports of each terminal are in `spikes/char-width/results`. The command `cargo run --release -p char-width -- probe` in `spikes/` runs the probe in the current terminal.

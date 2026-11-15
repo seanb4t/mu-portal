@@ -84,7 +84,7 @@ These quirks go into the world-type profiles:
 
 ## Source
 
-The spike of issue 7. The code is `spikes/telnet-engine`, and the transcripts are in `spikes/telnet-engine/transcripts`. The Dockerfiles of the servers are in `spikes/telnet-engine/servers`.
+The spike of issue 7, merged in pull request 32. Its review found that the spike read the TTABLE prefix of RFC 2066 with no space. The commit `fix(spikes): read the RFC 2066 TTABLE prefix with its space` fixed it. The code is `spikes/telnet-engine`, and the transcripts are in `spikes/telnet-engine/transcripts`. The Dockerfiles of the servers are in `spikes/telnet-engine/servers`.
 
 To record a family again, build and run its image, then run the recorder in `spikes/`:
 
