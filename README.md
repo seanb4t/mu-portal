@@ -8,13 +8,7 @@ The project is at its foundation. The `mu` binary builds and has three verbs. Th
 
 ## Contributing
 
-The documentation site is in `docs/`. Start with these pages:
-
-- [Build and test](docs/src/content/docs/contributing/build.md)
-- [Workspace layout](docs/src/content/docs/contributing/workspace.md)
-- [Spikes](docs/src/content/docs/contributing/spikes.md)
-- [Diagram policy](docs/src/content/docs/contributing/diagrams.md)
-- [OpenSpec and the GitHub Project](docs/src/content/docs/contributing/openspec.md)
+See [CONTRIBUTING.md](CONTRIBUTING.md). The documentation site is in `docs/`.
 
 ## License
 

@@ -37,7 +37,8 @@ The test fails for each of these:
 - a dependency on a crate in `spikes/`
 - a path dependency on a crate outside the workspace
 - a crate with a license that is not Apache-2.0
-- a crate that does not inherit the workspace lints
+- a crate that does not inherit the lints, the minimum Rust release or the `publish` field from the workspace
+- a workspace that does not state `publish = false`
 - a third-party dependency that does not come from `[workspace.dependencies]`
 
 ## How to change the crates
