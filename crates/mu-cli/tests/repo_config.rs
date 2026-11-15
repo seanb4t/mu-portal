@@ -1,12 +1,13 @@
 //! Rules of the repository configuration: the CI workflow, the `mise` tasks,
-//! the `hk` pins and the ruleset of `main`. Each rule is a function over the
+//! the `hk` pins, the ruleset of `main` and the plan rules in `openspec/config.yaml`. Each rule is a function over the
 //! text of the files, so a test can also pass it a text that breaks the rule.
 
 use serde_json::Value as Json;
 use std::collections::BTreeSet;
-use std::fs;
 
 mod support;
+
+use support::repo_file;
 
 const CHECK_TASKS: [&str; 5] = ["fmt", "lint", "test", "doc", "deny"];
 const AGGREGATE_JOB: &str = "ci-ok";
@@ -14,11 +15,6 @@ const AGGREGATE_ACTION: &str = "re-actors/alls-green@";
 const PULL_REQUEST_JOB: &str = "commits";
 const PULL_REQUEST_RULE: &str =
     r#"{"type": "pull_request", "parameters": {"allowed_merge_methods": ["squash"]}}"#;
-
-fn repo_file(relative: &str) -> String {
-    let path = support::repo_root().join(relative);
-    fs::read_to_string(&path).unwrap_or_else(|error| panic!("{relative} is readable: {error}"))
-}
 
 fn yaml(text: &str) -> Json {
     serde_saphyr::from_str(text).expect("the text is YAML")
@@ -850,4 +846,76 @@ fn ci_ok_covers_every_job() {
         none
     );
     assert_eq!(aggregate_gaps("jobs:\n  rust: {}\n"), ["no ci-ok job"]);
+}
+
+/// True if one rule of `rules.design` names both a change that builds on a spike and the part
+/// "Using a spike" of the spikes page.
+fn design_rules_name_spikes_page(config: &str) -> bool {
+    yaml(config)["rules"]["design"]
+        .as_array()
+        .is_some_and(|rules| {
+            rules
+                .iter()
+                .filter_map(Json::as_str)
+                .any(|rule| rule.contains("builds on a spike") && rule.contains("Using a spike"))
+        })
+}
+
+/// True if the page has the level-two heading `Using a spike` that the design rule names.
+fn has_using_a_spike(page: &str) -> bool {
+    support::h2_headings(page)
+        .iter()
+        .any(|heading| heading == "Using a spike")
+}
+
+#[test]
+fn design_rules_cover_spikes() {
+    assert!(design_rules_name_spikes_page(&repo_file(
+        "openspec/config.yaml"
+    )));
+    assert!(has_using_a_spike(&repo_file(
+        "docs/src/content/docs/contributing/spikes.md"
+    )));
+    assert!(
+        !has_using_a_spike("## Using spikes\n"),
+        "another heading breaks the rule"
+    );
+    assert!(
+        !has_using_a_spike("Using a spike\n"),
+        "plain text breaks the rule"
+    );
+    assert!(
+        !has_using_a_spike("```\n## Using a spike\n```\n"),
+        "a heading in a code block breaks the rule"
+    );
+
+    let config = |rules: &[&str]| {
+        let list: String = rules
+            .iter()
+            .map(|rule| ["    - ", rule, "\n"].concat())
+            .collect();
+        format!("rules:\n  design:\n{list}")
+    };
+    assert!(design_rules_name_spikes_page(&config(&[
+        "If the change builds on a spike, follow Using a spike"
+    ])));
+    for (case, rules) in [
+        (
+            "two rules",
+            vec![
+                "If the change builds on a spike, read it",
+                "Follow Using a spike",
+            ],
+        ),
+        (
+            "no Using a spike",
+            vec!["If the change builds on a spike, read its page"],
+        ),
+        ("no builds on a spike", vec!["Follow Using a spike"]),
+    ] {
+        assert!(
+            !design_rules_name_spikes_page(&config(&rules)),
+            "{case} breaks the rule"
+        );
+    }
 }

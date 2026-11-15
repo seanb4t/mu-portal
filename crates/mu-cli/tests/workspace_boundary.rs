@@ -4,8 +4,10 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
-use cargo_metadata::MetadataCommand;
+use proc_macro2::{Delimiter, TokenStream, TokenTree};
+use syn::ext::IdentExt as _;
 
 use support::TreeCopy;
 
@@ -20,6 +22,8 @@ const ALLOWED_EDGES: &[(&str, &[&str])] = &[
 ];
 
 const LICENSE: &str = "Apache-2.0";
+
+const INCLUDE_MACROS: [&str; 3] = ["include", "include_str", "include_bytes"];
 
 /// The package fields that each member takes from `[workspace.package]`.
 const INHERITED_PACKAGE_FIELDS: [&str; 2] = ["rust-version", "publish"];
@@ -38,6 +42,12 @@ enum Violation {
     SpikeDependency {
         from: String,
         to: String,
+    },
+    SpikeInclude {
+        file: String,
+    },
+    Untokenized {
+        file: String,
     },
     OutsidePathDependency {
         from: String,
@@ -67,11 +77,7 @@ fn allowed(from: &str) -> Option<&'static [&'static str]> {
 
 /// Returns each rule that the workspace at `root` breaks.
 fn violations(root: &Path) -> Vec<Violation> {
-    let metadata = MetadataCommand::new()
-        .manifest_path(root.join("Cargo.toml"))
-        .no_deps()
-        .exec()
-        .expect("cargo metadata reads the workspace");
+    let metadata = support::workspace_metadata(&root.join("Cargo.toml"));
     let spikes = metadata.workspace_root.join("spikes");
     let members = metadata.workspace_packages();
     let member_directories: Vec<_> = members
@@ -169,7 +175,126 @@ fn violations(root: &Path) -> Vec<Violation> {
             }
         }
     }
+    found.extend(include_violations(
+        metadata.workspace_root.as_std_path(),
+        member_directories
+            .iter()
+            .map(|directory| directory.as_std_path()),
+    ));
     found
+}
+
+/// The include rule for each Rust file in the member directories, with paths from `root`.
+fn include_violations<'a>(
+    root: &Path,
+    directories: impl Iterator<Item = &'a Path>,
+) -> Vec<Violation> {
+    directories
+        .flat_map(support::files_under)
+        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
+        .filter_map(|path| {
+            let file = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .display()
+                .to_string();
+            let text = fs::read_to_string(&path).expect("the Rust file is readable");
+            include_violation(file, &text)
+        })
+        .collect()
+}
+
+/// The include rule for one Rust file: no include macro and no `path` attribute reaches `spikes/`.
+fn include_violation(file: String, text: &str) -> Option<Violation> {
+    match TokenStream::from_str(text) {
+        Err(_) => Some(Violation::Untokenized { file }),
+        Ok(tokens) => reaches_spikes(tokens).then_some(Violation::SpikeInclude { file }),
+    }
+}
+
+/// True if an include macro or a `path` attribute in `tokens`, at any depth, names a spike path.
+fn reaches_spikes(tokens: TokenStream) -> bool {
+    let trees: Vec<TokenTree> = tokens.into_iter().collect();
+    trees.iter().enumerate().any(|(index, tree)| match tree {
+        TokenTree::Ident(ident) if INCLUDE_MACROS.contains(&ident.unraw().to_string().as_str()) => {
+            is_punct(trees.get(index + 1), '!')
+                && matches!(trees.get(index + 2), Some(TokenTree::Group(group))
+                    if is_spike_path(&joined_strings(group.stream())))
+        }
+        TokenTree::Punct(punct) if punct.as_char() == '#' => {
+            let next = if is_punct(trees.get(index + 1), '!') {
+                index + 2
+            } else {
+                index + 1
+            };
+            matches!(trees.get(next), Some(TokenTree::Group(group))
+                if group.delimiter() == Delimiter::Bracket
+                    && path_value(group.stream()).is_some_and(|path| is_spike_path(&path)))
+        }
+        TokenTree::Group(group) => reaches_spikes(group.stream()),
+        _ => false,
+    })
+}
+
+fn is_punct(tree: Option<&TokenTree>, c: char) -> bool {
+    matches!(tree, Some(TokenTree::Punct(punct)) if punct.as_char() == c)
+}
+
+/// The value of `path = "..."` in an attribute, at any depth, for example inside `cfg_attr`.
+fn path_value(tokens: TokenStream) -> Option<String> {
+    let trees: Vec<TokenTree> = tokens.into_iter().collect();
+    trees
+        .iter()
+        .enumerate()
+        .find_map(|(index, tree)| match tree {
+            TokenTree::Ident(ident) if ident == "path" && is_punct(trees.get(index + 1), '=') => {
+                match trees.get(index + 2) {
+                    Some(TokenTree::Literal(literal)) => match syn::Lit::new(literal.clone()) {
+                        syn::Lit::Str(string) => Some(string.value()),
+                        _ => None,
+                    },
+                    _ => None,
+                }
+            }
+            TokenTree::Group(group) => path_value(group.stream()),
+            _ => None,
+        })
+}
+
+/// The values of all string literals in `tokens`, at any depth, joined in order.
+/// `concat!` joins string and char literals and the text of `stringify!`, so this does too.
+fn joined_strings(tokens: TokenStream) -> String {
+    let trees: Vec<TokenTree> = tokens.into_iter().collect();
+    let mut joined = String::new();
+    let mut index = 0;
+    while let Some(tree) = trees.get(index) {
+        match tree {
+            TokenTree::Literal(literal) => match syn::Lit::new(literal.clone()) {
+                syn::Lit::Str(string) => joined.push_str(&string.value()),
+                syn::Lit::Char(char) => joined.push(char.value()),
+                _ => {}
+            },
+            TokenTree::Ident(ident)
+                if ident == "stringify" && is_punct(trees.get(index + 1), '!') =>
+            {
+                if let Some(TokenTree::Group(group)) = trees.get(index + 2) {
+                    joined.push_str(&group.stream().to_string());
+                    index += 2;
+                }
+            }
+            TokenTree::Group(group) => joined.push_str(&joined_strings(group.stream())),
+            _ => {}
+        }
+        index += 1;
+    }
+    joined
+}
+
+/// True if a path component of `path` is `spikes`.
+fn is_spike_path(path: &str) -> bool {
+    Path::new(path)
+        .components()
+        .any(|component| component.as_os_str() == "spikes")
 }
 
 fn read_manifest(path: &Path) -> toml::Table {
@@ -359,6 +484,66 @@ fn proto_dependency_fails() {
         "\n[dependencies]\nmu-core = { path = \"../mu-core\" }\n",
     );
     assert_eq!(violations(fixture.root()), forbidden("mu-proto", "mu-core"));
+}
+
+/// The fixture with `text` as the library of `mu-core`.
+fn with_core_source(text: &str) -> TreeCopy {
+    fixture().append_file(Path::new("crates/mu-core/src/lib.rs"), text)
+}
+
+#[test]
+fn spike_include_fails() {
+    let failing = [
+        "const A: &str = include!(\"../../spikes/x.rs\");",
+        "const A: &str = include_str!(\"../../spikes/x.txt\");",
+        "const A: &[u8] = include_bytes!(\"../../spikes/x.bin\");",
+        "#[path = \"../../spikes/x.rs\"]\nmod x;",
+        "#[cfg_attr(all(), path = \"../../spikes/x.rs\")]\nmod x;",
+        "#[cfg_attr(all(), cfg_attr(all(), path = \"../../spikes/x.rs\"))]\nmod x;",
+        "#[cfg_attr(feature = \"a\", path = \"spikes/x.rs\")]\nmod x;",
+        "mod x {\n    #![path = \"../../spikes\"]\n}",
+        "const A: &str = include_str! (\"../../spikes/x.txt\");",
+        "const A: &str = include_str!(\n    \"../../spikes/x.txt\"\n);",
+        "const A: &str = include_str!(concat!(\"../../spi\", \"kes/x\"));",
+        "#[path = \"../../spikes\"]\nmod x {}",
+        "fn f() { assert_eq!(include_str!(\"../../spikes/x\"), \"\"); }",
+        "const A: &str = include_str!(r#\"../../spikes/x\"#);",
+        "#[path = r\"../../spikes/x.rs\"]\nmod x;",
+        "const A: &str = include_str!(\"../../\\x73pikes/x\");",
+        "const A: &str = r#include_str!(\"../../spikes/x\");",
+        "const A: &str = include_str!(concat!(\"../../spike\", 's', \"/x\"));",
+        "const A: &str = include_str!(concat!(\"../../\", stringify!(spikes), \"/x\"));",
+    ];
+    for text in failing {
+        assert_eq!(
+            violations(with_core_source(text).root()),
+            vec![Violation::SpikeInclude {
+                file: "crates/mu-core/src/lib.rs".to_owned(),
+            }],
+            "{text:?} breaks the rule"
+        );
+    }
+
+    let passing = [
+        "const A: &str = \"spikes/\";",
+        "const A: &str = include_str!(\"data.txt\");\nconst B: &str = \"spikes/\";",
+        "const A: &str = include_str!(\"../data/x.txt\");",
+        "const A: &str = include_str!(\"../oldspikes/x.txt\");",
+    ];
+    for text in passing {
+        assert_eq!(
+            violations(with_core_source(text).root()),
+            vec![],
+            "{text:?} passes"
+        );
+    }
+
+    assert_eq!(
+        violations(with_core_source("const A: &str = \"open;").root()),
+        vec![Violation::Untokenized {
+            file: "crates/mu-core/src/lib.rs".to_owned(),
+        }]
+    );
 }
 
 #[test]

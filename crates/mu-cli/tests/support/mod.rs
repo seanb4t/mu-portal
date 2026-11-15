@@ -23,16 +23,99 @@ pub fn stderr(output: &Output) -> String {
     String::from_utf8(output.stderr.clone()).expect("stderr is UTF-8")
 }
 
+/// The text of a file of the repository, by its path from the repository root.
+pub fn repo_file(relative: &str) -> String {
+    let path = repo_root().join(relative);
+    fs::read_to_string(&path).unwrap_or_else(|error| panic!("{relative} is readable: {error}"))
+}
+
+/// Each level-two heading of a Markdown page with the text of its section, read with a Markdown
+/// parser. Code spans keep their backticks. A line break and the end of each block give a line end.
+pub fn h2_sections(text: &str) -> Vec<(String, String)> {
+    use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+
+    let mut sections: Vec<(String, String)> = Vec::new();
+    let mut heading: Option<String> = None;
+    for event in Parser::new_ext(text, Options::ENABLE_YAML_STYLE_METADATA_BLOCKS) {
+        match event {
+            Event::Start(Tag::Heading {
+                level: HeadingLevel::H2,
+                ..
+            }) => heading = Some(String::new()),
+            Event::End(TagEnd::Heading(HeadingLevel::H2)) => {
+                sections.push((heading.take().unwrap_or_default(), String::new()));
+            }
+            Event::Text(text) | Event::Code(text) if heading.is_some() => {
+                heading.get_or_insert_default().push_str(&text);
+            }
+            event => {
+                let Some((_, body)) = sections.last_mut() else {
+                    continue;
+                };
+                match event {
+                    Event::Text(text) => body.push_str(&text),
+                    Event::Code(code) => {
+                        body.push('`');
+                        body.push_str(&code);
+                        body.push('`');
+                    }
+                    Event::SoftBreak
+                    | Event::HardBreak
+                    | Event::End(
+                        TagEnd::Paragraph
+                        | TagEnd::Item
+                        | TagEnd::List(_)
+                        | TagEnd::CodeBlock
+                        | TagEnd::BlockQuote(_)
+                        | TagEnd::TableCell
+                        | TagEnd::Heading(_)
+                        | TagEnd::HtmlBlock,
+                    ) => body.push('\n'),
+                    _ => {}
+                }
+            }
+        }
+    }
+    sections
+}
+
+/// The text of each level-two heading of a Markdown page, in order.
+pub fn h2_headings(text: &str) -> Vec<String> {
+    h2_sections(text)
+        .into_iter()
+        .map(|(heading, _)| heading)
+        .collect()
+}
+
+/// The metadata of the Cargo workspace of `manifest`, without its dependencies.
+pub fn workspace_metadata(manifest: &Path) -> cargo_metadata::Metadata {
+    cargo_metadata::MetadataCommand::new()
+        .manifest_path(manifest)
+        .no_deps()
+        .exec()
+        .expect("cargo metadata reads the workspace")
+}
+
+/// Every file under `dir`, at any depth.
+pub fn files_under(dir: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    for entry in fs::read_dir(dir).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_type().unwrap().is_dir() {
+            files.extend(files_under(&entry.path()));
+        } else {
+            files.push(entry.path());
+        }
+    }
+    files
+}
+
 fn copy_tree(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap();
-    for entry in fs::read_dir(from).unwrap() {
-        let entry = entry.unwrap();
-        let target = to.join(entry.file_name());
-        if entry.file_type().unwrap().is_dir() {
-            copy_tree(&entry.path(), &target);
-        } else {
-            fs::copy(entry.path(), target).unwrap();
-        }
+    for file in files_under(from) {
+        let target = to.join(file.strip_prefix(from).unwrap());
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::copy(&file, target).unwrap();
     }
 }
 
