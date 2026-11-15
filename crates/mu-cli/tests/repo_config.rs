@@ -1,0 +1,485 @@
+//! Rules of the repository configuration: the CI workflow, the `mise` tasks,
+//! the `hk` pins and the ruleset of `main`. Each rule is a function over the
+//! text of the files, so a test can also pass it a text that breaks the rule.
+
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::Path;
+
+use serde_json::Value as Json;
+
+const CHECK_TASKS: [&str; 5] = ["fmt", "lint", "test", "doc", "deny"];
+const AGGREGATE_JOB: &str = "ci-ok";
+
+fn repo_file(relative: &str) -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(relative);
+    fs::read_to_string(&path).unwrap_or_else(|error| panic!("{relative} is readable: {error}"))
+}
+
+fn yaml(text: &str) -> Json {
+    serde_saphyr::from_str(text).expect("the text is YAML")
+}
+
+fn toml(text: &str) -> toml::Table {
+    text.parse().expect("the text is TOML")
+}
+
+/// The jobs of a workflow, each with its id.
+fn jobs(workflow: &Json) -> Vec<(&String, &Json)> {
+    workflow["jobs"]
+        .as_object()
+        .expect("the workflow has jobs")
+        .iter()
+        .collect()
+}
+
+/// The names of the tasks that a `mise.toml` defines.
+fn task_names(mise: &toml::Table) -> BTreeSet<String> {
+    mise.get("tasks")
+        .and_then(toml::Value::as_table)
+        .into_iter()
+        .flat_map(toml::Table::keys)
+        .cloned()
+        .collect()
+}
+
+/// Each `run` step of the workflow that is not exactly `mise run <task>` with a defined task.
+fn steps_that_are_not_tasks(workflow: &str, mise: &str) -> Vec<String> {
+    let tasks = task_names(&toml(mise));
+    let workflow = yaml(workflow);
+    let mut found = Vec::new();
+    for (_, job) in jobs(&workflow) {
+        let steps = job["steps"].as_array().into_iter().flatten();
+        for run in steps.filter_map(|step| step["run"].as_str()) {
+            let task = run.strip_prefix("mise run ");
+            if !task.is_some_and(|task| tasks.contains(task)) {
+                found.push(run.to_owned());
+            }
+        }
+    }
+    found
+}
+
+/// The release of each tool in a `mise.toml`, and the Rust channel of a `rust-toolchain.toml`.
+fn tool_releases(mise: &str, rust_toolchain: &str) -> Vec<String> {
+    let mise = toml(mise);
+    let tools = mise.get("tools").and_then(toml::Value::as_table);
+    let mut releases: Vec<String> = tools
+        .into_iter()
+        .flatten()
+        .filter_map(|(_, tool)| {
+            // A tool is a release string or a table with a `version` key.
+            tool.as_str()
+                .or_else(|| tool.get("version").and_then(toml::Value::as_str))
+        })
+        .map(str::to_owned)
+        .collect();
+    let channel = toml(rust_toolchain)
+        .get("toolchain")
+        .and_then(|toolchain| toolchain.get("channel"))
+        .and_then(toml::Value::as_str)
+        .map(str::to_owned);
+    releases.extend(channel);
+    releases
+}
+
+/// True if `text` holds `release` as a whole number, not as a part of a longer one.
+fn holds_release(text: &str, release: &str) -> bool {
+    let bytes = text.as_bytes();
+    text.match_indices(release).any(|(start, _)| {
+        let end = start + release.len();
+        let digit_at = |index: usize| bytes.get(index).is_some_and(u8::is_ascii_digit);
+        let before = start > 0 && (digit_at(start - 1) || bytes[start - 1] == b'.');
+        let after = digit_at(end) || (bytes.get(end) == Some(&b'.') && digit_at(end + 1));
+        !before && !after
+    })
+}
+
+/// Each release that the workflow states, in the full form or with no patch number.
+fn releases_in_workflow(workflow: &str, releases: &[String]) -> Vec<String> {
+    assert!(!releases.is_empty(), "the pin files hold a release");
+    releases
+        .iter()
+        .filter(|release| {
+            let parts: Vec<&str> = release.split('.').collect();
+            let short = (parts.len() == 3).then(|| parts[..2].join("."));
+            holds_release(workflow, release)
+                || short.is_some_and(|short| holds_release(workflow, &short))
+        })
+        .cloned()
+        .collect()
+}
+
+/// The commands of a task: `run` is a string or a list, and a string can join commands.
+fn task_commands(task: &toml::Value) -> Vec<String> {
+    let run = task.get("run");
+    let lines: Vec<&str> = match run {
+        Some(toml::Value::String(line)) => vec![line.as_str()],
+        Some(toml::Value::Array(lines)) => lines.iter().filter_map(toml::Value::as_str).collect(),
+        _ => Vec::new(),
+    };
+    lines
+        .into_iter()
+        .flat_map(|line| line.split(['\n', ';']))
+        .flat_map(|line| line.split("&&"))
+        .map(|command| command.trim().to_owned())
+        .filter(|command| !command.is_empty())
+        .collect()
+}
+
+/// Each Cargo command in a task that has no `--locked`. `cargo fmt` resolves nothing.
+fn cargo_commands_without_locked(mise: &str) -> Vec<String> {
+    let mise = toml(mise);
+    let tasks = mise.get("tasks").and_then(toml::Value::as_table);
+    tasks
+        .into_iter()
+        .flatten()
+        .flat_map(|(_, task)| task_commands(task))
+        .filter(|command| command.starts_with("cargo ") && !command.starts_with("cargo fmt"))
+        .filter(|command| !command.split_whitespace().any(|word| word == "--locked"))
+        .collect()
+}
+
+/// Each of the five check tasks that the `check` task does not depend on.
+fn tasks_missing_from_check(mise: &str) -> Vec<&'static str> {
+    let mise = toml(mise);
+    let depends: Vec<&str> = mise
+        .get("tasks")
+        .and_then(|tasks| tasks.get("check"))
+        .and_then(|check| check.get("depends"))
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(toml::Value::as_str)
+        .collect();
+    CHECK_TASKS
+        .into_iter()
+        .filter(|task| !depends.contains(task))
+        .collect()
+}
+
+/// The `hk` releases in the import lines of an `hk.pkl`: the download tag and the package release.
+fn hk_pins(hk_pkl: &str) -> Vec<String> {
+    hk_pkl
+        .lines()
+        .filter(|line| line.contains("package://github.com/jdx/hk/"))
+        .flat_map(|line| {
+            let tag = line
+                .split_once("/download/v")
+                .and_then(|(_, rest)| rest.split_once('/'))
+                .map(|(tag, _)| tag);
+            let package = line
+                .split_once("/hk@")
+                .and_then(|(_, rest)| rest.split_once('#'))
+                .map(|(package, _)| package);
+            [tag, package].map(|pin| pin.unwrap_or("").to_owned())
+        })
+        .collect()
+}
+
+/// True if the two import lines of `hk.pkl` hold four releases equal to the `hk` release of `mise.toml`.
+fn hk_pins_match(hk_pkl: &str, mise: &str) -> bool {
+    let mise = toml(mise);
+    let Some(release) = mise
+        .get("tools")
+        .and_then(|tools| tools.get("hk"))
+        .and_then(toml::Value::as_str)
+    else {
+        return false;
+    };
+    let pins = hk_pins(hk_pkl);
+    pins.len() == 4 && pins.iter().all(|pin| pin == release)
+}
+
+/// The name of each test in a Rust source text that has no `#[ignore]` attribute.
+fn tests_without_ignore(source: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut attributes: Vec<&str> = Vec::new();
+    for line in source.lines().map(str::trim) {
+        if line.starts_with("#[") {
+            attributes.push(line);
+        } else if let Some(rest) = line.strip_prefix("fn ") {
+            let is_test = attributes.contains(&"#[test]");
+            let is_ignored = attributes
+                .iter()
+                .any(|attribute| attribute.starts_with("#[ignore"));
+            if is_test && !is_ignored {
+                found.push(rest.split('(').next().unwrap_or(rest).to_owned());
+            }
+            attributes.clear();
+        } else if !line.is_empty() && !line.starts_with("//") {
+            attributes.clear();
+        }
+    }
+    found
+}
+
+/// The name that GitHub reports for a job: its `name`, or its id.
+fn reported_name(workflow: &Json, id: &str) -> Option<String> {
+    let job = workflow["jobs"].get(id)?;
+    Some(job["name"].as_str().unwrap_or(id).to_owned())
+}
+
+/// True if the ruleset requires exactly one check, the reported name of the aggregate job.
+fn ruleset_requires_aggregate(ruleset: &str, workflow: &str) -> bool {
+    let ruleset: Json = serde_json::from_str(ruleset).expect("the ruleset is JSON");
+    let contexts: Vec<&str> = ruleset["rules"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|rule| rule["type"] == "required_status_checks")
+        .filter_map(|rule| rule["parameters"]["required_status_checks"].as_array())
+        .flatten()
+        .filter_map(|check| check["context"].as_str())
+        .collect();
+    let name = reported_name(&yaml(workflow), AGGREGATE_JOB);
+    contexts.len() == 1 && name.as_deref() == Some(contexts[0])
+}
+
+/// What keeps the aggregate job from covering every job: a job it does not need, or no `always()`.
+fn aggregate_gaps(workflow: &str) -> Vec<String> {
+    let workflow = yaml(workflow);
+    let Some(aggregate) = workflow["jobs"].get(AGGREGATE_JOB) else {
+        return vec![format!("no {AGGREGATE_JOB} job")];
+    };
+    let needs: Vec<&str> = match &aggregate["needs"] {
+        Json::String(need) => vec![need.as_str()],
+        Json::Array(needs) => needs.iter().filter_map(Json::as_str).collect(),
+        _ => Vec::new(),
+    };
+    let mut gaps: Vec<String> = jobs(&workflow)
+        .into_iter()
+        .map(|(id, _)| id.as_str())
+        .filter(|id| *id != AGGREGATE_JOB && !needs.contains(id))
+        .map(|id| format!("{AGGREGATE_JOB} does not need {id}"))
+        .collect();
+    if aggregate["if"].as_str() != Some("always()") {
+        gaps.push(format!("{AGGREGATE_JOB} has no always() condition"));
+    }
+    gaps
+}
+
+const MISE: &str = r#"
+[tools]
+hk = "2.12.0"
+node = { version = "26.13.1" }
+
+[tasks.check]
+depends = ["fmt", "lint", "test", "doc", "deny"]
+
+[tasks.test]
+run = "cargo nextest run --locked"
+"#;
+
+fn workflow_with_step(run: &str) -> String {
+    format!("jobs:\n  rust:\n    steps:\n      - run: {run}\n")
+}
+
+#[test]
+fn ci_steps_are_tasks() {
+    let none: Vec<String> = Vec::new();
+    assert_eq!(
+        steps_that_are_not_tasks(
+            &repo_file(".github/workflows/ci.yml"),
+            &repo_file("mise.toml")
+        ),
+        none
+    );
+    assert_eq!(
+        steps_that_are_not_tasks(&workflow_with_step("mise run check"), MISE),
+        none
+    );
+
+    for run in [
+        "mise run check && cargo test",
+        "mise run check;cargo test",
+        "cargo test --workspace",
+        "mise run absent",
+        "mise exec -- hk check --all",
+    ] {
+        assert_eq!(
+            steps_that_are_not_tasks(&workflow_with_step(&format!("{run:?}")), MISE),
+            [run],
+            "one command: {run}"
+        );
+    }
+    let two_lines = "jobs:\n  rust:\n    steps:\n      - run: |\n          mise run check\n          cargo test\n";
+    assert_eq!(steps_that_are_not_tasks(two_lines, MISE).len(), 1);
+}
+
+#[test]
+fn ci_states_no_tool_release() {
+    let none: Vec<String> = Vec::new();
+    let releases = tool_releases(&repo_file("mise.toml"), &repo_file("rust-toolchain.toml"));
+    assert_eq!(
+        releases_in_workflow(&repo_file(".github/workflows/ci.yml"), &releases),
+        none
+    );
+
+    // The string form and the table form of a tool are both found, and the Rust channel too.
+    let toolchain = "[toolchain]\nchannel = \"1.90.0\"\n";
+    let found = tool_releases(MISE, toolchain);
+    assert_eq!(found, ["2.12.0", "26.13.1", "1.90.0"]);
+
+    assert_eq!(
+        releases_in_workflow("node-version: 26.13.1", &found),
+        ["26.13.1"]
+    );
+    assert_eq!(
+        releases_in_workflow("node-version: 26.13", &found),
+        ["26.13.1"]
+    );
+    assert_eq!(releases_in_workflow("toolchain: 1.90", &found), ["1.90.0"]);
+    // A release inside a longer number is another number.
+    assert_eq!(releases_in_workflow("uses: x@abc # v12.12.0", &found), none);
+    assert_eq!(releases_in_workflow("uses: x@abc # v2.12.1", &found), none);
+    assert_eq!(
+        releases_in_workflow("uses: x@abc # v3.2.12.0", &found),
+        none
+    );
+    assert_eq!(
+        releases_in_workflow("uses: x@abc # v2.12.0.1", &found),
+        none
+    );
+}
+
+#[test]
+#[should_panic(expected = "the pin files hold a release")]
+fn ci_states_no_tool_release_needs_a_release() {
+    let _ = releases_in_workflow("jobs: {}", &[]);
+}
+
+#[test]
+fn cargo_tasks_use_locked() {
+    let none: Vec<String> = Vec::new();
+    assert_eq!(cargo_commands_without_locked(&repo_file("mise.toml")), none);
+    assert_eq!(
+        cargo_commands_without_locked("[tasks.fmt]\nrun = \"cargo fmt --check\"\n"),
+        none
+    );
+
+    let second = ["cargo test --workspace --doc"];
+    let one_string =
+        "[tasks.test]\nrun = \"cargo nextest run --locked && cargo test --workspace --doc\"\n";
+    assert_eq!(cargo_commands_without_locked(one_string), second);
+    let list =
+        "[tasks.test]\nrun = [\"cargo nextest run --locked\", \"cargo test --workspace --doc\"]\n";
+    assert_eq!(cargo_commands_without_locked(list), second);
+}
+
+#[test]
+fn check_runs_every_task() {
+    let none: Vec<&str> = Vec::new();
+    assert_eq!(tasks_missing_from_check(&repo_file("mise.toml")), none);
+
+    let four = "[tasks.check]\ndepends = [\"fmt\", \"lint\", \"test\", \"doc\"]\n";
+    assert_eq!(tasks_missing_from_check(four), ["deny"]);
+    assert_eq!(
+        tasks_missing_from_check("[tasks.check]\nrun = \"true\"\n"),
+        CHECK_TASKS
+    );
+}
+
+#[test]
+fn hk_pins_match_mise() {
+    assert!(hk_pins_match(&repo_file("hk.pkl"), &repo_file("mise.toml")));
+
+    let line = |keyword: &str, tag: &str, package: &str, file: &str| {
+        format!(
+            "{keyword} \"package://github.com/jdx/hk/releases/download/v{tag}/hk@{package}#/{file}.pkl\"\n"
+        )
+    };
+    let pkl = |tag: &str, package: &str| {
+        line("amends", tag, package, "Config") + &line("import", tag, package, "Builtins")
+    };
+    assert!(hk_pins_match(&pkl("2.12.0", "2.12.0"), MISE));
+    // The tag and the package release differ inside one line.
+    assert!(!hk_pins_match(&pkl("2.12.0", "2.11.0"), MISE));
+    // The four releases agree, but not with mise.toml.
+    assert!(!hk_pins_match(&pkl("2.13.0", "2.13.0"), MISE));
+    // One import line is absent.
+    assert!(!hk_pins_match(
+        &line("amends", "2.12.0", "2.12.0", "Config"),
+        MISE
+    ));
+}
+
+#[test]
+fn workflow_tests_are_ignored() {
+    let none: Vec<String> = Vec::new();
+    assert_eq!(
+        tests_without_ignore(&repo_file("crates/mu-cli/tests/dev_workflow.rs")),
+        none
+    );
+
+    let second_is_not_ignored = "
+#[test]
+#[ignore = \"slow\"]
+fn first() {}
+
+#[test]
+fn second() {}
+
+fn helper() {}
+";
+    assert_eq!(tests_without_ignore(second_is_not_ignored), ["second"]);
+}
+
+#[test]
+fn ruleset_requires_ci_ok() {
+    assert!(ruleset_requires_aggregate(
+        &repo_file(".github/rulesets/main.json"),
+        &repo_file(".github/workflows/ci.yml")
+    ));
+
+    let ruleset = |contexts: &[&str]| {
+        let checks: Vec<String> = contexts
+            .iter()
+            .map(|context| format!("{{\"context\": \"{context}\"}}"))
+            .collect();
+        format!(
+            "{{\"rules\": [{{\"type\": \"required_status_checks\", \"parameters\": {{\"required_status_checks\": [{}]}}}}]}}",
+            checks.join(", ")
+        )
+    };
+    let workflow = "jobs:\n  ci-ok:\n    steps: []\n";
+    assert!(ruleset_requires_aggregate(&ruleset(&["ci-ok"]), workflow));
+    // GitHub reports the name of a job, not its id.
+    let renamed = "jobs:\n  ci-ok:\n    name: all green\n    steps: []\n";
+    assert!(!ruleset_requires_aggregate(&ruleset(&["ci-ok"]), renamed));
+    assert!(ruleset_requires_aggregate(
+        &ruleset(&["all green"]),
+        renamed
+    ));
+    assert!(!ruleset_requires_aggregate(&ruleset(&[]), workflow));
+    assert!(!ruleset_requires_aggregate(
+        &ruleset(&["ci-ok", "docs"]),
+        workflow
+    ));
+    assert!(!ruleset_requires_aggregate("{\"rules\": []}", workflow));
+}
+
+#[test]
+fn ci_ok_covers_every_job() {
+    let none: Vec<String> = Vec::new();
+    assert_eq!(aggregate_gaps(&repo_file(".github/workflows/ci.yml")), none);
+
+    let workflow = |needs: &str, condition: &str| {
+        format!("jobs:\n  rust: {{}}\n  docs: {{}}\n  ci-ok:\n    needs: {needs}\n{condition}")
+    };
+    assert_eq!(
+        aggregate_gaps(&workflow("[rust, docs]", "    if: always()\n")),
+        none
+    );
+    assert_eq!(
+        aggregate_gaps(&workflow("[rust]", "    if: always()\n")),
+        ["ci-ok does not need docs"]
+    );
+    assert_eq!(
+        aggregate_gaps(&workflow("[rust, docs]", "")),
+        ["ci-ok has no always() condition"]
+    );
+    assert_eq!(aggregate_gaps("jobs:\n  rust: {}\n"), ["no ci-ok job"]);
+}

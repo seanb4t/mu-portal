@@ -1,0 +1,61 @@
+# Tools and tasks of the project. This file is the only list of both.
+# `mise install` gets the tools. `mise run check` runs every check.
+
+[settings]
+# The Rust release comes from rust-toolchain.toml, which rustup also reads.
+idiomatic_version_file_enable_tools = ["rust"]
+
+[tools]
+actionlint = "1.7.12"
+cargo-deny = "0.20.2"
+"cargo:cargo-nextest" = "0.9.152"
+hk = "2.12.0"
+node = "26.13.1"
+pnpm = "12.18.0"
+taplo = "0.10.0"
+yq = "4.54.3"
+
+[tasks.fmt]
+description = "Check the Rust formatting"
+run = "cargo fmt --check"
+
+[tasks.lint]
+description = "Run Clippy with warnings as errors"
+run = "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings"
+
+[tasks."lint:actions"]
+description = "Check the GitHub Actions workflows"
+run = "actionlint"
+
+[tasks.test]
+description = "Run the tests and the doc tests"
+run = [
+  "cargo nextest run --workspace --locked",
+  "cargo test --workspace --doc --locked",
+]
+
+[tasks.doc]
+description = "Build the API documentation with warnings as errors"
+env = { RUSTDOCFLAGS = "-D warnings" }
+run = "cargo doc --workspace --no-deps --locked"
+
+[tasks.deny]
+description = "Check the dependency policy"
+run = "cargo deny --locked check"
+
+[tasks.check]
+description = "Run every check of the Rust workspace"
+depends = ["fmt", "lint", "test", "doc", "deny"]
+
+[tasks."docs:check"]
+description = "Check the architecture model and build the documentation site"
+dir = "docs"
+run = ["pnpm install --frozen-lockfile", "pnpm model:check", "pnpm build"]
+
+[tasks."hooks:check"]
+description = "Run the hook checks on every file"
+run = "hk check --all"
+
+[tasks."test:workflow"]
+description = "Run the slow tests of the developer workflow"
+run = "cargo nextest run -p mu-cli --test dev_workflow --run-ignored only --locked"

@@ -22,28 +22,36 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # rustup reads the release and the components from rust-toolchain.toml.
-      - run: rustup toolchain install
-      - run: cargo fmt --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: mise run check
+      - if: runner.os == 'Linux'
+        run: mise run test:workflow
 
   docs:
     name: docs
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: docs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+      - run: mise run docs:check
+
+  hooks:
+    name: hooks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+      - run: mise run hooks:check
+
+  # The one check that the ruleset of main requires. `always()` keeps it from
+  # being skipped after a failed job: a skipped required check counts as a pass.
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [rust, docs, hooks]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
         with:
-          package_json_file: docs/package.json
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: docs/.node-version
-          cache: pnpm
-          cache-dependency-path: docs/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm model:check
-      - run: pnpm build
+          jobs: ${{ toJSON(needs) }}

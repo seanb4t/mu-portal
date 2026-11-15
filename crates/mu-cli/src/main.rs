@@ -1,3 +1,5 @@
+//! The `mu` binary.
+
 use std::process::ExitCode;
 
 use clap::Parser;

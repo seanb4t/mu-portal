@@ -1,4 +1,32 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:best-practices"]
+  "extends": [
+    "config:best-practices"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The hk package pins in hk.pkl",
+      "managerFilePatterns": [
+        "/^hk\\.pkl$/"
+      ],
+      "matchStrings": [
+        "jdx/hk/releases/download/v(?<currentValue>[0-9.]+)/hk@",
+        "/hk@(?<currentValue>[0-9.]+)#"
+      ],
+      "depNameTemplate": "jdx/hk",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "hk.pkl and mise.toml pin the same hk release, and a test compares them",
+      "groupName": "hk",
+      "matchPackageNames": [
+        "hk",
+        "jdx/hk"
+      ]
+    }
+  ]
 }
