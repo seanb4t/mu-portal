@@ -1,7 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:best-practices"
+    "config:best-practices",
+    "customManagers:dockerfileVersions"
   ],
   "customManagers": [
     {
@@ -17,6 +18,20 @@
       "depNameTemplate": "jdx/hk",
       "datasourceTemplate": "github-releases",
       "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "description": "The RhostMUSH commit of the telnet spike, which follows the master branch because the repository has no tags",
+      "managerFilePatterns": [
+        "/^spikes/telnet-engine/servers/rhostmush/Dockerfile$/"
+      ],
+      "matchStrings": [
+        "ARG RHOSTMUSH_VERSION=(?<currentDigest>[0-9a-f]{40})"
+      ],
+      "depNameTemplate": "RhostMUSH/trunk",
+      "packageNameTemplate": "https://github.com/RhostMUSH/trunk",
+      "currentValueTemplate": "master",
+      "datasourceTemplate": "git-refs"
     }
   ],
   "packageRules": [
