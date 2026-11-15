@@ -1,0 +1,36 @@
+# Dependency policy of the workspace, read by `cargo deny check`.
+
+[graph]
+# A crate behind a feature that is off by default is in the policy too.
+all-features = true
+
+[advisories]
+unmaintained = "all"
+unsound = "all"
+ignore = []
+
+[licenses]
+# A crate with a license outside this list fails, a crate with
+# `publish = false` included: `[licenses.private] ignore` stays off.
+allow = [
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "MIT",
+  "Unicode-3.0",
+  "Zlib",
+]
+confidence-threshold = 0.93
+# The list is a policy. It can hold a license that no crate uses yet.
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# A dependency between two workspace crates is a path with no version.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

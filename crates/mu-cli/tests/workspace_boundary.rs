@@ -6,7 +6,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use cargo_metadata::MetadataCommand;
-use tempfile::TempDir;
+
+use support::TreeCopy;
+
+mod support;
 
 /// Each member and the members that it can depend on.
 const ALLOWED_EDGES: &[(&str, &[&str])] = &[
@@ -17,6 +20,9 @@ const ALLOWED_EDGES: &[(&str, &[&str])] = &[
 ];
 
 const LICENSE: &str = "Apache-2.0";
+
+/// The package fields that each member takes from `[workspace.package]`.
+const INHERITED_PACKAGE_FIELDS: [&str; 2] = ["rust-version", "publish"];
 
 const DEPENDENCY_TABLES: [&str; 3] = ["dependencies", "dev-dependencies", "build-dependencies"];
 
@@ -41,9 +47,11 @@ enum Violation {
         member: String,
         found: Option<String>,
     },
-    LintsNotInherited {
+    NotInherited {
         member: String,
+        field: &'static str,
     },
+    PublishableWorkspace,
     DependencyNotFromWorkspace {
         member: String,
         key: String,
@@ -75,6 +83,9 @@ fn violations(root: &Path) -> Vec<Violation> {
     };
 
     let mut found = Vec::new();
+    if !workspace_is_private(metadata.workspace_root.as_std_path()) {
+        found.push(Violation::PublishableWorkspace);
+    }
     for package in &members {
         let member = package.name.to_string();
         let allowed_targets = allowed(&member);
@@ -122,19 +133,21 @@ fn violations(root: &Path) -> Vec<Violation> {
             });
         }
 
-        let manifest: toml::Table = fs::read_to_string(&package.manifest_path)
-            .expect("the manifest is readable")
-            .parse()
-            .expect("the manifest is TOML");
-        let inherits_lints = manifest
-            .get("lints")
-            .and_then(|lints| lints.get("workspace"))
-            .and_then(toml::Value::as_bool)
-            .unwrap_or(false);
-        if !inherits_lints {
-            found.push(Violation::LintsNotInherited {
-                member: member.clone(),
-            });
+        let manifest = read_manifest(package.manifest_path.as_std_path());
+        // The manifest decides: the metadata cannot tell an inherited value from a local one.
+        let package = manifest.get("package");
+        let fields = std::iter::once(("lints", manifest.get("lints"))).chain(
+            INHERITED_PACKAGE_FIELDS
+                .into_iter()
+                .map(|field| (field, package.and_then(|package| package.get(field)))),
+        );
+        for (field, value) in fields {
+            if !inherits_from_workspace(value) {
+                found.push(Violation::NotInherited {
+                    member: member.clone(),
+                    field,
+                });
+            }
         }
 
         for (key, entry) in dependency_entries(&manifest) {
@@ -159,6 +172,31 @@ fn violations(root: &Path) -> Vec<Violation> {
     found
 }
 
+fn read_manifest(path: &Path) -> toml::Table {
+    fs::read_to_string(path)
+        .expect("the manifest is readable")
+        .parse()
+        .expect("the manifest is TOML")
+}
+
+/// True for a value of the form `{ workspace = true }`.
+fn inherits_from_workspace(value: Option<&toml::Value>) -> bool {
+    value
+        .and_then(|value| value.get("workspace"))
+        .and_then(toml::Value::as_bool)
+        .unwrap_or(false)
+}
+
+/// True if `[workspace.package]` holds `publish = false`. A list of registries is not private.
+fn workspace_is_private(root: &Path) -> bool {
+    read_manifest(&root.join("Cargo.toml"))
+        .get("workspace")
+        .and_then(|workspace| workspace.get("package"))
+        .and_then(|package| package.get("publish"))
+        .and_then(toml::Value::as_bool)
+        == Some(false)
+}
+
 /// Every entry of every dependency table of a manifest, target tables included.
 fn dependency_entries(manifest: &toml::Table) -> Vec<(&String, &toml::Value)> {
     let mut scopes = vec![manifest];
@@ -173,86 +211,25 @@ fn dependency_entries(manifest: &toml::Table) -> Vec<(&String, &toml::Value)> {
         .collect()
 }
 
-fn real_workspace() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
 fn base_fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/base")
 }
 
-fn copy_tree(from: &Path, to: &Path) {
-    fs::create_dir_all(to).unwrap();
-    for entry in fs::read_dir(from).unwrap() {
-        let entry = entry.unwrap();
-        let target = to.join(entry.file_name());
-        if entry.file_type().unwrap().is_dir() {
-            copy_tree(&entry.path(), &target);
-        } else {
-            fs::copy(entry.path(), target).unwrap();
-        }
-    }
-}
-
-/// A copy of the base fixture that a test can break in one place.
-struct Fixture {
-    dir: TempDir,
-}
-
-impl Fixture {
-    fn new() -> Self {
-        let dir = TempDir::new().unwrap();
-        copy_tree(&base_fixture(), dir.path());
-        Self { dir }
-    }
-
-    fn manifest(&self, member: &str) -> PathBuf {
-        self.dir
-            .path()
-            .join("crates")
-            .join(member)
-            .join("Cargo.toml")
-    }
-
-    /// Adds text to the end of a manifest. The last table of each base
-    /// manifest is `[dependencies]`, except in `mu-proto`, which has none.
-    fn append(self, member: &str, text: &str) -> Self {
-        let path = self.manifest(member);
-        let mut manifest = fs::read_to_string(&path).unwrap();
-        manifest.push_str(text);
-        fs::write(path, manifest).unwrap();
-        self
-    }
-
-    fn replace(self, member: &str, from: &str, to: &str) -> Self {
-        let path = self.manifest(member);
-        let manifest = fs::read_to_string(&path).unwrap();
-        assert!(manifest.contains(from), "the base manifest holds {from:?}");
-        fs::write(path, manifest.replace(from, to)).unwrap();
-        self
-    }
-
-    /// Adds a crate at `relative` with the manifest of a correct member.
-    fn add_crate(self, relative: &str, name: &str) -> Self {
-        let root = self.dir.path().join(relative);
-        fs::create_dir_all(root.join("src")).unwrap();
-        fs::write(root.join("src/lib.rs"), "").unwrap();
-        let manifest = fs::read_to_string(self.manifest("mu-proto"))
-            .unwrap()
-            .replace("mu-proto", name);
-        fs::write(root.join("Cargo.toml"), manifest).unwrap();
-        self
-    }
-
-    fn violations(&self) -> Vec<Violation> {
-        violations(self.dir.path())
-    }
+fn fixture() -> TreeCopy {
+    TreeCopy::of_dir(&base_fixture())
 }
 
 fn forbidden(from: &str, to: &str) -> Vec<Violation> {
     vec![Violation::ForbiddenEdge {
         from: from.to_owned(),
         to: to.to_owned(),
+    }]
+}
+
+fn not_inherited(member: &str, field: &'static str) -> Vec<Violation> {
+    vec![Violation::NotInherited {
+        member: member.to_owned(),
+        field,
     }]
 }
 
@@ -265,7 +242,7 @@ fn not_from_workspace(member: &str, key: &str) -> Vec<Violation> {
 
 #[test]
 fn real_workspace_has_no_violation() {
-    assert_eq!(violations(&real_workspace()), vec![]);
+    assert_eq!(violations(support::repo_root()), vec![]);
 }
 
 #[test]
@@ -275,110 +252,122 @@ fn allowed_edges_have_no_violation() {
 
 #[test]
 fn optional_tui_to_core_fails() {
-    let fixture = Fixture::new().append(
+    let fixture = fixture().append(
         "mu-tui",
         "mu-core = { path = \"../mu-core\", optional = true }\n",
     );
-    assert_eq!(fixture.violations(), forbidden("mu-tui", "mu-core"));
+    assert_eq!(violations(fixture.root()), forbidden("mu-tui", "mu-core"));
 }
 
 #[test]
 fn build_tui_to_core_fails() {
-    let fixture = Fixture::new().append(
+    let fixture = fixture().append(
         "mu-tui",
         "\n[build-dependencies]\nmu-core = { path = \"../mu-core\" }\n",
     );
-    assert_eq!(fixture.violations(), forbidden("mu-tui", "mu-core"));
+    assert_eq!(violations(fixture.root()), forbidden("mu-tui", "mu-core"));
 }
 
 #[test]
 fn dev_tui_to_core_fails() {
-    let fixture = Fixture::new().append(
+    let fixture = fixture().append(
         "mu-tui",
         "\n[dev-dependencies]\nmu-core = { path = \"../mu-core\" }\n",
     );
-    assert_eq!(fixture.violations(), forbidden("mu-tui", "mu-core"));
+    assert_eq!(violations(fixture.root()), forbidden("mu-tui", "mu-core"));
 }
 
 #[test]
 fn renamed_tui_to_core_fails() {
-    let fixture = Fixture::new().append(
+    let fixture = fixture().append(
         "mu-tui",
         "engine = { path = \"../mu-core\", package = \"mu-core\" }\n",
     );
-    assert_eq!(fixture.violations(), forbidden("mu-tui", "mu-core"));
+    assert_eq!(violations(fixture.root()), forbidden("mu-tui", "mu-core"));
 }
 
 #[test]
 fn target_tui_to_core_fails() {
-    let fixture = Fixture::new().append(
+    let fixture = fixture().append(
         "mu-tui",
         "\n[target.'cfg(unix)'.dependencies]\nmu-core = { path = \"../mu-core\" }\n",
     );
-    assert_eq!(fixture.violations(), forbidden("mu-tui", "mu-core"));
+    assert_eq!(violations(fixture.root()), forbidden("mu-tui", "mu-core"));
 }
 
 #[test]
 fn git_tui_to_core_fails() {
-    let fixture = Fixture::new().append(
+    let fixture = fixture().append(
         "mu-tui",
         "mu-core = { git = \"https://example.invalid/mu.git\" }\n",
     );
-    assert_eq!(fixture.violations(), forbidden("mu-tui", "mu-core"));
+    assert_eq!(violations(fixture.root()), forbidden("mu-tui", "mu-core"));
 }
 
 #[test]
 fn local_dependency_version_fails() {
-    let fixture = Fixture::new().append("mu-tui", "anyhow = \"1\"\n");
-    assert_eq!(fixture.violations(), not_from_workspace("mu-tui", "anyhow"));
+    let fixture = fixture().append("mu-tui", "anyhow = \"1\"\n");
+    assert_eq!(
+        violations(fixture.root()),
+        not_from_workspace("mu-tui", "anyhow")
+    );
 }
 
 #[test]
 fn local_dev_dependency_version_fails() {
-    let fixture = Fixture::new().append("mu-tui", "\n[dev-dependencies]\nanyhow = \"1\"\n");
-    assert_eq!(fixture.violations(), not_from_workspace("mu-tui", "anyhow"));
+    let fixture = fixture().append("mu-tui", "\n[dev-dependencies]\nanyhow = \"1\"\n");
+    assert_eq!(
+        violations(fixture.root()),
+        not_from_workspace("mu-tui", "anyhow")
+    );
 }
 
 #[test]
 fn local_target_dependency_version_fails() {
-    let fixture = Fixture::new().append(
+    let fixture = fixture().append(
         "mu-tui",
         "\n[target.'cfg(unix)'.build-dependencies]\nanyhow = \"1\"\n",
     );
-    assert_eq!(fixture.violations(), not_from_workspace("mu-tui", "anyhow"));
+    assert_eq!(
+        violations(fixture.root()),
+        not_from_workspace("mu-tui", "anyhow")
+    );
 }
 
 #[test]
 fn renamed_local_dependency_version_fails() {
-    let fixture = Fixture::new().append(
+    let fixture = fixture().append(
         "mu-tui",
         "errors = { package = \"anyhow\", version = \"1\" }\n",
     );
-    assert_eq!(fixture.violations(), not_from_workspace("mu-tui", "errors"));
+    assert_eq!(
+        violations(fixture.root()),
+        not_from_workspace("mu-tui", "errors")
+    );
 }
 
 #[test]
 fn core_to_tui_fails() {
-    let fixture = Fixture::new().append("mu-core", "mu-tui = { path = \"../mu-tui\" }\n");
-    assert_eq!(fixture.violations(), forbidden("mu-core", "mu-tui"));
+    let fixture = fixture().append("mu-core", "mu-tui = { path = \"../mu-tui\" }\n");
+    assert_eq!(violations(fixture.root()), forbidden("mu-core", "mu-tui"));
 }
 
 #[test]
 fn proto_dependency_fails() {
-    let fixture = Fixture::new().append(
+    let fixture = fixture().append(
         "mu-proto",
         "\n[dependencies]\nmu-core = { path = \"../mu-core\" }\n",
     );
-    assert_eq!(fixture.violations(), forbidden("mu-proto", "mu-core"));
+    assert_eq!(violations(fixture.root()), forbidden("mu-proto", "mu-core"));
 }
 
 #[test]
 fn spike_dependency_fails() {
-    let fixture = Fixture::new()
+    let fixture = fixture()
         .add_crate("spikes/probe", "probe")
         .append("mu-core", "probe = { path = \"../../spikes/probe\" }\n");
     assert_eq!(
-        fixture.violations(),
+        violations(fixture.root()),
         vec![Violation::SpikeDependency {
             from: "mu-core".to_owned(),
             to: "probe".to_owned(),
@@ -388,11 +377,11 @@ fn spike_dependency_fails() {
 
 #[test]
 fn spike_named_like_member_fails() {
-    let fixture = Fixture::new()
+    let fixture = fixture()
         .add_crate("spikes/mu-core", "mu-core")
         .append("mu-tui", "mu-core = { path = \"../../spikes/mu-core\" }\n");
     assert_eq!(
-        fixture.violations(),
+        violations(fixture.root()),
         vec![Violation::SpikeDependency {
             from: "mu-tui".to_owned(),
             to: "mu-core".to_owned(),
@@ -402,11 +391,11 @@ fn spike_named_like_member_fails() {
 
 #[test]
 fn outside_path_dependency_fails() {
-    let fixture = Fixture::new()
+    let fixture = fixture()
         .add_crate("outside/helper", "helper")
         .append("mu-core", "helper = { path = \"../../outside/helper\" }\n");
     assert_eq!(
-        fixture.violations(),
+        violations(fixture.root()),
         vec![Violation::OutsidePathDependency {
             from: "mu-core".to_owned(),
             to: "helper".to_owned(),
@@ -416,9 +405,9 @@ fn outside_path_dependency_fails() {
 
 #[test]
 fn unlisted_member_fails() {
-    let fixture = Fixture::new().add_crate("crates/mu-extra", "mu-extra");
+    let fixture = fixture().add_crate("crates/mu-extra", "mu-extra");
     assert_eq!(
-        fixture.violations(),
+        violations(fixture.root()),
         vec![Violation::UnlistedMember {
             member: "mu-extra".to_owned(),
         }]
@@ -427,9 +416,9 @@ fn unlisted_member_fails() {
 
 #[test]
 fn missing_license_fails() {
-    let fixture = Fixture::new().replace("mu-core", "license.workspace = true\n", "");
+    let fixture = fixture().replace("mu-core", "license.workspace = true\n", "");
     assert_eq!(
-        fixture.violations(),
+        violations(fixture.root()),
         vec![Violation::License {
             member: "mu-core".to_owned(),
             found: None,
@@ -439,13 +428,13 @@ fn missing_license_fails() {
 
 #[test]
 fn wrong_license_fails() {
-    let fixture = Fixture::new().replace(
+    let fixture = fixture().replace(
         "mu-core",
         "license.workspace = true\n",
         "license = \"MIT\"\n",
     );
     assert_eq!(
-        fixture.violations(),
+        violations(fixture.root()),
         vec![Violation::License {
             member: "mu-core".to_owned(),
             found: Some("MIT".to_owned()),
@@ -455,26 +444,76 @@ fn wrong_license_fails() {
 
 #[test]
 fn missing_lints_fails() {
-    let fixture = Fixture::new().replace("mu-core", "[lints]\nworkspace = true\n", "");
+    let fixture = fixture().replace("mu-core", "[lints]\nworkspace = true\n", "");
     assert_eq!(
-        fixture.violations(),
-        vec![Violation::LintsNotInherited {
-            member: "mu-core".to_owned(),
-        }]
+        violations(fixture.root()),
+        not_inherited("mu-core", "lints")
     );
 }
 
 #[test]
 fn local_lints_fail() {
-    let fixture = Fixture::new().replace(
+    let fixture = fixture().replace(
         "mu-core",
         "[lints]\nworkspace = true\n",
         "[lints.rust]\nunsafe_code = \"forbid\"\n",
     );
     assert_eq!(
-        fixture.violations(),
-        vec![Violation::LintsNotInherited {
-            member: "mu-core".to_owned(),
-        }]
+        violations(fixture.root()),
+        not_inherited("mu-core", "lints")
     );
+}
+
+#[test]
+fn missing_rust_version_fails() {
+    let fixture = fixture().replace("mu-core", "rust-version.workspace = true\n", "");
+    assert_eq!(
+        violations(fixture.root()),
+        not_inherited("mu-core", "rust-version")
+    );
+}
+
+#[test]
+fn local_rust_version_fails() {
+    let fixture = fixture().replace(
+        "mu-core",
+        "rust-version.workspace = true\n",
+        "rust-version = \"1.90\"\n",
+    );
+    assert_eq!(
+        violations(fixture.root()),
+        not_inherited("mu-core", "rust-version")
+    );
+}
+
+#[test]
+fn missing_publish_fails() {
+    let fixture = fixture().replace("mu-core", "publish.workspace = true\n", "");
+    assert_eq!(
+        violations(fixture.root()),
+        not_inherited("mu-core", "publish")
+    );
+}
+
+#[test]
+fn local_publish_fails() {
+    let fixture = fixture().replace("mu-core", "publish.workspace = true\n", "publish = false\n");
+    assert_eq!(
+        violations(fixture.root()),
+        not_inherited("mu-core", "publish")
+    );
+}
+
+#[test]
+fn publishable_workspace_fails() {
+    // Cargo itself refuses a workspace with no `publish`, because each member inherits it.
+    for publish in ["publish = true\n", "publish = [\"crates-io\"]\n"] {
+        let fixture =
+            fixture().replace_in_file(Path::new("Cargo.toml"), "publish = false\n", publish);
+        assert_eq!(
+            violations(fixture.root()),
+            vec![Violation::PublishableWorkspace],
+            "with {publish:?}"
+        );
+    }
 }

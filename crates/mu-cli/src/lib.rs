@@ -14,9 +14,11 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
     args_conflicts_with_subcommands = true
 )]
 pub struct Cli {
+    /// The verb to run. `None` means the client.
     #[command(subcommand)]
     pub verb: Option<Verb>,
 
+    /// Arguments of the client, for a command line with no verb.
     #[command(flatten)]
     pub client: ClientArgs,
 }
@@ -25,6 +27,7 @@ pub struct Cli {
 #[derive(Debug, Default, Args)]
 pub struct ClientArgs {}
 
+/// The verbs of the `mu` binary.
 #[derive(Debug, Subcommand)]
 pub enum Verb {
     /// Start the terminal client (the default verb)
@@ -36,6 +39,7 @@ pub enum Verb {
 }
 
 /// Names of the verbs, read from the command definition.
+#[must_use]
 pub fn verb_names() -> Vec<String> {
     Cli::command()
         .get_subcommands()

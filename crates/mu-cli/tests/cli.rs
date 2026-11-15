@@ -6,6 +6,10 @@ use std::process::{Command, Output};
 
 use proptest::prelude::*;
 
+use support::{stderr, stdout};
+
+mod support;
+
 const VERSION_LINE: &str = concat!("mu ", env!("CARGO_PKG_VERSION"), "\n");
 
 fn mu(args: &[&str]) -> Output {
@@ -13,14 +17,6 @@ fn mu(args: &[&str]) -> Output {
         .args(args)
         .output()
         .expect("the mu binary runs")
-}
-
-fn stdout(output: &Output) -> String {
-    String::from_utf8(output.stdout.clone()).expect("stdout is UTF-8")
-}
-
-fn stderr(output: &Output) -> String {
-    String::from_utf8(output.stderr.clone()).expect("stderr is UTF-8")
 }
 
 /// The verbs in the commands section of a help text, each with its description.
@@ -134,8 +130,6 @@ fn non_utf8_verb_is_usage_error() {
         .expect("the mu binary runs");
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty(), "stdout is empty");
-    // The verb is not UTF-8, so the error shows the replacement character.
-    assert!(String::from_utf8_lossy(&output.stderr).contains("'serv\u{fffd}'"));
 }
 
 #[test]

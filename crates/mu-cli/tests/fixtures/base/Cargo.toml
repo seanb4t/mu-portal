@@ -8,6 +8,8 @@ version = "0.0.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://example.invalid/fixture"
+rust-version = "1.90"
+publish = false
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

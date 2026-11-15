@@ -1,0 +1,38 @@
+amends "package://github.com/jdx/hk/releases/download/v2.12.0/hk@2.12.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v2.12.0/hk@2.12.0#/Builtins.pkl"
+
+// hk builds the pre-commit hook and the check hook from these steps.
+// A step that has a mise task calls the task: mise.toml holds the command.
+steps {
+    ["fmt"] {
+        glob = "**/*.rs"
+        check = "mise run fmt"
+    }
+    ["actions"] {
+        glob = ".github/workflows/*.{yml,yaml}"
+        check = "mise run lint:actions"
+    }
+    ["toml"] = Builtins.taplo
+    // Syntax only. The yq builtin is a formatter, and it rewrites comments.
+    ["yaml"] {
+        glob = "**/*.{yml,yaml}"
+        check = "yq eval '.' {{files}} > /dev/null"
+    }
+    ["merge-conflict"] = Builtins.check_merge_conflict
+}
+
+hooks {
+    // The message of each commit follows the Conventional Commits format.
+    ["commit-msg"] {
+        steps {
+            ["conventional"] = Builtins.check_conventional_commit
+        }
+    }
+    ["pre-push"] {
+        steps {
+            ["check"] {
+                check = "mise run check"
+            }
+        }
+    }
+}

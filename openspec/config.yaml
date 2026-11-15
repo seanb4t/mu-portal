@@ -20,14 +20,24 @@ context: |
   `[workspace.dependencies]`. Each version pin is in a file that Renovate
   reads, and no workflow states a toolchain version a second time.
 
+  Tests: a test covers what the project owns - its code, its configuration, its
+  assumptions and its requirements. No test proves the behavior of Rust, Cargo or
+  another tool. A scenario states what a file of the repository holds, or what
+  the `mu` binary does.
+
+  Rust code: the `rust-best-practices` skill is the standard for writing and
+  reviewing Rust. Load it before a task changes Rust code.
+
   Prose: artifacts and documentation use plain English and follow the
   simple-english rules. Live documentation states no version literal.
 
-  One-test commands: cargo: `cargo test -p <crate> --test <file> -- --exact <test name>`
+  One-test commands: cargo: `cargo nextest run -p <crate> --test <file> --locked -E 'test(=<test name>)'`
 
   Library rows: crate versions: Cargo.toml ([workspace.dependencies]).
   shared package fields and lints: Cargo.toml ([workspace.package], [workspace.lints]).
-  toolchain pins: rust-toolchain.toml, docs/.node-version, docs/package.json (packageManager).
+  toolchain pins: rust-toolchain.toml (Rust), mise.toml ([tools], every other tool).
+  check commands: mise.toml ([tasks]).
+  test helpers: crates/mu-cli/tests/support/mod.rs (TreeCopy, stdout, stderr).
   command definition: crates/mu-cli/src/lib.rs (the clap command and its verb list).
 
 rules:
