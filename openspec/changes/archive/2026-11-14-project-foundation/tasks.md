@@ -51,7 +51,7 @@
 - [x] 6.2 Add the `docs` job on Linux with the three commands from Decision 11. The model check is the one that task 4.2 chose. The job reads `docs/.node-version` and states no version. Give the `pnpm` setup action the path `docs/package.json`, with the input name from the current documentation of the action.
 - [x] 6.3 Add `renovate.json` that extends the Renovate best-practices preset. Read the preset in the Renovate documentation. If the preset does not pin GitHub Actions to digests, add the digest preset. Make sure that the configuration passes the Renovate configuration validator.
 - [x] 6.4 Add two parked GitHub issues to the mu-portal Project: Open Knowledge Format alignment, and the collapse of the crate layout view into the boundary test allowlist. Make sure that both issues appear in the Project with the status Parked.
-- [ ] 6.5 Open a pull request. Make sure that both jobs pass on it. After the merge, make sure that the Renovate dependency list names the Rust toolchain, the Node version, `pnpm`, each action and each crate. Add a custom manager for a pin that is absent.
+- [x] 6.5 Open a pull request. Make sure that both jobs pass on it.
 
 ## 7. Integration
 
@@ -61,5 +61,6 @@
 ## Workflow follow-up
 
 - Run `/sb:openspec-review project-foundation implementation` before task group 7, and treat a changes-requested verdict as a blocker.
+- After the first run of Renovate, read its dependency list. It must name the Rust toolchain, each tool, each action and each crate. Issue #22 tracks this check, because Renovate did not run before the archive. The owner decided not to wait for it.
 - Archive the change after the implementation review passes.
 - Close GitHub issue #2.
