@@ -20,6 +20,9 @@ context: |
   `[workspace.dependencies]`. Each version pin is in a file that Renovate
   reads, and no workflow states a toolchain version a second time.
 
+  Rust code: the `rust-best-practices` skill is the standard for writing and
+  reviewing Rust. Load it before a task changes Rust code.
+
   Prose: artifacts and documentation use plain English and follow the
   simple-english rules. Live documentation states no version literal.
 
