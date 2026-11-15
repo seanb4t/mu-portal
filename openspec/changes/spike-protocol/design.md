@@ -37,7 +37,7 @@ Non-Goals:
 | Each crate has a decision page with the four sections, and Source names the crate, the issue and the pull request | The tests `spike_crates_have_decision_pages`, `spike_pages_have_sections_in_order` and `spike_sources_name_issue_and_pull_request` |
 | The review of the spike pull request is triaged before the merge, and each finding is fixed or listed under Not tested | Review alone, with the pr-triage skill |
 | The pull request body says `Closes #n` | Review alone |
-| A change that uses a spike follows the part "Using a spike" | The design rule in `openspec/config.yaml` and the plan review. The test `design_rules_cover_spikes` makes sure that the rule exists |
+| A change that uses a spike follows the part "Using a spike" | The design rule in `openspec/config.yaml` and the plan review. The test `design_rules_cover_spikes` makes sure that the rule exists and that the spikes page has the part "Using a spike" |
 | Each Not tested item becomes a task or a non-goal | The plan review |
 | The change copies the recorded evidence into its own crate as test data | The plan review, from the tasks of the change |
 | Production code does not copy spike code | Review alone |
@@ -49,9 +49,9 @@ Non-Goals:
 
 - The three tests of the decision pages go in a new file, `crates/mu-cli/tests/spike_records.rs`. They read the docs and the spike workspace, which neither existing file covers.
 - The include check is a boundary rule, so it goes in `workspace_boundary.rs` as the new violations `Violation::SpikeInclude { file }` and `Violation::Untokenized { file }`. The workspace page lists it with the other failures of the boundary test.
-- `design_rules_cover_spikes` reads tool configuration, so it goes in `repo_config.rs` and reads `rules.design` with its `yaml()` helper.
+- `design_rules_cover_spikes` reads tool configuration, so it goes in `repo_config.rs` and reads `rules.design` with its `yaml()` helper. It also reads the spikes page and makes sure that it has the level-two heading "Using a spike", so a rename of that part breaks the test.
 - `repo_file` moves from `repo_config.rs` to `support/mod.rs`, so both `repo_config.rs` and `spike_records.rs` call it.
-- Two more helpers go in `support/mod.rs`. `workspace_metadata(manifest)` runs `cargo_metadata` with `no_deps()`, and `violations()` in `workspace_boundary.rs` and `spike_records.rs` both call it. `files_under(dir)` lists the files under a directory, and `copy_tree`, the include check and the page list of `spike_records.rs` call it. `spike_records.rs` reads each page with `repo_file`.
+- Two more helpers go in `support/mod.rs`. `workspace_metadata(manifest)` runs `cargo_metadata` with `no_deps()`, and `violations()` in `workspace_boundary.rs` and `spike_records.rs` both call it. `files_under(dir)` lists the files under a directory, and `copy_tree`, the include check and the page list of `spike_records.rs` call it. `spike_records.rs` reads each page with `repo_file`. `h2_sections(text)` gives each level-two heading of a page with the text of its section, and `h2_headings(text)` gives the headings alone. `spike_records.rs` and `repo_config.rs` both read headings through them.
 
 ### How the test finds a spike crate
 
@@ -71,13 +71,13 @@ The check reads each `.rs` file in the member directories that `violations()` al
 
 - Macros: a token `include`, `include_str` or `include_bytes`, then `!`, then a group, is an include. The check compares the identifier without a raw prefix (`syn::ext::IdentExt::unraw`), so `r#include_str!` is also an include. The check joins the values of all string and char literals in that group, in order and at any depth, and the token text of each `stringify!` group, as `concat!` does. `syn::Lit` decodes each literal, so an escape such as `\x73` and a raw string give their real value. A path that `concat!` builds from parts is then one string. The token text of a `stringify!` of several tokens has spaces between the tokens, so that case is left to review.
 - Attributes: a `#`, or a `#!` for an inner attribute, then a bracket group that holds `path = "..."` is a path attribute. That covers `#[path = "..."]` and `path` inside a `cfg_attr`, at any depth. The check takes only the string after `path =`, so a string in the predicate of a `cfg_attr` does not join into the path.
-- A joined string fails when one of its path components is `spikes`, so `../../spikes/x.rs`, `../../spikes` and `spikes` fail, and `oldspikes/x.rs` passes. The rule for path dependencies resolves a path and tests that it starts with `<workspace root>/spikes`. The include check cannot resolve every path in the same way, because a path that `concat!` builds from `env!("CARGO_MANIFEST_DIR")` has no fixed base. So the check uses the stricter rule by component. One cost is that a directory named `spikes` inside a crate also fails. The spikes page says that copied evidence must not go in such a directory.
+- A joined string fails when one of its path components is `spikes`, so `../../spikes/x.rs`, `../../spikes` and `spikes` fail, and `oldspikes/x.rs` passes. The rule for path dependencies resolves a path and tests that it starts with `<workspace root>/spikes`. The include check cannot resolve every path in the same way, because a path that `concat!` builds from `env!("CARGO_MANIFEST_DIR")` has no fixed base. So the check uses the stricter rule by component. A path dependency keeps the rule by prefix, because `cargo_metadata` gives it as a resolved absolute path, and the prefix rule does not fail a crate directory that holds a `spikes` part. One cost is that a directory named `spikes` inside a crate also fails. The spikes page says that copied evidence must not go in such a directory.
 - If a file does not turn into tokens, it is a `Violation::Untokenized { file }`, so the check never skips a file in silence.
 - `Violation::SpikeInclude { file }` names the file only. A line number would need the `span-locations` feature of `proc-macro2`, and the file is enough to find the include.
 
 The fixtures of the check are files that the test writes into a `TreeCopy`. In the source of `workspace_boundary.rs` each fixture is a plain string literal. A string literal is one token, so the walk does not see an include in it, and the check of the real tree passes with no exception.
 
-A macro with a new name, for example `macro_rules! inc { ... }` called as `inc!(...)`, hides the include from the check. A symbolic link from a crate into `spikes/` also hides it, because the check reads the files that the link points to as files of the crate. Review covers these cases, and the spikes page says so.
+A macro with a new name, for example `macro_rules! inc { ... }` called as `inc!(...)`, hides the include from the check. A symbolic link from a crate into `spikes/` also hides it. The walk does not follow a linked directory, and it reads a linked file as a file of the crate. Review covers these cases, and the spikes page says so.
 
 ### The design rule points to the page
 

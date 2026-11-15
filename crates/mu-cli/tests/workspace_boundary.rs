@@ -501,6 +501,7 @@ fn spike_include_fails() {
         "#[cfg_attr(all(), path = \"../../spikes/x.rs\")]\nmod x;",
         "#[cfg_attr(all(), cfg_attr(all(), path = \"../../spikes/x.rs\"))]\nmod x;",
         "#[cfg_attr(feature = \"a\", path = \"spikes/x.rs\")]\nmod x;",
+        "mod x {\n    #![path = \"../../spikes\"]\n}",
         "const A: &str = include_str! (\"../../spikes/x.txt\");",
         "const A: &str = include_str!(\n    \"../../spikes/x.txt\"\n);",
         "const A: &str = include_str!(concat!(\"../../spi\", \"kes/x\"));",

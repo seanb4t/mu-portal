@@ -5,8 +5,6 @@
 
 use std::fmt::Write as _;
 
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
-
 mod support;
 
 const DECISIONS: &str = "docs/src/content/docs/decisions";
@@ -20,48 +18,17 @@ struct Page {
 }
 
 impl Page {
-    /// Reads a page with a Markdown parser. Code spans keep their backticks in `source`.
+    /// Reads the headings and the Source text of a page.
     fn parse(name: &str, text: &str) -> Self {
-        let mut source = String::new();
-        let mut heading: Option<String> = None;
-        let mut section: Option<String> = None;
-        for event in Parser::new_ext(text, Options::ENABLE_YAML_STYLE_METADATA_BLOCKS) {
-            match event {
-                Event::Start(Tag::Heading {
-                    level: HeadingLevel::H2,
-                    ..
-                }) => heading = Some(String::new()),
-                Event::End(TagEnd::Heading(HeadingLevel::H2)) => {
-                    section = heading.take();
-                }
-                Event::Text(text) | Event::Code(text) if heading.is_some() => {
-                    heading.get_or_insert_default().push_str(&text);
-                }
-                _ if section.as_deref() != Some("Source") => {}
-                Event::Text(text) => source.push_str(&text),
-                Event::Code(code) => {
-                    source.push('`');
-                    source.push_str(&code);
-                    source.push('`');
-                }
-                Event::SoftBreak
-                | Event::HardBreak
-                | Event::End(
-                    TagEnd::Paragraph
-                    | TagEnd::Item
-                    | TagEnd::List(_)
-                    | TagEnd::CodeBlock
-                    | TagEnd::BlockQuote(_)
-                    | TagEnd::TableCell
-                    | TagEnd::Heading(_)
-                    | TagEnd::HtmlBlock,
-                ) => source.push('\n'),
-                _ => {}
-            }
-        }
+        let sections = support::h2_sections(text);
+        let source = sections
+            .iter()
+            .filter(|(heading, _)| heading == "Source")
+            .map(|(_, body)| body.as_str())
+            .collect();
         Self {
             name: name.to_owned(),
-            headings: support::h2_headings(text),
+            headings: sections.into_iter().map(|(heading, _)| heading).collect(),
             source,
         }
     }
@@ -208,6 +175,7 @@ fn spike_crates_have_decision_pages() {
         "The code is in\nspikes/pane.",
         "`spikes/pane`",
         "- The code is spikes/pane\n- The data is elsewhere.",
+        "### Code\n\nThe code is `spikes/pane`.",
     ] {
         assert!(
             crates_without_one_page(&one, &[record(source)]).is_empty(),

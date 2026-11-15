@@ -29,11 +29,12 @@ pub fn repo_file(relative: &str) -> String {
     fs::read_to_string(&path).unwrap_or_else(|error| panic!("{relative} is readable: {error}"))
 }
 
-/// The text of each level-two heading of a Markdown page, in order, read with a Markdown parser.
-pub fn h2_headings(text: &str) -> Vec<String> {
+/// Each level-two heading of a Markdown page with the text of its section, read with a Markdown
+/// parser. Code spans keep their backticks. A line break and the end of each block give a line end.
+pub fn h2_sections(text: &str) -> Vec<(String, String)> {
     use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
-    let mut headings = Vec::new();
+    let mut sections: Vec<(String, String)> = Vec::new();
     let mut heading: Option<String> = None;
     for event in Parser::new_ext(text, Options::ENABLE_YAML_STYLE_METADATA_BLOCKS) {
         match event {
@@ -42,17 +43,48 @@ pub fn h2_headings(text: &str) -> Vec<String> {
                 ..
             }) => heading = Some(String::new()),
             Event::End(TagEnd::Heading(HeadingLevel::H2)) => {
-                headings.extend(heading.take());
+                sections.push((heading.take().unwrap_or_default(), String::new()));
             }
-            Event::Text(text) | Event::Code(text) => {
-                if let Some(heading) = heading.as_mut() {
-                    heading.push_str(&text);
+            Event::Text(text) | Event::Code(text) if heading.is_some() => {
+                heading.get_or_insert_default().push_str(&text);
+            }
+            event => {
+                let Some((_, body)) = sections.last_mut() else {
+                    continue;
+                };
+                match event {
+                    Event::Text(text) => body.push_str(&text),
+                    Event::Code(code) => {
+                        body.push('`');
+                        body.push_str(&code);
+                        body.push('`');
+                    }
+                    Event::SoftBreak
+                    | Event::HardBreak
+                    | Event::End(
+                        TagEnd::Paragraph
+                        | TagEnd::Item
+                        | TagEnd::List(_)
+                        | TagEnd::CodeBlock
+                        | TagEnd::BlockQuote(_)
+                        | TagEnd::TableCell
+                        | TagEnd::Heading(_)
+                        | TagEnd::HtmlBlock,
+                    ) => body.push('\n'),
+                    _ => {}
                 }
             }
-            _ => {}
         }
     }
-    headings
+    sections
+}
+
+/// The text of each level-two heading of a Markdown page, in order.
+pub fn h2_headings(text: &str) -> Vec<String> {
+    h2_sections(text)
+        .into_iter()
+        .map(|(heading, _)| heading)
+        .collect()
 }
 
 /// The metadata of the Cargo workspace of `manifest`, without its dependencies.
