@@ -120,14 +120,33 @@ impl Client {
     }
 }
 
-/// Finds a character set in a CHARSET REQUEST list (RFC 2066): the first byte is the
-/// separator, and an optional `[TTABLE]` prefix comes before it.
+/// Finds a character set in a CHARSET REQUEST list (RFC 2066). The list can start with the
+/// prefix `[TTABLE ]` (with a space) and a one-byte version. After them, the first byte is the
+/// separator.
 fn offered<'a>(list: &'a [u8], wanted: &[u8]) -> Option<&'a [u8]> {
     let list = list
-        .strip_prefix(b"[TTABLE]")
+        .strip_prefix(b"[TTABLE ]")
         .map_or(list, |rest| rest.get(1..).unwrap_or_default());
     let (&separator, names) = list.split_first()?;
     names
         .split(|&b| b == separator)
         .find(|name| name.eq_ignore_ascii_case(wanted))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::offered;
+
+    #[test]
+    fn finds_the_charset_in_a_plain_request() {
+        assert_eq!(offered(b";ISO-8859-1;UTF-8", b"UTF-8"), Some(&b"UTF-8"[..]));
+    }
+
+    #[test]
+    fn skips_the_ttable_prefix_and_its_version() {
+        assert_eq!(
+            offered(b"[TTABLE ]\x01;ISO-8859-1;UTF-8", b"UTF-8"),
+            Some(&b"UTF-8"[..])
+        );
+    }
 }
