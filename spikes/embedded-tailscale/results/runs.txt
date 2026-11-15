@@ -1,0 +1,34 @@
+Runs of 2026-11-15 on macOS (ARM64), tailscale crate 0.7.1.
+The server ran on the host "denver", which is also on the tailnet through the
+Tailscale app. The tailnet values are replaced with placeholders. The same
+placeholder means the same value.
+
+run 1, first join, one-time auth key in TS_AUTH_KEY, empty state directory
+  identity Identity { node_key: "nodekey:<K1>", stable_id: "StableId(\"<N1>\")", ipv4: <IP1>, name: "mu-spike" }
+  listening on tailnet port 8095
+  from denver:
+    tailscale ping <IP1>      -> pong from mu-spike (<IP1>) via [<denver public IPv6>]:<port> in 2.498s
+    buf curl --protocol connect  Send "one", "two", "three"  -> seq 1, 2, 3
+    buf curl --protocol grpc --http2-prior-knowledge  Subscribe from_seq 2
+                              -> seq 2 "two", seq 3 "three", then the stream stays open
+
+run a, restart, no TS_AUTH_KEY, same state directory
+  identity Identity { node_key: "nodekey:<K1>", stable_id: "StableId(\"<N1>\")", ipv4: <IP1>, name: "mu-spike" }
+  POST /mu.spike.v1.PortalService/Send from <denver IP> (denver)
+  left the tailnet, clean: true
+  shutdown panics: 5, all at ts_derp/src/dial.rs:172 (unwrap of JoinError::Cancelled)
+
+run b, restart, no TS_AUTH_KEY, same state directory
+  identity Identity { node_key: "nodekey:<K1>", stable_id: "StableId(\"<N1>\")", ipv4: <IP1>, name: "mu-spike" }
+  POST /mu.spike.v1.PortalService/Send from <denver IP> (denver)
+  POST /mu.spike.v1.PortalService/Subscribe from <denver IP> (denver)
+  left the tailnet, clean: true
+  shutdown panics: 1, at ts_runtime/src/task.rs:132 (JoinError reason is not a panic)
+
+run c, restart after the state directory change, no TS_AUTH_KEY
+  identity Identity { node_key: "nodekey:<K1>", stable_id: "StableId(\"<N1>\")", ipv4: <IP1>, name: "mu-spike" }
+  POST /mu.spike.v1.PortalService/Send from <denver IP> (denver)
+  left the tailnet, clean: true
+  shutdown panics: 6, 2 at ts_derp/src/dial.rs:172 and 4 at ts_runtime/src/task.rs:132
+  state directory drwx------, keys.json -rw-------
+  (before the change, keys.json was -rw-r--r--)
