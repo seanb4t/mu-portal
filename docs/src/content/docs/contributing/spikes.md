@@ -15,7 +15,6 @@ A spike is a time-limited experiment that answers one question. Spike code lives
 - A spike is one crate in `spikes/`. Its name comes from its issue, for example `spikes/output-pane`.
 - A spike can depend on a crate in `crates/` by path.
 - No crate in `crates/` can depend on a spike. The boundary test enforces this rule.
-- Only one spike is in progress at a time.
 
 ## After the decision
 

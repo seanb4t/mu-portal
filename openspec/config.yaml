@@ -11,19 +11,10 @@ context: |
   Platforms: Linux and macOS are both first-class. Designs and tasks cover
   both.
 
-  Records: OpenSpec holds content and the GitHub Project "mu-portal" holds
-  status. Each change is tracked by one GitHub issue. A new idea becomes a
-  Parked issue, not a task in an open change. A project-wide decision adds
-  or edits a page in the Decisions section of the documentation site in the
-  same change. If a decision has working rules, one Contributing page owns
-  them.
-
-  Diagrams: LikeC4 owns every structural diagram. A change that alters the
-  architecture updates the model in `architecture/` in the same change.
-  Archify is never a build dependency.
-
-  Verbs: a change that implements a verb modifies the not-implemented
-  requirement of the `cli-entrypoint` capability in its own delta.
+  Working rules: the Contributing pages in `docs/src/content/docs/contributing/`
+  own the rules for diagrams, spikes, OpenSpec and the GitHub Project. Read
+  the page before an artifact depends on one of those rules, and do not
+  restate a rule in an artifact. Each change is tracked by one GitHub issue.
 
   Dependencies and pins: a third-party crate enters through
   `[workspace.dependencies]`. Each version pin is in a file that Renovate

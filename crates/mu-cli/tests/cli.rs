@@ -39,7 +39,12 @@ fn listed_verbs(help: &str) -> BTreeMap<String, String> {
 fn assert_usage_error(output: &Output, verb: &str) {
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty(), "stdout is empty");
-    assert!(stderr(output).contains(verb), "stderr names {verb:?}");
+    assert!(names_verb(&stderr(output), verb), "stderr names {verb:?}");
+}
+
+/// The error quotes the verb, so a short verb cannot match other text of the error.
+fn names_verb(stderr: &str, verb: &str) -> bool {
+    stderr.contains(&format!("'{verb}'"))
 }
 
 fn assert_not_implemented(output: &Output, verb: &str) {
@@ -117,6 +122,22 @@ fn verb_names_are_exact() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn non_utf8_verb_is_usage_error() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let output = Command::new(env!("CARGO_BIN_EXE_mu"))
+        .arg(OsStr::from_bytes(b"serv\xff"))
+        .output()
+        .expect("the mu binary runs");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty(), "stdout is empty");
+    // The verb is not UTF-8, so the error shows the replacement character.
+    assert!(String::from_utf8_lossy(&output.stderr).contains("'serv\u{fffd}'"));
+}
+
 #[test]
 fn server_not_implemented() {
     assert_not_implemented(&mu(&["server"]), "server");
@@ -163,6 +184,6 @@ proptest! {
         let output = mu(&[&verb]);
         prop_assert_eq!(output.status.code(), Some(2));
         prop_assert!(output.stdout.is_empty());
-        prop_assert!(stderr(&output).contains(&verb));
+        prop_assert!(names_verb(&stderr(&output), &verb));
     }
 }

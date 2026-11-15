@@ -66,8 +66,8 @@ The function reads the declared dependencies of each package, not the resolved g
 
 The function sorts each declared dependency of a member into one of three classes:
 
-- A member dependency names a workspace member or a crate in the allowlist. The source does not matter: a path, a git URL and a registry all count. The edge rule applies to it.
-- A path dependency has a path and does not name a member. The spike rule or the outside-path rule applies to it.
+- A member dependency is every other dependency that names a workspace member or a crate in the allowlist. The source does not matter: a path, a git URL and a registry all count. The edge rule applies to it.
+- An outside path dependency has a path that is not the directory of a workspace member. The spike rule or the outside-path rule applies to it. The path decides before the name, because a crate outside the workspace can carry the name of a member.
 - A third-party dependency is every other dependency. The dependency-table rule applies to it.
 
 Each dependency therefore breaks one rule at most. The dependency-table rule reads the manifest alone and uses the key of each entry, so a renamed entry is still found.
@@ -100,7 +100,7 @@ The negative cases are:
 - a third-party dependency with its own version and no `workspace = true`, in each of these forms: normal, development, target-specific and renamed
 - a `mu-core` to `mu-tui` dependency
 - a `mu-proto` dependency on a member
-- a path dependency into `spikes/`
+- a path dependency into `spikes/`, and one on a spike that carries the name of a member
 - a path dependency on a crate in an excluded directory that is not `spikes/`
 - a member that the allowlist does not name
 - a member with no license, and a member with the license `MIT`
@@ -121,7 +121,7 @@ Alternative: a `cargo-deny` ban. Rejected for now, because it adds a tool and ca
 - The arguments of the client are one `clap` arguments struct, which is empty in this change. The `client` verb holds that struct. The top-level command flattens the same struct and sets `args_conflicts_with_subcommands`. This is the default-subcommand shape from the `git-derive` example in the `clap` repository. A later change adds a client flag to that one struct. `mu --flag` and `mu client --flag` then both accept it, and the top-level command needs no new structure.
 - The `version` verb prints the string that `clap` renders for `--version`, through `Command::render_long_version`. The verb adds no second newline. The flag and the verb share that one source. With the name `mu` and the package version, the string is the line that the spec requires.
 - One function takes the name of a verb, writes `<verb>: not implemented` to stderr and returns exit status 1. Every stub verb calls it with its own name. The function opens no file.
-- `mu-cli` has a small library target that holds the command definition. The binary and the tests both use it. A test reads the verb names from that definition, so a later verb needs no edit in a test list.
+- `mu-cli` has a small library target that holds the command definition. The binary and the tests both use it. The property test reads the verb names from that definition, so a later verb needs no edit in its exclusion list. The scenario tests name the three verbs, as the spec scenarios do. A change that adds a verb edits that spec scenario and its test together.
 
 Exit statuses follow the spec: 0 for help and version, 2 for a usage error (the `clap` default), 1 for a verb with no implementation. The code uses the `clap` parse call that exits by itself on help, version and usage errors.
 
@@ -139,7 +139,7 @@ This change adds `renovate.json`, because the Renovate onboarding is still open.
 
 ### 5. Spikes are a second workspace
 
-`spikes/` has its own `Cargo.toml` workspace. The root workspace lists `spikes` under `exclude`. A spike is one crate in `spikes/`, named after its GitHub issue. A spike can depend on a crate in `crates/` by path. No crate in `crates/` can depend on a spike. The test from Decision 2 enforces that rule.
+`spikes/` has its own `Cargo.toml` workspace. Its member list is the glob `*`, so each spike crate is a member with no edit to that file. The root workspace lists `spikes` under `exclude`. A spike is one crate in `spikes/`, named after its GitHub issue. A spike can depend on a crate in `crates/` by path. No crate in `crates/` can depend on a spike. The test from Decision 2 enforces that rule.
 
 The rules for a spike are written once, on the Contributing page for spikes. `spikes/README.md` is a short pointer to that page.
 
@@ -153,7 +153,7 @@ Alternative: spikes as branches. Rejected, because a spike's code is evidence fo
 - The site has four sections at the start: Overview, Decisions, Architecture and Contributing.
 - The Contributing section covers the build, the workspace layout, spikes, the diagram policy, and how OpenSpec and the GitHub Project divide the work.
 
-The Decisions section is the durable record of project-wide decisions. Each decision is one short page that states the decision and the reason, and names the OpenSpec change that made it. A Decisions page holds no working rules. If a decision has rules that a contributor follows, the rules are on one Contributing page, and the Decisions page links to it. The diagram policy and the spikes follow that pattern. The `design.md` of a change is the working record while the change is open, and it becomes history after the archive. A later change that makes a project-wide decision adds or edits a Decisions page in the same change. The pages of this change name the first exploration as their source.
+The Decisions section is the durable record of project-wide decisions. Each decision is one short page that states the decision and the reason, and names the OpenSpec change that made it. A Decisions page holds no working rules. If a decision has rules that a contributor follows, the rules are on one Contributing page, and the Decisions page links to it. The diagram policy follows that pattern. The spikes have a Contributing page and no Decisions page, because their rules are working rules and not a product decision. The `design.md` of a change is the working record while the change is open, and it becomes history after the archive. A later change that makes a project-wide decision adds or edits a Decisions page in the same change. The pages of this change name the first exploration as their source.
 
 The site comes from the Starlight starter and keeps the starter's `docs/.gitignore`. That file ignores the output that Astro generates.
 

@@ -11,7 +11,7 @@
   - `optional_tui_to_core_fails`, `build_tui_to_core_fails`, `dev_tui_to_core_fails`, `renamed_tui_to_core_fails`, `target_tui_to_core_fails`
   - `git_tui_to_core_fails`
   - `local_dependency_version_fails`, `local_dev_dependency_version_fails`, `local_target_dependency_version_fails`, `renamed_local_dependency_version_fails`
-  - `core_to_tui_fails`, `proto_dependency_fails`, `spike_dependency_fails`, `outside_path_dependency_fails`, `unlisted_member_fails`
+  - `core_to_tui_fails`, `proto_dependency_fails`, `spike_dependency_fails`, `spike_named_like_member_fails`, `outside_path_dependency_fails`, `unlisted_member_fails`
   - `missing_license_fails`, `wrong_license_fails`, `missing_lints_fails`, `local_lints_fail`
 - [x] 1.7 Keep the Node template in `.gitignore` and add `target/` and `.archify/`. Make sure that `git status` shows no new file after `cargo build --workspace` and after `cargo test --workspace`.
 
@@ -21,7 +21,7 @@
 - [x] 2.2 Add one function for a verb without an implementation. It takes the verb name, writes `<verb>: not implemented` to stderr and returns exit status 1. Call it from `client` and `server`. Make sure that `mu server` writes `server: not implemented` and exits with status 1.
 - [x] 2.3 Add the version output: the `version` verb prints the string from `Command::render_long_version` and adds no second newline. Make sure that `mu version` and `mu --version` both print the line `mu`, one space, and the package version.
 - [x] 2.4 Add integration tests in `crates/mu-cli/tests/cli.rs` that run the built binary, one test for each scenario in `specs/cli-entrypoint/spec.md`: `help_lists_verbs`, `help_for_one_verb`, `no_verb_equals_client`, `version_verb`, `version_flag_matches_verb`, `unknown_verb_is_usage_error`, `server_not_implemented`, `client_not_implemented`, `stub_verbs_leave_files_alone`. The two version tests compare the whole line, not a part of it. Make sure that `cargo test -p mu-cli --test cli` passes.
-- [x] 2.5 Add the property test `unknown_verb_property` in the same file, with `proptest`. The strategy is the pattern `[a-z][a-z0-9_]{0,15}` with the verb names removed. The test reads the verb names from the command definition in the library target. That domain has no NUL byte, which a process argument cannot hold, and no leading dash. Add the fixed case `help_is_not_a_verb` for `mu help`, and the fixed cases `verb_names_are_exact` for strings next to a verb name. For each string it expects exit status 2, an empty stdout and the string on stderr. Make sure that it passes.
+- [x] 2.5 Add the property test `unknown_verb_property` in the same file, with `proptest`. The strategy is the pattern `[a-z][a-z0-9_]{0,15}` with the verb names removed. The test reads the verb names from the command definition in the library target. That domain has no NUL byte, which a process argument cannot hold, and no leading dash. Add the fixed case `help_is_not_a_verb` for `mu help`, the fixed cases `verb_names_are_exact` for strings next to a verb name, and `non_utf8_verb_is_usage_error`. For each string it expects exit status 2, an empty stdout and the string on stderr. Make sure that it passes.
 - [x] 2.6 Make sure that `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings` pass.
 
 ## 3. Spikes workspace
@@ -38,7 +38,7 @@
 
 ## 5. Documentation content
 
-- [x] 5.1 Add the Overview page and one Decisions page for each project-wide decision from the exploration. The pages are in the list below. Each page names its source, as Decision 6 describes. The Decisions pages for the diagram policy and for spikes hold no rules and link to their Contributing pages. Make sure that each page appears in the site sidebar.
+- [x] 5.1 Add the Overview page and one Decisions page for each project-wide decision from the exploration. The pages are in the list below. Each page names its source, as Decision 6 describes. The Decisions page for the diagram policy holds no rules and links to its Contributing page. Make sure that each page appears in the site sidebar.
   - server-centered shape, one binary with verbs, ConnectRPC API, pairing, embedded Tailscale
   - where the server runs, alternate-screen client, Lua 5.4, world-type profiles
   - structured journal, importers, diagram policy, license

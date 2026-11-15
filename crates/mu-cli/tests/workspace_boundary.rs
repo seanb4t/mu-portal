@@ -66,6 +66,10 @@ fn violations(root: &Path) -> Vec<Violation> {
         .expect("cargo metadata reads the workspace");
     let spikes = metadata.workspace_root.join("spikes");
     let members = metadata.workspace_packages();
+    let member_directories: Vec<_> = members
+        .iter()
+        .filter_map(|member| member.manifest_path.parent())
+        .collect();
     let is_member = |name: &str| {
         allowed(name).is_some() || members.iter().any(|member| member.name.as_str() == name)
     };
@@ -83,15 +87,12 @@ fn violations(root: &Path) -> Vec<Violation> {
         // Declared dependencies: every kind, optional ones and renamed ones.
         for dependency in &package.dependencies {
             let to = dependency.name.clone();
-            if is_member(&to) {
-                // A member is a member whatever its source: path, git or registry.
-                if !allowed_targets.is_some_and(|targets| targets.contains(&to.as_str())) {
-                    found.push(Violation::ForbiddenEdge {
-                        from: member.clone(),
-                        to,
-                    });
-                }
-            } else if let Some(path) = &dependency.path {
+            // The path decides first: a crate outside the workspace can carry a member name.
+            let outside_path = dependency
+                .path
+                .as_ref()
+                .filter(|path| !member_directories.contains(&path.as_path()));
+            if let Some(path) = outside_path {
                 if path.starts_with(&spikes) {
                     found.push(Violation::SpikeDependency {
                         from: member.clone(),
@@ -99,6 +100,14 @@ fn violations(root: &Path) -> Vec<Violation> {
                     });
                 } else {
                     found.push(Violation::OutsidePathDependency {
+                        from: member.clone(),
+                        to,
+                    });
+                }
+            } else if is_member(&to) {
+                // A member is a member whatever its source: path, git or registry.
+                if !allowed_targets.is_some_and(|targets| targets.contains(&to.as_str())) {
+                    found.push(Violation::ForbiddenEdge {
                         from: member.clone(),
                         to,
                     });
@@ -373,6 +382,20 @@ fn spike_dependency_fails() {
         vec![Violation::SpikeDependency {
             from: "mu-core".to_owned(),
             to: "probe".to_owned(),
+        }]
+    );
+}
+
+#[test]
+fn spike_named_like_member_fails() {
+    let fixture = Fixture::new()
+        .add_crate("spikes/mu-core", "mu-core")
+        .append("mu-tui", "mu-core = { path = \"../../spikes/mu-core\" }\n");
+    assert_eq!(
+        fixture.violations(),
+        vec![Violation::SpikeDependency {
+            from: "mu-tui".to_owned(),
+            to: "mu-core".to_owned(),
         }]
     );
 }
