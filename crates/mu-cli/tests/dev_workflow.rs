@@ -1,22 +1,16 @@
 //! The scenarios of the `developer-workflow` capability. Each test copies the
 //! files of the repository, adds one defect to the copy and runs a task there.
 //!
-//! Every test here is ignored, so the `test` task does not run them. A `check`
-//! in a copy would otherwise start these tests again, and each one makes a copy.
-//! `mise run test:workflow` runs them.
+//! These tests are slow, and each `check` in a copy runs the `test` task. The
+//! test target therefore needs the feature `workflow-tests`, which the `test`
+//! task does not set. `mise run test:workflow` sets it.
 
 use std::path::Path;
 use std::process::{Command, Output};
 
-use support::{TreeCopy, stderr, stdout};
+use support::{TreeCopy, repo_root, stderr, stdout};
 
 mod support;
-
-const SLOW: &str = "slow: runs a mise task on a copy of the repository";
-
-fn repo_root() -> &'static Path {
-    Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
-}
 
 /// A command with the environment of the test runner removed, so that a
 /// nested Cargo or nextest starts as it does for a contributor.
@@ -38,6 +32,8 @@ fn run(program: &str, arguments: &[&str], directory: &Path) -> Output {
         .args(arguments)
         // mise does not run a configuration that it does not trust.
         .env("MISE_TRUSTED_CONFIG_PATHS", directory)
+        // Each copy builds into its own directory, whatever the Cargo configuration of the user says.
+        .env("CARGO_TARGET_DIR", directory.join("target"))
         .output()
         .unwrap_or_else(|error| panic!("{program} runs: {error}"))
 }
@@ -69,22 +65,7 @@ fn mise_run(task: &str, copy: &TreeCopy) -> Output {
 
 /// The output of a command with the color sequences removed. CI turns colors on.
 fn text(output: &Output) -> String {
-    let raw = stdout(output) + &stderr(output);
-    let mut text = String::with_capacity(raw.len());
-    let mut characters = raw.chars();
-    while let Some(character) = characters.next() {
-        if character == '\u{1b}' {
-            // A color sequence is ESC, `[`, parameters and one final letter.
-            for next in characters.by_ref() {
-                if next.is_ascii_alphabetic() {
-                    break;
-                }
-            }
-        } else {
-            text.push(character);
-        }
-    }
-    text
+    anstream::adapter::strip_str(&(stdout(output) + &stderr(output))).to_string()
 }
 
 /// Asserts that the task failed and that mise names `failed_task` as a failed task.
@@ -106,21 +87,22 @@ fn with_formatting_defect() -> TreeCopy {
 }
 
 #[test]
-#[ignore = "slow: runs a mise task on a copy of the repository"]
 fn check_passes_on_clean_tree() {
     let output = mise_run("check", &copy_of_repository());
-    assert!(output.status.success(), "{SLOW}:\n{}", text(&output));
+    assert!(
+        output.status.success(),
+        "the task passes:\n{}",
+        text(&output)
+    );
 }
 
 #[test]
-#[ignore = "slow: runs a mise task on a copy of the repository"]
 fn check_fails_on_formatting_defect() {
     let output = mise_run("check", &with_formatting_defect());
     assert_task_failed(&output, "fmt");
 }
 
 #[test]
-#[ignore = "slow: runs a mise task on a copy of the repository"]
 fn check_fails_on_lint_defect() {
     // Clippy warns about a `&Vec` parameter. The code is formatted and documented.
     let defect = "
@@ -135,7 +117,6 @@ pub fn count(items: &Vec<u8>) -> usize {
 }
 
 #[test]
-#[ignore = "slow: runs a mise task on a copy of the repository"]
 fn check_fails_on_failing_test() {
     // One line, so that the attribute in this text is not an attribute line of this file.
     let defect = "//! A test that fails.\n\n#[test]\nfn fails() {\n    assert!(std::env::var_os(\"MU_PORTAL_NEVER_SET\").is_some());\n}\n";
@@ -145,7 +126,6 @@ fn check_fails_on_failing_test() {
 }
 
 #[test]
-#[ignore = "slow: runs a mise task on a copy of the repository"]
 fn check_fails_on_failing_doc_test() {
     let defect = "
 /// Adds one.
@@ -166,7 +146,6 @@ pub fn add_one(value: u8) -> u8 {
 }
 
 #[test]
-#[ignore = "slow: runs a mise task on a copy of the repository"]
 fn check_fails_on_broken_doc_link() {
     let defect = "\n/// See [`Missing`].\npub struct Documented;\n";
     let copy = copy_of_repository().append_file(core_library(), defect);
@@ -174,7 +153,6 @@ fn check_fails_on_broken_doc_link() {
 }
 
 #[test]
-#[ignore = "slow: runs a mise task on a copy of the repository"]
 fn deny_rejects_disallowed_license() {
     // The added crate inherits `publish = false`, so it is a private crate.
     let copy = copy_of_repository()
@@ -210,21 +188,95 @@ fn deny_rejects_disallowed_license() {
 }
 
 #[test]
-#[ignore = "slow: runs a mise task on a copy of the repository"]
 fn hooks_check_fails_on_formatting_defect() {
     let copy = with_formatting_defect();
     assert!(run("git", &["add", "--all"], copy.root()).status.success());
     let output = mise_run("hooks:check", &copy);
+    let text = text(&output);
+    assert!(!output.status.success(), "the hook check fails:\n{text}");
+    assert!(text.contains("[fmt]"), "the format step fails:\n{text}");
+}
+
+#[test]
+fn hooks_check_passes_on_clean_tree() {
+    let output = mise_run("hooks:check", &copy_of_repository());
     assert!(
-        !output.status.success(),
-        "the hook check fails:\n{}",
+        output.status.success(),
+        "the task passes:\n{}",
+        text(&output)
+    );
+}
+
+fn pr_title_task(title: &str) -> Output {
+    let copy = copy_of_repository();
+    command("mise", copy.root())
+        .args(["run", "lint:pr-title"])
+        .env("MISE_TRUSTED_CONFIG_PATHS", copy.root())
+        .env("PR_TITLE", title)
+        .output()
+        .expect("mise runs")
+}
+
+#[test]
+fn pr_title_task_accepts_conventional_title() {
+    let output = pr_title_task("feat(cli): add the pair verb");
+    assert!(
+        output.status.success(),
+        "the task passes:\n{}",
         text(&output)
     );
 }
 
 #[test]
-#[ignore = "slow: runs a mise task on a copy of the repository"]
-fn hooks_check_passes_on_clean_tree() {
-    let output = mise_run("hooks:check", &copy_of_repository());
-    assert!(output.status.success(), "{SLOW}:\n{}", text(&output));
+fn pr_title_task_rejects_plain_title() {
+    for title in ["Add the pair verb", "feat add the pair verb", ""] {
+        let output = pr_title_task(title);
+        assert!(
+            !output.status.success(),
+            "the task fails for {title:?}:\n{}",
+            text(&output)
+        );
+    }
+}
+
+/// Makes an empty commit in the copy, with the hooks of the repository installed there.
+fn commit_in_copy(copy: &TreeCopy, message: &str) -> Output {
+    let identity = [
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+    ];
+    let arguments = ["commit", "--quiet", "--allow-empty", "--message", message];
+    command("git", copy.root())
+        .args(identity)
+        .args(arguments)
+        .env("MISE_TRUSTED_CONFIG_PATHS", copy.root())
+        .output()
+        .expect("git runs")
+}
+
+#[test]
+fn commit_hook_checks_the_message() {
+    let copy = copy_of_repository();
+    let installed = run("hk", &["install", "--mise"], copy.root());
+    assert!(
+        installed.status.success(),
+        "hk installs the hooks:\n{}",
+        text(&installed)
+    );
+
+    let plain = commit_in_copy(&copy, "fixed stuff");
+    assert!(
+        !plain.status.success(),
+        "a plain message fails:\n{}",
+        text(&plain)
+    );
+
+    let conventional = commit_in_copy(&copy, "fix: handle the empty verb");
+    assert!(
+        conventional.status.success(),
+        "a conventional message passes:\n{}",
+        text(&conventional)
+    );
 }

@@ -44,14 +44,28 @@ jobs:
       - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
       - run: mise run hooks:check
 
+  # A squash merge makes the pull request title the commit message on main.
+  commits:
+    name: commits
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+      - run: mise run lint:pr-title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+
   # The one check that the ruleset of main requires. `always()` keeps it from
   # being skipped after a failed job: a skipped required check counts as a pass.
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [rust, docs, hooks]
+    needs: [rust, docs, hooks, commits]
     runs-on: ubuntu-latest
     steps:
       - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
         with:
           jobs: ${{ toJSON(needs) }}
+          # The commits job runs for a pull request only.
+          allowed-skips: commits

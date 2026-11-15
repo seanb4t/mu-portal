@@ -2,19 +2,18 @@
 //! the `hk` pins and the ruleset of `main`. Each rule is a function over the
 //! text of the files, so a test can also pass it a text that breaks the rule.
 
+use serde_json::Value as Json;
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::Path;
 
-use serde_json::Value as Json;
+mod support;
 
 const CHECK_TASKS: [&str; 5] = ["fmt", "lint", "test", "doc", "deny"];
 const AGGREGATE_JOB: &str = "ci-ok";
+const AGGREGATE_ACTION: &str = "re-actors/alls-green@";
 
 fn repo_file(relative: &str) -> String {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(relative);
+    let path = support::repo_root().join(relative);
     fs::read_to_string(&path).unwrap_or_else(|error| panic!("{relative} is readable: {error}"))
 }
 
@@ -76,6 +75,7 @@ fn tool_releases(mise: &str, rust_toolchain: &str) -> Vec<String> {
         })
         .map(str::to_owned)
         .collect();
+    assert!(!releases.is_empty(), "mise.toml holds a tool release");
     let channel = toml(rust_toolchain)
         .get("toolchain")
         .and_then(|toolchain| toolchain.get("channel"))
@@ -99,7 +99,6 @@ fn holds_release(text: &str, release: &str) -> bool {
 
 /// Each release that the workflow states, in the full form or with no patch number.
 fn releases_in_workflow(workflow: &str, releases: &[String]) -> Vec<String> {
-    assert!(!releases.is_empty(), "the pin files hold a release");
     releases
         .iter()
         .filter(|release| {
@@ -122,11 +121,19 @@ fn task_commands(task: &toml::Value) -> Vec<String> {
     };
     lines
         .into_iter()
-        .flat_map(|line| line.split(['\n', ';']))
-        .flat_map(|line| line.split("&&"))
-        .map(|command| command.trim().to_owned())
+        .flat_map(|line| line.split(['\n', ';', '|', '&']))
+        .map(command_without_settings)
         .filter(|command| !command.is_empty())
         .collect()
+}
+
+/// A command with the environment settings before it removed: `A=b cargo test` is `cargo test`.
+fn command_without_settings(command: &str) -> String {
+    let words: Vec<&str> = command
+        .split_whitespace()
+        .skip_while(|word| word.contains('=') && !word.starts_with('-'))
+        .collect();
+    words.join(" ")
 }
 
 /// Each Cargo command in a task that has no `--locked`. `cargo fmt` resolves nothing.
@@ -193,27 +200,21 @@ fn hk_pins_match(hk_pkl: &str, mise: &str) -> bool {
     pins.len() == 4 && pins.iter().all(|pin| pin == release)
 }
 
-/// The name of each test in a Rust source text that has no `#[ignore]` attribute.
-fn tests_without_ignore(source: &str) -> Vec<String> {
-    let mut found = Vec::new();
-    let mut attributes: Vec<&str> = Vec::new();
-    for line in source.lines().map(str::trim) {
-        if line.starts_with("#[") {
-            attributes.push(line);
-        } else if let Some(rest) = line.strip_prefix("fn ") {
-            let is_test = attributes.contains(&"#[test]");
-            let is_ignored = attributes
-                .iter()
-                .any(|attribute| attribute.starts_with("#[ignore"));
-            if is_test && !is_ignored {
-                found.push(rest.split('(').next().unwrap_or(rest).to_owned());
-            }
-            attributes.clear();
-        } else if !line.is_empty() && !line.starts_with("//") {
-            attributes.clear();
-        }
-    }
-    found
+/// True if the manifest keeps the workflow tests behind a feature. Without one, the `test`
+/// task of each copy runs them, and each of them makes a copy.
+fn workflow_tests_need_feature(manifest: &str) -> bool {
+    toml(manifest)
+        .get("test")
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|target| target.get("name").and_then(toml::Value::as_str) == Some("dev_workflow"))
+        .any(|target| {
+            target
+                .get("required-features")
+                .and_then(toml::Value::as_array)
+                .is_some_and(|features| !features.is_empty())
+        })
 }
 
 /// The name that GitHub reports for a job: its `name`, or its id.
@@ -255,6 +256,21 @@ fn aggregate_gaps(workflow: &str) -> Vec<String> {
         .filter(|id| *id != AGGREGATE_JOB && !needs.contains(id))
         .map(|id| format!("{AGGREGATE_JOB} does not need {id}"))
         .collect();
+    let passes_results = aggregate["steps"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|step| {
+            step["uses"]
+                .as_str()
+                .is_some_and(|action| action.starts_with(AGGREGATE_ACTION))
+                && step["with"]["jobs"].as_str() == Some("${{ toJSON(needs) }}")
+        });
+    if !passes_results {
+        gaps.push(format!(
+            "{AGGREGATE_JOB} does not give the job results to {AGGREGATE_ACTION}"
+        ));
+    }
     if aggregate["if"].as_str() != Some("always()") {
         gaps.push(format!("{AGGREGATE_JOB} has no always() condition"));
     }
@@ -346,9 +362,13 @@ fn ci_states_no_tool_release() {
 }
 
 #[test]
-#[should_panic(expected = "the pin files hold a release")]
+#[should_panic(expected = "mise.toml holds a tool release")]
 fn ci_states_no_tool_release_needs_a_release() {
-    let _ = releases_in_workflow("jobs: {}", &[]);
+    // The Rust channel alone does not count: a mise.toml in which the rule finds no tool is a failure.
+    let _ = tool_releases(
+        "[tasks.fmt]\nrun = \"cargo fmt\"\n",
+        "[toolchain]\nchannel = \"1.90.0\"\n",
+    );
 }
 
 #[test]
@@ -367,6 +387,14 @@ fn cargo_tasks_use_locked() {
     let list =
         "[tasks.test]\nrun = [\"cargo nextest run --locked\", \"cargo test --workspace --doc\"]\n";
     assert_eq!(cargo_commands_without_locked(list), second);
+    // A command after `||` or `|`, and a command after an environment setting, are commands too.
+    for joined in [
+        "cargo nextest run --locked || cargo test --workspace --doc",
+        "cargo nextest run --locked | tee log; RUSTFLAGS=-Dwarnings cargo test --workspace --doc",
+    ] {
+        let task = format!("[tasks.test]\nrun = \"{joined}\"\n");
+        assert_eq!(cargo_commands_without_locked(&task), second, "{joined}");
+    }
 }
 
 #[test]
@@ -407,24 +435,25 @@ fn hk_pins_match_mise() {
 }
 
 #[test]
-fn workflow_tests_are_ignored() {
-    let none: Vec<String> = Vec::new();
-    assert_eq!(
-        tests_without_ignore(&repo_file("crates/mu-cli/tests/dev_workflow.rs")),
-        none
-    );
+fn workflow_tests_need_a_feature() {
+    assert!(workflow_tests_need_feature(&repo_file(
+        "crates/mu-cli/Cargo.toml"
+    )));
 
-    let second_is_not_ignored = "
-#[test]
-#[ignore = \"slow\"]
-fn first() {}
-
-#[test]
-fn second() {}
-
-fn helper() {}
-";
-    assert_eq!(tests_without_ignore(second_is_not_ignored), ["second"]);
+    let target = |features: &str| format!("[[test]]\nname = \"dev_workflow\"\n{features}");
+    assert!(workflow_tests_need_feature(&target(
+        "required-features = [\"workflow-tests\"]\n"
+    )));
+    assert!(!workflow_tests_need_feature(&target("")));
+    assert!(!workflow_tests_need_feature(&target(
+        "required-features = []\n"
+    )));
+    assert!(!workflow_tests_need_feature(
+        "[[test]]\nname = \"other\"\nrequired-features = [\"x\"]\n"
+    ));
+    assert!(!workflow_tests_need_feature(
+        "[package]\nname = \"mu-cli\"\n"
+    ));
 }
 
 #[test]
@@ -466,20 +495,33 @@ fn ci_ok_covers_every_job() {
     let none: Vec<String> = Vec::new();
     assert_eq!(aggregate_gaps(&repo_file(".github/workflows/ci.yml")), none);
 
-    let workflow = |needs: &str, condition: &str| {
-        format!("jobs:\n  rust: {{}}\n  docs: {{}}\n  ci-ok:\n    needs: {needs}\n{condition}")
+    let step = "    steps:\n      - uses: re-actors/alls-green@0000000\n        with:\n          jobs: ${{ toJSON(needs) }}\n";
+    let workflow = |needs: &str, condition: &str, steps: &str| {
+        format!(
+            "jobs:\n  rust: {{}}\n  docs: {{}}\n  ci-ok:\n    needs: {needs}\n{condition}{steps}"
+        )
     };
+    let always = "    if: always()\n";
     assert_eq!(
-        aggregate_gaps(&workflow("[rust, docs]", "    if: always()\n")),
+        aggregate_gaps(&workflow("[rust, docs]", always, step)),
         none
     );
     assert_eq!(
-        aggregate_gaps(&workflow("[rust]", "    if: always()\n")),
+        aggregate_gaps(&workflow("[rust]", always, step)),
         ["ci-ok does not need docs"]
     );
     assert_eq!(
-        aggregate_gaps(&workflow("[rust, docs]", "")),
+        aggregate_gaps(&workflow("[rust, docs]", "", step)),
         ["ci-ok has no always() condition"]
+    );
+    // A step that does not read the job results cannot fail for a failed job.
+    assert_eq!(
+        aggregate_gaps(&workflow(
+            "[rust, docs]",
+            always,
+            "    steps:\n      - run: mise run check\n"
+        )),
+        ["ci-ok does not give the job results to re-actors/alls-green@"]
     );
     assert_eq!(aggregate_gaps("jobs:\n  rust: {}\n"), ["no ci-ok job"]);
 }

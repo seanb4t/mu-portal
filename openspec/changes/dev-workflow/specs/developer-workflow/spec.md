@@ -64,6 +64,27 @@ The repository SHALL provide git hooks through `hk`. The hook checks SHALL exit 
 - **WHEN** a contributor runs `mise run hooks:check` on a tree with no defect
 - **THEN** the exit status is 0
 
+### Requirement: Commit messages are conventional commits
+The repository SHALL provide a git hook that refuses a commit whose message is not in the Conventional Commits format. The repository SHALL provide a task, `lint:pr-title`, that fails for a pull request title that is not in that format. The CI workflow SHALL run that task for each pull request.
+
+#### Scenario: Commit with a plain message
+- **GIVEN** a copy of the tree, as a git repository with the hooks installed
+- **WHEN** a contributor commits with the message `fixed stuff`
+- **THEN** git refuses the commit
+
+#### Scenario: Commit with a conventional message
+- **GIVEN** a copy of the tree, as a git repository with the hooks installed
+- **WHEN** a contributor commits with the message `fix: handle the empty verb`
+- **THEN** git accepts the commit
+
+#### Scenario: Pull request title that is not conventional
+- **WHEN** the `lint:pr-title` task runs with the title `Add the pair verb`, with the title `feat add the pair verb`, or with an empty title
+- **THEN** the exit status is not 0
+
+#### Scenario: Conventional pull request title
+- **WHEN** the `lint:pr-title` task runs with the title `feat(cli): add the pair verb`
+- **THEN** the exit status is 0
+
 ### Requirement: CI runs the tasks
 Each command step of the CI workflow SHALL be one `mise` task that `mise.toml` defines. The workflow SHALL NOT state a check command that a task already holds. The workflow SHALL NOT state the release of a tool that a pin file holds.
 

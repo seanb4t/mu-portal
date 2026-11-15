@@ -12,7 +12,7 @@ A tool, `cargo-deny`, checks every crate in the dependency tree. The file `deny.
 - A crate with a known vulnerability fails. An unmaintained crate fails.
 - A crate must have a license from the allowed list in `deny.toml`. The list holds permissive licenses only. A crate with a GPL license fails.
 - A crate must come from crates.io. A git source needs an entry in `deny.toml`.
-- A dependency with no version requirement fails.
+- A dependency with no version requirement fails. A path dependency between two crates of the workspace is the exception.
 
 The policy applies to a crate that cannot be published as it applies to every other crate.
 

@@ -36,7 +36,7 @@ See proposal.md for the motivation. The state of the repository after `project-f
 
 A root `mise.toml` has two parts:
 
-- `[tools]` pins `hk`, `cargo-deny`, `cargo-nextest`, `actionlint`, Node and `pnpm`. It also pins each tool that an `hk` step needs, which task 2.1 finds.
+- `[tools]` pins `hk`, `cargo-deny`, `cargo-nextest`, `cocogitto`, `actionlint`, Node and `pnpm`. It also pins each tool that an `hk` step needs, which task 2.1 finds.
 - `[tasks]` defines the check commands. No other file states them.
 
 The tasks are:
@@ -46,6 +46,7 @@ The tasks are:
 | `fmt` | `cargo fmt --check` |
 | `lint` | `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` |
 | `lint:actions` | `actionlint` |
+| `lint:pr-title` | `cog verify` on the title in the `PR_TITLE` variable |
 | `test` | `cargo nextest run --workspace --locked`, and then `cargo test --workspace --doc --locked` |
 | `doc` | `cargo doc --workspace --no-deps --locked`, with `RUSTDOCFLAGS=-D warnings` |
 | `deny` | `cargo deny --locked check` |
@@ -88,7 +89,8 @@ Renovate must read each pin. Task 6.4 runs the Renovate validator. The check of 
 
 | Hook | Steps |
 |---|---|
-| `pre-commit` and `check` | `mise run fmt`, `mise run lint:actions`, and the `hk` builtin checks for TOML, YAML and merge conflict markers |
+| `pre-commit` and `check` | `mise run fmt`, `mise run lint:actions`, the `hk` builtins for TOML and merge conflict markers, and a YAML step that parses each file with `yq` |
+| `commit-msg` | the `hk` builtin for `cocogitto`, which checks the commit message |
 | `pre-push` | `mise run check` |
 
 `hk.pkl` states the first list once, as its top-level steps. `hk` builds the `pre-commit` hook and the `check` hook from that one list, so the two cannot differ. CI runs the `check` hook on every file through the task `hooks:check`.
@@ -169,12 +171,15 @@ One detail differs from the skill's example. The two rustc groups, `future_incom
 
 ### 6. CI
 
-`.github/workflows/ci.yml` has four jobs:
+`.github/workflows/ci.yml` has five jobs:
 
 - **rust**, on Linux and macOS: `mise run check`. On Linux it also runs `mise run test:workflow`.
 - **docs**, on Linux: `mise run docs:check`.
 - **hooks**, on Linux: `mise run hooks:check`.
-- **ci-ok**, on Linux: it needs the three jobs above and has the condition `always()`. Its one step is an existing action that fails unless each needed job succeeded. Task 5.1 reads the documentation of that action. Without the condition, GitHub skips the job after a failed job, and a skipped required check counts as a pass.
+- **commits**, on Linux, for a pull request only: `mise run lint:pr-title`. The title reaches the task through an environment variable of the step, so the title is never part of a shell command.
+- **ci-ok**, on Linux: it needs the four jobs above and has the condition `always()`. Its one step is an existing action that fails unless each needed job succeeded. Task 5.1 reads the documentation of that action. Without the condition, GitHub skips the job after a failed job, and a skipped required check counts as a pass.
+
+The `commits` job does not run for a push to `main`. The aggregate action therefore allows that one job to be skipped.
 
 Every `run` step is therefore `mise run` and one task. The `ci-ok` step is a `uses` step, so the step rule does not apply to it.
 
@@ -182,7 +187,7 @@ Each job installs the tools with the `mise` action. The Rust job also uses a bui
 
 The `mise` action replaces the Node setup action and the `pnpm` setup action.
 
-`ci-ok` gives the ruleset of Decision 9 one check name. That name stays the same after a job gains or loses a matrix entry. The job states `name: ci-ok`, so the name that GitHub reports equals the job id.
+`ci-ok` gives the ruleset of Decision 10 one check name. That name stays the same after a job gains or loses a matrix entry. The job states `name: ci-ok`, so the name that GitHub reports equals the job id.
 
 ### 7. Tests of the workflow
 
@@ -197,7 +202,7 @@ The tests are Rust integration tests in `crates/mu-cli/tests/`, as every existin
 | `cargo_tasks_use_locked` | each Cargo command in a task has `--locked`, except `cargo fmt` |
 | `check_runs_every_task` | `check` depends on `fmt`, `lint`, `test`, `doc` and `deny` |
 | `hk_pins_match_mise` | the four releases in the two import lines of `hk.pkl` equal the `hk` release in `mise.toml` |
-| `workflow_tests_are_ignored` | each test in `dev_workflow.rs` has the `#[ignore]` attribute |
+| `workflow_tests_need_a_feature` | the test target `dev_workflow` has a required feature |
 | `ruleset_requires_ci_ok` | the one required check of the ruleset is the reported name of the `ci-ok` job |
 | `ci_ok_covers_every_job` | `ci-ok` needs every other job and has the condition `always()` |
 
@@ -208,23 +213,23 @@ The breaking texts cover the edges of each rule:
 - `cargo_tasks_use_locked`: a task with two Cargo commands in which only the first has `--locked`, once as one string and once as a list of strings.
 - `check_runs_every_task`: a `check` task that depends on four of the five tasks.
 - `hk_pins_match_mise`: an import line whose download tag and package release differ, and a file whose four releases agree but differ from `mise.toml`.
-- `workflow_tests_are_ignored`: a file in which the second test has no attribute.
+- `workflow_tests_need_a_feature`: a target with no required feature, a target with an empty list, and a manifest with no such target.
 - `ruleset_requires_ci_ok`: a job whose `name` differs from its id, a ruleset with no required check, and a ruleset with two.
 - `ci_ok_covers_every_job`: a job that `ci-ok` does not need, and a `ci-ok` job with no condition.
 
-The rule `workflow_tests_are_ignored` stops a loop. A workflow test without the attribute runs in the `test` task, and so in the `check` of each copy, which makes another copy.
+The rule `workflow_tests_need_a_feature` stops a loop. Without the feature, the workflow tests run in the `test` task, and so in the `check` of each copy, which makes another copy.
 
 The tests read `ci.yml` with a YAML reader and the ruleset with a JSON reader. They do not search those files as text. The release search is the one exception, because a release can appear in any string.
 
 Task 6.1 chose `serde-saphyr` as the YAML reader, with `serde_json` for the value type and for the ruleset. `serde_yaml` is no longer maintained.
 
-**Workflow tests** in `dev_workflow.rs` are slow. Each one copies the tracked files into a temporary directory, adds one defect, and runs a task there. Three details of the copy:
+**Workflow tests** in `dev_workflow.rs` are slow. Each one copies the files of the repository into a temporary directory, adds one defect, and runs a task there. The copy holds each file that git tracks and each new file that git does not ignore, so the tests see work that is not committed yet. Three details of the copy:
 
 - The copy is a git repository, because `hk` reads the file list from git.
-- The copy has its own Cargo target directory. A shared directory lets one copy reuse the build of another copy, and a defect test can then pass for the wrong reason.
+- The copy has its own Cargo target directory, which the test sets through `CARGO_TARGET_DIR`. A shared directory lets one copy reuse the build of another copy, and a defect test can then pass for the wrong reason.
 - The test trusts the `mise.toml` of the copy through an environment variable, because `mise` does not run an untrusted configuration.
 
-Each workflow test has the `#[ignore]` attribute with a reason. The `test` task therefore does not run them, and a `mise run check` inside a copy does not start the workflow tests again. The `test:workflow` task runs only the ignored tests of that file.
+The test target `dev_workflow` needs the Cargo feature `workflow-tests` of `mu-cli`. The `test` task does not set that feature, so it does not build or run these tests, and a `mise run check` inside a copy does not start them again. The `test:workflow` task sets the feature. No test has the `#[ignore]` attribute: the first implementation review read ignored tests as disabled tests, and the feature states the same intent in the manifest. The `lint` task uses `--all-features`, so Clippy still checks the file.
 
 The license test adds a crate to the workspace of its copy. A new member changes the lock file, and each Cargo task uses `--locked`. The test therefore updates the lock file of the copy before it runs the task. It asserts that the output holds the name of the added crate and the text `GPL-3.0-only`.
 
@@ -240,18 +245,33 @@ The license test adds a crate to the workspace of its copy. A new member changes
 | The check task runs the dependency policy | `check_runs_every_task` |
 | Hook check on a formatting defect | `hooks_check_fails_on_formatting_defect` |
 | Hook check on a clean tree | `hooks_check_passes_on_clean_tree` |
+| Commit with a plain message | `commit_hook_checks_the_message` |
+| Commit with a conventional message | `commit_hook_checks_the_message` |
+| Pull request title that is not conventional | `pr_title_task_rejects_plain_title` |
+| Conventional pull request title | `pr_title_task_accepts_conventional_title` |
 | Workflow steps | `ci_steps_are_tasks` |
 | No tool release in the workflow | `ci_states_no_tool_release` |
 | The ruleset names the aggregate check | `ruleset_requires_ci_ok` |
 | The aggregate check covers every job | `ci_ok_covers_every_job` |
 
-The nine workflow tests take about 18 seconds on the machine of the owner.
+The twelve workflow tests take about 18 seconds on the machine of the owner.
 
 Each defect test is not vacuous for two reasons. The test `check_passes_on_clean_tree` runs the same task on a copy with no defect, and it passes. Each defect test also asserts which task failed, or which text the output holds. The plan asked for a run of each test with its defect removed. That run is not possible by an edit of the shared helper, because the copy holds the edited helper too, and every copy then fails the format check.
 
 Alternative: a Python test under `uv`. Rejected, because it adds two tools for one file and leaves the test pattern of the repository.
 
-### 8. Community files
+### 8. Commit format
+
+Each commit message and each pull request title follows the Conventional Commits format. `cocogitto` is the one tool that decides what the format is, in the hook and in CI.
+
+- The `commit-msg` hook refuses a commit with another message. A hook is a choice of each clone.
+- The `commits` job in CI checks the title of the pull request. The repository merges with a squash, so the title becomes the commit message on `main`. The commits of the branch do not reach `main`, and CI does not check them.
+
+Enforcement: the `commits` job, which `ci-ok` needs. The ruleset requires `ci-ok`.
+
+Release notes and a changelog tool are not in this change. They need a release process, and the parked issue for release tooling holds them. `changie`, `git-cliff` and `release-plz` are the candidates.
+
+### 9. Community files
 
 - `CONTRIBUTING.md` is a short pointer to the Contributing pages of the documentation site. The pages own the rules, as `project-foundation` decided. The file holds no rule. The Contributing section of `README.md` becomes one link to `CONTRIBUTING.md`, so the list of pages exists once.
 - `SECURITY.md` tells a reporter to use the private vulnerability reporting of GitHub. Task 4.2 turns that feature on.
@@ -261,7 +281,7 @@ Alternative: a Python test under `uv`. Rejected, because it adds two tools for o
 
 Enforcement: none. These files are text for people, and a reviewer reads them.
 
-### 9. Protection of `main`
+### 10. Protection of `main`
 
 `.github/rulesets/main.json` holds a repository ruleset for `main`:
 

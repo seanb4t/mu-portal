@@ -23,6 +23,10 @@ To run the checks before each commit and each push, install the git hooks once:
 hk install --mise
 ```
 
+## Commit messages
+
+A commit message follows the [Conventional Commits](https://www.conventionalcommits.org) format, for example `fix: handle the empty verb`. The `commit-msg` hook refuses another message. CI checks the title of each pull request in the same way, because the title becomes the commit message on `main`.
+
 ## Check the Rust workspace
 
 ```sh
@@ -47,7 +51,7 @@ This task installs the packages of the site, reports errors in the architecture 
 mise run test:workflow
 ```
 
-These tests copy the repository, add one defect to the copy and make sure that a check fails. They take longer than the other tests, so no hook runs them.
+These tests copy the repository, add one defect to the copy and make sure that a check fails. They are behind the Cargo feature `workflow-tests`. They take longer than the other tests, so no hook runs them.
 
 ## Continuous integration
 

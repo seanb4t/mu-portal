@@ -26,7 +26,7 @@ context: |
   Prose: artifacts and documentation use plain English and follow the
   simple-english rules. Live documentation states no version literal.
 
-  One-test commands: cargo: `cargo nextest run -p <crate> --test <file> --run-ignored all --locked -E 'test(=<test name>)'`
+  One-test commands: cargo: `cargo nextest run -p <crate> --all-features --test <file> --locked -E 'test(=<test name>)'`
 
   Library rows: crate versions: Cargo.toml ([workspace.dependencies]).
   shared package fields and lints: Cargo.toml ([workspace.package], [workspace.lints]).

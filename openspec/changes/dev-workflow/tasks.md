@@ -25,26 +25,29 @@
 
 - [x] 4.1 Add `CONTRIBUTING.md` as a pointer to the Contributing pages, with `mise` as the first tool to install. Replace the link list in the Contributing section of `README.md` with one link to `CONTRIBUTING.md`. Make sure that each link resolves and that `CONTRIBUTING.md` states no rule.
 - [x] 4.2 Add `SECURITY.md`, and turn on private vulnerability reporting for the repository. Make sure that the GitHub API reports the feature as enabled.
-- [x] 4.3 Add `CODE_OF_CONDUCT.md` with the unchanged text of the Contributor Covenant and the contact address from Decision 8. Make sure that the file names its source and its release, and that the address in the file equals the address in Decision 8.
+- [x] 4.3 Add `CODE_OF_CONDUCT.md` with the unchanged text of the Contributor Covenant and the contact address from Decision 9. Make sure that the file names its source and its release, and that the address in the file equals the address in Decision 9.
 - [ ] 4.4 Add `.github/ISSUE_TEMPLATE/` with a bug report and an idea template, and add `.github/pull_request_template.md`. Make sure that the new-issue page of the repository offers both templates after the push.
 - [x] 4.5 Add a Decisions page for the dependency policy, and a Decisions page for the developer workflow with `mise` and `hk`. Make sure that both pages appear in the site sidebar and that `mise run docs:check` passes.
 
 ## 5. CI
 
 - [x] 5.1 Read the current documentation of the `mise` action, of the Rust build cache action and of the aggregate check action for their inputs. Rewrite `.github/workflows/ci.yml` so that CI runs the tasks, with the four jobs from Decision 6. Pin each action by commit SHA with its release in a comment. Make sure that `mise run lint:actions` reports no error.
-- [x] 5.2 Update the Contributing page for the build. Name `mise install`, `mise run check` and `mise run docs:check`, and remove the command lists. State that `mise` is the supported way to get Node. Add the instruction for the ruleset from Decision 9. Make sure that each command on the page runs as written and that `mise run docs:check` passes.
+- [x] 5.2 Update the Contributing page for the build. Name `mise install`, `mise run check` and `mise run docs:check`, and remove the command lists. State that `mise` is the supported way to get Node. Add the instruction for the ruleset from Decision 10. Make sure that each command on the page runs as written and that `mise run docs:check` passes.
 
 ## 6. Tests and Renovate
 
 - [x] 6.1 Add `crates/mu-cli/tests/repo_config.rs` with the eight configuration tests from Decision 7 and the breaking texts that the decision lists. Choose a maintained YAML reader and record its name in `design.md`. Make sure that `cargo nextest run -p mu-cli --test repo_config --locked` passes.
-- [x] 6.2 Add `crates/mu-cli/tests/dev_workflow.rs` with the nine workflow tests from Decision 7, each with `#[ignore]` and a reason. The license test asserts that the output names the added crate and its license. Add the task `test:workflow`. Record the run time in `design.md`. Make sure that `mise run test:workflow` passes. For each defect test, remove the defect once and make sure that the test then fails.
+- [x] 6.2 Add `crates/mu-cli/tests/dev_workflow.rs` with the workflow tests from Decision 7. The license test asserts that the output names the added crate and its license. Add the task `test:workflow`. Record the run time in `design.md`. Make sure that `mise run test:workflow` passes. For each defect test, remove the defect once and make sure that the test then fails.
 - [x] 6.3 Update the `context` field of `openspec/config.yaml`. The one-test command uses `cargo nextest` and runs an ignored test too. The library row for the toolchain pins names `mise.toml`. Make sure that the one-test command runs `deny_rejects_disallowed_license` by name.
 - [x] 6.4 Add a Renovate group for `hk` to `renovate.json`, with a custom manager for the package pins in `hk.pkl`. Make sure that `npx --yes --package renovate -- renovate-config-validator renovate.json` exits with status 0.
+
+- [x] 6.5 Add the commit format guard from Decision 8: the `commit-msg` hook, the task `lint:pr-title`, the `commits` job in CI, and the tests `commit_hook_checks_the_message`, `pr_title_task_rejects_plain_title` and `pr_title_task_accepts_conventional_title`. Make sure that `mise run test:workflow` passes.
+- [x] 6.6 Put the workflow tests behind the Cargo feature `workflow-tests`, and remove each `#[ignore]` attribute. Make sure that `cargo nextest run --workspace --locked` runs no test of `dev_workflow` and that `mise run test:workflow` runs all of them.
 
 ## 7. Integration
 
 - [x] 7.1 Add two parked GitHub issues to the mu-portal Project: release tooling, and the name of the binary. Make sure that both issues appear in the Project with the status Parked.
-- [ ] 7.2 Open a pull request. Add `.github/rulesets/main.json` and apply it with the GitHub API, as Decision 9 describes. Make sure that the check `ci-ok` passes on the pull request and that the GitHub API lists the ruleset as active.
+- [ ] 7.2 Open a pull request. Add `.github/rulesets/main.json` and apply it with the GitHub API, as Decision 10 describes. Make sure that the check `ci-ok` passes on the pull request and that the GitHub API lists the ruleset as active.
 - [ ] 7.3 From a clean clone, run `mise install`, `mise run check`, `mise run docs:check` and `mise run test:workflow` in order. Make sure that each command exits with status 0 on macOS.
 - [ ] 7.4 Run `openspec validate dev-workflow --strict`. Make sure that it passes.
 

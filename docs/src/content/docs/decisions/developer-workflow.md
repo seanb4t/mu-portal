@@ -7,9 +7,11 @@ sidebar:
 
 ## Decision
 
-`mise` installs the tools of the project and runs its tasks. The file `mise.toml` is the only list of both. `hk` runs the git hooks, and each hook step calls a `mise` task.
+`mise` installs the tools of the project and runs its tasks. The file `mise.toml` is the only list of both. `hk` runs the git hooks. A hook step that has a `mise` task calls that task.
 
 CI runs the same tasks. Each step of the CI workflow is one `mise` task.
+
+Each commit message and each pull request title follows the Conventional Commits format. A hook checks the message, and CI checks the title.
 
 The `main` branch accepts a change only through a pull request, and only after the check `ci-ok` passes. That check needs every other job of the workflow.
 

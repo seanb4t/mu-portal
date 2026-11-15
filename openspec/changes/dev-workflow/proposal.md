@@ -11,6 +11,7 @@ The `project-foundation` change built the workspace, but a contributor still ins
 - Move the Node pin and the `pnpm` pin into the `mise` configuration. Remove `docs/.node-version` and the `packageManager` field. `rust-toolchain.toml` stays the Rust pin, and `mise` reads it.
 - Add `hk` git hooks. The hook before a commit runs the fast checks. The hook before a push runs the full check task. CI runs the same `hk` checks on every file.
 - Replace the local `.husky` hook directory, which no file in the repository configures.
+- Guard the commit format. A hook refuses a commit message that is not a conventional commit. A CI job refuses a pull request title that is not one, because a squash merge makes the title the commit message on `main`.
 - Add `cargo-deny` with a configuration for advisories, licenses, banned crates and sources.
 - Add build hygiene to the workspace. Each crate states a minimum Rust release, so Cargo reports a toolchain that is too old. Each crate states `publish = false`, so nobody publishes one by accident. Each Cargo command in a task uses `--locked`. A `cargo doc` step fails on a warning. `cargo-nextest` is the test runner. The workspace lints gain the pedantic Clippy group and a lint for a public item with no doc comment.
 - Add a build cache to the Rust CI job.
@@ -19,7 +20,7 @@ The `project-foundation` change built the workspace, but a contributor still ins
 - Add two Decisions pages: the dependency policy, and the developer workflow.
 - Add two parked issues: release tooling, and the name of the binary. Homebrew already has a formula named `mu`.
 
-Not in this change: release tooling, a changelog, the name of the binary, a change of license, test coverage reports, and any product behavior of `mu`.
+Not in this change: release tooling, release notes, a changelog tool, the name of the binary, a change of license, test coverage reports, and any product behavior of `mu`.
 
 ## Capabilities
 

@@ -133,10 +133,7 @@ fn violations(root: &Path) -> Vec<Violation> {
             });
         }
 
-        let manifest: toml::Table = fs::read_to_string(&package.manifest_path)
-            .expect("the manifest is readable")
-            .parse()
-            .expect("the manifest is TOML");
+        let manifest = read_manifest(package.manifest_path.as_std_path());
         // The manifest decides: the metadata cannot tell an inherited value from a local one.
         let package = manifest.get("package");
         let fields = std::iter::once(("lints", manifest.get("lints"))).chain(
@@ -175,6 +172,13 @@ fn violations(root: &Path) -> Vec<Violation> {
     found
 }
 
+fn read_manifest(path: &Path) -> toml::Table {
+    fs::read_to_string(path)
+        .expect("the manifest is readable")
+        .parse()
+        .expect("the manifest is TOML")
+}
+
 /// True for a value of the form `{ workspace = true }`.
 fn inherits_from_workspace(value: Option<&toml::Value>) -> bool {
     value
@@ -185,11 +189,7 @@ fn inherits_from_workspace(value: Option<&toml::Value>) -> bool {
 
 /// True if `[workspace.package]` holds `publish = false`. A list of registries is not private.
 fn workspace_is_private(root: &Path) -> bool {
-    let manifest: toml::Table = fs::read_to_string(root.join("Cargo.toml"))
-        .expect("the root manifest is readable")
-        .parse()
-        .expect("the root manifest is TOML");
-    manifest
+    read_manifest(&root.join("Cargo.toml"))
         .get("workspace")
         .and_then(|workspace| workspace.get("package"))
         .and_then(|package| package.get("publish"))
@@ -209,10 +209,6 @@ fn dependency_entries(manifest: &toml::Table) -> Vec<(&String, &toml::Value)> {
         .filter_map(toml::Value::as_table)
         .flatten()
         .collect()
-}
-
-fn real_workspace() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
 fn base_fixture() -> PathBuf {
@@ -246,7 +242,7 @@ fn not_from_workspace(member: &str, key: &str) -> Vec<Violation> {
 
 #[test]
 fn real_workspace_has_no_violation() {
-    assert_eq!(violations(&real_workspace()), vec![]);
+    assert_eq!(violations(support::repo_root()), vec![]);
 }
 
 #[test]

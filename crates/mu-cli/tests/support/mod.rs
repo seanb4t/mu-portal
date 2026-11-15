@@ -8,6 +8,11 @@ use std::process::Output;
 
 use tempfile::TempDir;
 
+/// The root of the repository.
+pub fn repo_root() -> &'static Path {
+    Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
+}
+
 /// The standard output of a finished command, as text.
 pub fn stdout(output: &Output) -> String {
     String::from_utf8(output.stdout.clone()).expect("stdout is UTF-8")

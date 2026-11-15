@@ -22,6 +22,12 @@ steps {
 }
 
 hooks {
+    // The message of each commit follows the Conventional Commits format.
+    ["commit-msg"] {
+        steps {
+            ["conventional"] = Builtins.cocogitto_commit_msg
+        }
+    }
     ["pre-push"] {
         steps {
             ["check"] {
