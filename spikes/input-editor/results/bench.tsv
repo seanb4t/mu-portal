@@ -1,0 +1,38 @@
+measure	value	unit
+pose_bytes	4096	bytes
+pose_lines	51	lines
+paste_insert_median	18.7	us
+paste_text_kept	true	bool
+paste_undo_steps	1	undo calls to empty
+paste_cursor_on_screen_w40	true	bool
+frame_4k_median_w40	10.2	us
+paste_cursor_on_screen_w80	true	bool
+frame_4k_median_w80	20.4	us
+paste_cursor_on_screen_w120	true	bool
+frame_4k_median_w120	26.5	us
+keystroke_paste_total	217.5	ms
+keystroke_paste_undo_steps	10000	undo calls to empty (history limit)
+cursor_positions_w20	3928	positions
+cursor_disagree_w20	73	positions
+cursor_inside_grapheme_w20	24	positions
+cursor_positions_w40	3928	positions
+cursor_disagree_w40	220	positions
+cursor_inside_grapheme_w40	24	positions
+cursor_positions_w80	3928	positions
+cursor_disagree_w80	262	positions
+cursor_inside_grapheme_w80	24	positions
+grapheme_right_family_zwj	5	presses
+cursor_col_after_family_zwj	6/2	screen_cursor col / drawn col
+grapheme_backspace_family_zwj	5	presses
+grapheme_right_e_combining	2	presses
+cursor_col_after_e_combining	1/1	screen_cursor col / drawn col
+grapheme_backspace_e_combining	2	presses
+grapheme_right_flag	2	presses
+cursor_col_after_flag	2/2	screen_cursor col / drawn col
+grapheme_backspace_flag	2	presses
+grapheme_right_candle_vs16	2	presses
+cursor_col_after_candle_vs16	1/2	screen_cursor col / drawn col
+grapheme_backspace_candle_vs16	2	presses
+grapheme_right_han	1	presses
+cursor_col_after_han	2/2	screen_cursor col / drawn col
+grapheme_backspace_han	1	presses
