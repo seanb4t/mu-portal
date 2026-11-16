@@ -6,6 +6,8 @@ use std::os::unix::fs::{DirBuilderExt as _, FileTypeExt as _, PermissionsExt as 
 use std::path::Path;
 
 use mu_client::{ClientEvent, PortalClient};
+use mu_proto::__buffa::oneof::subscribe_response::Message;
+use mu_proto::EventKind;
 use rustix::process::Signal;
 
 use support::process::{BOUND, PtyOn, ServerBuilder, mu_on_pty, private_tempdir, wait_until};
@@ -205,6 +207,46 @@ async fn stops_on(signal: Signal) {
     assert_eq!(end, Some(ClientEvent::Lost));
     assert!(server.wait_exit().await.success());
     assert!(!server.socket().exists());
+}
+
+#[tokio::test]
+async fn sigterm_sends_the_disconnects_first() {
+    let mut server = ServerBuilder::new()
+        .fake_world("alpha/aria", "ALPHA_PW", "s3cret-pw")
+        .fake_world("beta/bryn", "BETA_PW", "s3cret-pw")
+        .start()
+        .await;
+    let mut stream = server.client().subscribe(0).await.unwrap();
+    let mut greeted = 0;
+    while greeted < 2 {
+        let message = wait_until(BOUND, "a greeting", stream.next())
+            .await
+            .unwrap();
+        if let Some(Message::Event(event)) = message.and_then(|message| message.message) {
+            greeted += usize::from(event.text.starts_with("Welcome, "));
+        }
+    }
+    server.signal(Signal::TERM);
+    let mut gone = Vec::new();
+    while let Ok(Some(message)) = wait_until(BOUND, "the end of the stream", stream.next()).await {
+        if let Some(Message::Event(event)) = message.message
+            && event.kind == EventKind::EVENT_KIND_DISCONNECTED
+        {
+            gone.push(event.world);
+        }
+    }
+    gone.sort();
+    assert_eq!(gone, ["alpha/aria", "beta/bryn"]);
+    assert!(server.wait_exit().await.success());
+}
+
+#[tokio::test]
+async fn bare_socket_name_is_in_the_working_directory() {
+    let builder = ServerBuilder::new().socket_flag(Some("s.sock".into()));
+    let dir = builder.dir().to_owned();
+    let server = builder.current_dir(&dir).start().await;
+    assert_eq!(server.socket(), dir.canonicalize().unwrap().join("s.sock"));
+    lists_worlds(server.socket()).await;
 }
 
 #[tokio::test]

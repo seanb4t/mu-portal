@@ -1,7 +1,7 @@
 //! The verb `mu client`.
 
 use std::fs::{File, OpenOptions};
-use std::io::{self, IsTerminal as _, Write as _};
+use std::io::{self, IsTerminal as _};
 use std::os::unix::process::CommandExt as _;
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
@@ -10,7 +10,7 @@ use std::time::Duration;
 use clap::Args;
 use mu_client::PortalClient;
 
-use crate::socket::{SocketArgs, current_uid, private_dir};
+use crate::socket::{SocketArgs, socket_dir};
 
 /// How long the client waits for a server that it started.
 const START_LIMIT: Duration = Duration::from_secs(5);
@@ -26,9 +26,7 @@ pub struct ClientArgs {
 }
 
 fn fail(error: &dyn std::fmt::Display) -> ExitCode {
-    // A closed stderr leaves nothing to report to.
-    let _ = writeln!(io::stderr(), "mu client: {error}");
-    ExitCode::from(1)
+    crate::fail("client", error)
 }
 
 /// Runs the terminal client. Nothing runs before the check of the terminal, so a client
@@ -38,11 +36,11 @@ pub fn run(args: &ClientArgs) -> ExitCode {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         return fail(&"stdin and stdout must be a terminal");
     }
-    let socket = args.socket.resolve();
-    let dir = socket.parent().unwrap_or_else(|| Path::new("/"));
-    if let Err(error) = private_dir(dir, current_uid()) {
-        return fail(&error);
-    }
+    let socket = match args.socket.private_socket() {
+        Ok(socket) => socket,
+        Err(error) => return fail(&error),
+    };
+    let dir = socket_dir(&socket);
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(runtime) => runtime,
         Err(error) => return fail(&error),

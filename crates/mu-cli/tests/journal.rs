@@ -3,26 +3,12 @@
 use mu_proto::__buffa::oneof::subscribe_response::Message;
 use mu_proto::{EventKind, Source, SubscribeResponse};
 
-use support::process::{BOUND, ServerBuilder, Session, private_tempdir, wait_until};
+use support::process::{BOUND, Session, private_tempdir, wait_until};
 use support::{mu_with, stderr};
 
 mod support;
 
 const PW: &str = "s3cret-pw";
-
-async fn started(worlds: &[(&str, &str)]) -> Session {
-    let builder = worlds
-        .iter()
-        .enumerate()
-        .fold(ServerBuilder::new(), |builder, (n, (world, password))| {
-            builder.fake_world(world, &format!("PW_{n}"), password)
-        });
-    let mut session = Session::start(builder).await;
-    for (world, _) in worlds {
-        session.welcome(world).await;
-    }
-    session
-}
 
 fn hello(message: Option<SubscribeResponse>) -> (String, u64) {
     match message.and_then(|message| message.message) {
@@ -41,7 +27,7 @@ fn seq(message: Option<SubscribeResponse>) -> u64 {
 /// A server whose journal holds the events 1 to 6: the connect, login and greeting of two
 /// worlds.
 async fn six_events() -> Session {
-    let session = started(&[("alpha/aria", PW), ("beta/bryn", PW)]).await;
+    let session = Session::with_worlds(&[("alpha/aria", PW), ("beta/bryn", PW)]).await;
     assert_eq!(session.seen().last().map(|event| event.seq), Some(6));
     session
 }
@@ -59,7 +45,7 @@ fn no_password(session: &Session, password: &str) {
 
 #[tokio::test]
 async fn events_of_two_worlds_share_one_sequence() {
-    let mut session = started(&[("alpha/aria", PW), ("beta/bryn", PW)]).await;
+    let mut session = Session::with_worlds(&[("alpha/aria", PW), ("beta/bryn", PW)]).await;
     session.client.send("alpha/aria", "one").await.unwrap();
     session.client.send("beta/bryn", "two").await.unwrap();
     session.line("alpha/aria", "You say, \"one\"").await;
@@ -77,7 +63,7 @@ async fn events_of_two_worlds_share_one_sequence() {
 
 #[tokio::test]
 async fn sources_of_a_session() {
-    let mut session = started(&[("alpha/aria", PW)]).await;
+    let mut session = Session::with_worlds(&[("alpha/aria", PW)]).await;
     session.client.send("alpha/aria", "hello").await.unwrap();
     let echo = session.line("alpha/aria", "You say, \"hello\"").await;
     let source = |kind: EventKind, text: Option<&str>| {
@@ -105,7 +91,7 @@ async fn sources_of_a_session() {
 
 #[tokio::test]
 async fn password_is_replaced() {
-    let session = started(&[("alpha/aria", PW)]).await;
+    let session = Session::with_worlds(&[("alpha/aria", PW)]).await;
     let login: Vec<&str> = session
         .seen()
         .iter()
@@ -125,7 +111,7 @@ async fn password_is_replaced() {
 
 #[tokio::test]
 async fn typed_password_is_masked() {
-    let mut session = started(&[("alpha/aria", PW)]).await;
+    let mut session = Session::with_worlds(&[("alpha/aria", PW)]).await;
     session
         .client
         .send("alpha/aria", "my pw is s3cret-pw")
@@ -142,7 +128,7 @@ async fn typed_password_is_masked() {
 
 #[tokio::test]
 async fn password_with_star_masks_whole_text() {
-    let mut session = started(&[("alpha/aria", "a*")]).await;
+    let mut session = Session::with_worlds(&[("alpha/aria", "a*")]).await;
     let seq = session
         .client
         .send("alpha/aria", "aa*")

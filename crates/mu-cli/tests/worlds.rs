@@ -10,20 +10,15 @@ mod support;
 const PW: &str = "s3cret-pw";
 
 fn builder(worlds: &[&str]) -> ServerBuilder {
-    worlds
-        .iter()
-        .enumerate()
-        .fold(ServerBuilder::new(), |builder, (n, world)| {
-            builder.fake_world(world, &format!("PW_{n}"), PW)
-        })
+    ServerBuilder::new().fake_worlds(&with_pw(worlds))
+}
+
+fn with_pw<'a>(worlds: &[&'a str]) -> Vec<(&'a str, &'static str)> {
+    worlds.iter().map(|world| (*world, PW)).collect()
 }
 
 async fn started(worlds: &[&str]) -> Session {
-    let mut session = Session::start(builder(worlds)).await;
-    for world in worlds {
-        session.welcome(world).await;
-    }
-    session
+    Session::with_worlds(&with_pw(worlds)).await
 }
 
 fn last(session: &Session) -> u64 {

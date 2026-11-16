@@ -1,6 +1,5 @@
 //! The verb `mu server`: the secrets, the socket directory, then `mu-server`.
 
-use std::io::Write as _;
 use std::process::ExitCode;
 use std::sync::Arc;
 
@@ -9,7 +8,7 @@ use mu_core::{
     EnvSecretStore, FakeTransport, ResolvedWorld, SecretRef, WorldId, WorldSetup, load_password,
 };
 
-use crate::socket::{SocketArgs, current_uid, private_dir};
+use crate::socket::SocketArgs;
 
 /// Arguments of `mu server`.
 #[derive(Clone, Debug, Default, Args)]
@@ -45,10 +44,7 @@ pub fn parse_fake_world(value: &str) -> Result<FakeWorld, String> {
 }
 
 fn fail(error: &dyn std::fmt::Display) -> ExitCode {
-    // A closed stderr leaves nothing to report to.
-    // One write for the line: servers that share a log append whole lines.
-    let _ = std::io::stderr().write_all(format!("mu server: {error}\n").as_bytes());
-    ExitCode::from(1)
+    crate::fail("server", error)
 }
 
 /// Runs the server until a signal stops it.
@@ -70,11 +66,10 @@ pub fn run(args: &ServerArgs) -> ExitCode {
         worlds.push(WorldSetup::new(world, Some(password), Arc::new(transport)));
     }
 
-    let socket = args.socket.resolve();
-    let dir = socket.parent().unwrap_or_else(|| std::path::Path::new("/"));
-    if let Err(error) = private_dir(dir, current_uid()) {
-        return fail(&error);
-    }
+    let socket = match args.socket.private_socket() {
+        Ok(socket) => socket,
+        Err(error) => return fail(&error),
+    };
 
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(runtime) => runtime,

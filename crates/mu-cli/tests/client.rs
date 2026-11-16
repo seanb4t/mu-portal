@@ -3,10 +3,12 @@
 use std::os::unix::fs::PermissionsExt as _;
 use std::time::Duration;
 
-use mu_proto::WorldState;
+use mu_client::PortalClient;
+use mu_proto::{EventKind, WorldState};
 
 use support::process::{
-    BOUND, PtyClient, PtyOn, Reaper, Relay, SERVING, ServerBuilder, mu_on_pty, private_tempdir,
+    BOUND, PtyClient, PtyOn, Reaper, Relay, SERVING, ServerBuilder, Session, mu_on_pty,
+    private_tempdir,
 };
 use support::stderr;
 
@@ -22,13 +24,34 @@ fn two_worlds() -> ServerBuilder {
 async fn client_starts_a_server() {
     let dir = private_tempdir();
     let run = dir.path().join("run");
-    let _reaper = Reaper(run.join("server.log"));
-    let client = PtyClient::start(&run.join("mu.sock"), dir.path());
+    let log = run.join("server.log");
+    let _reaper = Reaper(log.clone());
+    let socket = run.join("mu.sock");
+    let mut client = PtyClient::start(&socket, dir.path());
     client
         .wait_top("no worlds", |top| top.trim() == "no worlds")
         .await;
     let mode = std::fs::metadata(&run).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o700);
+    client.send(b"\x03");
+    assert!(
+        client
+            .exit_within(BOUND)
+            .await
+            .expect("the client exits")
+            .success()
+    );
+    // The server outlives the client that started it.
+    assert_eq!(
+        PortalClient::unix(&socket)
+            .list_worlds()
+            .await
+            .unwrap()
+            .len(),
+        0
+    );
+    let log = std::fs::read_to_string(&log).unwrap();
+    assert!(log.lines().any(|line| line.starts_with(SERVING)), "{log}");
 }
 
 #[tokio::test]
@@ -57,21 +80,77 @@ async fn two_clients_start_one_server() {
 #[tokio::test]
 async fn client_gives_up_after_five_seconds() {
     let dir = private_tempdir();
-    let socket = dir.path().join("mu.sock");
-    // A plain file on the socket path: the server that the client starts refuses it.
-    std::fs::write(&socket, "not a socket").unwrap();
+    let socket = dir.path().join("s.sock");
+    // The held lock makes the server that the client starts refuse to serve.
+    let lock = std::fs::File::create(mu_server::lock_path(&socket)).unwrap();
+    lock.try_lock().unwrap();
     let mut client = PtyClient::start(&socket, dir.path());
     assert!(
         client.exit_within(Duration::from_secs(4)).await.is_none(),
         "exited before 4 seconds"
     );
-    let status = client.exit_within(BOUND).await.expect("the client exits");
+    // 5 seconds in all, and a margin for the start of the process.
+    let status = client
+        .exit_within(Duration::from_secs(3))
+        .await
+        .expect("the client exits within 7 seconds");
     assert_eq!(status.exit_code(), 1);
+    let screen = client.contents().replace('\n', "");
+    let log = dir.path().join("server.log");
+    for name in [socket.display().to_string(), log.display().to_string()] {
+        assert!(
+            screen.contains(&name),
+            "{name} is not on the screen:\n{screen}"
+        );
+    }
+}
+
+/// A server with two worlds, and a client on it that shows the greeting of `alpha/aria`.
+async fn attached() -> (Session, PtyClient) {
+    let session =
+        Session::with_worlds(&[("alpha/aria", "s3cret-pw"), ("beta/bryn", "s3cret-pw")]).await;
+    let client = PtyClient::start(session.server.socket(), session.server.dir().path());
     client
-        .wait_rows("the reason", |rows| {
-            rows.join("\n").contains("within 5 seconds")
+        .wait_rows("the greeting", |rows| {
+            rows.iter().any(|row| row.trim() == "Welcome, aria.")
         })
         .await;
+    (session, client)
+}
+
+#[tokio::test]
+async fn typed_line_reaches_the_server() {
+    let (mut session, mut client) = attached().await;
+    client.send(b"hi\r");
+    let event = session
+        .until("the player event", |event| {
+            event.kind == EventKind::EVENT_KIND_INPUT
+        })
+        .await;
+    assert_eq!(
+        (event.world.as_str(), event.text.as_str()),
+        ("alpha/aria", "hi")
+    );
+    client
+        .wait_rows("an empty input line", |rows| {
+            rows.last().is_some_and(|row| row.trim().is_empty())
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn empty_enter_reaches_the_server() {
+    let (mut session, mut client) = attached().await;
+    client.send(b"\r");
+    let event = session
+        .until("the player event", |event| {
+            event.kind == EventKind::EVENT_KIND_INPUT
+        })
+        .await;
+    assert_eq!(
+        (event.world.as_str(), event.text.as_str()),
+        ("alpha/aria", "")
+    );
 }
 
 #[test]

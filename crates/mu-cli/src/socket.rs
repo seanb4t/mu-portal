@@ -50,6 +50,28 @@ impl SocketArgs {
     pub fn resolve(&self) -> PathBuf {
         self.path(std::env::var_os("XDG_RUNTIME_DIR"), current_uid())
     }
+
+    /// The absolute socket path, after [`private_dir`] accepts its directory. A relative path
+    /// is relative to the working directory.
+    ///
+    /// # Errors
+    ///
+    /// A [`PrivateDirError`] that names the directory.
+    pub fn private_socket(&self) -> Result<PathBuf, PrivateDirError> {
+        let socket = self.resolve();
+        let socket = std::path::absolute(&socket).map_err(|source| PrivateDirError::Io {
+            path: socket.clone(),
+            source,
+        })?;
+        private_dir(socket_dir(&socket), current_uid())?;
+        Ok(socket)
+    }
+}
+
+/// The directory of an absolute socket path.
+#[must_use]
+pub fn socket_dir(socket: &Path) -> &Path {
+    socket.parent().unwrap_or_else(|| Path::new("/"))
 }
 
 /// The user id of the process.

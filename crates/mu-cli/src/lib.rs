@@ -10,6 +10,14 @@ use std::process::ExitCode;
 use clap::{CommandFactory, Parser, Subcommand};
 
 pub use client::ClientArgs;
+
+/// Writes `mu <verb>: <error>` to stderr and returns the status 1. The line goes out in one
+/// write, so servers that share a log append whole lines.
+pub(crate) fn fail(verb: &str, error: &dyn std::fmt::Display) -> ExitCode {
+    // A closed stderr leaves nothing to report to.
+    let _ = std::io::stderr().write_all(format!("mu {verb}: {error}\n").as_bytes());
+    ExitCode::from(1)
+}
 pub use server::ServerArgs;
 
 /// One server and many clients for MU* text games.

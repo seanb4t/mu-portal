@@ -21,12 +21,11 @@ use tokio::task::JoinSet;
 /// The bound of each wait in the tests of the binary.
 pub const BOUND: Duration = Duration::from_secs(20);
 
-/// The start of the line that the server writes when it serves.
-pub const SERVING: &str = "mu server: serving the API on ";
+pub use mu_server::SERVING;
 
 /// The socket path and the process id of a serving line.
 pub fn served(line: &str) -> Option<(PathBuf, u32)> {
-    let rest = line.strip_prefix(SERVING)?;
+    let rest = line.strip_prefix(SERVING)?.strip_prefix(' ')?;
     let (path, process) = rest.rsplit_once(" (process ")?;
     Some((
         PathBuf::from(path),
@@ -130,6 +129,16 @@ impl ServerBuilder {
         self.arg("--fake-world")
             .arg(format!("{id}=env:{variable}"))
             .env(variable, Some(password))
+    }
+
+    /// Adds each `(id, password)` as a fake world, with the variables `PW_0`, `PW_1` and so on.
+    pub fn fake_worlds(self, worlds: &[(&str, &str)]) -> Self {
+        worlds
+            .iter()
+            .enumerate()
+            .fold(self, |builder, (n, (world, password))| {
+                builder.fake_world(world, &format!("PW_{n}"), password)
+            })
     }
 
     /// Sets a variable, or removes it with `None`.
@@ -385,6 +394,15 @@ impl Session {
         }
     }
 
+    /// Starts a server with these fake worlds and waits for the greeting of each.
+    pub async fn with_worlds(worlds: &[(&str, &str)]) -> Self {
+        let mut session = Self::start(ServerBuilder::new().fake_worlds(worlds)).await;
+        for (world, _) in worlds {
+            session.welcome(world).await;
+        }
+        session
+    }
+
     /// Reads the stream to the first event, from the start, that `check` accepts.
     pub async fn until(
         &mut self,
@@ -519,16 +537,17 @@ impl PtyClient {
     /// Waits until the rows pass `check`. A failure prints the screen.
     pub async fn wait_rows(&self, what: &str, check: impl Fn(&[String]) -> bool) {
         let mut receiver = self.screen.subscribe();
-        let found = tokio::time::timeout(
-            BOUND,
-            receiver.wait_for(|parser| check(&parser.screen().rows(0, 80).collect::<Vec<_>>())),
-        )
+        let note = ScreenNote {
+            what,
+            screen: &self.screen,
+        };
+        wait_until(BOUND, note, async {
+            receiver
+                .wait_for(|parser| check(&parser.screen().rows(0, 80).collect::<Vec<_>>()))
+                .await
+                .is_ok()
+        })
         .await;
-        assert!(
-            matches!(found, Ok(Ok(_))),
-            "no {what} within {BOUND:?}; the screen is:\n{}",
-            self.contents()
-        );
     }
 
     /// Waits until the top row passes `check`.
@@ -553,6 +572,19 @@ impl PtyClient {
             }
             Err(_elapsed) => None,
         }
+    }
+}
+
+/// The name of a wait on the screen. It shows the screen as it is when the wait fails.
+struct ScreenNote<'a> {
+    what: &'a str,
+    screen: &'a watch::Sender<vt100::Parser>,
+}
+
+impl Display for ScreenNote<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let contents = self.screen.borrow().screen().contents();
+        write!(f, "{}; the screen is:\n{contents}", self.what)
     }
 }
 

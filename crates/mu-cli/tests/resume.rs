@@ -89,13 +89,39 @@ fn instance(item: &ClientEvent) -> String {
 async fn resume_after_cut_connection() {
     let mut rig = Rig::start().await;
     rig.line("Welcome, aria.").await;
+    // The hold keeps the client out until the server recorded the events of the cut.
+    rig.relay.hold();
     assert!(rig.relay.cut() >= 1, "no connection to cut");
     rig.until("the loss", |item| *item == ClientEvent::Lost)
         .await;
     rig.send("one").await;
+    rig.send("two").await;
+    let during = rig.server.client().list_worlds().await.unwrap();
+    assert_eq!(during.len(), 1);
+    rig.relay.release();
     rig.until("the resume", |item| *item == ClientEvent::Resumed)
         .await;
     rig.line("You say, \"one\"").await;
+    rig.line("You say, \"two\"").await;
+    let before = Rig::seqs(
+        &rig.seen[..rig
+            .seen
+            .iter()
+            .position(|item| *item == ClientEvent::Lost)
+            .unwrap()],
+    );
+    let after = Rig::seqs(
+        &rig.seen[rig
+            .seen
+            .iter()
+            .position(|item| *item == ClientEvent::Lost)
+            .unwrap()..],
+    );
+    assert!(
+        after.len() >= 4,
+        "the client read the events of the cut after the resume: {after:?}"
+    );
+    assert!(before.iter().all(|seq| !after.contains(seq)));
     let seqs = Rig::seqs(&rig.seen);
     let want: Vec<u64> = (1..=seqs.len() as u64).collect();
     assert_eq!(seqs, want, "each number once, in order, with no gap");
@@ -116,6 +142,9 @@ async fn resets_after(signal: Signal) {
 
     rig.server.signal(signal);
     rig.server.wait_exit().await;
+    // The old stream ends first. On SIGTERM it carries the disconnect of the world.
+    rig.until("the loss", |item| *item == ClientEvent::Lost)
+        .await;
     let dir = std::sync::Arc::clone(rig.server.dir());
     rig.server = builder().in_dir(&dir).start().await;
     rig.send("after").await;
