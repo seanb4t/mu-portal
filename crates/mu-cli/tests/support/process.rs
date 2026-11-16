@@ -334,3 +334,85 @@ pub fn mu_on_pty(args: &[&str], on: PtyOn, cwd: &Path) -> Output {
     drop(master);
     output
 }
+
+/// A server with its client and one open event stream, and every event the stream gave.
+pub struct Session {
+    /// The server.
+    pub server: ServerProcess,
+    /// A client of the server.
+    pub client: PortalClient,
+    events: std::pin::Pin<Box<dyn futures::Stream<Item = mu_client::ClientEvent> + Send>>,
+    seen: Vec<mu_proto::Event>,
+}
+
+impl Session {
+    /// Starts the server of `builder` and opens a stream from the first event.
+    pub async fn start(builder: ServerBuilder) -> Self {
+        let server = builder.start().await;
+        let client = server.client();
+        let events = Box::pin(client.events());
+        Self {
+            server,
+            client,
+            events,
+            seen: Vec::new(),
+        }
+    }
+
+    /// Reads the stream to the first event, from the start, that `check` accepts.
+    pub async fn until(
+        &mut self,
+        what: &str,
+        check: impl Fn(&mu_proto::Event) -> bool,
+    ) -> mu_proto::Event {
+        if let Some(event) = self.seen.iter().find(|event| check(event)) {
+            return event.clone();
+        }
+        wait_until(BOUND, what, async {
+            loop {
+                let item = futures::StreamExt::next(&mut self.events).await;
+                if let Some(mu_client::ClientEvent::Event(event)) = item {
+                    self.seen.push(event.clone());
+                    if check(&event) {
+                        return event;
+                    }
+                }
+            }
+        })
+        .await
+    }
+
+    /// Reads to the game line `text` of `world`.
+    pub async fn line(&mut self, world: &str, text: &str) -> mu_proto::Event {
+        self.until(&format!("line {text:?} of {world}"), |event| {
+            event.world == world
+                && event.kind == mu_proto::EventKind::EVENT_KIND_LINE
+                && event.text == text
+        })
+        .await
+    }
+
+    /// Reads to the event of `kind` of `world` after the number `after`.
+    pub async fn kind(
+        &mut self,
+        world: &str,
+        kind: mu_proto::EventKind,
+        after: u64,
+    ) -> mu_proto::Event {
+        self.until(&format!("{kind:?} of {world} after {after}"), |event| {
+            event.world == world && event.kind == kind && event.seq > after
+        })
+        .await
+    }
+
+    /// Reads to the greeting of `world`, which follows its login.
+    pub async fn welcome(&mut self, world: &str) -> mu_proto::Event {
+        let character = world.split_once('/').unwrap().1;
+        self.line(world, &format!("Welcome, {character}.")).await
+    }
+
+    /// Every event that the stream gave so far.
+    pub fn seen(&self) -> &[mu_proto::Event] {
+        &self.seen
+    }
+}

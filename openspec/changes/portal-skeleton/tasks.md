@@ -64,7 +64,7 @@ Load the `rust-best-practices` skill before this group.
   - `second_server_is_refused`, `stale_socket_is_replaced` and `regular_file_at_socket_path_is_kept`
   - `sigterm_stops_server` and `sigint_stops_server`
   - `client_needs_a_terminal`, which uses `mu_on_pty` to give the client a terminal on stdin and a pipe on stdout. It checks that the directory is still empty, and that stderr does not contain `not implemented`
-- [ ] 6.4 Add `crates/mu-cli/tests/worlds.rs` with one test for each scenario of the world-sessions spec on the binary. Make sure that `cargo nextest run -p mu-cli --test worlds --locked` passes, with these tests:
+- [x] 6.4 Add `crates/mu-cli/tests/worlds.rs` with one test for each scenario of the world-sessions spec on the binary. Make sure that `cargo nextest run -p mu-cli --test worlds --locked` passes, with these tests:
   - `bad_world_id_is_refused`
   - `fake_world_answers`
   - `fake_world_flag_is_hidden`
