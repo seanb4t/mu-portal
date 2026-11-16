@@ -57,7 +57,7 @@ pub fn run(args: &ServerArgs) -> ExitCode {
     for fake in &args.fake_worlds {
         let password = match load_password(&store, &fake.secret) {
             Ok(password) => password,
-            Err(error) => return fail(&error),
+            Err(error) => return fail(&format!("{}: {error}", fake.id)),
         };
         let transport = FakeTransport::with_secret(fake.id.character(), &password);
         let world = ResolvedWorld::with_default_login(fake.id.clone(), fake.secret.clone());

@@ -142,6 +142,19 @@ impl PortalClient {
         Ok(())
     }
 
+    /// One stream from `from_seq`, with no resume: the `Hello`, then each event.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the call fails.
+    pub async fn subscribe(&self, from_seq: u64) -> Result<EventStream, ClientError> {
+        let request = proto::SubscribeRequest {
+            from_seq,
+            ..Default::default()
+        };
+        Ok(EventStream(self.inner.subscribe(request).await?))
+    }
+
     /// The events from the first one, with no end. After an error or a clean end, the
     /// stream yields [`ClientEvent::Lost`], waits by [`backoff`] and subscribes again from
     /// the next number.
@@ -160,6 +173,24 @@ impl PortalClient {
             let event = resume.next().await;
             Some((event, resume))
         })
+    }
+}
+
+/// One stream of [`PortalClient::subscribe`].
+pub struct EventStream(Events);
+
+impl EventStream {
+    /// The next message. None means a clean end.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the stream ends with an error.
+    pub async fn next(&mut self) -> Result<Option<proto::SubscribeResponse>, ClientError> {
+        Ok(self
+            .0
+            .message()
+            .await?
+            .map(|message| message.to_owned_message()))
     }
 }
 

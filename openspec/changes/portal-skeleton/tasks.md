@@ -78,7 +78,7 @@ Load the `rust-best-practices` skill before this group.
   - `empty_send_reaches_game`
   - `one_world_drops`
   - `world_connects_again`
-- [ ] 6.5 Add `crates/mu-cli/tests/journal.rs` with one test for each scenario of the event-journal spec on the binary. The tests are `events_of_two_worlds_share_one_sequence`, `sources_of_a_session`, `password_is_replaced`, `typed_password_is_masked`, `password_with_star_masks_whole_text`, `password_of_stars_is_refused`, `stream_from_the_middle`, `stream_from_zero`, `stream_from_the_next_number` and `stream_past_the_end`. `password_is_replaced` also reads the stderr of the server. Make sure that `cargo nextest run -p mu-cli --test journal --locked` passes.
+- [x] 6.5 Add `crates/mu-cli/tests/journal.rs` with one test for each scenario of the event-journal spec on the binary. The tests are `events_of_two_worlds_share_one_sequence`, `sources_of_a_session`, `password_is_replaced`, `typed_password_is_masked`, `password_with_star_masks_whole_text`, `password_of_stars_is_refused`, `stream_from_the_middle`, `stream_from_zero`, `stream_from_the_next_number` and `stream_past_the_end`. `password_is_replaced` also reads the stderr of the server. Make sure that `cargo nextest run -p mu-cli --test journal --locked` passes.
 - [ ] 6.6 Add `crates/mu-cli/tests/resume.rs` with `PortalClient` and the relay. Add the tests `resume_after_cut_connection` (scenario: resume after a cut connection) and `resume_after_server_restart` (scenario: resume after a restart of the server). Add `resume_after_clean_end`, which stops the server with SIGTERM, starts it again, and checks that the client resets and reads the new events. Make sure that `cargo nextest run -p mu-cli --test resume --locked` passes.
 
 ## 7. The terminal client
