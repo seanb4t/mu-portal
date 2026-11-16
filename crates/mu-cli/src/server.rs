@@ -52,6 +52,11 @@ fn fail(error: &dyn std::fmt::Display) -> ExitCode {
 
 /// Runs the server until a signal stops it.
 pub fn run(args: &ServerArgs) -> ExitCode {
+    // Only the server logs: the lines would break the screen of the client.
+    let _ = tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_max_level(tracing::Level::WARN)
+        .try_init();
     let store = EnvSecretStore::new();
     let mut worlds = Vec::new();
     for fake in &args.fake_worlds {
