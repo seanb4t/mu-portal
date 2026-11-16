@@ -27,6 +27,10 @@ pub trait Framer: Send + 'static {
     fn encode(&self, line: &str) -> Vec<u8>;
 }
 
+/// The longest line that [`LineFramer`] holds. A longer run of bytes with no LF is cut into
+/// lines of this length, so a game cannot grow the buffer without a bound.
+pub const MAX_LINE: usize = 64 * 1024;
+
 /// Splits on LF and drops each CR. It never gives a prompt or a message.
 #[derive(Debug, Default)]
 pub struct LineFramer {
@@ -51,7 +55,13 @@ impl Framer for LineFramer {
                     lines.push(Inbound::Line(String::from_utf8_lossy(&line).into_owned()));
                 }
                 b'\r' => {}
-                byte => self.partial.push(byte),
+                byte => {
+                    self.partial.push(byte);
+                    if self.partial.len() == MAX_LINE {
+                        let line = std::mem::take(&mut self.partial);
+                        lines.push(Inbound::Line(String::from_utf8_lossy(&line).into_owned()));
+                    }
+                }
             }
         }
         lines
@@ -103,6 +113,16 @@ mod tests {
         assert_eq!(framer.feed(b"hel"), []);
         assert_eq!(lines(framer.feed(b"lo\nwor")), ["hello"]);
         assert_eq!(lines(framer.feed(b"ld\n")), ["world"]);
+    }
+
+    #[test]
+    fn line_framer_cuts_a_line_at_the_bound() {
+        let mut framer = LineFramer::new();
+        let long = vec![b'a'; MAX_LINE + 3];
+        let cut = lines(framer.feed(&long));
+        assert_eq!(cut.len(), 1);
+        assert_eq!(cut[0].len(), MAX_LINE);
+        assert_eq!(lines(framer.feed(b"\n")), ["aaa"]);
     }
 
     #[test]
