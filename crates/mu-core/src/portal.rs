@@ -239,25 +239,21 @@ impl Portal {
     pub async fn stop(&self) {
         // The flag goes up first, so a connect that a session reads after it fails.
         self.stopped.store(true, Ordering::Release);
-        for world in self.router.keys() {
-            // Only a stopped engine fails here.
-            let _ = self
-                .submit(Envelope::system(Command::Disconnect {
-                    world: world.clone(),
-                }))
-                .await;
-        }
+        self.to_every_world(|world| Command::Disconnect { world })
+            .await;
     }
 
     /// Connects every world, as the server. Each world logs in when it connects.
     pub async fn connect_all(&self) {
+        self.to_every_world(|world| Command::Connect { world })
+            .await;
+    }
+
+    /// Submits one command of the server to each world, in the order of the ids.
+    async fn to_every_world(&self, command: fn(WorldId) -> Command) {
         for world in self.router.keys() {
             // Only a stopped engine fails here.
-            let _ = self
-                .submit(Envelope::system(Command::Connect {
-                    world: world.clone(),
-                }))
-                .await;
+            let _ = self.submit(Envelope::system(command(world.clone()))).await;
         }
     }
 }
