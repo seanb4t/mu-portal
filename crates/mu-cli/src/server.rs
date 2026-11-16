@@ -46,7 +46,8 @@ pub fn parse_fake_world(value: &str) -> Result<FakeWorld, String> {
 
 fn fail(error: &dyn std::fmt::Display) -> ExitCode {
     // A closed stderr leaves nothing to report to.
-    let _ = writeln!(std::io::stderr(), "mu server: {error}");
+    // One write for the line: servers that share a log append whole lines.
+    let _ = std::io::stderr().write_all(format!("mu server: {error}\n").as_bytes());
     ExitCode::from(1)
 }
 

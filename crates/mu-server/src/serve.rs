@@ -16,7 +16,8 @@ use tokio::sync::watch;
 
 use crate::service::PortalApi;
 
-/// The start of the line that the server writes to stderr when it serves.
+/// The start of the line that the server writes to stderr when it serves. The line goes on
+/// with the socket path and `(process <id>)`.
 pub const SERVING: &str = "mu server: serving the API on";
 
 /// A start of the server that failed. Each error names the path.
@@ -107,7 +108,13 @@ pub async fn serve(
     let listener = UnixListener::bind(socket).map_err(at(socket))?;
     fs::set_permissions(socket, fs::Permissions::from_mode(0o600)).map_err(at(socket))?;
     // A closed stderr leaves nothing to report to.
-    let _ = writeln!(io::stderr(), "{SERVING} {}", socket.display());
+    // One write for the line: servers that share a log append whole lines.
+    let line = format!(
+        "{SERVING} {} (process {})\n",
+        socket.display(),
+        std::process::id()
+    );
+    let _ = io::stderr().write_all(line.as_bytes());
 
     let journal = MemoryJournal::new(DEFAULT_CAPACITY)
         .unwrap_or_else(|_| unreachable!("the default capacity is valid"));

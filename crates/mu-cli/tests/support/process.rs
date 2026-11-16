@@ -5,6 +5,7 @@ use std::ffi::OsString;
 use std::fmt::Display;
 use std::fs::File;
 use std::future::Future;
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Output, Stdio};
 use std::sync::{Arc, Mutex};
@@ -22,6 +23,31 @@ pub const BOUND: Duration = Duration::from_secs(20);
 
 /// The start of the line that the server writes when it serves.
 pub const SERVING: &str = "mu server: serving the API on ";
+
+/// The socket path and the process id of a serving line.
+pub fn served(line: &str) -> Option<(PathBuf, u32)> {
+    let rest = line.strip_prefix(SERVING)?;
+    let (path, process) = rest.rsplit_once(" (process ")?;
+    Some((
+        PathBuf::from(path),
+        process.strip_suffix(')')?.parse().ok()?,
+    ))
+}
+
+/// Sends SIGTERM on drop to each server that a client started, as `server.log` names it.
+pub struct Reaper(pub PathBuf);
+
+impl Drop for Reaper {
+    fn drop(&mut self) {
+        let log = std::fs::read_to_string(&self.0).unwrap_or_default();
+        for (_, pid) in log.lines().filter_map(served) {
+            if let Some(pid) = rustix::process::Pid::from_raw(pid.try_into().unwrap()) {
+                // A server that stopped already is not an error here.
+                let _ = rustix::process::kill_process(pid, rustix::process::Signal::TERM);
+            }
+        }
+    }
+}
 
 /// The one bounded wait: `future`, or a failed test at `bound` that names `what`.
 pub async fn wait_until<T>(
@@ -151,7 +177,7 @@ impl ServerBuilder {
         )
         .await
         .unwrap_or_else(|| panic!("the server exited: {:?}", process.stderr()));
-        let socket = PathBuf::from(line.trim_start_matches(SERVING));
+        let socket = served(&line).expect("a serving line").0;
         ServerProcess { socket, ..process }
     }
 
@@ -414,5 +440,125 @@ impl Session {
     /// Every event that the stream gave so far.
     pub fn seen(&self) -> &[mu_proto::Event] {
         &self.seen
+    }
+}
+
+/// `mu client` in a pseudo-terminal of 80 by 24, with its screen read by `vt100`.
+pub struct PtyClient {
+    screen: Arc<watch::Sender<vt100::Parser>>,
+    writer: Box<dyn std::io::Write + Send>,
+    killer: Box<dyn portable_pty::ChildKiller + Send + Sync>,
+    exit: Option<tokio::sync::oneshot::Receiver<portable_pty::ExitStatus>>,
+    // The pseudo-terminal must stay open while the client runs.
+    _master: Box<dyn portable_pty::MasterPty + Send>,
+}
+
+impl PtyClient {
+    /// Starts `mu client` with `--socket <socket>` in `cwd`, with no `MU_SOCKET`.
+    pub fn start(socket: &Path, cwd: &Path) -> Self {
+        use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let mut command = CommandBuilder::new(env!("CARGO_BIN_EXE_mu"));
+        command.args(["client", "--socket"]);
+        command.arg(socket);
+        command.cwd(cwd);
+        command.env_remove("MU_SOCKET");
+        command.env("TERM", "xterm-256color");
+        let mut child = pair.slave.spawn_command(command).unwrap();
+        drop(pair.slave);
+        let killer = child.clone_killer();
+        let (exited, exit) = tokio::sync::oneshot::channel();
+        std::thread::spawn(move || {
+            if let Ok(status) = child.wait() {
+                let _ = exited.send(status);
+            }
+        });
+        let screen = Arc::new(
+            watch::channel(vt100::Parser::new(
+                std::num::NonZeroU16::new(24).unwrap(),
+                std::num::NonZeroU16::new(80).unwrap(),
+                0,
+            ))
+            .0,
+        );
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let sender = Arc::clone(&screen);
+        std::thread::spawn(move || {
+            let mut buffer = [0_u8; 4096];
+            while let Ok(n @ 1..) = reader.read(&mut buffer) {
+                sender.send_modify(|parser| parser.process(&buffer[..n]));
+            }
+        });
+        Self {
+            screen,
+            writer: pair.master.take_writer().unwrap(),
+            killer,
+            exit: Some(exit),
+            _master: pair.master,
+        }
+    }
+
+    /// The rows of the screen now.
+    pub fn rows(&self) -> Vec<String> {
+        self.screen.borrow().screen().rows(0, 80).collect()
+    }
+
+    /// The text of the screen now.
+    pub fn contents(&self) -> String {
+        self.screen.borrow().screen().contents()
+    }
+
+    /// Waits until the rows pass `check`. A failure prints the screen.
+    pub async fn wait_rows(&self, what: &str, check: impl Fn(&[String]) -> bool) {
+        let mut receiver = self.screen.subscribe();
+        let found = tokio::time::timeout(
+            BOUND,
+            receiver.wait_for(|parser| check(&parser.screen().rows(0, 80).collect::<Vec<_>>())),
+        )
+        .await;
+        assert!(
+            matches!(found, Ok(Ok(_))),
+            "no {what} within {BOUND:?}; the screen is:\n{}",
+            self.contents()
+        );
+    }
+
+    /// Waits until the top row passes `check`.
+    pub async fn wait_top(&self, what: &str, check: impl Fn(&str) -> bool) {
+        self.wait_rows(what, |rows| rows.first().is_some_and(|top| check(top)))
+            .await;
+    }
+
+    /// Types `bytes` into the terminal.
+    pub fn send(&mut self, bytes: &[u8]) {
+        self.writer.write_all(bytes).unwrap();
+        self.writer.flush().unwrap();
+    }
+
+    /// Waits up to `bound` for the exit of the client. None means that it still runs.
+    pub async fn exit_within(&mut self, bound: Duration) -> Option<portable_pty::ExitStatus> {
+        let exit = self.exit.as_mut()?;
+        match tokio::time::timeout(bound, exit).await {
+            Ok(status) => {
+                self.exit = None;
+                status.ok()
+            }
+            Err(_elapsed) => None,
+        }
+    }
+}
+
+impl Drop for PtyClient {
+    fn drop(&mut self) {
+        // A client that exited already is not an error here.
+        let _ = self.killer.kill();
     }
 }

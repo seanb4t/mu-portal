@@ -95,7 +95,7 @@ Load the `rust-best-practices` skill before this group.
   - `resumed_clears_disconnected`, which feeds `Lost` and then `Resumed` with no event
   - the property test `focus_is_always_valid`, for any sequence of keys and events
 - [x] 7.2 Add the loop that joins `crossterm` keys, `PortalClient::events()` and the replies. The loop uses the alternate screen. It restores the terminal on exit and on a panic. Wire `mu client` to it, with the steps of the design: the check for a terminal first, then `private_dir`, then the start of a server. Make sure that `cargo build -p mu-cli --locked` passes.
-- [ ] 7.3 Add `crates/mu-cli/tests/client.rs`. It runs the built `mu client` with `portable-pty`, in a pseudo-terminal of 80 by 24. It reads the screen with `vt100` and waits through `wait_until`. A failure prints the screen. Make sure that `cargo nextest run -p mu-cli --test client --locked` passes on Linux and on macOS in CI, with these tests:
+- [x] 7.3 Add `crates/mu-cli/tests/client.rs`. It runs the built `mu client` with `portable-pty`, in a pseudo-terminal of 80 by 24. It reads the screen with `vt100` and waits through `wait_until`. A failure prints the screen. Make sure that `cargo nextest run -p mu-cli --test client --locked` passes on Linux and on macOS in CI, with these tests:
   - `client_starts_a_server`, which also checks the mode 0700 of the new directory
   - `two_clients_start_one_server`, which checks that each screen shows `no worlds`, and that `server.log` holds exactly one line that names the socket as served
   - `client_gives_up_after_five_seconds` (scenario: no server answers in time), which also checks that the client still runs at 4 seconds
