@@ -14,7 +14,7 @@ use crate::id::WorldId;
 use crate::journal::{Journal, Subscription};
 use crate::script::{Handler, Hook};
 use crate::secret::Secret;
-use crate::session::{self, Request, Router, SessionParts, WorldState};
+use crate::session::{self, Reply, Request, Router, SessionParts, WorldState};
 use crate::transport::Transport;
 use crate::world::ResolvedWorld;
 
@@ -77,12 +77,6 @@ pub struct Portal {
     stopped: Arc<AtomicBool>,
     /// The last event that the server handlers handled. None with no server handlers.
     handled: Option<watch::Receiver<Seq>>,
-}
-
-/// The kind of request that goes to a world.
-enum Ask {
-    Command(Envelope),
-    Frame,
 }
 
 impl Portal {
@@ -195,35 +189,27 @@ impl Portal {
     /// [`PortalError::LineBreak`], or [`PortalError::Stopped`].
     pub async fn submit(&self, envelope: Envelope) -> Result<Option<Seq>, PortalError> {
         let world = envelope.command.world().clone();
-        self.ask(&world, Ask::Command(envelope)).await
+        self.ask(&world, |reply| Request::Command {
+            envelope,
+            reply: Some(reply),
+        })
+        .await
     }
 
-    /// Sends one request to `world` and waits for its answer. A frame answers with no number.
-    async fn ask(&self, world: &WorldId, ask: Ask) -> Result<Option<Seq>, PortalError> {
+    /// Sends the request that `make` builds from the answer sender to `world`, and waits for the
+    /// answer. A frame answers with no number.
+    async fn ask(
+        &self,
+        world: &WorldId,
+        make: impl FnOnce(oneshot::Sender<Reply>) -> Request,
+    ) -> Reply {
         let sender = self
             .router
             .get(world)
             .ok_or_else(|| PortalError::UnknownWorld(world.clone()))?;
-        match ask {
-            Ask::Command(envelope) => {
-                let (reply, answer) = oneshot::channel();
-                sender
-                    .send(Request::Command {
-                        envelope,
-                        reply: Some(reply),
-                    })
-                    .map_err(|_| PortalError::Stopped)?;
-                answer.await.map_err(|_| PortalError::Stopped)?
-            }
-            Ask::Frame => {
-                let (frame, answer) = oneshot::channel();
-                sender
-                    .send(Request::Frame(frame))
-                    .map_err(|_| PortalError::Stopped)?;
-                answer.await.map_err(|_| PortalError::Stopped)?;
-                Ok(None)
-            }
-        }
+        let (reply, answer) = oneshot::channel();
+        sender.send(make(reply)).map_err(|_| PortalError::Stopped)?;
+        answer.await.map_err(|_| PortalError::Stopped)?
     }
 
     /// Sends one line of the player to `world`. No number means a hook gagged the line.
@@ -271,14 +257,20 @@ impl Portal {
     pub async fn stop(&self) {
         // The flag goes up first, so a connect that a session reads after it fails.
         self.stopped.store(true, Ordering::Release);
-        self.to_every_world(|world| Ask::Command(Envelope::system(Command::Disconnect { world })))
-            .await;
+        self.to_every_world(|world, reply| Request::Command {
+            envelope: Envelope::system(Command::Disconnect { world }),
+            reply: Some(reply),
+        })
+        .await;
     }
 
     /// Connects every world, as the server. Each world logs in when it connects.
     pub async fn connect_all(&self) {
-        self.to_every_world(|world| Ask::Command(Envelope::system(Command::Connect { world })))
-            .await;
+        self.to_every_world(|world, reply| Request::Command {
+            envelope: Envelope::system(Command::Connect { world }),
+            reply: Some(reply),
+        })
+        .await;
     }
 
     /// Waits until the engine has no work left: the server handlers handled each event, each
@@ -299,7 +291,7 @@ impl Portal {
                     .await
                     .map_err(|_| PortalError::Stopped)?;
             }
-            for result in self.to_every_world(|_| Ask::Frame).await {
+            for result in self.to_every_world(|_, reply| Request::Frame(reply)).await {
                 result?;
             }
             if self.journal.last() == mark {
@@ -311,11 +303,11 @@ impl Portal {
     /// Sends one request to each world, in the order of the ids, and returns each result.
     async fn to_every_world(
         &self,
-        ask: fn(WorldId) -> Ask,
-    ) -> Vec<Result<Option<Seq>, PortalError>> {
+        make: fn(WorldId, oneshot::Sender<Reply>) -> Request,
+    ) -> Vec<Reply> {
         let mut results = Vec::with_capacity(self.router.len());
         for world in self.router.keys() {
-            results.push(self.ask(world, ask(world.clone())).await);
+            results.push(self.ask(world, |reply| make(world.clone(), reply)).await);
         }
         results
     }

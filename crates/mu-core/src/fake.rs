@@ -88,7 +88,7 @@ async fn serve(stream: DuplexStream, account: Account, game: FakeGame) -> io::Re
         let count = tokio::select! {
             count = read.read(&mut buffer) => count?,
             Some(text) = said.recv() => {
-                write.write_all(format!("{text}\r\n").as_bytes()).await?;
+                write.write_all(&framer.encode(&text)).await?;
                 continue;
             }
         };
@@ -118,7 +118,7 @@ async fn serve(stream: DuplexStream, account: Account, game: FakeGame) -> io::Re
             } else {
                 format!("You say, \"{line}\"")
             };
-            write.write_all(format!("{answer}\r\n").as_bytes()).await?;
+            write.write_all(&framer.encode(&answer)).await?;
         }
     }
 }

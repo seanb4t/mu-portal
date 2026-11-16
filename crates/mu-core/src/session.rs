@@ -47,15 +47,15 @@ pub(crate) enum Request {
     },
     /// A control frame. The session answers it after each request before it and, if the
     /// world is up, after the game answers a mark. It is not a command and no event records it.
-    Frame(oneshot::Sender<()>),
+    Frame(oneshot::Sender<Reply>),
 }
 
 /// The frames that wait for a mark, in the order of their requests.
 #[derive(Default)]
-struct WaitingFrames(VecDeque<oneshot::Sender<()>>);
+struct WaitingFrames(VecDeque<oneshot::Sender<Reply>>);
 
 impl WaitingFrames {
-    fn push(&mut self, frame: oneshot::Sender<()>) {
+    fn push(&mut self, frame: oneshot::Sender<Reply>) {
         self.0.push_back(frame);
     }
 
@@ -67,7 +67,7 @@ impl WaitingFrames {
     fn answer_first(&mut self) {
         if let Some(frame) = self.0.pop_front() {
             // The caller can give up on the answer.
-            let _ = frame.send(());
+            let _ = frame.send(Ok(None));
         }
     }
 
@@ -310,11 +310,11 @@ impl Session {
         self.write_bytes(&bytes, depth).await
     }
 
-    async fn on_frame(&mut self, frame: oneshot::Sender<()>) {
+    async fn on_frame(&mut self, frame: oneshot::Sender<Reply>) {
         match &mut self.conn {
             Conn::Down => {
                 // The caller can give up on the answer.
-                let _ = frame.send(());
+                let _ = frame.send(Ok(None));
             }
             Conn::Connecting { frames, .. } => frames.push(frame),
             Conn::Up { frames, .. } => {
@@ -385,10 +385,7 @@ impl Session {
                     self.record(EventKind::Prompt, Origin::System, &prompt, 0);
                 }
                 Inbound::Reply(bytes) => {
-                    if let Conn::Up { write, .. } = &mut self.conn
-                        && write.write_all(&bytes).await.is_err()
-                    {
-                        self.down("the connection failed", 0);
+                    if self.write_bytes(&bytes, 0).await.is_err() {
                         return;
                     }
                 }
@@ -495,12 +492,12 @@ mod tests {
             })
             .collect();
         frames.answer_first();
-        assert_eq!(answers[0].try_recv(), Ok(()));
-        assert_eq!(answers[1].try_recv(), Err(TryRecvError::Empty));
-        assert_eq!(answers[2].try_recv(), Err(TryRecvError::Empty));
+        assert!(matches!(answers[0].try_recv(), Ok(Ok(None))));
+        assert!(matches!(answers[1].try_recv(), Err(TryRecvError::Empty)));
+        assert!(matches!(answers[2].try_recv(), Err(TryRecvError::Empty)));
         frames.answer_all();
-        assert_eq!(answers[1].try_recv(), Ok(()));
-        assert_eq!(answers[2].try_recv(), Ok(()));
+        assert!(matches!(answers[1].try_recv(), Ok(Ok(None))));
+        assert!(matches!(answers[2].try_recv(), Ok(Ok(None))));
         // With no frame left, an answer changes nothing.
         frames.answer_first();
     }
