@@ -1,10 +1,10 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-16T22:16:57+00:00
-head: fd138e482a5bf2715e92afec1547817f29c87ccd
-round: 4
-next_id: 49
+reviewed_at: 2026-11-16T22:31:08+00:00
+head: b8b5da4e7e18c9adf404c0e2787029c1ca5b165c
+round: 5
+next_id: 53
 lenses:
   spec-lint: not-applicable
   approach: ok
@@ -19,15 +19,11 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge |
 |---|---|---|---|---|---|---|---|---|
-| R-14 | approach,invariants | should-fix | in-change | inv-1: The design keeps IAC IAC as an escaped data byte 255 and any non-mark IAC sequence as data, but LineFramer::step gives back the first IAC and re-reads the second as the start of a mark. So the data bytes 255 251 6, sent as IAC IAC WILL TIMING-MARK, give a stray Inbound::Mark on the client side (and a reply on the game side), and the line loses two bytes. No test feeds IAC IAC, and the bound property counts that window as a mark.; app-1: The design keeps each IAC sequence that is not a mark in the line as data, as today. LineFramer::step breaks the escaped data byte IAC IAC: it pushes the first IAC and holds the second as the start of a new sequence. So the data bytes 255 251 6, sent as IAC IAC WILL TM, give one byte 255 and a spurious Inbound::Mark on the client side, and IAC IAC DO TM gives a spurious reply on the game side. The design records no such deviation. | crates/mu-core/src/framer.rs:122 — "(Held::Iac, byte) => {" | inv-1: In LineFramer::step, on Held::Iac followed by IAC push both IAC bytes and return to Held::Nothing. Add IAC IAC WILL TIMING-MARK (client) and IAC IAC DO TIMING-MARK (game) to line_framer_keeps_other_iac_bytes, and count a mark in line_framer_lines_stay_in_the_bound only when its IAC is not escaped.; app-1: In LineFramer::step, read (Held::Iac, IAC) as the two data bytes IAC IAC and go back to Held::Nothing, and add IAC IAC WILL TM (client side) and IAC IAC DO TM (game side) to line_framer_keeps_other_iac_bytes. Or record the deviation in design.md. | regression | severity? blocker 0.89 |
-| R-42 | fit | should-fix | in-change | The Reply branch of Session::on_bytes writes the bytes and calls down on an error itself. Session::write_bytes, which write_line and write_mark share, does the same job (and also flushes), so the session has two write-then-down paths. | crates/mu-core/src/session.rs:389 — "&& write.write_all(&bytes).await.is_err()" | In the Inbound::Reply branch of on_bytes, call self.write_bytes(&bytes, 0).await and return on Err, so one path writes to the game and reaches down. |  |  |
-| R-43 | fit | should-fix | in-change | The new test helper open_raw in fake.rs repeats the body of the existing helper open line for line; only the BufReader wrap differs. | crates/mu-core/src/fake.rs:232 — "let transport = FakeTransport::new("aria", "s3cret-pw");" | Make open call open_raw and wrap the stream: let (game, stream) = open_raw().await; (game, BufReader::new(stream).lines()). |  |  |
-| R-44 | fit | should-fix | in-change | fake_game_answers_mark_in_order and fake_game_answers_mark_before_login have the same loop body (cut at every byte, write_cut, compare the bytes, compare the lines); only the input, the expected bytes and the line list differ. Task 2.2 asks for the before-login case inside the one test. | crates/mu-core/src/fake.rs:282 — "let (game, got) = write_cut(&input, cut, &expected).await;" | Give fake_game_answers_mark_in_order a table of cases (input, expected bytes, lines the game got), with the before-login case as a row, and delete fake_game_answers_mark_before_login. |  | severity? suggestion 0.61 |
-| R-45 | fit | should-fix | in-change | The set-up of wait_survives_failed_mark_write (world id, ResolvedWorld with no login, WorldSetup on BrokenTransport, portal, connect_all, wait for Connected) repeats the set-up of failed_write_records_disconnect line for line. | crates/mu-core/tests/portal.rs:449 — "let setup = WorldSetup::new(world, None, Arc::new(BrokenTransport));" | Add one helper in tests/portal.rs, beside BrokenTransport, that returns a connected portal on BrokenTransport with no login and its world id, and call it from both tests. |  | severity? suggestion 0.61 |
-| R-46 | fit | should-fix | in-change | The new handler struct Quiet in tests/portal.rs is a second way to build a test handler; tests/scripts.rs already has On and on(), which build a handler from a closure, and on(\|_\| Vec::new()) is Quiet. | crates/mu-core/tests/portal.rs:479 — "impl Handler for Quiet {" | Move On and on() into crates/mu-core/tests/support/mod.rs, delete Quiet, and pass on(\|_\| Vec::new()) in wait_on_journal_with_events_at_start. |  |  |
-| R-47 | fit | should-fix | in-change | The fake game now owns a LineFramer but still builds each outgoing line by hand with format!("...\\r\\n"), which LineFramer::encode already does; the design names neither encode nor a reason. | crates/mu-core/src/fake.rs:121 — "write.write_all(format!("{answer}\\r\\n").as_bytes()).await?;" | In serve, write framer.encode(&answer) and framer.encode(&text), so lines in both directions go through the one framer. |  |  |
-| R-48 | invariants | should-fix | in-change | The rule that the telnet codes live only in telnet.rs rests on a search for decimal u8 constants. A probe on three edge inputs under the handoff directory found `pub const IAC: u8 = 255;` but missed `const IAC: u8 = 0xFF;`, `const DO: u8 = 253u8;` and `[255, 253, 6]`, so a second home of the codes in those forms passes task 4.1. | tasks.md > 4. No sleep in a test — "Make sure that `rg -n 'const [A-Z_]+: u8 = (6\|25[0-5]);' crates/mu-core/src` finds only lines of `telnet.rs`" | Widen the search of task 4.1 to hex, suffixed and array forms, for example rg -n -i '\\b(25[1-5]\|0xf[b-f])(u8)?\\b' crates/mu-core/src, and list the one known other hit (the non-UTF-8 byte in the secret.rs test) as accepted. |  |  |
-| R-22 | fit | suggestion | in-change | The two arms of Portal::ask repeat the same body (make a oneshot, send a Request, map a send error to Stopped, await, map a closed channel to Stopped); they differ only in the Request constructor and the answer type, and the enum Ask mirrors the variants of Request. | crates/mu-core/src/portal.rs:219 — "let (frame, answer) = oneshot::channel();" | Name the parameter: a function from the answer sender to a Request (for example, let Request::Frame carry a oneshot::Sender<Reply> answered with Ok(None)), so ask takes fn(oneshot::Sender<Reply>) -> Request and has one body, and Ask goes. | regression |  |
+| R-48 | fit,invariants | should-fix | in-change | inv-1: The new search of task 4.1 still lets a second home of the telnet codes pass. A probe under the handoff directory (probe-inv/src) flagged `const IAC: u8 = 0xFF;` and `const TM: u8 = 0x06;`. It missed `b"\\xff\\xfd\\x06"`, `b'\\xfd'` and `u8::MAX`, which are common Rust forms for the bytes of a mark.; fit-1: The rule that the telnet codes live only in telnet.rs is enforced by a regex run once in task 4.1. The repository's pattern for a source-wide rule is a durable test that reads every Rust file of the members (workspace_boundary.rs), with probe cases for each edge form. The design names neither that pattern nor a reason. | tasks.md > 4. No sleep in a test — "The pattern finds the codes 251 to 255 in decimal, hex, suffixed and array forms, and a `u8` constant of 6." | inv-1: Add byte-escape and MAX forms to the 4.1 pattern, for example `\\\\x0*(f[b-f]\|06)\\b\|u8::MAX`, and name them in the enforcement row. Then run it again on the probe files under probe-inv/src.; fit-1: Enforce the rule with a test in the shape of workspace_boundary.rs: walk crates/mu-core/src with support::files_under, flag a u8 literal token 251 to 255 outside telnet.rs, and add probe cases for the forms of task 4.1. Name that test in the Enforcement row. | regression |  |
+| R-49 | fit | should-fix | deviates-design | The rule that no test of mu-core sleeps is enforced by an rg run once in task 4.1, so a sleep added after the change passes every later check. The repository's pattern for a source-wide rule is a durable test over the Rust files (workspace_boundary.rs); the design names neither that pattern nor a reason. | tasks.md > 4. No sleep in a test — "Make sure that `rg -n 'settle' crates/` and `rg -n -i 'sleep' crates/mu-core/tests crates/mu-core/src` find nothing."; scope basis: design.md > Enforcement of each rule — "`review-lint`, gate `time-based-test`, sees only the added lines of a diff." | Add a test beside the one of fit-1 that fails on a sleep token in crates/mu-core/src and crates/mu-core/tests, and name it in the Enforcement row in place of the task-time search. |  | scope? in-change 0.81 |
+| R-50 | fit | should-fix | in-change | The answer of a frame (send Ok(None) and ignore a gone caller) is written twice in session.rs: in WaitingFrames::answer_first and in the Down branch of on_frame, with the same comment. | crates/mu-core/src/session.rs:317 — "let _ = frame.send(Ok(None));" | Add one private fn answer(frame) in session.rs that sends Ok(None), and call it from answer_first and from the Down branch of on_frame. |  | severity? suggestion 0.81 |
+| R-51 | invariants | should-fix | in-change | The Reply branch of Session::on_bytes now goes through write_bytes, which flushes, calls down on a failed write and stops the rest of the read. No test gives the session an Inbound::Reply, so the success path and the failed-write edge (one disconnect event, waiting frames answered) are not exercised on this path. LineFramer::new never gives Reply. | crates/mu-core/src/session.rs:388 — "if self.write_bytes(&bytes, 0).await.is_err() {" | In tests/scripts.rs, add a test framer like Shout that gives Inbound::Reply for the game line `ask`. Assert that the game gets the reply bytes. Then, on a stream that refuses writes after the read, assert one Disconnected event and an `Ok` from try_idle. |  |  |
+| R-52 | invariants | suggestion | in-change | The rule that an escaped IAC is one data byte and never starts a mark holds over any byte stream. The transparency property excludes the byte 255 from its stream, so marks next to escaped 255 bytes at random positions and splits are tried only by the fixed cases of line_framer_reads_escaped_iac. | design.md > The telnet bytes of the mark live in one place — "The escaped byte reaches the line as one byte 255, not as two." | With proptest, in framer.rs line_framer_marks_are_transparent: allow any byte in the stream and write each 255 as IAC IAC in the fed bytes. Build the expected lines by splitting the raw stream on LF, not with LineFramer::new. |  |  |
 
 ## Repeats
 
@@ -35,7 +31,9 @@ None.
 
 ## Out of bound
 
-None.
+| lens | severity | claim | evidence |
+|---|---|---|---|
+| fit | should-fix | wait_covers_server_handler_loop builds the same echo_custom handler, portal set-up and emit as handler_loop_stops_at_depth_limit, while scripts.rs already shares handler set-ups through helpers such as again_loop and recorder. | crates/mu-core/tests/scripts.rs:475 — "let echo_custom = on(\|event\| {" |
 
 ## Accepted
 
@@ -49,10 +47,11 @@ None.
 | 2 | plan | follow-up | d28a104623ce37f052a9d455c79e0b571fbf5959 | 4b7f0a5225a2decbbbac73dcf349088cc940277b1203e2e238bb4a5bd1d70481 | approve-with-notes | 10 | 0 | 2 | 0 |  |
 | 3 | plan | follow-up | 91366746399a17bc7fafd97b9e41153f2e573d87 | d9512329a6f73b992cedb465144fcaf27f3e82f2d19a1a322d85ddc92e2aa82e | approve-with-notes | 8 | 0 | 2 | 0 |  |
 | 4 | implementation | full | fd138e482a5bf2715e92afec1547817f29c87ccd | 3ad7f6b96bbf7a7b8783e61e8746e568d1f262636268ad6a16de36b99a2184e7 | approve-with-notes | 7 | 0 | 2 | 0 |  |
+| 5 | implementation | follow-up | b8b5da4e7e18c9adf404c0e2787029c1ca5b165c | 02662d01b9ba559f746008959f07dac3dfc3010e27ff46eb94f4fa55c63fe01c | approve-with-notes | 4 | 0 | 1 | 1 |  |
 
 ## Judge
 
-judge: 18 questions, 0.001 USD
+judge: 10 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -81,14 +80,14 @@ None.
 - exit 0: `cargo nextest run -p mu-core --test portal --locked -E test(=wait_covers_game_echo)`
 - exit 0: `cargo nextest run -p mu-core --test portal --locked -E test(=wait_on_world_that_is_down)`
 - exit 0: `cargo nextest run -p mu-core --test portal --locked -E test(=wait_outlasts_connect)`
+- exit 0: `cargo nextest run -p mu-core --lib --locked -E test(=framer::tests::line_framer_reads_mark_answer)`
 - exit 0: `cargo nextest run -p mu-core --test portal --locked -E test(=wait_survives_drop)`
 - exit 0: `cargo nextest run -p mu-core --test portal --locked -E test(=wait_survives_failed_connect)`
-- exit 0: `cargo nextest run -p mu-core --test portal --locked -E test(=wait_adds_nothing)`
 - exit 0: `cargo nextest run -p mu-core --test scripts --locked -E test(=stray_mark_is_ignored)`
 - exit 0: `cargo nextest run -p mu-core --test scripts --locked -E test(=wait_covers_server_handler_loop)`
-- exit 0: `cargo nextest run -p mu-core --lib --locked -E test(=framer::tests::line_framer_reads_mark_answer)`
-- exit 0: `cargo nextest run -p mu-core --lib --locked -E test(=fake::tests::fake_game_answers_mark_in_order)`
+- exit 0: `cargo nextest run -p mu-core --test portal --locked -E test(=wait_adds_nothing)`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E test(=fake_world_answers)`
+- exit 0: `cargo nextest run -p mu-core --lib --locked -E test(=fake::tests::fake_game_answers_mark_in_order)`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E test(=fake_world_flag_is_hidden)`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E test(=missing_password_variable)`
 
@@ -98,31 +97,34 @@ None.
 
 ## Lens notes
 
-- approach: Every prior row with disposition fixed was checked at head where it touches a design citation or a decision; none of their defects came back in the approach view.
-- approach: The tokio 1.54.1 rows of Checked facts were checked against the vendored source in the cargo registry (watch::Receiver::wait_for, Sender::send and send_replace, RuntimeMetrics stable methods). The RFC 860, 854 and 1143 rows were checked against the known text of the RFCs, not against a local copy.
-- approach: Portal::wait_idle also fails with PortalError::Stopped when the server handler task ends; the round in design.md names only the failure of a frame. This adds behavior and departs from no decision.
-- approach: No Open Questions section and no migration plan exist, so answered-open-question and no-rollback do not apply.
-- fit: Library rows come from openspec/config.yaml context. The test-helper row names crates/mu-cli/tests/support/mod.rs; mu-core has its own tests/support/mod.rs, which fit-5 uses as the collapse location.
-- fit: telnet.rs follows the layout of spikes/telnet-engine/src/lib.rs (commands at the top, options in opt), and no other u8 telnet code constant exists under crates/mu-core/src; no finding.
-- fit: The progress watch channel of run_server_handlers follows the watch::Sender pattern of FakeGame (received, connects) and of the world states; no finding.
-- fit: I could not run git, so for fit-1 and fit-6 I could not confirm which of the cited lines this change wrote. Both sit in code that the change rewrote: on_bytes and write_bytes, and serve.
-- invariants: I1: No line of LineFramer is longer than MAX_LINE \| enforced at framer.rs push, the == MAX_LINE check after each byte, which given-back held bytes also pass \| boundary test line_framer_near_miss_at_the_bound, line_framer_mark_at_the_bound, property line_framer_lines_stay_in_the_bound (prefix MAX_LINE - 4, so it crosses the cut)
-- invariants: I2: A mark never lands in a line, in any split of reads \| enforced at framer.rs step, the Held state \| boundary test line_framer_keeps_other_iac_bytes (split after every byte), property line_framer_ignores_read_splits, property line_framer_marks_are_transparent (checks the position of each mark among the lines)
-- invariants: I3: An IAC sequence that is not a mark stays as data, IAC IAC included \| enforced at framer.rs step for IAC WILL 5 and IAC then LF, not for IAC IAC \| boundary test none for IAC IAC (inv-1)
-- invariants: I4: The client side ends a mark only on WILL or WONT, the game side only on DO \| enforced at framer.rs Side::reads_verb \| boundary test line_framer_keeps_other_iac_bytes, both sides
-- invariants: I5: Waiting frames are answered first in, first out, and a mark with an empty list changes nothing \| enforced at session.rs WaitingFrames::answer_first (pop_front, if let) \| boundary test waiting_frames_answer_in_order (three frames and an answer on an empty list), stray_mark_is_ignored
-- invariants: I6: Session::down answers every frame of the state it leaves \| enforced at session.rs down, mem::replace then answer_all \| boundary test wait_survives_drop, wait_survives_failed_connect, wait_survives_failed_mark_write, each asserting Ok
-- invariants: I7: A frame is in the list before its mark is written \| enforced at session.rs on_frame, push then write_mark \| boundary test wait_survives_failed_mark_write (BrokenTransport, login None, so the mark is the first write)
-- invariants: I8: Frames of a connect move to Conn::Up and get one mark each \| enforced at session.rs on_connect, mem::take and a loop of waiting marks that stops on the first failed write \| boundary test wait_outlasts_connect, two_waits_on_one_world (two frames in each list)
-- invariants: I9: The progress of the server handlers starts at journal.last() and only grows \| enforced at portal.rs Portal::start watch::channel(last), send_replace after run_handlers \| boundary test wait_on_journal_with_events_at_start (seq == mark), wait_covers_server_handler_loop (seq < mark)
-- invariants: I10: wait_idle returns only after a round with no new event, and a frame with no answer fails it \| enforced at portal.rs wait_idle and ask (answer.await maps a dropped sender to Stopped) \| boundary test wait_adds_nothing, two_waits_on_one_world
-- invariants: I11: The fake game answers each mark in order, before and after the login, and never counts it as a line \| enforced at fake.rs serve, Inbound::Reply written and skipped \| boundary test fake_game_answers_mark_in_order and fake_game_answers_mark_before_login, cut at every byte
-- invariants: I12: No test of mu-core sleeps \| enforced at task 4.1 rg -n -i 'sleep' (one-time search) \| boundary test none; the search finds nothing at head and catches sleep_until and 'sleep (' by its form
-- invariants: I13: The telnet codes live only in telnet.rs \| enforced at task 4.1 const search \| boundary test none; probe in probe-inv/src under the handoff directory misses hex, suffixed and array forms (inv-2)
-- invariants: The fake game moved from BufReader::lines to the line framer: a last line with no LF at EOF is now dropped, invalid UTF-8 is now lossy, and a CR inside a line is dropped. No test or caller found that relies on the old behavior, so no weakened finding.
-- test-coverage: Every scenario has a test that asserts its THEN. No BREAKING requirement. The wait-fails-on-unanswered-frame rule has no scenario, so it is not in the matrix.
-- test-honesty: Read every added or changed test in tests/portal.rs, tests/scripts.rs, framer.rs, fake.rs and session.rs. No disabled test, no test without assertion, no sleep.
-- test-honesty: line_framer_marks_are_transparent builds its expected lines with LineFramer::new().feed on the stream without marks. That is a differential check on a stream with no byte 255, and other tests pin the plain line behavior, so it is not reported.
+- approach: Follow-up round since fd138e4. Every file of diff-files.txt was read: framer.rs, fake.rs, session.rs, portal.rs, tests/portal.rs, tests/scripts.rs, tests/support/mod.rs, design.md and tasks.md. review.md was not read.
+- approach: Without the Bash tool, the changed lines since the base cannot be listed exactly. The bound was judged per file and per section, with the fix rows R-42 to R-48 and the IAC IAC commit as the guide to the changed text.
+- approach: The IAC IAC paragraph of 'The telnet bytes of the mark live in one place' matches framer.rs: IAC IAC gives one data byte 255 on both sides, a mark is read only after that, and given-back bytes go through push and its MAX_LINE cut.
+- approach: The RFC 854 row for the doubled IAC holds: the first paragraph of TELNET COMMAND STRUCTURE says only the IAC need be doubled to be sent as data.
+- approach: The task 4.1 search for the codes, run with the same pattern and the -i flag, finds only crates/mu-core/src/secret.rs:227, which is inside the tests module of secret.rs. The searches for settle in crates/ and for sleep in mu-core find nothing.
+- approach: The shared ask method, to_every_world over fn(WorldId, Sender) and the Reply branch through write_bytes match the decision 'The order of a round' and the R-42 fix. wait_idle also fails with Stopped when the server handler task ends. Its doc comment says so, and the design does not forbid it.
+- approach: Out of bound, not reported: the requirement 'A control frame comes after the work before it' says the session SHALL send IAC DO TIMING-MARK when the world is up. The design and write_mark answer at once for a framer whose mark gives no bytes (session.rs:306), and the spec has no such exception. spec.md did not change since the base.
+- approach: Out of bound for this lens: the doc comment of LineFramer (framer.rs:88-90) says it gives the mark as Inbound::Mark and gives no other message. The game side gives Inbound::Reply, as the design decides. The doc text lags the decision. Code behavior does not.
+- fit: The library rows were read from openspec/config.yaml.
+- fit: This lens has no git access, so it cannot list the lines changed since fd138e4. The bound placement of fit-3 and fit-4 is a best guess, and the merge decides it.
+- fit: The fixes of R-42 to R-47 hold at head: on_bytes writes a Reply through write_bytes, open calls open_raw, one cases loop serves fake_game_answers_mark_in_order, broken_world shares the set-up, on() lives in tests/support, and serve encodes through framer.encode.
+- invariants: Follow-up round since fd138e48: read the diffs of framer.rs, session.rs, portal.rs, fake.rs, tests/portal.rs, tests/scripts.rs, tests/support/mod.rs, design.md and tasks.md.
+- invariants: I1: IAC IAC is one data byte 255, read before any mark \| enforced at crates/mu-core/src/framer.rs:117 (Held::Iac, IAC) \| boundary test line_framer_reads_escaped_iac (split after every byte, odd run IAC IAC IAC)
+- invariants: I2: No line is longer than MAX_LINE, also when an escaped IAC lands on the cut \| enforced at framer.rs:146 push \| boundary test property line_framer_lines_stay_in_the_bound (prefix MAX_LINE-4, favored tail crossing the cut)
+- invariants: I3: The framer holds at most two bytes of a mark or one IAC across reads \| enforced by the Held enum, framer.rs:81 \| boundary test line_framer_ignores_read_splits and every-byte splits
+- invariants: I4: The count_marks model matches the framer: verb patterns tried before IAC IAC, and IAC is never a verb \| enforced at framer.rs:268-279 \| checked by hand on IAC WILL IAC IAC, IAC IAC IAC WILL TM, IAC DO TM (client): data counts agree
+- invariants: I5: A frame is answered only with Ok(None) \| enforced at session.rs:70 and session.rs:317 \| boundary test waiting_frames_answer_in_order (empty-list answer_first too)
+- invariants: I6: A frame whose channel closes with no answer makes wait_idle fail with Stopped \| enforced at portal.rs ask, answer.await.map_err \| boundary test none that drops a frame (the wait_survives_* tests assert Ok)
+- invariants: I7: A failed write of a reply ends the connection and answers waiting frames \| enforced at session.rs:280 write_bytes \| boundary test none on the Reply path (inv-2)
+- invariants: I8: The telnet codes live only in telnet.rs \| enforced at task 4.1 rg search \| probe: misses byte escapes and u8::MAX (inv-1)
+- invariants: I9: The 4.1 search accepts every hit in secret.rs because rg -l names files only, so a code added to secret.rs would pass; listing line hits with an exact expected set would close that.
+- invariants: I10: Encoded lines never hold a lone 255 \| enforced by the &str type of Framer::encode (UTF-8 has no 0xFF) \| boundary test not needed
+- invariants: No test or caller in crates relied on IAC IAC staying two bytes; search found 0xff only in secret.rs and mu-cli/tests/cli.rs, both unrelated, so the escape change weakens no check.
+- test-coverage: Round 5 follow-up: the changed tests in the diff assert each THEN condition; no new gap found.
+- test-honesty: Read every added or changed test in tests/portal.rs, tests/scripts.rs (the two new tests), framer.rs, fake.rs and session.rs. None is disabled, assertion-free, a mock echo or a constant compare.
+- test-honesty: line_framer_marks_are_transparent takes its expected lines from LineFramer::new().feed on the mark-free stream. That is a differential oracle on a different input, and the mark positions are computed by the test itself, so it is not a tautology.
+- test-honesty: wait_on_journal_with_events_at_start asserts only Ok from a bounded wait. It fails by the BOUND panic if the wait never returns, which is the defect it guards.
+- test-coverage gap: The test bodies of fake_world_answers, fake_world_flag_is_hidden and missing_password_variable are unchanged by this change and not read; graded by name only.
 
 ## Ledger
 
@@ -175,26 +177,30 @@ None.
 | R-45 | 4 | 4 | should-fix | in-change | ["path","crates/mu-core/tests/portal.rs",449] | fixed | 419d4a703d138175a91293bc275bf1c6d4cb1778 |  | The set-up of wait_survives_failed_mark_write (world id, ResolvedWorld with no login, WorldSetup on BrokenTransport, portal, connect_all, wait for Connected) repeats the set-up of failed_write_records_disconnect line for line. |
 | R-46 | 4 | 4 | should-fix | in-change | ["path","crates/mu-core/tests/portal.rs",479] | fixed | 419d4a703d138175a91293bc275bf1c6d4cb1778 |  | The new handler struct Quiet in tests/portal.rs is a second way to build a test handler; tests/scripts.rs already has On and on(), which build a handler from a closure, and on(\|_\| Vec::new()) is Quiet. |
 | R-47 | 4 | 4 | should-fix | in-change | ["path","crates/mu-core/src/fake.rs",121] | fixed | 7d66513b65b074b6d6ce523c86e54f05a227b07a |  | The fake game now owns a LineFramer but still builds each outgoing line by hand with format!("...\\r\\n"), which LineFramer::encode already does; the design names neither encode nor a reason. |
-| R-48 | 4 | 4 | should-fix | in-change | ["artifact",["tasks.md","4. No sleep in a test"],"Make sure that `rg -n 'const [A-Z_]+: u8 = (6\|25[0-5]);' crates/mu-core/src` finds only lines of `telnet.rs`"] | fixed | 1ff19b0c3486947b99db2ac88e8c6e0061cc80aa |  | The rule that the telnet codes live only in telnet.rs rests on a search for decimal u8 constants. A probe on three edge inputs under the handoff directory found `pub const IAC: u8 = 255;` but missed `const IAC: u8 = 0xFF;`, `const DO: u8 = 253u8;` and `[255, 253, 6]`, so a second home of the codes in those forms passes task 4.1. |
+| R-48 | 4 | 5 | should-fix | in-change | ["artifact",["tasks.md","4. No sleep in a test"],"Make sure that `rg -n 'const [A-Z_]+: u8 = (6\|25[0-5]);' crates/mu-core/src` finds only lines of `telnet.rs`"] |  | regressed from fixed 1ff19b0c3486947b99db2ac88e8c6e0061cc80aa |  | The rule that the telnet codes live only in telnet.rs rests on a search for decimal u8 constants. A probe on three edge inputs under the handoff directory found `pub const IAC: u8 = 255;` but missed `const IAC: u8 = 0xFF;`, `const DO: u8 = 253u8;` and `[255, 253, 6]`, so a second home of the codes in those forms passes task 4.1. |
+| R-49 | 5 | 5 | should-fix | deviates-design | ["artifact",["tasks.md","4. No sleep in a test"],"Make sure that `rg -n 'settle' crates/` and `rg -n -i 'sleep' crates/mu-core/tests crates/mu-core/src` find nothing."] |  |  |  | The rule that no test of mu-core sleeps is enforced by an rg run once in task 4.1, so a sleep added after the change passes every later check. The repository's pattern for a source-wide rule is a durable test over the Rust files (workspace_boundary.rs); the design names neither that pattern nor a reason. |
+| R-50 | 5 | 5 | should-fix | in-change | ["path","crates/mu-core/src/session.rs",317] |  |  |  | The answer of a frame (send Ok(None) and ignore a gone caller) is written twice in session.rs: in WaitingFrames::answer_first and in the Down branch of on_frame, with the same comment. |
+| R-51 | 5 | 5 | should-fix | in-change | ["path","crates/mu-core/src/session.rs",388] |  |  |  | The Reply branch of Session::on_bytes now goes through write_bytes, which flushes, calls down on a failed write and stops the rest of the read. No test gives the session an Inbound::Reply, so the success path and the failed-write edge (one disconnect event, waiting frames answered) are not exercised on this path. LineFramer::new never gives Reply. |
+| R-52 | 5 | 5 | suggestion | in-change | ["artifact",["design.md","The telnet bytes of the mark live in one place"],"The escaped byte reaches the line as one byte 255, not as two."] |  |  |  | The rule that an escaped IAC is one data byte and never starts a mark holds over any byte stream. The transparency property excludes the byte 255 from its stream, so marks next to escaped 255 bytes at random positions and splits are tried only by the fixed cases of line_framer_reads_escaped_iac. |
 
 ## Reviewed files
 
 | path | content |
 |---|---|
-| crates/mu-core/src/fake.rs | 66b117ed6a10838812d17adf7a0b55269b04dc9b |
-| crates/mu-core/src/framer.rs | 8e79ef53af528d1eb7bf5f48ccfd452a5d9f7743 |
+| crates/mu-core/src/fake.rs | 474a1f022ac34cf15e9ee7645fcf645da25be6e8 |
+| crates/mu-core/src/framer.rs | f8a385712e5115a2fc24e39f246b2178551c26c5 |
 | crates/mu-core/src/lib.rs | c8f9731010211e46355962fe97a02f1fcc5f5e39 |
-| crates/mu-core/src/portal.rs | b3128400f7c1ebcdad3dd53a890eb2b2e324e889 |
-| crates/mu-core/src/session.rs | cbbde6ba128158e9f306a3266709b39ad567bf0e |
+| crates/mu-core/src/portal.rs | c351d686da51b3954dac00341022e8398b233f5b |
+| crates/mu-core/src/session.rs | 40fd3d3dc49bea25143505ec447618151e77e004 |
 | crates/mu-core/src/telnet.rs | 09b4d1e77c63b06931fc0de8f09aff211eec7514 |
-| crates/mu-core/tests/portal.rs | 522b877dfba73116da65622a4a182eef9071ed30 |
-| crates/mu-core/tests/scripts.rs | 6bbae7aaed71d5171bed230ffc78276d771c13da |
-| crates/mu-core/tests/support/mod.rs | 89db7fe982726b71a970f66a0384ef5498933dff |
+| crates/mu-core/tests/portal.rs | d60be6a42ce528513ea5309601e39cc2ce106788 |
+| crates/mu-core/tests/scripts.rs | 58dad932a3caa4478af1812e091efb968b6dcd1c |
+| crates/mu-core/tests/support/mod.rs | f441f0fed8f91078efa67e647bcaeed29f1594ce |
 | openspec/changes/engine-quiescence/.openspec.yaml | cfbed6e8fdb007b75eb7f423f77f14d16ff7b4b4 |
-| openspec/changes/engine-quiescence/design.md | a78370942e4d7bca9edfd39a66e0912ef2ac2c02 |
+| openspec/changes/engine-quiescence/design.md | d70fe779676eea1a6eadf4316e7bbcebfb5ff1b4 |
 | openspec/changes/engine-quiescence/proposal.md | 8030d37ddde8211bcf9620b54049abd24ecf68d8 |
 | openspec/changes/engine-quiescence/specs/world-sessions/spec.md | e979d8acec8e6b70e598819344f8cfed7979ebdc |
-| openspec/changes/engine-quiescence/tasks.md | sha256:2413aa263a1bc556a1a7df20267665f3f8480f23d31ef55dc45313208b298f33 |
+| openspec/changes/engine-quiescence/tasks.md | sha256:e22f24894def147d28b24c82be0da2c4e6ae4646818d48acbec0aad85cae95f1 |
 
 ## Plan review (2026-11-16)
 
