@@ -442,30 +442,10 @@ async fn handler_cannot_connect_after_stop() {
     );
 }
 
-/// A line framer that gives the end of a mark for the game line `mark`.
-struct MarkOnLine(LineFramer);
-
-impl Framer for MarkOnLine {
-    fn feed(&mut self, bytes: &[u8]) -> Vec<Inbound> {
-        self.0
-            .feed(bytes)
-            .into_iter()
-            .map(|inbound| match inbound {
-                Inbound::Line(line) if line == "mark" => Inbound::Mark,
-                other => other,
-            })
-            .collect()
-    }
-
-    fn encode(&self, line: &str) -> Vec<u8> {
-        self.0.encode(line)
-    }
-}
-
 #[tokio::test(start_paused = true)]
 async fn stray_mark_is_ignored() {
     let (aria, game) = world("alpha/aria", PW);
-    let aria = aria.with_framer(Arc::new(|| Box::new(MarkOnLine(LineFramer::new()))));
+    let aria = aria.with_framer(on_line("mark", || Inbound::Mark));
     let portal = started(vec![aria]).await;
     assert!(game.say("mark"));
     assert!(game.say("after"));
@@ -476,32 +456,46 @@ async fn stray_mark_is_ignored() {
     assert_eq!(portal.worlds(), [(id("alpha/aria"), WorldState::Connected)]);
 }
 
-/// A line framer that answers the game line `ask` with the bytes `reply` and an LF.
-struct ReplyOnAsk(LineFramer);
+/// A line framer that gives `becomes` for the game line `trigger`.
+struct OnLine {
+    inner: LineFramer,
+    trigger: &'static str,
+    becomes: fn() -> Inbound,
+}
 
-impl Framer for ReplyOnAsk {
+impl Framer for OnLine {
     fn feed(&mut self, bytes: &[u8]) -> Vec<Inbound> {
-        self.0
+        self.inner
             .feed(bytes)
             .into_iter()
             .map(|inbound| match inbound {
-                Inbound::Line(line) if line == "ask" => Inbound::Reply(b"reply\n".to_vec()),
+                Inbound::Line(line) if line == self.trigger => (self.becomes)(),
                 other => other,
             })
             .collect()
     }
 
     fn encode(&self, line: &str) -> Vec<u8> {
-        self.0.encode(line)
+        self.inner.encode(line)
     }
 
     fn mark(&self) -> Vec<u8> {
-        self.0.mark()
+        self.inner.mark()
     }
 }
 
+fn on_line(trigger: &'static str, becomes: fn() -> Inbound) -> mu_core::NewFramer {
+    Arc::new(move || {
+        Box::new(OnLine {
+            inner: LineFramer::new(),
+            trigger,
+            becomes,
+        })
+    })
+}
+
 fn reply_on_ask() -> mu_core::NewFramer {
-    Arc::new(|| Box::new(ReplyOnAsk(LineFramer::new())))
+    on_line("ask", || Inbound::Reply(b"reply\n".to_vec()))
 }
 
 #[tokio::test(start_paused = true)]
@@ -520,10 +514,7 @@ async fn failed_reply_write_ends_the_connection() {
     // The write of the mark gets through. Then the game says `ask` and `after`, and the
     // write of the reply fails.
     let transport = BrokenTransport::after_writes(1, b"ask\nafter\n");
-    let aria = bare_world(transport).with_framer(reply_on_ask());
-    let portal = portal(vec![aria], Vec::new());
-    portal.connect_all().await;
-    wait_state(&portal, &id("alpha/aria"), WorldState::Connected).await;
+    let (portal, _) = broken_world(bare_world(transport).with_framer(reply_on_ask())).await;
     assert_eq!(try_idle(&portal).await, Ok(()));
     assert_eq!(of_kind(&portal, EventKind::Disconnected).len(), 1);
     assert_eq!(of_kind(&portal, EventKind::Line), []);
