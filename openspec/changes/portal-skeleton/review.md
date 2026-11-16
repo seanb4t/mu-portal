@@ -1,15 +1,15 @@
 ---
-verdict: approve-with-notes
+verdict: changes-requested
 phase: implementation
-reviewed_at: 2026-11-16T04:45:27+00:00
-head: 36f80479faa245a57689d0bdad6e9789f29abe78
-round: 6
-next_id: 157
+reviewed_at: 2026-11-16T05:48:22+00:00
+head: f96e29b69e0c268ca4817dd14f8b761c27a98cf8
+round: 7
+next_id: 168
 lenses:
   spec-lint: not-applicable
   approach: ok
   fit: ok
-  test-coverage: ok
+  test-coverage: partial
   test-honesty: partial
   invariants: ok
 ---
@@ -17,38 +17,41 @@ lenses:
 
 ## Incomplete lenses
 
-- test-honesty: partial, gaps: 1
-  - crates/mu-core/tests/portal.rs and scripts.rs, crates/mu-cli/tests/journal.rs and worlds.rs, and the changed src files were not read in full; only fn and assert greps ran for them
+- test-coverage: partial, gaps: 1
+  - Assertions of tests not named in the read ranges (journal.rs, worlds.rs, resume.rs, app.rs bodies, client_starts_a_server) were matched on name and task text only.
+- test-honesty: partial, gaps: 3
+  - Read in full: mu-cli tests server.rs, client.rs, support/process.rs. mu-core tests/scripts.rs read only by assertion outline.
+  - Not read: mu-core tests/portal.rs, mu-tui tests/app.rs, mu-cli tests/support/mod.rs, and the unit tests in the changed source files.
+  - Change artifacts (proposal, specs, design, tasks) not read, so assertions were judged against the test names and not against spec THEN text. No git access to see the exact diff since the base.
 
-The verdict covers only what the lenses checked. An incomplete lens keeps it from `approve`: the verdict is `approve-with-notes` until the lens is rerun or the gaps are accepted.
+The verdict covers only what the lenses checked. An incomplete lens keeps it from `approve`: the verdict is `changes-requested` until the lens is rerun or the gaps are accepted.
 
 ## Findings
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge |
 |---|---|---|---|---|---|---|---|---|
-| R-121 | approach | should-fix | in-change | The design still names mu_on_pty(args, stream) and wait_until(bound, check), which fails at the bound and prints what it saw. At head mu_on_pty takes args, a PtyOn and a working directory, and wait_until takes a bound, a label and a future, and prints the label, not what it saw. | crates/mu-cli/tests/support/process.rs:350 — "pub fn mu_on_pty(args: &[&str], on: PtyOn, cwd: &Path) -> Output {" | Write mu_on_pty(args, on, cwd) and wait_until(bound, what, future) in Test helpers, and say that a failure names the awaited thing. | regression |  |
-| R-145 | approach | should-fix | in-change | The server-process spec makes a relative socket path relative to the working directory, with the bare socket name scenario. No decision in design.md produces it: the socket path section covers only an empty or relative XDG_RUNTIME_DIR and an empty MU_SOCKET. The code makes the path absolute with std::path::absolute before private_dir. | specs/server-process/spec.md > Scenario: A bare socket name — "**WHEN** the user runs `mu server --socket s.sock`" | Add to The socket path and its directory that SocketArgs makes a relative socket path absolute against the working directory before private_dir, so the serving line and the server that the client starts both get the absolute path. |  |  |
-| R-146 | approach | should-fix | in-change | The terminal-client spec shows a tab as a space and every other control character, now with DEL and the C1 range, as U+FFFD. The terminal client decision names no filter of remote text, so no decision produces the rule that the code holds with char::is_control. | specs/terminal-client/spec.md > Scenario: Control characters — "**WHEN** the game sends a line that holds ESC, BEL, DEL, a tab and the C1 character U+009B" | Add to The terminal client that App replaces a tab with a space and each char for which char::is_control holds (C0, DEL and C1) with U+FFFD before it draws any text from the server. |  |  |
-| R-147 | approach | should-fix | in-change | The world-sessions spec now drops a player line that a hook replaced with text holding CR or LF and records a script error. The design refuses a line break only in the text of the API call, before the hooks, and names no check after the hooks. The session holds the check at line 338. | specs/world-sessions/spec.md > Scenario: A hook puts a line break in a player line — "**AND** the journal holds one script error and no player event" | Add to The API, or to the hook row of the engine, that the session checks the text that the hooks return for CR and LF, drops the line, replies with no number and records one script_error event. |  |  |
-| R-148 | approach | should-fix | in-change | The spec makes a Send whose write to the game fails return failed_precondition, record the disconnect of the world and no player event. The design maps NotConnected only for the states connecting and disconnected, and no decision says what a failed write does. The session does it in write_line. | specs/world-sessions/spec.md > Scenario: A write that fails — "**AND** the server records one disconnected event for `alpha/aria`" | Add to The API that a failed write of the line moves the world to disconnected, records one disconnected event with the source system, records no input event, and returns NotConnected. |  |  |
-| R-149 | approach | should-fix | in-change | The adapter no longer turns the subscription into a stream with Subscription::into_stream. event_stream writes its own unfold over Subscription::next with a biased select on the stop signal, so the stop waits until no event is ready. into_stream is used only by a journal unit test. design.md and the checked task 4.2 still name into_stream and record no deviation. | crates/mu-server/src/service.rs:70 — "let events = futures::stream::unfold(Some(subscription), move \|state\| {" | Record in The journal and the stream that the adapter reads Subscription::next under a biased select with the stop, so the events recorded before the stop still go out, and drop into_stream from the design and task 4.2, or build event_stream on into_stream. |  | scope? deviates-design 0.83 |
-| R-150 | approach,invariants | should-fix | in-change | app-7: This round adds the property test no_control_character_is_drawn. The design still says six rules get property tests and lists six, without the control-character filter, so its list of property tests is not so at head.; inv-3: The filter replaces exactly the control characters, U+0000-U+001F and U+007F-U+009F. The tests pass each inside edge, but the kept outside edges are U+007E and U+00A0, and only 'a' and space are kept chars. So a filter that also replaces U+00A0 or `~` passes every test. | crates/mu-tui/tests/app.rs:280 — "fn no_control_character_is_drawn(line in "[a \\\\x00-\\\\x1f\\\\x7f\\\\u{80}-\\\\u{9f}]{0,40}") {" | app-7: Make the count seven in Tests and the clock and add the rule that no control character from the server reaches the screen.; inv-3: Add `~` (U+007E) and U+00A0 to the fixed text of control_characters_are_replaced, and check that the screen shows them as they are. |  |  |
-| R-151 | fit,invariants | should-fix | in-change | fit-1: The adapter's event_stream writes its own unfold over Subscription::next, with the end-after-lag rule, beside Subscription::into_stream in mu-core. Task 4.2 and the design say the adapter uses into_stream, which now has only a unit-test call site.; inv-1: event_stream must send each event that is ready when the stop is set, and only then end. The biased select enforces it, but no unit test sets the stop while an event is ready: stopping_ends_the_stream stops an empty stream, and the binary test reaches the edge only when the scheduler happens to hold the last disconnect. | crates/mu-server/src/service.rs:75 — "biased;" | fit-1: Build event_stream on subscription.into_stream() and put the biased stop over that stream, so the end-after-lag rule lives only in mu-core.; inv-1: In service.rs tests, add a test that appends one event, sets the stop, and then checks that the stream gives that event and then None. Without `biased`, or with take_until, it must fail. |  |  |
-| R-152 | fit,invariants | should-fix | in-change | fit-2: The stop loops over the worlds in mu-server and calls Portal::disconnect, which acts as the player. The start uses Portal::connect_all in mu-core with the origin System. The design names neither the pattern nor a reason for the stop to differ.; inv-4: The spec says the server closes its connections to the worlds first, then ends the streams. The disconnects now run inside the shutdown future. axum keeps accepting connections until that future ends, and nothing in the Portal refuses a Connect after the stop. So a Connect from the API, or from a handler that reconnects on a disconnect, can bring a world back up before the streams end. | crates/mu-server/src/serve.rs:136 — "let _ = portal.disconnect(&world).await;" | fit-2: Add Portal::disconnect_all beside connect_all, with Envelope::system, and call it from the graceful shutdown. Or say in step 7 why the stop acts as the player.; inv-4: Give Portal a stop state, for example Portal::stop, that disconnects each world and then refuses each later Connect. Call it in the shutdown future in place of the loop of disconnects. Add an engine test that a Connect after the stop records no event. |  | severity? blocker 0.85 |
-| R-153 | fit | should-fix | in-change | sigterm_sends_the_disconnects_first builds the alpha/aria and beta/bryn server with the same two fake_world calls as two_worlds() in client.rs. The support module already has ServerBuilder::fake_worlds for this, and the design puts a helper of two test files there. | crates/mu-cli/tests/server.rs:215 — ".fake_world("alpha/aria", "ALPHA_PW", "s3cret-pw")" | Use ServerBuilder::new().fake_worlds(&[("alpha/aria", PW), ("beta/bryn", PW)]) in both files and drop two_worlds(). |  |  |
-| R-154 | fit | should-fix | in-change | client_starts_a_server reads the permission bits of the directory inline. That is the same expression as the mode helper of server.rs, so two test files each hold the check that the design's helper rule puts in the support module. | crates/mu-cli/tests/client.rs:34 — "let mode = std::fs::metadata(&run).unwrap().permissions().mode() & 0o777;" | Move mode(path) from server.rs to crates/mu-cli/tests/support/mod.rs and call it from both files. |  | severity? suggestion 0.70 |
-| R-155 | invariants | should-fix | in-change | Each new connection of a world gets a new framer from the world's NewFramer. world_uses_its_framer checks only the first connection. A reconnect that falls back to LineFramer, or that keeps the framer and its partial line, passes every test. | crates/mu-core/src/session.rs:269 — "framer: (self.parts.framer)()," | Extend world_uses_its_framer, or add a test: disconnect and connect the world again, then check that the second login also reaches the game in capitals and that the factory ran twice. |  |  |
-| R-156 | test-honesty | should-fix | in-change | lens test-honesty reported partial, gaps: 1 | review > lens-status — "test-honesty partial" | rerun the lens or accept the gap in the review |  |  |
+| R-157 | fit | blocker | in-change | fit-1: This round adds TWO_WORLDS to the shared support for the alpha/aria and beta/bryn list, but journal.rs still writes the same two-world list inline twice, so the list now has three copies.; fit-2: TWO_WORLDS writes the test password s3cret-pw as a literal, beside a const PW with the same value in journal.rs, worlds.rs and resume.rs. The shared support now holds a fourth copy instead of the one constant. | crates/mu-cli/tests/support/process.rs:27 — "pub const TWO_WORLDS: &[(&str, &str)] = &[("alpha/aria", "s3cret-pw"), ("beta/bryn", "s3cret-pw")];" | fit-1: Call Session::with_worlds(TWO_WORLDS) in six_events and in events_of_two_worlds_share_one_sequence of journal.rs.; fit-2: Add pub const PW to support/process.rs, build TWO_WORLDS from it, and import it in journal.rs, worlds.rs and resume.rs instead of their own constants. |  | severity? should-fix 0.86 |
+| R-158 | approach | should-fix | in-change | The design says support/mod.rs holds mu and mu_with and process.rs holds the rest, and it lists mode among the rest. At head mode is in support/mod.rs, and server.rs and client.rs import it from there. | crates/mu-cli/tests/support/mod.rs:216 — "pub fn mode(path: &Path) -> u32 {" | Say in Test helpers that mod.rs holds mu, mu_with and mode, or move mode to support/process.rs beside TWO_WORLDS. |  |  |
+| R-121 | fit | should-fix | in-change | The design puts mode with the helpers of process.rs, since mod.rs holds only mu and mu_with. At head mode is in support/mod.rs, next to stdout and stderr, so the placement rule of the design is wrong again. | design.md > Test helpers — "`mod.rs` holds `mu` and `mu_with`, and `process.rs` holds the rest:" | Say in Test helpers that mod.rs also holds mode with the file helpers it already had, or move mode to process.rs. | regression |  |
+| R-159 | fit | should-fix | in-change | client.rs starts a PtyClient on a two-world server and waits for the row Welcome, aria. three times: in attached(), in lost_stream_resumes_through_relay and in ctrl_c_quits_client_only. The three blocks are alike but for the socket. | crates/mu-cli/tests/client.rs:201 — "let mut client = PtyClient::start(server.socket(), server.dir().path());" | Add PtyClient::wait_welcome(world) to support/process.rs, the screen twin of Session::welcome, and call it from the three places. |  | severity? suggestion 0.66 |
+| R-160 | invariants | should-fix | in-change | inv-1: The design now says App cleans each world id from the server before it draws it, and top_row calls clean on the id. No test gives App a world id that holds a control character, so dropping that clean call passes every test.; inv-2: A player line is cleaned in its own match arm of line(). Every control-character test passes a game line or a refusal reason, so a player line with ESC reaches the screen unfiltered if that arm drops clean. Another client's typed text can hold ESC, because the server refuses only CR and LF.; inv-3: A system or credential line is cleaned in a third match arm of line(). No test passes a control character through that arm. line_prefixes uses plain text only, so a mutant without clean on the `-- ` arm passes. | design.md > The terminal client — "Before `App` draws any text from the server, a world id, an event line or the reason of a refusal" | inv-1: Add a case to control_characters_are_replaced, or a separate test, that builds App with a world id holding ESC and a tab and asserts that the top row shows U+FFFD and a space in their place.; inv-2: Add a player event with ESC, DEL and U+009B to control_characters_are_replaced and assert the row reads `> ` and then U+FFFD for each one. Or make the property test draw the source from player, system and game.; inv-3: Add a system event whose text holds ESC and BEL to control_characters_are_replaced and assert the `-- ` row shows U+FFFD in their place. |  |  |
+| R-162 | test-coverage | should-fix | in-change | covered row 'An empty line' has no verification run | review > not-run — "An empty line" | run the covering test and record it in verification-runs.txt |  |  |
+| R-163 | test-coverage | should-fix | in-change | covered row 'A lost stream' has no verification run | review > not-run — "A lost stream" | run the covering test and record it in verification-runs.txt |  |  |
+| R-164 | test-coverage | should-fix | in-change | covered row 'Quit' has no verification run | review > not-run — "Quit" | run the covering test and record it in verification-runs.txt |  |  |
+| R-165 | test-coverage | should-fix | in-change | covered row 'Sources of a session' has no verification run | review > not-run — "Sources of a session" | run the covering test and record it in verification-runs.txt |  |  |
+| R-166 | test-coverage | should-fix | in-change | covered row 'No world connects during the stop' has no verification run | review > not-run — "No world connects during the stop" | run the covering test and record it in verification-runs.txt |  |  |
+| R-167 | test-coverage | should-fix | in-change | lens test-coverage reported partial, gaps: 1 | review > lens-status — "test-coverage partial" | rerun the lens or accept the gap in the review |  |  |
+| R-161 | fit | suggestion | in-change | Portal::stop and Portal::connect_all hold the same loop over router.keys() that submits a system envelope to each world and drops the result. They differ only in the command, and stop sets the flag first. | crates/mu-core/src/portal.rs:245 — ".submit(Envelope::system(Command::Disconnect {" | Add a private Portal::to_every_world(command: fn(WorldId) -> Command) that both call; stop sets the flag and then calls it with the Disconnect constructor. |  |  |
 
 ## Repeats
 
-None.
+| id | lens | severity | claim | evidence |
+|---|---|---|---|---|
+| R-156 | test-honesty | should-fix | lens test-honesty reported partial, gaps: 3 | review > lens-status — "test-honesty partial" |
 
 ## Out of bound
 
-| lens | severity | claim | evidence |
-|---|---|---|---|
-| fit | suggestion | Session::until in the support module and Rig::until in resume.rs are the same bounded read loop: wait_until over the client stream, push each item to seen, return the first that passes check. They differ on purpose only in what they keep: Session keeps the events, and Rig keeps every ClientEvent. | crates/mu-cli/tests/support/process.rs:415 — "wait_until(BOUND, what, async {" |
+None.
 
 ## Accepted
 
@@ -67,15 +70,75 @@ None.
 | 4 | plan | follow-up | 93dd7c11c91778ecef2263ef1f1d8e84725cd832 | c37f9ff3e3e836ba81ace2406d3dbd580d7856e5b52fdb16700772622df1af3b | changes-requested | 15 | 0 | 4 | 3 | operator decision |
 | 5 | implementation | full | 8a7f2a2554801f540571de9ece3dffa7b8ffdefd | 20ad10d94acf1c74083efffa1974cb46a04fb4eafd80b660b3be7761d2e3baaa | changes-requested | 26 | 0 | 4 | 0 |  |
 | 6 | implementation | follow-up | 36f80479faa245a57689d0bdad6e9789f29abe78 | 235a4508309df1bb8e3996b1e4bd4029dd3cece20059c1fd0e40e4331cc53877 | approve-with-notes | 12 | 0 | 1 | 1 |  |
+| 7 | implementation | follow-up | f96e29b69e0c268ca4817dd14f8b761c27a98cf8 | bf0014f429274cdabf2743547f2056cf42e84e69b520c8ea7823af5adc51604d | changes-requested | 11 | 1 | 1 | 0 |  |
 
 ## Judge
 
-judge: 24 questions, 0.001 USD
+judge: 12 questions, 0.000 USD
 
 ## Coverage matrix
 
 | scenario | covered by | status | verified |
 |---|---|---|---|
+| The first view | crates/mu-tui/tests/app.rs: first_view | covered | pass |
+| The order of the worlds | crates/mu-tui/tests/app.rs: world_order | covered | pass |
+| No worlds | crates/mu-tui/tests/app.rs: no_worlds | covered | pass |
+| Prefixes | crates/mu-tui/tests/app.rs: line_prefixes | covered | pass |
+| Control characters | crates/mu-tui/tests/app.rs: control_characters_are_replaced | covered | pass |
+| A line goes to the world in focus | crates/mu-tui/tests/app.rs: enter_sends_to_world_in_focus | covered | pass |
+| An empty line | crates/mu-tui/tests/app.rs: empty_enter_sends_empty_line; crates/mu-cli/tests/client.rs: empty_enter_reaches_the_server; crates/mu-cli/tests/worlds.rs: empty_send_reaches_game | covered | not-run |
+| Enter with no world | crates/mu-tui/tests/app.rs: enter_with_no_world | covered | pass |
+| A refused line | crates/mu-tui/tests/app.rs: refused_line_keeps_input | covered | pass |
+| Next world | crates/mu-tui/tests/app.rs: ctrl_n_moves_focus | covered | pass |
+| Wrap around | crates/mu-tui/tests/app.rs: ctrl_p_wraps_around | covered | pass |
+| Next world wraps at the end | crates/mu-tui/tests/app.rs: ctrl_n_wraps_at_the_end | covered | pass |
+| Keys with no world | crates/mu-tui/tests/app.rs: keys_with_no_world | covered | pass |
+| One world keeps the focus | crates/mu-tui/tests/app.rs: one_world_keeps_focus | covered | pass |
+| Activity mark | crates/mu-tui/tests/app.rs: activity_mark | covered | pass |
+| A lost stream | crates/mu-cli/tests/client.rs: lost_stream_resumes_through_relay; crates/mu-tui/tests/app.rs: lost_stream_resumes | covered | not-run |
+| The client resumes before a new event | crates/mu-tui/tests/app.rs: resumed_clears_disconnected | covered | pass |
+| Quit | crates/mu-cli/tests/client.rs: ctrl_c_quits_client_only; crates/mu-tui/tests/app.rs: ctrl_c_quits | covered | not-run |
+| Events of two worlds share one sequence | crates/mu-cli/tests/journal.rs: events_of_two_worlds_share_one_sequence | covered | pass |
+| Sources of a session | crates/mu-cli/tests/journal.rs: sources_of_a_session; crates/mu-core/tests/portal.rs: sources_of_a_session | covered | not-run |
+| The password is replaced | crates/mu-cli/tests/journal.rs: password_is_replaced | covered | pass |
+| A typed password is masked | crates/mu-cli/tests/journal.rs: typed_password_is_masked | covered | pass |
+| A password with a star | crates/mu-cli/tests/journal.rs: password_with_star_masks_whole_text | covered | pass |
+| A password of stars is refused | crates/mu-cli/tests/journal.rs: password_of_stars_is_refused | covered | pass |
+| A stream from the middle | crates/mu-cli/tests/journal.rs: stream_from_the_middle | covered | pass |
+| A stream from 0 | crates/mu-cli/tests/journal.rs: stream_from_zero | covered | pass |
+| A stream from the next number | crates/mu-cli/tests/journal.rs: stream_from_the_next_number | covered | pass |
+| A stream past the end | crates/mu-cli/tests/journal.rs: stream_past_the_end | covered | pass |
+| Resume after a cut connection | crates/mu-cli/tests/resume.rs: resume_after_cut_connection | covered | pass |
+| Resume after a restart of the server | crates/mu-cli/tests/resume.rs: resume_after_server_restart | covered | pass |
+| A subscriber that does not read | crates/mu-server/src/service.rs: lagged_stream_ends_with_resource_exhausted | covered | pass |
+| A subscriber at the edge of the buffer | crates/mu-core/src/journal.rs: receiver_at_capacity_is_not_cut | covered | pass |
+| A bad world id is refused | crates/mu-cli/tests/worlds.rs: bad_world_id_is_refused | covered | pass |
+| Ids outside the rule | crates/mu-core/src/id.rs: ids_outside_the_rule | covered | pass |
+| Ids inside the rule | crates/mu-core/src/id.rs: ids_inside_the_rule | covered | pass |
+| The fake world answers | crates/mu-cli/tests/worlds.rs: fake_world_answers | covered | pass |
+| The flag is hidden | crates/mu-cli/tests/worlds.rs: fake_world_flag_is_hidden | covered | pass |
+| A missing password variable | crates/mu-cli/tests/worlds.rs: missing_password_variable | covered | pass |
+| Two worlds connect | crates/mu-cli/tests/worlds.rs: two_worlds_connect | covered | pass |
+| Two characters on one game | crates/mu-cli/tests/worlds.rs: two_characters_on_one_game | covered | pass |
+| An unknown world | crates/mu-cli/tests/worlds.rs: send_to_unknown_world | covered | pass |
+| A world that is not connected | crates/mu-cli/tests/worlds.rs: send_to_disconnected_world | covered | pass |
+| A write that fails | crates/mu-core/tests/portal.rs: failed_write_records_disconnect | covered | pass |
+| A world that is still connecting | crates/mu-core/tests/portal.rs: send_to_connecting_world | covered | pass |
+| An empty line | crates/mu-cli/tests/worlds.rs: empty_send_reaches_game | covered | pass |
+| A carriage return in the text | crates/mu-cli/tests/worlds.rs: send_with_cr_is_refused | covered | pass |
+| A line break in the text | crates/mu-cli/tests/worlds.rs: send_with_lf_is_refused | covered | pass |
+| One world drops | crates/mu-cli/tests/worlds.rs: one_world_drops | covered | pass |
+| A world connects again | crates/mu-cli/tests/worlds.rs: world_connects_again | covered | pass |
+| A hook gags a game line | crates/mu-core/tests/scripts.rs: hook_gags_game_line | covered | pass |
+| A hook replaces a player line | crates/mu-core/tests/scripts.rs: hook_replaces_player_line | covered | pass |
+| A hook puts a line break in a player line | crates/mu-core/tests/scripts.rs: hook_line_break_is_dropped | covered | pass |
+| A hook gags a player line | crates/mu-core/tests/scripts.rs: hook_gags_player_line | covered | pass |
+| A handler answers a line | crates/mu-core/tests/scripts.rs: handler_answers_line | covered | pass |
+| A loop of handlers stops | crates/mu-core/tests/scripts.rs: handler_loop_stops_at_depth_limit | covered | pass |
+| A handler that answers every event | crates/mu-core/tests/scripts.rs: handler_on_every_event_stops | covered | pass |
+| A handler that answers its own echo | crates/mu-core/tests/scripts.rs: handler_loop_through_game_is_rate_limited | covered | pass |
+| The limit opens again | crates/mu-core/tests/scripts.rs: rate_limit_refills | covered | pass |
+| A handler connects | crates/mu-core/tests/scripts.rs: handler_connect_has_source_system | covered | pass |
 | The server serves the API on the named socket | crates/mu-cli/tests/server.rs: serves_on_named_socket | covered | pass |
 | The environment names the socket | crates/mu-cli/tests/server.rs: env_names_socket | covered | pass |
 | The flag wins over the environment | crates/mu-cli/tests/server.rs: flag_wins_over_env | covered | pass |
@@ -91,75 +154,21 @@ judge: 24 questions, 0.001 USD
 | A file that is not a socket is kept | crates/mu-cli/tests/server.rs: regular_file_at_socket_path_is_kept | covered | pass |
 | SIGTERM stops the server | crates/mu-cli/tests/server.rs: sigterm_stops_server | covered | pass |
 | The streams get the disconnects | crates/mu-cli/tests/server.rs: sigterm_sends_the_disconnects_first | covered | pass |
+| No world connects during the stop | crates/mu-core/tests/scripts.rs: handler_cannot_connect_after_stop; crates/mu-core/tests/portal.rs: stop_disconnects_every_world_and_refuses_connect | covered | not-run |
 | SIGINT stops the server | crates/mu-cli/tests/server.rs: sigint_stops_server | covered | pass |
 | A client with no server starts one | crates/mu-cli/tests/client.rs: client_starts_a_server | covered | pass |
 | No server answers in time | crates/mu-cli/tests/client.rs: client_gives_up_after_five_seconds | covered | pass |
 | Two clients start at the same time | crates/mu-cli/tests/client.rs: two_clients_start_one_server | covered | pass |
 | No terminal | crates/mu-cli/tests/server.rs: client_needs_a_terminal | covered | pass |
 | No terminal on stdin | crates/mu-cli/tests/client.rs: client_needs_a_terminal_on_stdin | covered | pass |
-| The first view | crates/mu-tui/tests/app.rs: first_view | covered | pass |
-| The order of the worlds | crates/mu-tui/tests/app.rs: world_order | covered | pass |
-| No worlds | crates/mu-tui/tests/app.rs: no_worlds | covered | pass |
-| Prefixes | crates/mu-tui/tests/app.rs: line_prefixes | covered | pass |
-| Control characters | crates/mu-tui/tests/app.rs: control_characters_are_replaced | covered | pass |
-| A line goes to the world in focus | crates/mu-tui/tests/app.rs: enter_sends_to_world_in_focus | covered | pass |
-| An empty line | crates/mu-cli/tests/client.rs: empty_enter_reaches_the_server | covered | pass |
-| Enter with no world | crates/mu-tui/tests/app.rs: enter_with_no_world | covered | pass |
-| A refused line | crates/mu-tui/tests/app.rs: refused_line_keeps_input | covered | pass |
-| Next world | crates/mu-tui/tests/app.rs: ctrl_n_moves_focus | covered | pass |
-| Wrap around | crates/mu-tui/tests/app.rs: ctrl_p_wraps_around | covered | pass |
-| Next world wraps at the end | crates/mu-tui/tests/app.rs: ctrl_n_wraps_at_the_end | covered | pass |
-| Keys with no world | crates/mu-tui/tests/app.rs: keys_with_no_world | covered | pass |
-| One world keeps the focus | crates/mu-tui/tests/app.rs: one_world_keeps_focus | covered | pass |
-| Activity mark | crates/mu-tui/tests/app.rs: activity_mark | covered | pass |
-| A lost stream | crates/mu-cli/tests/client.rs: lost_stream_resumes_through_relay | covered | pass |
-| The client resumes before a new event | crates/mu-tui/tests/app.rs: resumed_clears_disconnected | covered | pass |
-| Quit | crates/mu-cli/tests/client.rs: ctrl_c_quits_client_only | covered | pass |
-| A bad world id is refused | crates/mu-cli/tests/worlds.rs: bad_world_id_is_refused | covered | pass |
-| Ids outside the rule | crates/mu-core/src/id.rs: ids_outside_the_rule | covered | pass |
-| Ids inside the rule | crates/mu-core/src/id.rs: ids_inside_the_rule | covered | pass |
-| The fake world answers | crates/mu-cli/tests/worlds.rs: fake_world_answers | covered | pass |
-| The flag is hidden | crates/mu-cli/tests/worlds.rs: fake_world_flag_is_hidden | covered | pass |
-| A missing password variable | crates/mu-cli/tests/worlds.rs: missing_password_variable | covered | pass |
-| Two worlds connect | crates/mu-cli/tests/worlds.rs: two_worlds_connect | covered | pass |
-| Two characters on one game | crates/mu-cli/tests/worlds.rs: two_characters_on_one_game | covered | pass |
-| An unknown world | crates/mu-core/tests/portal.rs: send_to_unknown_world | covered | pass |
-| A world that is not connected | crates/mu-core/tests/portal.rs: send_to_disconnected_world | covered | pass |
-| A write that fails | crates/mu-core/tests/portal.rs: failed_write_records_disconnect | covered | pass |
-| A world that is still connecting | crates/mu-core/tests/portal.rs: send_to_connecting_world | covered | pass |
-| An empty line | crates/mu-core/tests/portal.rs: empty_send_reaches_game | covered | pass |
-| A carriage return in the text | crates/mu-core/tests/portal.rs: send_with_cr_is_refused | covered | pass |
-| A line break in the text | crates/mu-core/tests/portal.rs: send_with_lf_is_refused | covered | pass |
-| One world drops | crates/mu-core/tests/portal.rs: one_world_drops | covered | pass |
-| A world connects again | crates/mu-core/tests/portal.rs: world_connects_again | covered | pass |
-| A hook gags a game line | crates/mu-core/tests/scripts.rs: hook_gags_game_line | covered | pass |
-| A hook replaces a player line | crates/mu-core/tests/scripts.rs: hook_replaces_player_line | covered | pass |
-| A hook puts a line break in a player line | crates/mu-core/tests/scripts.rs: hook_line_break_is_dropped | covered | pass |
-| A hook gags a player line | crates/mu-core/tests/scripts.rs: hook_gags_player_line | covered | pass |
-| A handler answers a line | crates/mu-core/tests/scripts.rs: handler_answers_line | covered | pass |
-| A loop of handlers stops | crates/mu-core/tests/scripts.rs: handler_loop_stops_at_depth_limit | covered | pass |
-| A handler that answers every event | crates/mu-core/tests/scripts.rs: handler_on_every_event_stops | covered | pass |
-| A handler that answers its own echo | crates/mu-core/tests/scripts.rs: handler_loop_through_game_is_rate_limited | covered | pass |
-| The limit opens again | crates/mu-core/tests/scripts.rs: rate_limit_refills | covered | pass |
-| A handler connects | crates/mu-core/tests/scripts.rs: handler_connect_has_source_system | covered | pass |
-| Events of two worlds share one sequence | crates/mu-cli/tests/journal.rs: events_of_two_worlds_share_one_sequence | covered | pass |
-| Sources of a session | crates/mu-cli/tests/journal.rs: sources_of_a_session | covered | pass |
-| The password is replaced | crates/mu-cli/tests/journal.rs: password_is_replaced | covered | pass |
-| A typed password is masked | crates/mu-cli/tests/journal.rs: typed_password_is_masked | covered | pass |
-| A password with a star | crates/mu-cli/tests/journal.rs: password_with_star_masks_whole_text | covered | pass |
-| A password of stars is refused | crates/mu-cli/tests/journal.rs: password_of_stars_is_refused | covered | pass |
-| A stream from the middle | crates/mu-cli/tests/journal.rs: stream_from_the_middle | covered | pass |
-| A stream from 0 | crates/mu-cli/tests/journal.rs: stream_from_zero | covered | pass |
-| A stream from the next number | crates/mu-cli/tests/journal.rs: stream_from_the_next_number | covered | pass |
-| A stream past the end | crates/mu-cli/tests/journal.rs: stream_past_the_end | covered | pass |
-| Resume after a cut connection | crates/mu-cli/tests/resume.rs: resume_after_cut_connection | covered | pass |
-| Resume after a restart of the server | crates/mu-cli/tests/resume.rs: resume_after_server_restart | covered | pass |
-| A subscriber that does not read | crates/mu-server/src/service.rs: lagged_stream_ends_with_resource_exhausted | covered | pass |
-| A subscriber at the edge of the buffer | crates/mu-core/src/journal.rs: receiver_at_capacity_is_not_cut | covered | pass |
 
 ### Not run
 
-None.
+- An empty line: no verification run names this row
+- A lost stream: no verification run names this row
+- Quit: no verification run names this row
+- Sources of a session: no verification run names this row
+- No world connects during the stop: no verification run names this row
 
 ## Verification runs
 
@@ -200,24 +209,27 @@ None.
 - exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=sigterm_stops_server)'`
 - exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=stale_socket_is_replaced)'`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=bad_world_id_is_refused)'`
+- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=empty_send_reaches_game)'`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=fake_world_answers)'`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=fake_world_flag_is_hidden)'`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=missing_password_variable)'`
+- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=one_world_drops)'`
+- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=send_to_disconnected_world)'`
+- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=send_to_unknown_world)'`
+- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=send_with_cr_is_refused)'`
+- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=send_with_lf_is_refused)'`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=two_characters_on_one_game)'`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=two_worlds_connect)'`
+- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=world_connects_again)'`
 - exit 0: `cargo nextest run -p mu-core --lib --locked -E 'test(~::ids_inside_the_rule)'`
 - exit 0: `cargo nextest run -p mu-core --lib --locked -E 'test(~::ids_outside_the_rule)'`
 - exit 0: `cargo nextest run -p mu-core --lib --locked -E 'test(~::receiver_at_capacity_is_not_cut)'`
-- exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=empty_send_reaches_game)'`
 - exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=failed_write_records_disconnect)'`
-- exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=one_world_drops)'`
 - exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=send_to_connecting_world)'`
-- exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=send_to_disconnected_world)'`
-- exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=send_to_unknown_world)'`
-- exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=send_with_cr_is_refused)'`
-- exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=send_with_lf_is_refused)'`
-- exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=world_connects_again)'`
+- exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=sources_of_a_session)'`
+- exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=stop_disconnects_every_world_and_refuses_connect)'`
 - exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_answers_line)'`
+- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_cannot_connect_after_stop)'`
 - exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_connect_has_source_system)'`
 - exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_loop_stops_at_depth_limit)'`
 - exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_loop_through_game_is_rate_limited)'`
@@ -230,14 +242,17 @@ None.
 - exit 0: `cargo nextest run -p mu-server --lib --locked -E 'test(~::lagged_stream_ends_with_resource_exhausted)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=activity_mark)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=control_characters_are_replaced)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=ctrl_c_quits)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=ctrl_n_moves_focus)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=ctrl_n_wraps_at_the_end)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=ctrl_p_wraps_around)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=empty_enter_sends_empty_line)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=enter_sends_to_world_in_focus)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=enter_with_no_world)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=first_view)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=keys_with_no_world)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=line_prefixes)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=lost_stream_resumes)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=no_worlds)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=one_world_keeps_focus)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=refused_line_keeps_input)'`
@@ -250,32 +265,30 @@ None.
 
 ## Lens notes
 
-- approach: The doc comment of serve at crates/mu-server/src/serve.rs line 92 says it ends each stream and then disconnects each world. The code at lines 133 to 139 disconnects first, as step 7 of the design and the spec say. The comment is stale, but no design citation is involved.
-- approach: PortalError::Stopped maps to unavailable in crates/mu-server/src/convert.rs line 18, an arm that the error map of The API does not name. The line may be outside the bound of this round.
-- approach: LineFramer cuts a line at MAX_LINE (64 KiB), which the seam table of the design does not name. The lines may be outside the bound of this round.
-- approach: Bodies of the changed test files of mu-cli, mu-core/tests and mu-tui/tests were matched by test name and helper signature only. Their coverage belongs to the coverage and honesty lenses.
-- approach: This lens cannot run git, so the changed lines inside each changed file were inferred from the round-5 rows of prior.json and the commit subjects. The merge applies the exact bound.
-- fit: The fixes of R-122 (shared run_handlers), R-123 (SocketArgs::private_socket), R-124 (Session::with_worlds), R-125 (framer::has_line_break), R-126 (pub use mu_server::SERVING) and R-142 (crate::fail) hold at head.
-- fit: No git diff was available to this lens, so the bound of each finding comes from the fix commits after the base and from the prior rows they answer. The merge decides which findings fall out of bound.
-- fit: The test oracle in crates/mu-tui/tests/app.rs that re-implements the control-character filter is left to the test-honesty lens.
-- invariants: I1: A relative socket path is relative to the working directory, and the serving line names the absolute path \| enforced at crates/mu-cli/src/socket.rs SocketArgs::private_socket (std::path::absolute) \| boundary test bare_socket_name_is_in_the_working_directory. A probe of std::path::absolute (handoff probe/abs.rs) gives cwd/s.sock for s.sock and ./s.sock, keeps .. in run/../s.sock, and refuses the empty path. The empty path cannot reach it, because parse_socket turns an empty value into none.
-- invariants: I2: On a stop, each open stream gets the disconnect of each world before it ends \| enforced at crates/mu-server/src/serve.rs:134-139 and the biased select at service.rs:75 \| boundary test sigterm_sends_the_disconnects_first (binary, timing-dependent), no unit test of an event ready at the stop (inv-1)
-- invariants: I3: A hook output with CR or LF never reaches the game and makes no player event \| enforced at crates/mu-core/src/session.rs:338 \| boundary test hook_line_break_is_dropped with both LF and CR
-- invariants: I4: A Send whose write fails records exactly one disconnect and no player event \| enforced at crates/mu-core/src/session.rs:239-241 \| boundary test failed_write_records_disconnect
-- invariants: I5: No handler runs on a script_error event, for world handlers and server handlers alike \| enforced at crates/mu-core/src/session.rs run_handlers, now the one dispatch of both tasks \| boundary test handler_on_every_event_stops
-- invariants: I6: Each new connection of a world gets a new framer from its NewFramer \| enforced at crates/mu-core/src/session.rs:269 \| boundary test none for a second connection (inv-2)
-- invariants: I7: The view draws no control character, a tab as a space and each other Cc as U+FFFD \| enforced at crates/mu-tui/src/app.rs clean \| boundary test control_characters_are_replaced and the property test no_control_character_is_drawn for the inside edges. The kept outside edges are not tested (inv-3)
-- invariants: I8: The rate limit is exactly 20 and the depth limit exactly 8 \| enforced at crates/mu-core/src/script.rs and session.rs \| boundary tests now take the literal values RATE = 20 and DEPTH = 8, not the production constants (R-130, R-140, R-141 hold as fixed)
-- invariants: I9: The live channel of capacity 4 gives events 1 to 4 to an unread receiver after 4 events, and the lag after 5 \| enforced at crates/mu-core/src/journal.rs \| boundary tests receiver_at_capacity_is_not_cut (now reads 1 to 4) and receiver_past_capacity_is_cut
-- invariants: I10: The server handler sees each event of every world once, in order, also after a lag \| enforced at crates/mu-core/src/portal.rs run_server_handlers \| boundary tests server_handler_sees_every_world and server_handler_resumes_after_lag (capacity 4, 11 events)
-- invariants: I11: The client gives up within 5 seconds and not before \| enforced at crates/mu-cli/src/client.rs START_LIMIT \| boundary test client_gives_up_after_five_seconds checks both sides (running at 4 s, exited by 7 s) and the socket path and server.log on the screen
-- invariants: I12: Each kind and each source maps to its own schema value \| enforced at crates/mu-server/src/convert.rs \| boundary test each_kind_and_source_has_a_schema_value now checks each pair. The source list has no length check against the enum, but the match in source() is exhaustive, so the compiler catches a new source.
-- invariants: The prior rows R-119, R-127, R-130, R-131, R-132, R-137, R-139, R-140, R-141 and R-143 are fixed at head as far as this lens reads them. inv-1 and inv-4 are new defects in the fix of R-119, not the same defect again.
-- test-coverage: design.md and proposal.md were not read; the matrix comes from the specs, tasks.md and test code.
-- test-coverage: Some test bodies (mu-core/src/journal.rs, id.rs, socket.rs, mu-cli journal.rs) were matched by name and location, not read line by line.
-- test-coverage: The cli-entrypoint delta has only a REMOVED requirement and no scenario heading, so it has no row. Its migration points at server-process scenarios that are covered.
-- test-honesty: Read in full: mu-tui/tests/app.rs (DEL, C1 and focus property tests), mu-cli/tests/server.rs, mu-cli/tests/resume.rs. Each test asserts a specific value. No disabled or skipped test in any tests directory.
-- test-honesty: The proptest oracle of no_control_character_is_drawn re-implements the control-character rule instead of calling the production sanitizer, so it is not a tautology.
+- approach: Follow-up round: read the files of diff-files.txt against the design. The stop path (serve.rs, Portal::stop, the stopped flag that the session checks on Connect) follows step 7 of The server process, so R-152 and R-119 do not come back.
+- approach: event_stream in service.rs now builds on Subscription::into_stream with a biased select on the stop, as The journal and the stream and task 4.2 say, so R-149 and R-151 (the into_stream part) do not come back.
+- approach: Every test that tasks 3.7, 3.8 and 6.3 name for the stop and the server handlers exists at head, and the seven property tests of Tests and the clock exist.
+- approach: mu-cli/src/client.rs line 92 calls tokio::time::sleep in the start retry, beside backon. That file is outside diff-files.txt, so this round reports nothing on it.
+- fit: Without git, this lens could not see the changed lines of each file in diff-files.txt. It placed the first evidence item of each finding on lines that the commit subjects since the base name (the two-world setup, the mode check, Portal::stop).
+- fit: The test-only copy of the clean filter in the property test no_control_character_is_drawn is left to the test-honesty lens.
+- fit: event_stream now builds on Subscription::into_stream, and the test support uses mu_server::SERVING, so the copies of R-151 and R-126 are gone at head.
+- invariants: I1: After Portal::stop each Connect fails with Stopped, from the API and from a handler \| enforced at crates/mu-core/src/session.rs:354 (the stopped flag, set first in Portal::stop at portal.rs:241) \| boundary test stop_disconnects_every_world_and_refuses_connect (API side) and handler_cannot_connect_after_stop (handler side). The connect before the stop works in started(). Both sides are covered.
+- invariants: I2: When Portal::stop returns, no world is up, and each disconnect event is in the journal \| enforced at session.rs:364-369 (down records the event before the reply goes out) and portal.rs:242 (each Disconnect is awaited) \| boundary test stop_disconnects_every_world_and_refuses_connect, which checks both states and both System disconnect events right after stop returns.
+- invariants: I3: The stop ends a stream only when no event is ready \| enforced at crates/mu-server/src/service.rs:79 (biased select) \| boundary test stop_sends_the_ready_events_first (one event ready) and stopping_ends_the_stream (none ready). Both sides are covered. Without `biased`, the first test fails only about half the time, not on every run.
+- invariants: I4: The disconnects come before the end of the streams at the stop \| enforced at crates/mu-server/src/serve.rs:135-137 (portal.stop().await, then stopping.send_replace) \| boundary test sigterm_sends_the_disconnects_first in crates/mu-cli/tests/server.rs, plus I3.
+- invariants: I5: A stream ends after a lag \| enforced at crates/mu-core/src/journal.rs:96 (into_stream keeps no state after an Err). The adapter no longer ends the stream itself \| boundary test lagged_stream_ends_with_resource_exhausted, which asserts the end after the error. Not weakened.
+- invariants: I6: A text with CR or LF never reaches the game: the sent text, the text a hook returns, and the password \| enforced at framer.rs:22 has_line_break, called at session.rs:332, session.rs:341 and secret.rs:178 \| boundary tests send_with_lf_is_refused, send_with_cr_is_refused, hook_line_break_is_dropped (LF and CR), password_with_cr_is_refused and password_with_lf_is_refused.
+- invariants: I7: A failed write records exactly one disconnected event and no input event \| enforced at session.rs:243-245 \| boundary test failed_write_records_disconnect checks the count of 1 and no Input. It does not check the System source that the changed design sentence names (Origin::System is fixed in down()). That gap is left to the coverage lens.
+- invariants: I8: Each new connection gets a new framer from the factory \| enforced in the session's connect path \| boundary test world_uses_its_framer now counts 2 factory calls over a reconnect. R-155 is fixed.
+- invariants: I9: The client replaces a tab with a space and each char::is_control with U+FFFD \| enforced at crates/mu-tui/src/app.rs:289 clean \| boundary tests control_characters_are_replaced (now keeps U+007E and U+00A0, so R-150 inv-3 is fixed) and no_control_character_is_drawn (game lines only). See inv-1 to inv-3 for the call sites no test reaches.
+- invariants: The prior rows of this lens R-151 (inv-1) and R-152 (inv-4) are fixed at head by stop_sends_the_ready_events_first and Portal::stop with the stopped flag. I found no regression.
+- invariants: No enforcement point in the bound is a script, so I ran no probe.
+- invariants: In this follow-up round I read the changed hunks of every file in diff-files.txt and all five spec files. Unchanged decisions of design.md were read only as far as the bound needs.
+- test-coverage: Follow-up round: the changed tests in scripts.rs, portal.rs, server.rs and client.rs that were read assert the THEN steps of their scenarios.
+- test-coverage: rate_limit_refills advances 50 ms where the scenario WHEN says one second. The assertion is stronger on refill rate, so it is not a finding.
+- test-coverage: The REMOVED BREAKING requirement of cli-entrypoint has no scenario of its own. The server-process scenarios assert that stderr lacks 'not implemented', and R-83 is fixed, so it is not raised again.
+- test-honesty: No ignore, skip, always-true or no-assertion test found by a text search under crates/.
+- test-honesty: The read tests assert concrete values: modes 0700 and 0600, exit code 1, exact event text, exact world ids, and counts such as RATE and 1+DEPTH.
 
 ## Ledger
 
@@ -401,7 +414,7 @@ None.
 | R-118 | 4 | 4 | should-fix | in-change | ["artifact",["tasks.md","6. The verbs"],"`serves_on_named_socket`, `env_names_socket`, `flag_wins_over_env`, `default_socket_under_runtime_dir`, `empty_runtime_dir_is_ignored`"] | fixed | 3df82b84f1fe5bc12995e17a9dd1efcd74819915 |  | Task 6.3 names serves_on_named_socket without the check that stderr lacks 'not implemented'. The REMOVED requirement's migration relies on that scenario step as its proof. |
 | R-119 | 5 | 5 | should-fix | in-change | ["path","crates/mu-server/src/serve.rs",134] | fixed | 3748244ae5de715f20f3e1d9d62bcde0b3591876 |  | Step 7 of the design stops the sessions and then ends the streams. The code ends every stream in the graceful shutdown and disconnects the worlds only after axum returns, so no client stream gets the disconnect events, and design.md records no deviation. |
 | R-120 | 5 | 5 | should-fix | in-change | ["path","crates/mu-cli/src/socket.rs",135] | fixed | d27ef6e72664e2c2781ff4ce1f4350a61e720f0a |  | The design says rustix reads the user id and the owner of the socket directory. At head rustix reads only the user id; private_dir reads the owner through std MetadataExt::uid. |
-| R-121 | 5 | 6 | should-fix | in-change | ["path","crates/mu-cli/tests/support/process.rs",341] | fixed | e7280b06380c618187387cd81214fb1ff5cac951 |  | The design puts every shared test helper in support/mod.rs. At head ServerProcess, Relay, mu_on_pty and wait_until are in support/process.rs, and mu_on_pty and wait_until take other arguments than the design names. |
+| R-121 | 5 | 7 | should-fix | in-change | ["path","crates/mu-cli/tests/support/process.rs",341] |  | regressed from fixed e7280b06380c618187387cd81214fb1ff5cac951 |  | The design puts every shared test helper in support/mod.rs. At head ServerProcess, Relay, mu_on_pty and wait_until are in support/process.rs, and mu_on_pty and wait_until take other arguments than the design names. |
 | R-122 | 5 | 5 | should-fix | in-change | ["path","crates/mu-core/src/session.rs",193] | fixed | 5eb406c81381a3b9fd54c82259387022750b2de3 |  | The code that runs handlers on an event is written twice, once in the session for world handlers and once in the server-handler task. Both copies skip a script_error event and route the commands at the event depth. |
 | R-123 | 5 | 5 | should-fix | in-change | ["path","crates/mu-cli/src/client.rs",42] | fixed | fe7eb91083b2b6dc3f87cc995bd9da169bbf6099 |  | fit-3: Both verbs repeat the same start: resolve the socket, take its parent with a fallback to /, call private_dir with current_uid, then build a tokio runtime and map each error through fail.; inv-7: mu client takes the socket directory the same way, so --socket s.sock or MU_SOCKET=s.sock fails in private_dir on the empty path before any server starts. |
 | R-124 | 5 | 5 | should-fix | in-change | ["path","crates/mu-cli/tests/journal.rs",17] | fixed | fe7eb91083b2b6dc3f87cc995bd9da169bbf6099 |  | journal.rs and worlds.rs each define their own started helper. Both fold fake worlds with the variables PW_<n> into a ServerBuilder, start a Session and wait for each welcome. The design puts a helper that two test files use in the support module. |
@@ -436,7 +449,18 @@ None.
 | R-153 | 6 | 6 | should-fix | in-change | ["path","crates/mu-cli/tests/server.rs",215] | fixed | 20c39535c0b2387d3c18eb9b7788d75368a0b669 |  | sigterm_sends_the_disconnects_first builds the alpha/aria and beta/bryn server with the same two fake_world calls as two_worlds() in client.rs. The support module already has ServerBuilder::fake_worlds for this, and the design puts a helper of two test files there. |
 | R-154 | 6 | 6 | should-fix | in-change | ["path","crates/mu-cli/tests/client.rs",34] | fixed | 20c39535c0b2387d3c18eb9b7788d75368a0b669 |  | client_starts_a_server reads the permission bits of the directory inline. That is the same expression as the mode helper of server.rs, so two test files each hold the check that the design's helper rule puts in the support module. |
 | R-155 | 6 | 6 | should-fix | in-change | ["path","crates/mu-core/src/session.rs",269] | fixed | f78fa166041873b49af60169e767552f96629701 |  | Each new connection of a world gets a new framer from the world's NewFramer. world_uses_its_framer checks only the first connection. A reconnect that falls back to LineFramer, or that keeps the framer and its partial line, passes every test. |
-| R-156 | 6 | 6 | should-fix | in-change | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: none; reason: Round 7 runs the test-honesty lens again on the files that changed since round 6, so its gap of round 6 closes there. |  | lens test-honesty reported partial, gaps: 1 |
+| R-156 | 6 | 7 | should-fix | in-change | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: none; reason: Round 7 runs the test-honesty lens again on the files that changed since round 6, so its gap of round 6 closes there. |  | lens test-honesty reported partial, gaps: 1 |
+| R-157 | 7 | 7 | blocker | in-change | ["path","crates/mu-cli/tests/support/process.rs",27] |  |  |  | fit-1: This round adds TWO_WORLDS to the shared support for the alpha/aria and beta/bryn list, but journal.rs still writes the same two-world list inline twice, so the list now has three copies.; fit-2: TWO_WORLDS writes the test password s3cret-pw as a literal, beside a const PW with the same value in journal.rs, worlds.rs and resume.rs. The shared support now holds a fourth copy instead of the one constant. |
+| R-158 | 7 | 7 | should-fix | in-change | ["path","crates/mu-cli/tests/support/mod.rs",216] |  |  |  | The design says support/mod.rs holds mu and mu_with and process.rs holds the rest, and it lists mode among the rest. At head mode is in support/mod.rs, and server.rs and client.rs import it from there. |
+| R-159 | 7 | 7 | should-fix | in-change | ["path","crates/mu-cli/tests/client.rs",201] |  |  |  | client.rs starts a PtyClient on a two-world server and waits for the row Welcome, aria. three times: in attached(), in lost_stream_resumes_through_relay and in ctrl_c_quits_client_only. The three blocks are alike but for the socket. |
+| R-160 | 7 | 7 | should-fix | in-change | ["artifact",["design.md","The terminal client"],"Before `App` draws any text from the server, a world id, an event line or the reason of a refusal"] |  |  |  | inv-1: The design now says App cleans each world id from the server before it draws it, and top_row calls clean on the id. No test gives App a world id that holds a control character, so dropping that clean call passes every test.; inv-2: A player line is cleaned in its own match arm of line(). Every control-character test passes a game line or a refusal reason, so a player line with ESC reaches the screen unfiltered if that arm drops clean. Another client's typed text can hold ESC, because the server refuses only CR and LF.; inv-3: A system or credential line is cleaned in a third match arm of line(). No test passes a control character through that arm. line_prefixes uses plain text only, so a mutant without clean on the `-- ` arm passes. |
+| R-161 | 7 | 7 | suggestion | in-change | ["path","crates/mu-core/src/portal.rs",245] |  |  |  | Portal::stop and Portal::connect_all hold the same loop over router.keys() that submits a system envelope to each world and drops the result. They differ only in the command, and stop sets the flag first. |
+| R-162 | 7 | 7 | should-fix | in-change | ["artifact",["review","not-run"],"An empty line"] |  |  |  | covered row 'An empty line' has no verification run |
+| R-163 | 7 | 7 | should-fix | in-change | ["artifact",["review","not-run"],"A lost stream"] |  |  |  | covered row 'A lost stream' has no verification run |
+| R-164 | 7 | 7 | should-fix | in-change | ["artifact",["review","not-run"],"Quit"] |  |  |  | covered row 'Quit' has no verification run |
+| R-165 | 7 | 7 | should-fix | in-change | ["artifact",["review","not-run"],"Sources of a session"] |  |  |  | covered row 'Sources of a session' has no verification run |
+| R-166 | 7 | 7 | should-fix | in-change | ["artifact",["review","not-run"],"No world connects during the stop"] |  |  |  | covered row 'No world connects during the stop' has no verification run |
+| R-167 | 7 | 7 | should-fix | in-change | ["artifact",["review","lens-status"],"test-coverage partial"] |  |  |  | lens test-coverage reported partial, gaps: 1 |
 
 ## Reviewed files
 
@@ -454,7 +478,7 @@ None.
 | crates/mu-cli/src/server.rs | ada307e0a504a02275ac4883aeb9050d164f1703 |
 | crates/mu-cli/src/socket.rs | e12f41ef33482740a69a51f540cc402ec655949f |
 | crates/mu-cli/tests/cli.rs | 6622746244a3f9630f0d1c00b31fbb5297dfbca9 |
-| crates/mu-cli/tests/client.rs | fab7131d1d6639a40f2a3c136a154e39c12c25b8 |
+| crates/mu-cli/tests/client.rs | 538adc62c792ddcbd3933d2413d0fbda319d1721 |
 | crates/mu-cli/tests/fixtures/base/Cargo.toml | f2abcd3ae3dcc41e16d372312f9054cb5bd3eb49 |
 | crates/mu-cli/tests/fixtures/base/crates/mu-cli/Cargo.toml | 72bb356dca1bc2fc15f5a9e212c382c0949721bc |
 | crates/mu-cli/tests/fixtures/base/crates/mu-client/Cargo.toml | ce4171a94f29597db70058c7c65ab5be93a63efe |
@@ -465,9 +489,9 @@ None.
 | crates/mu-cli/tests/fixtures/base/crates/mu-tui/Cargo.toml | f0f9958ceab73b38ffe7e7aba54ccb12b6511225 |
 | crates/mu-cli/tests/journal.rs | e4b14cd1104219ac3c40def3c4763d5921fd15c3 |
 | crates/mu-cli/tests/resume.rs | 8d70c514e9b4291d7cac15a99d46d982c8ebe535 |
-| crates/mu-cli/tests/server.rs | 30d2afec4f9dc06cee3cb73d3a2488a9a549c8c4 |
-| crates/mu-cli/tests/support/mod.rs | bd1b5ec8c981b4c26510e80fb0b49ab4d7940b33 |
-| crates/mu-cli/tests/support/process.rs | dc095e14026e6e619f8ba3a423f6f9e3daab35d2 |
+| crates/mu-cli/tests/server.rs | 7bf9be2bed15615911db1308aa36d9e0cdde0163 |
+| crates/mu-cli/tests/support/mod.rs | cb02438cf9ce6cecce26f223fb4e6dd16d8c511c |
+| crates/mu-cli/tests/support/process.rs | d939d430f212c2790b81b7333bd7eca376cc0623 |
 | crates/mu-cli/tests/workspace_boundary.rs | 6e89d62b66f369268866946980ff9109c28e83e6 |
 | crates/mu-cli/tests/worlds.rs | 722dac72d9538c5285d2c00464564405dc1ee208 |
 | crates/mu-client/Cargo.toml | 127e327f1d2dd51900293abd02014efe6d3db42d |
@@ -481,14 +505,14 @@ None.
 | crates/mu-core/src/id.rs | b5a941b7451465947b520a4262a4d2969fe35ba4 |
 | crates/mu-core/src/journal.rs | 4d9fe74819df35d6a16c8e478901a9e77a0892f1 |
 | crates/mu-core/src/lib.rs | 9aa97adfcd4a6605385e5ad8f56f18c885219a1b |
-| crates/mu-core/src/portal.rs | 3748143decddf9566ef923e2165ffd49a61fd771 |
+| crates/mu-core/src/portal.rs | 44858501e5ede5f6b0d2bde51cb317fa81d89394 |
 | crates/mu-core/src/script.rs | 10337c8657adbb5afe3ae0a4bc45d5c650cb64c8 |
 | crates/mu-core/src/secret.rs | bd5963ad4ab954f3694dc554fc99388ecb8ad92c |
-| crates/mu-core/src/session.rs | f6c3cd955e44690427044205d4095ce26a18a215 |
+| crates/mu-core/src/session.rs | d43cdd270574e946be238631d7b404e85b4d35ee |
 | crates/mu-core/src/transport.rs | 35d9902f0827521afeec533219bb4686d4718f46 |
 | crates/mu-core/src/world.rs | 48808d4a9d20743c8b82cc6a45bdef7d1f5968b5 |
-| crates/mu-core/tests/portal.rs | a0ebc4e89dcfe448c7240319fa16a8d6f6306fd7 |
-| crates/mu-core/tests/scripts.rs | 07a29ca8dfefa836efb852af1e81c6c04d86dbc0 |
+| crates/mu-core/tests/portal.rs | b3316cb0718b918edba716e4e0b3d527de247954 |
+| crates/mu-core/tests/scripts.rs | 28dd9ef1d7999b6e3b9f18a049d9e2d39de2ee4f |
 | crates/mu-core/tests/support/mod.rs | 59688c7d6ab4292616da5b6f5c709b00dab3a54b |
 | crates/mu-proto/Cargo.toml | 3450f77894b2d4f23686501bde5ba83730988cc1 |
 | crates/mu-proto/build.rs | 7436f4510d69da2416cad0f0d359421933d12122 |
@@ -497,13 +521,13 @@ None.
 | crates/mu-server/Cargo.toml | 235121d00a84bfa4a0d0b6c1aa61dca976126cf6 |
 | crates/mu-server/src/convert.rs | 3df53bfc56c809b4e1b3adcfd26b0d43de4e2783 |
 | crates/mu-server/src/lib.rs | 73bfe699930bf2bda23890e64f823161613b272d |
-| crates/mu-server/src/serve.rs | 757110d8129798a7e1e8feb91d908cf399445594 |
-| crates/mu-server/src/service.rs | d411bc9c04ad3d8a514898d71849d76eb62464a5 |
+| crates/mu-server/src/serve.rs | bc59e79b2111ff1b43539866ee43ad185db9a87e |
+| crates/mu-server/src/service.rs | a96d58737ce2bca5eca7255a6efa6089ac60364a |
 | crates/mu-tui/Cargo.toml | e4400aff0af1e8c7f591966940e40239e4f76015 |
 | crates/mu-tui/src/app.rs | fc92eb2f2551d7b37dcab6a0c066738c1598cf14 |
 | crates/mu-tui/src/lib.rs | 4a0bd6fc98b9c27bbe11e4e643ad39a4fae8952c |
 | crates/mu-tui/src/run.rs | 1277c44ec3b526f714b7cb7cccad1c316ee2ff89 |
-| crates/mu-tui/tests/app.rs | 45cb76086a48e0427b718fbd7562ae24ef19cae2 |
+| crates/mu-tui/tests/app.rs | f4c99689112b579675a359ec97929a17a4d10eeb |
 | deny.toml | 2e2a653a991384ee01b6f8fcfd17d6aec7f00dfd |
 | docs/astro.config.mjs | e2c998991f642d55ec6ba46650218ced83af8491 |
 | docs/src/content/docs/architecture/crate-layout.mdx | 8bb2d3149e1897f1b7c8152ca42330fe2b53a30d |
@@ -513,14 +537,14 @@ None.
 | docs/src/content/docs/index.md | ec9f39356bfdb665591105f77a1d646910c7be85 |
 | mise.toml | c5397ad2b5c6076704b3775c50006e9d02b876d3 |
 | openspec/changes/portal-skeleton/.openspec.yaml | 70d2b31bd6d4fd60ee6b4fd384aeff2bf8551165 |
-| openspec/changes/portal-skeleton/design.md | acb44778040c1ab0260e2e67f17c106684ed269c |
+| openspec/changes/portal-skeleton/design.md | 941318eb77c4da65f3431f553f28804ab877a615 |
 | openspec/changes/portal-skeleton/proposal.md | 87acd9f78a975a0b148b7f3c3fc3fe5ffed2eb4a |
 | openspec/changes/portal-skeleton/specs/cli-entrypoint/spec.md | 90fedb75f1dd53f146e97fb7980ef43c82f9d7cc |
 | openspec/changes/portal-skeleton/specs/event-journal/spec.md | c0283663519b913856f50578545493db2f7e5217 |
-| openspec/changes/portal-skeleton/specs/server-process/spec.md | e2e3aa623811a85efaf9a4db47aa1950c2048500 |
+| openspec/changes/portal-skeleton/specs/server-process/spec.md | 87f44ad8a70319c855c35e48e34abb5b077cf35a |
 | openspec/changes/portal-skeleton/specs/terminal-client/spec.md | a606ea4e3370556ac17d71954e3a12b501a15a45 |
 | openspec/changes/portal-skeleton/specs/world-sessions/spec.md | b8f427fab7ad22abc0f139e07308aa729f6e9f71 |
-| openspec/changes/portal-skeleton/tasks.md | sha256:bc397e8e83f394a24e0ede2fb9b888e0bd4562ab94a57028c2f67e6ffaefd29c |
+| openspec/changes/portal-skeleton/tasks.md | sha256:6d2c323e6b0eb073b055a43a65c962f4218fee54c5528dec6516c2e7e6aea641 |
 | renovate.json | 26ed96ac538a0fd329caca308c93021ca1c5df5e |
 
 ## Plan review (2026-11-16)
