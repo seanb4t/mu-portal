@@ -1,17 +1,12 @@
 //! The scenarios of the world-sessions and event-journal capabilities, run on the engine
 //! with the fake game.
 
-use std::io;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 
-use futures::future::BoxFuture;
 use mu_core::{
-    ByteStream, ConnectGate, EventKind, FakeTransport, Journal, MemoryJournal, NewEvent, Portal,
-    PortalError, ResolvedWorld, Source, Transport, WorldId, WorldSetup, WorldState,
+    ConnectGate, EventKind, FakeTransport, Journal, MemoryJournal, NewEvent, Portal, PortalError,
+    Source, WorldId, WorldState,
 };
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use support::*;
 
@@ -251,50 +246,13 @@ async fn the_game_drops_the_world() {
     assert_eq!((gone.len(), gone[0].source), (1, Source::System));
 }
 
-/// A stream that never gives a byte, and whose every write fails.
-struct BrokenWrite;
-
-impl AsyncRead for BrokenWrite {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        _: &mut Context<'_>,
-        _: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        Poll::Pending
-    }
-}
-
-impl AsyncWrite for BrokenWrite {
-    fn poll_write(self: Pin<&mut Self>, _: &mut Context<'_>, _: &[u8]) -> Poll<io::Result<usize>> {
-        Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()))
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Poll::Ready(Ok(()))
-    }
-}
-
-struct BrokenTransport;
-
-impl Transport for BrokenTransport {
-    fn connect(&self, _: &WorldId) -> BoxFuture<'static, io::Result<Box<dyn ByteStream>>> {
-        Box::pin(async { Ok(Box::new(BrokenWrite) as Box<dyn ByteStream>) })
-    }
-}
-
 /// A started portal whose only world is up on [`BrokenTransport`], with no login.
 async fn broken_world() -> (Portal, WorldId) {
     let aria = id("alpha/aria");
-    let world = ResolvedWorld {
-        id: aria.clone(),
-        login: None,
-    };
-    let setup = WorldSetup::new(world, None, Arc::new(BrokenTransport));
-    let portal = portal(vec![setup], Vec::new());
+    let portal = portal(
+        vec![bare_world(BrokenTransport::refusing_writes())],
+        Vec::new(),
+    );
     portal.connect_all().await;
     wait_state(&portal, &aria, WorldState::Connected).await;
     (portal, aria)

@@ -3,13 +3,18 @@
 #![allow(dead_code, reason = "each test binary uses a part of this module")]
 
 use std::future::Future;
+use std::io;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
+use futures::future::BoxFuture;
 use mu_core::{
-    Command, Event, EventKind, FakeGame, FakeTransport, Handler, MemoryJournal, Portal,
-    PortalError, ResolvedWorld, Secret, Seq, WorldId, WorldSetup, WorldState,
+    ByteStream, Command, Event, EventKind, FakeGame, FakeTransport, Handler, MemoryJournal, Portal,
+    PortalError, ResolvedWorld, Secret, Seq, Transport, WorldId, WorldSetup, WorldState,
 };
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 /// The bound of each wait. On the paused clock it passes only when nothing else can run.
 pub const BOUND: Duration = Duration::from_secs(30);
@@ -137,4 +142,93 @@ impl<F: Fn(&Event) -> Vec<Command> + Send + Sync + 'static> Handler for On<F> {
 
 pub fn on(f: impl Fn(&Event) -> Vec<Command> + Send + Sync + 'static) -> Arc<dyn Handler> {
     Arc::new(On(f))
+}
+
+/// A transport whose stream lets `writes_allowed` writes through and then fails every write.
+/// Once those writes are through, the stream gives `incoming` as one read and then no more.
+pub struct BrokenTransport {
+    writes_allowed: usize,
+    incoming: &'static [u8],
+}
+
+impl BrokenTransport {
+    /// A stream that gives no byte and fails every write.
+    pub fn refusing_writes() -> Self {
+        Self::after_writes(0, b"")
+    }
+
+    pub fn after_writes(writes_allowed: usize, incoming: &'static [u8]) -> Self {
+        Self {
+            writes_allowed,
+            incoming,
+        }
+    }
+}
+
+impl Transport for BrokenTransport {
+    fn connect(&self, _: &WorldId) -> BoxFuture<'static, io::Result<Box<dyn ByteStream>>> {
+        let stream = BrokenStream {
+            writes_left: self.writes_allowed,
+            incoming: self.incoming,
+            reader: None,
+        };
+        Box::pin(async move { Ok(Box::new(stream) as Box<dyn ByteStream>) })
+    }
+}
+
+struct BrokenStream {
+    writes_left: usize,
+    incoming: &'static [u8],
+    reader: Option<Waker>,
+}
+
+impl AsyncRead for BrokenStream {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        if self.writes_left > 0 || self.incoming.is_empty() {
+            self.reader = Some(cx.waker().clone());
+            return Poll::Pending;
+        }
+        buf.put_slice(std::mem::take(&mut self.incoming));
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl AsyncWrite for BrokenStream {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        _: &mut Context<'_>,
+        bytes: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        if self.writes_left == 0 {
+            return Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()));
+        }
+        self.writes_left -= 1;
+        if self.writes_left == 0 {
+            if let Some(reader) = self.reader.take() {
+                reader.wake();
+            }
+        }
+        Poll::Ready(Ok(bytes.len()))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
+/// The world `alpha/aria` on `transport`, with no login and no password.
+pub fn bare_world(transport: impl Transport) -> WorldSetup {
+    let world = ResolvedWorld {
+        id: id("alpha/aria"),
+        login: None,
+    };
+    WorldSetup::new(world, None, Arc::new(transport))
 }

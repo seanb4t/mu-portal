@@ -476,6 +476,63 @@ async fn stray_mark_is_ignored() {
     assert_eq!(portal.worlds(), [(id("alpha/aria"), WorldState::Connected)]);
 }
 
+/// A line framer that answers the game line `ask` with the bytes `reply` and an LF.
+struct ReplyOnAsk(LineFramer);
+
+impl Framer for ReplyOnAsk {
+    fn feed(&mut self, bytes: &[u8]) -> Vec<Inbound> {
+        self.0
+            .feed(bytes)
+            .into_iter()
+            .map(|inbound| match inbound {
+                Inbound::Line(line) if line == "ask" => Inbound::Reply(b"reply\n".to_vec()),
+                other => other,
+            })
+            .collect()
+    }
+
+    fn encode(&self, line: &str) -> Vec<u8> {
+        self.0.encode(line)
+    }
+
+    fn mark(&self) -> Vec<u8> {
+        self.0.mark()
+    }
+}
+
+fn reply_on_ask() -> mu_core::NewFramer {
+    Arc::new(|| Box::new(ReplyOnAsk(LineFramer::new())))
+}
+
+#[tokio::test(start_paused = true)]
+async fn reply_of_the_framer_reaches_the_game() {
+    let (aria, game) = world("alpha/aria", PW);
+    let portal = started(vec![aria.with_framer(reply_on_ask())]).await;
+    assert!(game.say("ask"));
+    assert_eq!(game.wait_for_lines(2).await[1], "reply");
+    idle(&portal).await;
+    assert!(events(&portal).iter().all(|event| event.text != "ask"));
+    assert_eq!(portal.worlds(), [(id("alpha/aria"), WorldState::Connected)]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn failed_reply_write_ends_the_connection() {
+    // The write of the mark gets through. Then the game says `ask` and `after`, and the
+    // write of the reply fails.
+    let transport = BrokenTransport::after_writes(1, b"ask\nafter\n");
+    let aria = bare_world(transport).with_framer(reply_on_ask());
+    let portal = portal(vec![aria], Vec::new());
+    portal.connect_all().await;
+    wait_state(&portal, &id("alpha/aria"), WorldState::Connected).await;
+    assert_eq!(try_idle(&portal).await, Ok(()));
+    assert_eq!(of_kind(&portal, EventKind::Disconnected).len(), 1);
+    assert_eq!(of_kind(&portal, EventKind::Line), []);
+    assert_eq!(
+        portal.worlds(),
+        [(id("alpha/aria"), WorldState::Disconnected)]
+    );
+}
+
 #[tokio::test(start_paused = true)]
 async fn wait_covers_server_handler_loop() {
     let portal = echo_custom_loop();
