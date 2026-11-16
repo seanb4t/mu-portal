@@ -123,7 +123,10 @@ fn line_prefixes() {
 #[test]
 fn control_characters_are_replaced() {
     let mut app = app(&["alpha/aria"]);
-    app.on_event(game("alpha/aria", "\u{1b}[2Jhi\tthere\u{7}\u{7f}\u{9b}"));
+    app.on_event(game(
+        "alpha/aria",
+        "\u{1b}[2Jhi\tthere\u{7}\u{7f}\u{9b}~\u{a0}.",
+    ));
     app.on_reply(Reply::Refused {
         world: "alpha/aria".to_owned(),
         text: String::new(),
@@ -132,7 +135,7 @@ fn control_characters_are_replaced() {
     assert_eq!(
         rows(&app),
         [
-            "\u{fffd}[2Jhi there\u{fffd}\u{fffd}\u{fffd}",
+            "\u{fffd}[2Jhi there\u{fffd}\u{fffd}\u{fffd}~\u{a0}.",
             "-- bad\u{fffd}]0;title\u{fffd}"
         ]
     );
