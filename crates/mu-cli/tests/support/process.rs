@@ -25,17 +25,15 @@ pub use mu_server::SERVING;
 
 /// The line that the fake game sends after the login of `world`.
 pub fn greeting(world: &str) -> String {
-    let character = world
-        .split_once('/')
-        .map_or(world, |(_, character)| character);
-    format!("Welcome, {character}.")
+    let world: mu_core::WorldId = world.parse().unwrap();
+    format!("Welcome, {}.", world.character())
 }
 
 /// The password of each fake world in the tests.
 pub const PW: &str = "s3cret-pw";
 
 /// The fake worlds `alpha/aria` and `beta/bryn`, each with [`PW`].
-pub const TWO_WORLDS: &[(&str, &str)] = &[("alpha/aria", PW), ("beta/bryn", PW)];
+pub const TWO_WORLDS: &[&str] = &["alpha/aria", "beta/bryn"];
 
 /// The socket path and the process id of a serving line.
 pub fn served(line: &str) -> Option<(PathBuf, u32)> {
@@ -145,14 +143,12 @@ impl ServerBuilder {
             .env(variable, Some(password))
     }
 
-    /// Adds each `(id, password)` as a fake world, with the variables `PW_0`, `PW_1` and so on.
-    pub fn fake_worlds(self, worlds: &[(&str, &str)]) -> Self {
-        worlds
-            .iter()
-            .enumerate()
-            .fold(self, |builder, (n, (world, password))| {
-                builder.fake_world(world, &format!("PW_{n}"), password)
-            })
+    /// Adds each id as a fake world with the password [`PW`], in the variables `PW_0`, `PW_1`
+    /// and so on.
+    pub fn fake_worlds(self, worlds: &[&str]) -> Self {
+        worlds.iter().enumerate().fold(self, |builder, (n, world)| {
+            builder.fake_world(world, &format!("PW_{n}"), PW)
+        })
     }
 
     /// Sets a variable, or removes it with `None`.
@@ -409,9 +405,9 @@ impl Session {
     }
 
     /// Starts a server with these fake worlds and waits for the greeting of each.
-    pub async fn with_worlds(worlds: &[(&str, &str)]) -> Self {
+    pub async fn with_worlds(worlds: &[&str]) -> Self {
         let mut session = Self::start(ServerBuilder::new().fake_worlds(worlds)).await;
-        for (world, _) in worlds {
+        for world in worlds {
             session.welcome(world).await;
         }
         session

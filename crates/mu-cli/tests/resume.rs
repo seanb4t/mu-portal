@@ -7,14 +7,14 @@ use futures::{Stream, StreamExt as _};
 use mu_client::{ClientEvent, PortalClient};
 use rustix::process::Signal;
 
-use support::process::{BOUND, PW, Relay, ServerBuilder, ServerProcess, greeting, wait_until};
+use support::process::{BOUND, Relay, ServerBuilder, ServerProcess, greeting, wait_until};
 
 mod support;
 
 type Events = Pin<Box<dyn Stream<Item = ClientEvent> + Send>>;
 
 fn builder() -> ServerBuilder {
-    ServerBuilder::new().fake_world("alpha/aria", "ALPHA_PW", PW)
+    ServerBuilder::new().fake_worlds(&["alpha/aria"])
 }
 
 /// The server, a relay in front of it, and a client stream through the relay.

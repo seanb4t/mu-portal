@@ -7,14 +7,6 @@ use support::{mu, mu_with, stderr, stdout};
 
 mod support;
 
-fn with_pw<'a>(worlds: &[&'a str]) -> Vec<(&'a str, &'static str)> {
-    worlds.iter().map(|world| (*world, PW)).collect()
-}
-
-async fn started(worlds: &[&str]) -> Session {
-    Session::with_worlds(&with_pw(worlds)).await
-}
-
 fn last(session: &Session) -> u64 {
     session.seen().last().map_or(0, |event| event.seq)
 }
@@ -46,7 +38,7 @@ fn bad_world_id_is_refused() {
 
 #[tokio::test]
 async fn fake_world_answers() {
-    let mut session = started(&["alpha/aria"]).await;
+    let mut session = Session::with_worlds(&["alpha/aria"]).await;
     let welcome = session.welcome("alpha/aria").await;
     assert_eq!(welcome.source, Source::SOURCE_GAME);
     session.client.send("alpha/aria", "hello").await.unwrap();
@@ -110,7 +102,7 @@ async fn two_worlds_connect() {
 
 #[tokio::test]
 async fn two_characters_on_one_game() {
-    let mut session = started(&["alpha/aria", "alpha/ash"]).await;
+    let mut session = Session::with_worlds(&["alpha/aria", "alpha/ash"]).await;
     session.client.send("alpha/aria", "one").await.unwrap();
     session.line("alpha/aria", "You say, \"one\"").await;
     session.client.send("alpha/ash", "two").await.unwrap();
@@ -125,7 +117,7 @@ async fn two_characters_on_one_game() {
 
 #[tokio::test]
 async fn send_to_unknown_world() {
-    let mut session = started(&["alpha/aria"]).await;
+    let mut session = Session::with_worlds(&["alpha/aria"]).await;
     let after = last(&session);
     let error = session
         .client
@@ -138,7 +130,7 @@ async fn send_to_unknown_world() {
 
 #[tokio::test]
 async fn send_to_disconnected_world() {
-    let mut session = started(&["alpha/aria"]).await;
+    let mut session = Session::with_worlds(&["alpha/aria"]).await;
     session.client.disconnect("alpha/aria").await.unwrap();
     let gone = session
         .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
@@ -161,7 +153,7 @@ async fn send_to_disconnected_world() {
 }
 
 async fn line_break_is_refused(text: &str) {
-    let mut session = started(&["alpha/aria"]).await;
+    let mut session = Session::with_worlds(&["alpha/aria"]).await;
     let after = last(&session);
     let error = session.client.send("alpha/aria", text).await.unwrap_err();
     assert_eq!(error.code, "invalid_argument");
@@ -192,7 +184,7 @@ async fn send_with_cr_is_refused() {
 
 #[tokio::test]
 async fn empty_send_reaches_game() {
-    let mut session = started(&["alpha/aria"]).await;
+    let mut session = Session::with_worlds(&["alpha/aria"]).await;
     let seq = session
         .client
         .send("alpha/aria", "")
@@ -230,7 +222,7 @@ async fn one_world_drops() {
 
 #[tokio::test]
 async fn world_connects_again() {
-    let mut session = started(&["alpha/aria"]).await;
+    let mut session = Session::with_worlds(&["alpha/aria"]).await;
     session.client.disconnect("alpha/aria").await.unwrap();
     let gone = session
         .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)

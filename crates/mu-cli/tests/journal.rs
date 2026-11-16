@@ -3,7 +3,9 @@
 use mu_proto::__buffa::oneof::subscribe_response::Message;
 use mu_proto::{EventKind, Source, SubscribeResponse};
 
-use support::process::{BOUND, PW, Session, TWO_WORLDS, private_tempdir, wait_until};
+use support::process::{
+    BOUND, PW, ServerBuilder, Session, TWO_WORLDS, private_tempdir, wait_until,
+};
 use support::{mu_with, stderr};
 
 mod support;
@@ -61,7 +63,7 @@ async fn events_of_two_worlds_share_one_sequence() {
 
 #[tokio::test]
 async fn sources_of_a_session() {
-    let mut session = Session::with_worlds(&[("alpha/aria", PW)]).await;
+    let mut session = Session::with_worlds(&["alpha/aria"]).await;
     session.client.send("alpha/aria", "hello").await.unwrap();
     let echo = session.line("alpha/aria", "You say, \"hello\"").await;
     let source = |kind: EventKind, text: Option<&str>| {
@@ -89,7 +91,7 @@ async fn sources_of_a_session() {
 
 #[tokio::test]
 async fn password_is_replaced() {
-    let session = Session::with_worlds(&[("alpha/aria", PW)]).await;
+    let session = Session::with_worlds(&["alpha/aria"]).await;
     let login: Vec<&str> = session
         .seen()
         .iter()
@@ -109,7 +111,7 @@ async fn password_is_replaced() {
 
 #[tokio::test]
 async fn typed_password_is_masked() {
-    let mut session = Session::with_worlds(&[("alpha/aria", PW)]).await;
+    let mut session = Session::with_worlds(&["alpha/aria"]).await;
     session
         .client
         .send("alpha/aria", &format!("my pw is {PW}"))
@@ -126,7 +128,9 @@ async fn typed_password_is_masked() {
 
 #[tokio::test]
 async fn password_with_star_masks_whole_text() {
-    let mut session = Session::with_worlds(&[("alpha/aria", "a*")]).await;
+    let mut session =
+        Session::start(ServerBuilder::new().fake_world("alpha/aria", "ARIA_PW", "a*")).await;
+    session.welcome("alpha/aria").await;
     let seq = session
         .client
         .send("alpha/aria", "aa*")
