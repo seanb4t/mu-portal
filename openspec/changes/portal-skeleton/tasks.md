@@ -22,14 +22,14 @@ Load the `rust-best-practices` skill before this group.
 - [x] 3.4 Add `ResolvedWorld`, the output of the merge that #53 adds with `figment`. Add no trait of its own for the layers. Make sure that `cargo nextest run -p mu-core --locked` passes.
 - [x] 3.5 Add the `Transport` trait, the fake game and `FakeTransport`. The fake game greets, checks the login line, and answers each line as the world-sessions spec says. A fake transport can hold the connect open, so that a test can see the state `connecting`. The line `@drop` makes the fake game close the connection. Add the tests `fake_game_accepts_login`, `fake_game_refuses_wrong_password`, `fake_game_answers_line` and `fake_game_drops_on_request`. Make sure that `cargo nextest run -p mu-core --locked` passes.
 - [x] 3.6 Add the `Framer` trait and `LineFramer`. `Inbound` has a variant for a message of a side protocol, which `LineFramer` never gives. Add the tests `line_framer_splits_on_lf`, `line_framer_drops_cr` and `line_framer_keeps_a_partial_line`, and the property test `line_framer_ignores_read_splits`. Make sure that `cargo nextest run -p mu-core --locked` passes.
-- [ ] 3.7 Add the session task and `Portal`, with one task for each world. Add the login with redaction at the source, and the mask of the password in each event. Add `Send`, `Connect`, `Disconnect` and `ListWorlds`. Use the paused clock. Make sure that `cargo nextest run -p mu-core --locked` passes, with these tests:
+- [x] 3.7 Add the session task and `Portal`, with one task for each world. Add the login with redaction at the source, and the mask of the password in each event. Add `Send`, `Connect`, `Disconnect` and `ListWorlds`. Use the paused clock. Make sure that `cargo nextest run -p mu-core --locked` passes, with these tests:
   - `two_characters_on_one_game`, `send_to_unknown_world`, `send_to_disconnected_world`, `send_to_connecting_world`, `empty_send_reaches_game`, `send_with_lf_is_refused`, `send_with_cr_is_refused`, `one_world_drops` and `world_connects_again`
   - `connect_from_api_has_source_system`
   - `login_event_is_redacted`: the fake game gets the password, and no event holds it
   - `typed_password_is_masked`: a player line and its echo hold `****` in the journal
   - `password_with_star_masks_whole_text`: the password `a*` and the text `aa*` give `****`
   - the property test `mask_never_leaves_the_password`, for any text and any password that the secret store accepts
-- [ ] 3.8 Add the `Hook` and `Handler` traits, the depth of each event, the depth limit and the rate limit. Add the server-handler task, which reads the journal. Add these tests, each with a test hook or handler:
+- [x] 3.8 Add the `Hook` and `Handler` traits, the depth of each event, the depth limit and the rate limit. Add the server-handler task, which reads the journal. Add these tests, each with a test hook or handler:
   - `hook_gags_game_line`, `hook_replaces_player_line` and `hook_gags_player_line`
   - `handler_answers_line`, which checks that the event of the send has the source script
   - `handler_loop_stops_at_depth_limit`, which counts exactly 8 custom events after the first one

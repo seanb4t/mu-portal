@@ -57,6 +57,26 @@ impl Secret {
     pub(crate) fn expose(&self) -> &str {
         self.0.expose_secret()
     }
+
+    /// `text` with each occurrence of this secret replaced by [`MASK`].
+    #[must_use]
+    pub fn mask(&self, text: &str) -> String {
+        mask(text, self.expose())
+    }
+}
+
+/// Replaces each occurrence of `password` in `text` with [`MASK`]. If the result still holds
+/// the password, the whole text becomes [`MASK`].
+fn mask(text: &str, password: &str) -> String {
+    if password.is_empty() {
+        return text.to_owned();
+    }
+    let masked = text.replace(password, MASK);
+    if masked.contains(password) {
+        MASK.to_owned()
+    } else {
+        masked
+    }
 }
 
 impl fmt::Debug for Secret {
@@ -238,6 +258,29 @@ mod tests {
     #[test]
     fn password_with_lf_is_refused() {
         assert_eq!(load("a\nb").unwrap_err(), SecretError::LineBreak(pw()));
+    }
+
+    #[test]
+    fn password_with_star_masks_whole_text() {
+        assert_eq!(mask("aa*", "a*"), MASK);
+        assert_eq!(mask("my pw is s3cret-pw", "s3cret-pw"), "my pw is ****");
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn mask_never_leaves_the_password(
+            text in ".{0,40}",
+            password in "[a*\\-b]{1,6}|.{1,8}",
+            noise in proptest::collection::vec(0_usize..41, 0..4),
+        ) {
+            proptest::prop_assume!(check_password(&password, &pw()).is_ok());
+            let mut text: String = text;
+            for at in noise {
+                let at = text.char_indices().map(|(i, _)| i).chain([text.len()]).nth(at).unwrap_or(text.len());
+                text.insert_str(at, &password);
+            }
+            proptest::prop_assert!(!mask(&text, &password).contains(&password));
+        }
     }
 
     #[test]

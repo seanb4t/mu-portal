@@ -85,7 +85,7 @@ Enforced by the world-sessions tests below.
 | Transport | `Transport`: opens a byte stream for a world | `FakeTransport` with an in-process fake game | #54 TCP, #58 TLS |
 | Framer | `Framer`: bytes in, lines, prompts and reply bytes out, and a line in, bytes out | `LineFramer`, which splits on LF and drops CR | #52 telnet |
 | Journal | `Journal`: `append`, `subscribe(from)` | `MemoryJournal` | #57 journal on disk |
-| World configuration | `ResolvedWorld`: id, login template, login name, secret reference, hooks and handlers | built from the `--fake-world` flags | #53 layers and `extends` |
+| World configuration | `ResolvedWorld`: id, login template, login name and secret reference. `WorldSetup` adds the password, the transport, the hooks and the handlers | built from the `--fake-world` flags | #53 layers and `extends` |
 | Secrets | `SecretStore`: `get(SecretRef) -> Secret` | `EnvSecretStore` for `env:<NAME>` | Keychain and Secret Service later |
 | Hooks | `Hook`: `on_game_line`, `on_player_line` | none in the binary, a test hook in tests | #59 rules, #60 Lua |
 | Handlers | `Handler`: `on_event -> Vec<Command>`, for a world and for the server | none in the binary, a test handler in tests | #59, #60 |
