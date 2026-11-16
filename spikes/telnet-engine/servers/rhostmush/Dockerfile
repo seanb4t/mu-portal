@@ -3,7 +3,7 @@ FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f0
 
 # The trunk repository has no tags, so the source is a commit SHA on its master branch.
 # The custom manager for RhostMUSH in renovate.json reads this SHA and follows master.
-ARG RHOSTMUSH_VERSION=34519b019ee8be76b35891473894250176bc9a90
+ARG RHOSTMUSH_VERSION=9ae9a39e3badce61c7f92a35d4dbbd9db0087255
 
 # Toolchain plus OpenSSL, which the default build links. asksource.sh needs bash.
 RUN apt-get update \
