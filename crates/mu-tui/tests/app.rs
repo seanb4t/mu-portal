@@ -121,6 +121,24 @@ fn line_prefixes() {
 }
 
 #[test]
+fn control_characters_are_replaced() {
+    let mut app = app(&["alpha/aria"]);
+    app.on_event(game("alpha/aria", "\u{1b}[2Jhi\tthere\u{7}"));
+    app.on_reply(Reply::Refused {
+        world: "alpha/aria".to_owned(),
+        text: String::new(),
+        reason: "bad\u{1b}]0;title\u{7}".to_owned(),
+    });
+    assert_eq!(
+        rows(&app),
+        [
+            "\u{fffd}[2Jhi there\u{fffd}",
+            "-- bad\u{fffd}]0;title\u{fffd}"
+        ]
+    );
+}
+
+#[test]
 fn enter_sends_to_world_in_focus() {
     let mut app = two_worlds();
     app.on_key(ctrl('n'));

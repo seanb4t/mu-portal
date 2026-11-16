@@ -175,7 +175,7 @@ impl App {
         else {
             return;
         };
-        let notice = format!("-- {reason}");
+        let notice = format!("-- {}", clean(&reason));
         match self.worlds.iter_mut().find(|each| each.id == world) {
             Some(world) => world.push(notice),
             None => self.notices.push(notice),
@@ -237,10 +237,11 @@ impl App {
                 .enumerate()
                 .map(|(index, world)| {
                     let mark = if world.unseen { "*" } else { "" };
+                    let id = clean(&world.id);
                     if self.focus == Some(index) {
-                        format!("[{}]{mark}", world.id)
+                        format!("[{id}]{mark}")
                     } else {
-                        format!("{}{mark}", world.id)
+                        format!("{id}{mark}")
                     }
                 })
                 .collect::<Vec<_>>()
@@ -283,12 +284,26 @@ fn input_line(text: String) -> TextArea<'static> {
     input
 }
 
+/// `text` with no control character, so remote text cannot send a sequence to the terminal.
+/// A tab becomes a space, and each other control character becomes U+FFFD.
+fn clean(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            '\t' => ' ',
+            c if c.is_control() => char::REPLACEMENT_CHARACTER,
+            c => c,
+        })
+        .collect()
+}
+
 /// The text of an event on the screen: a game line as it is, a player line after `> `, and
 /// a line of the system or a credential after `-- `.
 fn line(event: &Event) -> String {
     match event.source.as_known() {
-        Some(Source::SOURCE_PLAYER) => format!("> {}", event.text),
-        Some(Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => format!("-- {}", event.text),
-        _ => event.text.clone(),
+        Some(Source::SOURCE_PLAYER) => format!("> {}", clean(&event.text)),
+        Some(Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => {
+            format!("-- {}", clean(&event.text))
+        }
+        _ => clean(&event.text),
     }
 }
