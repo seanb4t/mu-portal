@@ -232,3 +232,12 @@ pub fn bare_world(transport: impl Transport) -> WorldSetup {
     };
     WorldSetup::new(world, None, Arc::new(transport))
 }
+
+/// A started portal whose only world is up on `setup`, and the id of that world.
+pub async fn broken_world(setup: WorldSetup) -> (Portal, WorldId) {
+    let aria = id("alpha/aria");
+    let portal = portal(vec![setup], Vec::new());
+    portal.connect_all().await;
+    wait_state(&portal, &aria, WorldState::Connected).await;
+    (portal, aria)
+}

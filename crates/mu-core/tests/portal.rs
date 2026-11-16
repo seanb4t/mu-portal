@@ -246,21 +246,9 @@ async fn the_game_drops_the_world() {
     assert_eq!((gone.len(), gone[0].source), (1, Source::System));
 }
 
-/// A started portal whose only world is up on [`BrokenTransport`], with no login.
-async fn broken_world() -> (Portal, WorldId) {
-    let aria = id("alpha/aria");
-    let portal = portal(
-        vec![bare_world(BrokenTransport::refusing_writes())],
-        Vec::new(),
-    );
-    portal.connect_all().await;
-    wait_state(&portal, &aria, WorldState::Connected).await;
-    (portal, aria)
-}
-
 #[tokio::test(start_paused = true)]
 async fn failed_write_records_disconnect() {
-    let (portal, aria) = broken_world().await;
+    let (portal, aria) = broken_world(bare_world(BrokenTransport::refusing_writes())).await;
     assert_eq!(
         portal.send(&aria, "hello").await,
         Err(PortalError::NotConnected(aria.clone()))
@@ -404,7 +392,7 @@ async fn wait_survives_failed_connect() {
 
 #[tokio::test(start_paused = true)]
 async fn wait_survives_failed_mark_write() {
-    let (portal, aria) = broken_world().await;
+    let (portal, aria) = broken_world(bare_world(BrokenTransport::refusing_writes())).await;
     assert_eq!(try_idle(&portal).await, Ok(()));
     let gone = of_kind(&portal, EventKind::Disconnected);
     assert_eq!(gone.len(), 1);
