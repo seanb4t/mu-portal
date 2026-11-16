@@ -42,6 +42,15 @@
         "hk",
         "jdx/hk"
       ]
+    },
+    {
+      "description": "ratatui uses one crossterm version and mu-tui must use the same one, so they move together",
+      "groupName": "crossterm",
+      "matchPackageNames": [
+        "crossterm",
+        "ratatui",
+        "ratatui-textarea"
+      ]
     }
   ]
 }

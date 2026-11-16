@@ -10,3 +10,10 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+buffa = { workspace = true }
+connectrpc = { workspace = true }
+
+[build-dependencies]
+connectrpc-build = { workspace = true }

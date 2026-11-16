@@ -1,0 +1,6 @@
+# The test runner configuration, read by `cargo nextest`.
+
+[profile.default]
+# A test that hangs, for example a loop that never lets the paused clock move, fails after
+# 60 seconds instead of holding the run.
+slow-timeout = { period = "20s", terminate-after = 3 }

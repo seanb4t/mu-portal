@@ -3,14 +3,36 @@
 #![allow(dead_code, reason = "each test binary uses a part of this module")]
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
-use std::process::Output;
+use std::process::{Command, Output};
 
 use tempfile::TempDir;
+
+pub mod process;
 
 /// The root of the repository.
 pub fn repo_root() -> &'static Path {
     Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
+}
+
+/// Runs the built binary with `args` to its exit.
+pub fn mu(args: &[&str]) -> Output {
+    mu_with(args, &[])
+}
+
+/// Runs the built binary with `args` to its exit. Each `(name, Some(value))` sets a variable
+/// and each `(name, None)` removes one.
+pub fn mu_with(args: &[&str], env: &[(&str, Option<&str>)]) -> Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_mu"));
+    command.args(args);
+    for (name, value) in env {
+        match value {
+            Some(value) => command.env(name, value),
+            None => command.env_remove(name),
+        };
+    }
+    command.output().expect("the mu binary runs")
 }
 
 /// The standard output of a finished command, as text.
@@ -188,4 +210,9 @@ impl TreeCopy {
         fs::write(root.join("Cargo.toml"), manifest).unwrap();
         self
     }
+}
+
+/// The permission bits of `path`.
+pub fn mode(path: &Path) -> u32 {
+    fs::metadata(path).unwrap().permissions().mode() & 0o777
 }

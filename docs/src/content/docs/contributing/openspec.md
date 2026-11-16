@@ -14,7 +14,6 @@ Two tools hold the work. OpenSpec holds the content. The GitHub Project named "m
 - The file `openspec/config.yaml` holds the project context and the rules for each artifact.
 - A change gets a plan review before the work starts and an implementation review before the archive.
 - A change that makes a project-wide decision adds or edits a page in the Decisions section in the same change.
-- A change that implements a verb modifies the not-implemented requirement of the `cli-entrypoint` capability in its own spec delta. That requirement describes a verb with no implementation, so it no longer applies to that verb.
 
 ## GitHub Project
 

@@ -4,7 +4,7 @@ mu-portal is a client and server for MU* text games: MUSH, MUX, AresMUSH and Eve
 
 ## Status
 
-The project is at its foundation. The `mu` binary builds and has three verbs. The `client` verb and the `server` verb report that they are not implemented.
+The project is at its skeleton. The `mu` binary has three verbs. `mu server` holds the game connections, and `mu client` is a terminal client that attaches to it. The only worlds are fake worlds for tests. The first-run guide in the documentation site shows how to start both.
 
 ## Contributing
 

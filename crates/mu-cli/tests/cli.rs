@@ -1,23 +1,15 @@
 //! The scenarios of the `cli-entrypoint` capability, run on the built binary.
 
 use std::collections::BTreeMap;
-use std::fs;
 use std::process::{Command, Output};
 
 use proptest::prelude::*;
 
-use support::{stderr, stdout};
+use support::{mu, stderr, stdout};
 
 mod support;
 
 const VERSION_LINE: &str = concat!("mu ", env!("CARGO_PKG_VERSION"), "\n");
-
-fn mu(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_mu"))
-        .args(args)
-        .output()
-        .expect("the mu binary runs")
-}
 
 /// The verbs in the commands section of a help text, each with its description.
 fn listed_verbs(help: &str) -> BTreeMap<String, String> {
@@ -41,13 +33,6 @@ fn assert_usage_error(output: &Output, verb: &str) {
 /// The error quotes the verb, so a short verb cannot match other text of the error.
 fn names_verb(stderr: &str, verb: &str) -> bool {
     stderr.contains(&format!("'{verb}'"))
-}
-
-fn assert_not_implemented(output: &Output, verb: &str) {
-    assert_eq!(output.status.code(), Some(1));
-    let stderr = stderr(output);
-    assert!(stderr.contains(verb), "stderr names {verb:?}");
-    assert!(stderr.contains("not implemented"));
 }
 
 #[test]
@@ -130,43 +115,6 @@ fn non_utf8_verb_is_usage_error() {
         .expect("the mu binary runs");
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty(), "stdout is empty");
-}
-
-#[test]
-fn server_not_implemented() {
-    assert_not_implemented(&mu(&["server"]), "server");
-}
-
-#[test]
-fn client_not_implemented() {
-    assert_not_implemented(&mu(&["client"]), "client");
-}
-
-#[test]
-fn stub_verbs_leave_files_alone() {
-    let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("seed.txt");
-    fs::write(&file, "seed").unwrap();
-    let modified = fs::metadata(&file).unwrap().modified().unwrap();
-
-    for verb in ["client", "server"] {
-        let output = Command::new(env!("CARGO_BIN_EXE_mu"))
-            .arg(verb)
-            .current_dir(dir.path())
-            .env("HOME", dir.path())
-            .env("XDG_CONFIG_HOME", dir.path())
-            .output()
-            .expect("the mu binary runs");
-        assert_not_implemented(&output, verb);
-    }
-
-    let entries: Vec<_> = fs::read_dir(dir.path())
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name())
-        .collect();
-    assert_eq!(entries, ["seed.txt"]);
-    assert_eq!(fs::read_to_string(&file).unwrap(), "seed");
-    assert_eq!(fs::metadata(&file).unwrap().modified().unwrap(), modified);
 }
 
 proptest! {

@@ -27,6 +27,9 @@ unused-allowed-license = "allow"
 
 [bans]
 multiple-versions = "warn"
+# ratatui and mu-tui must read keys with one copy of crossterm. Two copies
+# give two event queues, so a pull request that splits them fails here.
+deny = [{ crate = "crossterm", deny-multiple-versions = true }]
 wildcards = "deny"
 # A dependency between two workspace crates is a path with no version.
 allow-wildcard-paths = true
