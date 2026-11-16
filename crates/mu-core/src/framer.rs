@@ -291,6 +291,22 @@ mod tests {
         Inbound::Line(String::from_utf8_lossy(bytes).into_owned())
     }
 
+    /// The lines that end in `stream`, which holds data bytes only: split at LF, with no CR.
+    fn data_lines(stream: &[u8]) -> Vec<Inbound> {
+        stream
+            .split_inclusive(|byte| *byte == b'\n')
+            .filter(|piece| piece.ends_with(b"\n"))
+            .map(|piece| {
+                let data: Vec<u8> = piece[..piece.len() - 1]
+                    .iter()
+                    .copied()
+                    .filter(|byte| *byte != b'\r')
+                    .collect();
+                line_of(&data)
+            })
+            .collect()
+    }
+
     #[test]
     fn line_framer_reads_mark_answer() {
         for verb in [WILL, WONT] {
@@ -455,7 +471,7 @@ mod tests {
         #[test]
         fn line_framer_marks_are_transparent(
             stream in prop::collection::vec(
-                prop_oneof![Just(b'\n'), any::<u8>().prop_map(|byte| byte.min(IAC - 1))],
+                prop_oneof![Just(b'\n'), Just(b'\r'), any::<u8>(), favored_byte()],
                 0..100,
             ),
             inserts in prop::collection::vec((any::<prop::sample::Index>(), any::<bool>()), 0..5),
@@ -465,23 +481,28 @@ mod tests {
                 .iter()
                 .map(|(at, wont)| (at.index(stream.len() + 1), if *wont { WONT } else { WILL }))
                 .collect();
+            // The stream holds data bytes. On the wire, each byte 255 is `IAC IAC`.
             let mut bytes = Vec::new();
             for position in 0..=stream.len() {
                 for (_, verb) in inserts.iter().filter(|(at, _)| *at == position) {
                     bytes.extend([IAC, *verb, TM]);
                 }
-                bytes.extend(stream.get(position));
+                match stream.get(position) {
+                    Some(&IAC) => bytes.extend([IAC, IAC]),
+                    Some(&byte) => bytes.push(byte),
+                    None => {}
+                }
             }
             let points: Vec<usize> = cuts.iter().map(|cut| cut.index(bytes.len() + 1)).collect();
 
             let mut expected = Vec::new();
             let mut placed = 0;
-            let mut plain = LineFramer::new().feed(&stream).into_iter();
+            let mut complete = data_lines(&stream).into_iter();
             for (end, _) in stream.iter().enumerate().filter(|(_, byte)| **byte == b'\n') {
                 let due = inserts.iter().filter(|(at, _)| *at <= end).count();
                 expected.extend(std::iter::repeat_n(Inbound::Mark, due - placed));
                 placed = due;
-                expected.extend(plain.next());
+                expected.extend(complete.next());
             }
             expected.extend(std::iter::repeat_n(Inbound::Mark, inserts.len() - placed));
 
