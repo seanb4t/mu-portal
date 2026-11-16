@@ -203,12 +203,11 @@ The tests of the built binary run `mu client` in a pseudo-terminal with `portabl
 
 `crates/mu-cli/tests/support/` holds every helper that more than one test file uses. `mod.rs` holds the helpers that run `mu` once or read the repository: `mu`, `mu_with`, `stdout`, `stderr`, `mode`, `repo_root`, `repo_file`, `h2_sections`, `h2_headings`, `workspace_metadata`, `files_under` and `TreeCopy`. `process.rs` holds the rest:
 
-- `mu(args)`, moved from `cli.rs`, which runs the built binary to its exit, and `mu_with(args, env)`, which also sets and removes environment variables
 - `ServerProcess`, which starts `mu server` on a socket in a temporary directory and kills it on drop. Its builder takes the arguments and the environment
 - `Relay`, which forwards a Unix socket. It can cut the connection and hold, which refuses each new connection until the test releases it
 - `mu_on_pty(args, on, cwd)`, which starts the binary in `cwd` with a pseudo-terminal on stdin only or on stdout only, as `on` says. `server.rs` and `client.rs` both use it
 - `wait_until(bound, what, future)`, the one bounded wait. It fails the test at the bound with a message that names `what`. The screen waits of `PtyClient` go through it, and their `what` prints the screen
-- `mode(path)` in `mod.rs`, and `PW`, `TWO_WORLDS`, `greeting(world)`, `ServerBuilder::fake_worlds` and `Session::with_worlds` in `process.rs`, which more than one test file uses
+- `PW`, `TWO_WORLDS`, `greeting(world)`, `ServerBuilder::fake_worlds` and `Session::with_worlds`, which more than one test file uses
 
 ### Tests and the clock
 
