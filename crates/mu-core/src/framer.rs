@@ -85,7 +85,7 @@ enum Held {
     Verb(u8),
 }
 
-/// Splits on LF and drops each CR. It reads `IAC IAC` as one data byte 255. It reads the mark of
+/// Splits on LF and drops each CR. It reads `IAC IAC` as one escaped data byte. It reads the mark of
 /// the game and gives it as [`Inbound::Mark`], and it gives no prompt or other message. Any
 /// other IAC sequence stays in the line.
 #[derive(Debug, Default)]

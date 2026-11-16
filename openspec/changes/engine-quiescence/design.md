@@ -96,7 +96,7 @@ The two refusal tests in `tests/portal.rs` also call `idle` before they assert. 
 | A frame records no event and sends no line | The test `wait_adds_nothing`. |
 | A drop or a failed connect answers the frames that wait | The tests `wait_survives_drop`, `wait_survives_failed_mark_write` and `wait_survives_failed_connect`. Each asserts that the wait returns `Ok`. A dropped frame gives `Err`. |
 | Each list keeps more than one frame, in order | The test `two_waits_on_one_world`, which asserts `Ok` for both waits, and the unit test `waiting_frames_answer_in_order` in `session.rs`. |
-| The codes of telnet live only in `telnet.rs` | Task 4.1 searches `crates/mu-core/src` for a `u8` constant with a value of a code. |
+| The codes of telnet live only in `telnet.rs` | Task 4.1 searches `crates/mu-core/src` outside `telnet.rs` for the codes 251 to 255 in decimal, hex, suffixed and array forms, and for a `u8` constant of 6. |
 | A mark that no frame waits for changes nothing | The test `stray_mark_is_ignored`. |
 | The progress of the server handlers starts at the last event of the journal | The test `wait_on_journal_with_events_at_start`. |
 | The fake game answers the mark in order and does not count it | The unit test `fake_game_answers_mark_in_order` in `fake.rs`. |

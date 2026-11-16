@@ -36,14 +36,15 @@ Load the `rust-best-practices` skill before this group.
   - `wait_survives_failed_connect`, for the scenario "A wait survives a failed connect", which drops the `ConnectGate`
   - `wait_survives_failed_mark_write`: a world on `BrokenTransport` with no login, so that the mark is its first write, and a wait that returns `Ok` while the journal holds a disconnect event
   - `two_waits_on_one_world`: two waits joined with `tokio::join!`, once on a connected world and once during a held connect that then opens, which both return `Ok`
+  - `wait_on_journal_with_events_at_start`: a `MemoryJournal` with one event, a portal with a server handler on it, and a wait that returns
 
-  The tests of the three scenarios of a drop or a failed connect assert that the wait returns `Ok`.  - `wait_on_journal_with_events_at_start`: a `MemoryJournal` with one event, a portal with a server handler on it, and a wait that returns
+  The tests of the three scenarios of a drop or a failed connect assert that the wait returns `Ok`.
 
   In `tests/scripts.rs`, add `stray_mark_is_ignored` for the scenario "A mark that no frame waits for". Its test framer is like `Shout` and gives `Inbound::Mark` for the line `mark`. Add `wait_covers_server_handler_loop` for the scenario "A wait covers a loop of server handlers". Make sure that `cargo nextest run -p mu-core --locked` passes.
 
 ## 4. No sleep in a test
 
-- [x] 4.1 Delete `settle` from `tests/support/mod.rs`. Change each call in `tests/portal.rs` and `tests/scripts.rs` to `idle`, also in `refused_line_break` and in `stop_disconnects_every_world_and_refuses_connect`. Make sure that `rg -n 'settle' crates/` and `rg -n -i 'sleep' crates/mu-core/tests crates/mu-core/src` find nothing. Make sure that `rg -n 'const [A-Z_]+: u8 = (6|25[0-5]);' crates/mu-core/src` finds only lines of `telnet.rs`, and that `cargo nextest run -p mu-core --locked` passes.
+- [x] 4.1 Delete `settle` from `tests/support/mod.rs`. Change each call in `tests/portal.rs` and `tests/scripts.rs` to `idle`, also in `refused_line_break` and in `stop_disconnects_every_world_and_refuses_connect`. Make sure that `rg -n 'settle' crates/` and `rg -n -i 'sleep' crates/mu-core/tests crates/mu-core/src` find nothing. Make sure that `rg -l -i -g '!telnet.rs' '\b(25[1-5]|0x0*f[b-f])(_?u8)?\b|\bu8 = (6|0x0*6)(_?u8)?;' crates/mu-core/src` prints only `crates/mu-core/src/secret.rs`. The pattern finds the codes 251 to 255 in decimal, hex, suffixed and array forms, and a `u8` constant of 6. The one accepted hit is the non-UTF-8 byte 0xff in a test of `secret.rs`. Make sure that `cargo nextest run -p mu-core --locked` passes.
 - [x] 4.2 Run `mise run check` and `uv run ~/.agents/plugins/sb/skills/review-lint/scripts/review_lint.py --base origin/main`. Make sure that both pass, and that the gate `time-based-test` reports no finding.
 
 ## 5. Review
