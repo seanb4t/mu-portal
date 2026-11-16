@@ -97,7 +97,7 @@ pub async fn wait_state(portal: &Portal, world: &WorldId, state: WorldState) {
 
 /// Waits until every task is idle. On the paused clock this takes no real time.
 pub async fn settle() {
-    tokio::time::advance(Duration::from_secs(5)).await;
+    tokio::time::sleep(Duration::from_secs(5)).await;
 }
 
 /// The events of `kind`.

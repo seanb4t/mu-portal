@@ -50,7 +50,7 @@ pub struct Subscription {
 }
 
 impl Subscription {
-    /// The last sequence number in the journal now.
+    /// The last sequence number in the journal when the subscription started.
     #[must_use]
     pub fn last(&self) -> Seq {
         self.last
