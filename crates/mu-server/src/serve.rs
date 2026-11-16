@@ -130,15 +130,16 @@ pub async fn serve(
     let served = axum::serve(listener, api.router())
         .with_graceful_shutdown(async move {
             shutdown.await;
-            // Each open stream ends, so the graceful shutdown does not wait for it.
+            // The sessions stop first, so each open stream gets the disconnect events.
+            for (world, _) in portal.worlds() {
+                // A world that is down already is not an error at the stop.
+                let _ = portal.disconnect(&world).await;
+            }
+            // Then each open stream ends, so the graceful shutdown does not wait for it.
             stopping.send_replace(true);
         })
         .await;
 
-    for (world, _) in portal.worlds() {
-        // A world that is down already is not an error at the stop.
-        let _ = portal.disconnect(&world).await;
-    }
     let removed = fs::remove_file(socket).map_err(at(socket));
     served.map_err(at(socket))?;
     removed

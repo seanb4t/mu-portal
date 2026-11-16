@@ -107,8 +107,37 @@ mod tests {
 
     #[test]
     fn each_kind_and_source_has_a_schema_value() {
-        for each in EventKind::ALL {
-            assert_ne!(kind(each), proto::EventKind::EVENT_KIND_UNSPECIFIED);
+        let kinds = [
+            (EventKind::Connected, proto::EventKind::EVENT_KIND_CONNECTED),
+            (
+                EventKind::Disconnected,
+                proto::EventKind::EVENT_KIND_DISCONNECTED,
+            ),
+            (EventKind::Line, proto::EventKind::EVENT_KIND_LINE),
+            (EventKind::Prompt, proto::EventKind::EVENT_KIND_PROMPT),
+            (EventKind::Message, proto::EventKind::EVENT_KIND_MESSAGE),
+            (EventKind::Input, proto::EventKind::EVENT_KIND_INPUT),
+            (EventKind::Echo, proto::EventKind::EVENT_KIND_ECHO),
+            (EventKind::Login, proto::EventKind::EVENT_KIND_LOGIN),
+            (EventKind::Custom, proto::EventKind::EVENT_KIND_CUSTOM),
+            (
+                EventKind::ScriptError,
+                proto::EventKind::EVENT_KIND_SCRIPT_ERROR,
+            ),
+        ];
+        assert_eq!(kinds.len(), EventKind::ALL.len());
+        for (each, value) in kinds {
+            assert_eq!(kind(each), value, "{each:?}");
+        }
+        let sources = [
+            (Source::Game, proto::Source::SOURCE_GAME),
+            (Source::Player, proto::Source::SOURCE_PLAYER),
+            (Source::Script, proto::Source::SOURCE_SCRIPT),
+            (Source::System, proto::Source::SOURCE_SYSTEM),
+            (Source::Credential, proto::Source::SOURCE_CREDENTIAL),
+        ];
+        for (each, value) in sources {
+            assert_eq!(source(each), value, "{each:?}");
         }
     }
 }

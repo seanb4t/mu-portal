@@ -62,20 +62,33 @@ fn event_message(event: &mu_core::Event) -> proto::SubscribeResponse {
 pub fn event_stream(
     subscription: Subscription,
     instance_id: &str,
-    mut stopping: watch::Receiver<bool>,
+    stopping: watch::Receiver<bool>,
 ) -> ServiceStream<proto::SubscribeResponse> {
     let head = futures::stream::once(ready(Ok(hello(instance_id, subscription.last()))));
-    let events = subscription.into_stream().map(|item| match item {
-        Ok(event) => Ok(event_message(&event)),
-        Err(Lagged(n)) => Err(ConnectError::resource_exhausted(format!(
-            "the subscriber fell {n} events behind; subscribe again from the next number"
-        ))),
+    // The stop ends the stream only when no event is ready, so the events that the server
+    // recorded before the stop, for example the disconnect of each world, still go out.
+    let events = futures::stream::unfold(Some(subscription), move |state| {
+        let mut stopping = stopping.clone();
+        async move {
+            let mut subscription = state?;
+            let item = tokio::select! {
+                biased;
+                item = subscription.next() => item?,
+                // A dropped sender also means stop.
+                _ = stopping.wait_for(|stop| *stop) => return None,
+            };
+            Some(match item {
+                Ok(event) => (Ok(event_message(&event)), Some(subscription)),
+                Err(Lagged(n)) => (
+                    Err(ConnectError::resource_exhausted(format!(
+                        "the subscriber fell {n} events behind; subscribe again from the next number"
+                    ))),
+                    None,
+                ),
+            })
+        }
     });
-    let stop = async move {
-        // A dropped sender also means stop.
-        let _ = stopping.wait_for(|stop| *stop).await;
-    };
-    Box::pin(head.chain(events).take_until(stop))
+    Box::pin(head.chain(events))
 }
 
 /// The world of a request. A text that is not an id names no world, so it is `not_found` too.
