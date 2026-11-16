@@ -65,29 +65,26 @@ pub fn event_stream(
     stopping: watch::Receiver<bool>,
 ) -> ServiceStream<proto::SubscribeResponse> {
     let head = futures::stream::once(ready(Ok(hello(instance_id, subscription.last()))));
+    let events = subscription.into_stream().map(|item| match item {
+        Ok(event) => Ok(event_message(&event)),
+        Err(Lagged(n)) => Err(ConnectError::resource_exhausted(format!(
+            "the subscriber fell {n} events behind; subscribe again from the next number"
+        ))),
+    });
     // The stop ends the stream only when no event is ready, so the events that the server
     // recorded before the stop, for example the disconnect of each world, still go out.
-    let events = futures::stream::unfold(Some(subscription), move |state| {
-        let mut stopping = stopping.clone();
-        async move {
-            let mut subscription = state?;
+    let events = futures::stream::unfold(
+        (Box::pin(events), stopping),
+        |(mut events, mut stopping)| async move {
             let item = tokio::select! {
                 biased;
-                item = subscription.next() => item?,
+                item = events.next() => item?,
                 // A dropped sender also means stop.
                 _ = stopping.wait_for(|stop| *stop) => return None,
             };
-            Some(match item {
-                Ok(event) => (Ok(event_message(&event)), Some(subscription)),
-                Err(Lagged(n)) => (
-                    Err(ConnectError::resource_exhausted(format!(
-                        "the subscriber fell {n} events behind; subscribe again from the next number"
-                    ))),
-                    None,
-                ),
-            })
-        }
-    });
+            Some((item, (events, stopping)))
+        },
+    );
     Box::pin(head.chain(events))
 }
 
@@ -234,6 +231,18 @@ mod tests {
         let error = slow.next().await.unwrap().unwrap_err();
         assert_eq!(error.code, ErrorCode::ResourceExhausted);
         assert!(slow.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn stop_sends_the_ready_events_first() {
+        let journal = MemoryJournal::new(4).unwrap();
+        let (stop, stopping) = watch::channel(false);
+        let mut stream = event_stream(journal.subscribe(Seq(1)).unwrap(), "id", stopping);
+        assert!(stream.next().await.is_some());
+        append(&journal, "the last line");
+        stop.send_replace(true);
+        assert_eq!(text(&stream.next().await.unwrap()), "the last line");
+        assert!(stream.next().await.is_none());
     }
 
     #[tokio::test]

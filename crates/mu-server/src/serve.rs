@@ -89,7 +89,7 @@ fn clear(socket: &Path) -> Result<(), ServeError> {
 
 /// Runs steps 3 to 7 of the server: lock, clear, bind with mode 0600, write the line on
 /// stderr, build the `Portal`, connect each world, and serve until `shutdown` resolves.
-/// Then it ends each stream, disconnects each world and removes the socket file.
+/// Then it stops each world, ends each stream and removes the socket file.
 ///
 /// The parent of `socket` must be a private directory: owned by this user, with mode 0700.
 /// Only that directory keeps other users from the socket before its mode changes to 0600.
@@ -130,11 +130,9 @@ pub async fn serve(
     let served = axum::serve(listener, api.router())
         .with_graceful_shutdown(async move {
             shutdown.await;
-            // The sessions stop first, so each open stream gets the disconnect events.
-            for (world, _) in portal.worlds() {
-                // A world that is down already is not an error at the stop.
-                let _ = portal.disconnect(&world).await;
-            }
+            // The worlds stop first, and none can connect again, so each open stream gets
+            // the disconnect events before it ends.
+            portal.stop().await;
             // Then each open stream ends, so the graceful shutdown does not wait for it.
             stopping.send_replace(true);
         })
