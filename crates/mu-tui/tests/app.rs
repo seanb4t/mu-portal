@@ -292,21 +292,43 @@ fn ctrl_c_quits() {
     assert_eq!(app(&["alpha/aria"]).on_key(ctrl('c')), Some(Action::Quit));
 }
 
+/// The view of `text` on the screen: a tab as a space and each other control character as
+/// U+FFFD.
+fn shown(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            '\t' => ' ',
+            c if c.is_control() => '\u{fffd}',
+            c => c,
+        })
+        .collect()
+}
+
 proptest! {
     #[test]
-    fn no_control_character_is_drawn(line in "[a \\x00-\\x1f\\x7f\\u{80}-\\u{9f}]{0,40}") {
-        let mut app = app(&["alpha/aria"]);
-        app.on_event(game("alpha/aria", &line));
-        let want: String = line
-            .chars()
-            .map(|c| match c {
-                '\t' => ' ',
-                c if c.is_control() => '\u{fffd}',
-                c => c,
-            })
-            .collect();
+    fn no_control_character_is_drawn(
+        character in "[a\\x00-\\x1f\\x7f\\u{80}-\\u{9f}]{1,10}",
+        line in "[a \\x00-\\x1f\\x7f\\u{80}-\\u{9f}]{0,40}",
+        source in prop::sample::select(vec![
+            Source::SOURCE_GAME,
+            Source::SOURCE_PLAYER,
+            Source::SOURCE_SYSTEM,
+            Source::SOURCE_CREDENTIAL,
+        ]),
+    ) {
+        let world = format!("alpha/{character}");
+        let mut app = app(&[&world]);
+        app.on_event(event(&world, source, &line));
+        let prefix = match source {
+            Source::SOURCE_PLAYER => "> ",
+            Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL => "-- ",
+            _ => "",
+        };
+        let want = format!("{prefix}{}", shown(&line));
         let drawn = rows(&app).first().cloned().unwrap_or_default();
         prop_assert_eq!(drawn, want.trim_end());
+        let top_want = format!("[alpha/{}]", shown(&character));
+        prop_assert_eq!(top(&app), top_want.trim_end());
     }
 }
 
