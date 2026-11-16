@@ -2,8 +2,8 @@
 
 use mu_proto::{EventKind, Source, WorldState};
 
-use support::process::{PW, ServerBuilder, Session, TWO_WORLDS, private_tempdir};
-use support::{mu, mu_with, stderr, stdout};
+use support::process::{PW, ServerBuilder, Session, TWO_WORLDS};
+use support::{mu, stderr, stdout};
 
 mod support;
 
@@ -18,20 +18,12 @@ async fn no_event_since(session: &mut Session, world: &str, after: u64) {
     assert_eq!(seq, after + 1, "an event came between {after} and the mark");
 }
 
-#[test]
-fn bad_world_id_is_refused() {
-    let dir = private_tempdir();
-    let socket = dir.path().join("s.sock").display().to_string();
-    let output = mu_with(
-        &[
-            "server",
-            "--socket",
-            &socket,
-            "--fake-world",
-            "Alpha_1=env:PW",
-        ],
-        &[("PW", Some(PW))],
-    );
+#[tokio::test]
+async fn bad_world_id_is_refused() {
+    let output = ServerBuilder::new()
+        .fake_world("Alpha_1", "PW", PW)
+        .output()
+        .await;
     assert_eq!(output.status.code(), Some(2));
     assert!(stderr(&output).contains("Alpha_1"));
 }
@@ -54,20 +46,14 @@ fn fake_world_flag_is_hidden() {
     assert!(!stdout(&output).contains("fake-world"));
 }
 
-#[test]
-fn missing_password_variable() {
-    let dir = private_tempdir();
-    let socket = dir.path().join("s.sock").display().to_string();
-    let output = mu_with(
-        &[
-            "server",
-            "--socket",
-            &socket,
-            "--fake-world",
-            "alpha/aria=env:ALPHA_PW",
-        ],
-        &[("ALPHA_PW", None)],
-    );
+#[tokio::test]
+async fn missing_password_variable() {
+    let output = ServerBuilder::new()
+        .arg("--fake-world")
+        .arg("alpha/aria=env:ALPHA_PW")
+        .env("ALPHA_PW", None::<&str>)
+        .output()
+        .await;
     assert_eq!(output.status.code(), Some(1));
     assert!(stderr(&output).contains("ALPHA_PW"));
 }

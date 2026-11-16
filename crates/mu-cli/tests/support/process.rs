@@ -200,6 +200,11 @@ impl ServerBuilder {
         ServerProcess { socket, ..process }
     }
 
+    /// Runs the server to its exit, for a server that refuses to start.
+    pub async fn output(self) -> Output {
+        self.command().output().await.expect("the mu binary runs")
+    }
+
     /// Starts the server and does not wait.
     pub fn spawn(self) -> ServerProcess {
         let mut child = self.command().spawn().expect("the mu binary runs");

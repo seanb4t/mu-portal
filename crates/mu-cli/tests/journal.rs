@@ -3,10 +3,8 @@
 use mu_proto::__buffa::oneof::subscribe_response::Message;
 use mu_proto::{EventKind, Source, SubscribeResponse};
 
-use support::process::{
-    BOUND, PW, ServerBuilder, Session, TWO_WORLDS, private_tempdir, wait_until,
-};
-use support::{mu_with, stderr};
+use support::process::{BOUND, PW, ServerBuilder, Session, TWO_WORLDS, wait_until};
+use support::stderr;
 
 mod support;
 
@@ -143,20 +141,12 @@ async fn password_with_star_masks_whole_text() {
     no_password(&session, "a*");
 }
 
-#[test]
-fn password_of_stars_is_refused() {
-    let dir = private_tempdir();
-    let socket = dir.path().join("s.sock").display().to_string();
-    let output = mu_with(
-        &[
-            "server",
-            "--socket",
-            &socket,
-            "--fake-world",
-            "alpha/aria=env:ALPHA_PW",
-        ],
-        &[("ALPHA_PW", Some("**"))],
-    );
+#[tokio::test]
+async fn password_of_stars_is_refused() {
+    let output = ServerBuilder::new()
+        .fake_world("alpha/aria", "ALPHA_PW", "**")
+        .output()
+        .await;
     let stderr = stderr(&output);
     assert_eq!(output.status.code(), Some(1));
     assert!(
