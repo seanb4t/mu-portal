@@ -23,8 +23,11 @@ pub const BOUND: Duration = Duration::from_secs(20);
 
 pub use mu_server::SERVING;
 
-/// The fake worlds `alpha/aria` and `beta/bryn`, each with the password `s3cret-pw`.
-pub const TWO_WORLDS: &[(&str, &str)] = &[("alpha/aria", "s3cret-pw"), ("beta/bryn", "s3cret-pw")];
+/// The password of each fake world in the tests.
+pub const PW: &str = "s3cret-pw";
+
+/// The fake worlds `alpha/aria` and `beta/bryn`, each with [`PW`].
+pub const TWO_WORLDS: &[(&str, &str)] = &[("alpha/aria", PW), ("beta/bryn", PW)];
 
 /// The socket path and the process id of a serving line.
 pub fn served(line: &str) -> Option<(PathBuf, u32)> {
@@ -549,6 +552,14 @@ impl PtyClient {
                 .wait_for(|parser| check(&parser.screen().rows(0, 80).collect::<Vec<_>>()))
                 .await
                 .is_ok()
+        })
+        .await;
+    }
+
+    /// Waits until a row shows the greeting of `alpha/aria`.
+    pub async fn wait_greeting(&self) {
+        self.wait_rows("the greeting", |rows| {
+            rows.iter().any(|row| row.trim() == "Welcome, aria.")
         })
         .await;
     }

@@ -3,12 +3,10 @@
 use mu_proto::__buffa::oneof::subscribe_response::Message;
 use mu_proto::{EventKind, Source, SubscribeResponse};
 
-use support::process::{BOUND, Session, private_tempdir, wait_until};
+use support::process::{BOUND, PW, Session, TWO_WORLDS, private_tempdir, wait_until};
 use support::{mu_with, stderr};
 
 mod support;
-
-const PW: &str = "s3cret-pw";
 
 fn hello(message: Option<SubscribeResponse>) -> (String, u64) {
     match message.and_then(|message| message.message) {
@@ -27,7 +25,7 @@ fn seq(message: Option<SubscribeResponse>) -> u64 {
 /// A server whose journal holds the events 1 to 6: the connect, login and greeting of two
 /// worlds.
 async fn six_events() -> Session {
-    let session = Session::with_worlds(&[("alpha/aria", PW), ("beta/bryn", PW)]).await;
+    let session = Session::with_worlds(TWO_WORLDS).await;
     assert_eq!(session.seen().last().map(|event| event.seq), Some(6));
     session
 }
@@ -45,7 +43,7 @@ fn no_password(session: &Session, password: &str) {
 
 #[tokio::test]
 async fn events_of_two_worlds_share_one_sequence() {
-    let mut session = Session::with_worlds(&[("alpha/aria", PW), ("beta/bryn", PW)]).await;
+    let mut session = Session::with_worlds(TWO_WORLDS).await;
     session.client.send("alpha/aria", "one").await.unwrap();
     session.client.send("beta/bryn", "two").await.unwrap();
     session.line("alpha/aria", "You say, \"one\"").await;

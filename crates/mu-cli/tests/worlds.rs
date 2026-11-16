@@ -2,12 +2,10 @@
 
 use mu_proto::{EventKind, Source, WorldState};
 
-use support::process::{ServerBuilder, Session, private_tempdir};
+use support::process::{PW, ServerBuilder, Session, private_tempdir};
 use support::{mu, mu_with, stderr, stdout};
 
 mod support;
-
-const PW: &str = "s3cret-pw";
 
 fn builder(worlds: &[&str]) -> ServerBuilder {
     ServerBuilder::new().fake_worlds(&with_pw(worlds))

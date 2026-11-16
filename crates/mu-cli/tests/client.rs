@@ -101,11 +101,7 @@ async fn client_gives_up_after_five_seconds() {
 async fn attached() -> (Session, PtyClient) {
     let session = Session::with_worlds(TWO_WORLDS).await;
     let client = PtyClient::start(session.server.socket(), session.server.dir().path());
-    client
-        .wait_rows("the greeting", |rows| {
-            rows.iter().any(|row| row.trim() == "Welcome, aria.")
-        })
-        .await;
+    client.wait_greeting().await;
     (session, client)
 }
 
@@ -164,11 +160,7 @@ async fn lost_stream_resumes_through_relay() {
     let server = ServerBuilder::new().fake_worlds(TWO_WORLDS).start().await;
     let relay = Relay::start(&server.dir().path().join("relay.sock"), server.socket());
     let client = PtyClient::start(relay.socket(), server.dir().path());
-    client
-        .wait_rows("the greeting", |rows| {
-            rows.iter().any(|row| row.trim() == "Welcome, aria.")
-        })
-        .await;
+    client.wait_greeting().await;
     relay.hold();
     assert!(relay.cut() >= 1, "no connection to cut");
     client
@@ -199,11 +191,7 @@ async fn lost_stream_resumes_through_relay() {
 async fn ctrl_c_quits_client_only() {
     let server = ServerBuilder::new().fake_worlds(TWO_WORLDS).start().await;
     let mut client = PtyClient::start(server.socket(), server.dir().path());
-    client
-        .wait_rows("the greeting", |rows| {
-            rows.iter().any(|row| row.trim() == "Welcome, aria.")
-        })
-        .await;
+    client.wait_greeting().await;
     client.send(b"\x03");
     let status = client.exit_within(BOUND).await.expect("the client exits");
     assert!(status.success(), "{status:?}");

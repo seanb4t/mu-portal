@@ -7,11 +7,9 @@ use futures::{Stream, StreamExt as _};
 use mu_client::{ClientEvent, PortalClient};
 use rustix::process::Signal;
 
-use support::process::{BOUND, Relay, ServerBuilder, ServerProcess, wait_until};
+use support::process::{BOUND, PW, Relay, ServerBuilder, ServerProcess, wait_until};
 
 mod support;
-
-const PW: &str = "s3cret-pw";
 
 type Events = Pin<Box<dyn Stream<Item = ClientEvent> + Send>>;
 
