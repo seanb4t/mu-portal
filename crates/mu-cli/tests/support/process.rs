@@ -34,10 +34,27 @@ pub async fn wait_until<T>(
         .unwrap_or_else(|elapsed| panic!("no {what} within {bound:?}: {elapsed}"))
 }
 
+/// A temporary directory with mode 0700, which a socket can go in.
+pub fn private_tempdir() -> TempDir {
+    use std::os::unix::fs::PermissionsExt as _;
+    tempfile::Builder::new()
+        .permissions(std::fs::Permissions::from_mode(0o700))
+        .tempdir()
+        .unwrap()
+}
+
+/// The lines of stderr, and whether stderr closed.
+#[derive(Default)]
+struct Stderr {
+    lines: Vec<String>,
+    closed: bool,
+}
+
 /// The arguments and the environment of a `mu server` to start.
 pub struct ServerBuilder {
     dir: Arc<TempDir>,
     socket_flag: Option<PathBuf>,
+    current_dir: Option<PathBuf>,
     args: Vec<OsString>,
     env: Vec<(OsString, Option<OsString>)>,
 }
@@ -46,11 +63,12 @@ impl ServerBuilder {
     /// A server with `--socket <dir>/s.sock` in a new temporary directory, with no
     /// `MU_SOCKET`.
     pub fn new() -> Self {
-        let dir = Arc::new(tempfile::tempdir().unwrap());
+        let dir = Arc::new(private_tempdir());
         let socket_flag = Some(dir.path().join("s.sock"));
         Self {
             dir,
             socket_flag,
+            current_dir: None,
             args: Vec::new(),
             env: vec![("MU_SOCKET".into(), None)],
         }
@@ -66,6 +84,12 @@ impl ServerBuilder {
     /// The flag `--socket` with `path`, or no flag.
     pub fn socket_flag(mut self, path: Option<PathBuf>) -> Self {
         self.socket_flag = path;
+        self
+    }
+
+    /// Runs the server in `dir`.
+    pub fn current_dir(mut self, dir: &Path) -> Self {
+        self.current_dir = Some(dir.to_owned());
         self
     }
 
@@ -100,6 +124,9 @@ impl ServerBuilder {
             command.arg("--socket").arg(socket);
         }
         command.args(&self.args);
+        if let Some(dir) = &self.current_dir {
+            command.current_dir(dir);
+        }
         for (name, value) in &self.env {
             match value {
                 Some(value) => command.env(name, value),
@@ -122,7 +149,8 @@ impl ServerBuilder {
             "serving line",
             process.wait_stderr(|line| line.starts_with(SERVING)),
         )
-        .await;
+        .await
+        .unwrap_or_else(|| panic!("the server exited: {:?}", process.stderr()));
         let socket = PathBuf::from(line.trim_start_matches(SERVING));
         ServerProcess { socket, ..process }
     }
@@ -130,15 +158,16 @@ impl ServerBuilder {
     /// Starts the server and does not wait.
     pub fn spawn(self) -> ServerProcess {
         let mut child = self.command().spawn().expect("the mu binary runs");
-        let (lines, _) = watch::channel(Vec::new());
+        let (lines, _) = watch::channel(Stderr::default());
         let lines = Arc::new(lines);
         let stderr = child.stderr.take().unwrap();
         let sender = Arc::clone(&lines);
         tokio::spawn(async move {
             let mut reader = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = reader.next_line().await {
-                sender.send_modify(|lines| lines.push(line));
+                sender.send_modify(|stderr| stderr.lines.push(line));
             }
+            sender.send_modify(|stderr| stderr.closed = true);
         });
         ServerProcess {
             child,
@@ -160,7 +189,7 @@ pub struct ServerProcess {
     child: tokio::process::Child,
     dir: Arc<TempDir>,
     socket: PathBuf,
-    lines: Arc<watch::Sender<Vec<String>>>,
+    lines: Arc<watch::Sender<Stderr>>,
 }
 
 impl ServerProcess {
@@ -181,17 +210,18 @@ impl ServerProcess {
 
     /// The lines of stderr so far.
     pub fn stderr(&self) -> Vec<String> {
-        self.lines.borrow().clone()
+        self.lines.borrow().lines.clone()
     }
 
-    /// Waits for the first line of stderr that `check` accepts.
-    pub async fn wait_stderr(&self, check: impl Fn(&str) -> bool) -> String {
+    /// Waits for the first line of stderr that `check` accepts. None means that stderr
+    /// closed with no such line.
+    pub async fn wait_stderr(&self, check: impl Fn(&str) -> bool) -> Option<String> {
         let mut receiver = self.lines.subscribe();
-        let lines = receiver
-            .wait_for(|lines| lines.iter().any(|line| check(line)))
+        let stderr = receiver
+            .wait_for(|stderr| stderr.closed || stderr.lines.iter().any(|line| check(line)))
             .await
             .unwrap();
-        lines.iter().find(|line| check(line)).unwrap().clone()
+        stderr.lines.iter().find(|line| check(line)).cloned()
     }
 
     /// Sends `signal` to the server.
