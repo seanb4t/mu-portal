@@ -102,9 +102,9 @@ If a subscriber falls too far behind the live events, the server SHALL end its s
 - **WHEN** the journal records 5 events, and the first subscriber then reads
 - **THEN** the first read of the first subscriber gives a lag
 - **AND** the stream of that subscriber ends with the code `resource_exhausted`
+- **AND** the second subscriber reads every event, in order
 
 #### Scenario: A subscriber at the edge of the buffer
 - **GIVEN** a journal whose live buffer holds 4 events, and one subscriber that reads nothing yet
 - **WHEN** the journal records 4 events, and the subscriber then reads
 - **THEN** the subscriber reads the events 1 to 4 in order
-- **AND** the second client reads every event, in order
