@@ -1,17 +1,12 @@
 //! The scenarios of the world-sessions and event-journal capabilities, run on the engine
 //! with the fake game.
 
-use std::io;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 
-use futures::future::BoxFuture;
 use mu_core::{
-    ByteStream, EventKind, FakeTransport, PortalError, ResolvedWorld, Source, Transport, WorldId,
-    WorldSetup, WorldState,
+    ConnectGate, EventKind, FakeTransport, Journal, MemoryJournal, NewEvent, Portal, PortalError,
+    Source, WorldId, WorldState,
 };
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use support::*;
 
@@ -100,7 +95,7 @@ async fn refused_line_break(text: &str) {
         portal.send(&id("alpha/aria"), text).await,
         Err(PortalError::LineBreak)
     );
-    settle().await;
+    idle(&portal).await;
     assert_eq!(portal.journal().last(), last);
     assert_eq!(game.lines(), [format!("connect aria {PW}")]);
 }
@@ -251,52 +246,9 @@ async fn the_game_drops_the_world() {
     assert_eq!((gone.len(), gone[0].source), (1, Source::System));
 }
 
-/// A stream that never gives a byte, and whose every write fails.
-struct BrokenWrite;
-
-impl AsyncRead for BrokenWrite {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        _: &mut Context<'_>,
-        _: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        Poll::Pending
-    }
-}
-
-impl AsyncWrite for BrokenWrite {
-    fn poll_write(self: Pin<&mut Self>, _: &mut Context<'_>, _: &[u8]) -> Poll<io::Result<usize>> {
-        Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()))
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Poll::Ready(Ok(()))
-    }
-}
-
-struct BrokenTransport;
-
-impl Transport for BrokenTransport {
-    fn connect(&self, _: &WorldId) -> BoxFuture<'static, io::Result<Box<dyn ByteStream>>> {
-        Box::pin(async { Ok(Box::new(BrokenWrite) as Box<dyn ByteStream>) })
-    }
-}
-
 #[tokio::test(start_paused = true)]
 async fn failed_write_records_disconnect() {
-    let aria = id("alpha/aria");
-    let world = ResolvedWorld {
-        id: aria.clone(),
-        login: None,
-    };
-    let setup = WorldSetup::new(world, None, Arc::new(BrokenTransport));
-    let portal = portal(vec![setup], Vec::new());
-    portal.connect_all().await;
-    wait_state(&portal, &aria, WorldState::Connected).await;
+    let (portal, aria) = broken_world(bare_world(BrokenTransport::refusing_writes())).await;
     assert_eq!(
         portal.send(&aria, "hello").await,
         Err(PortalError::NotConnected(aria.clone()))
@@ -333,7 +285,7 @@ async fn stop_disconnects_every_world_and_refuses_connect() {
     let last = portal.journal().last();
     let refused = portal.connect(&id("alpha/aria")).await;
     assert!(matches!(refused, Err(PortalError::Stopped)), "{refused:?}");
-    settle().await;
+    idle(&portal).await;
     assert_eq!(
         portal.journal().last(),
         last,
@@ -343,4 +295,138 @@ async fn stop_disconnects_every_world_and_refuses_connect() {
         portal.worlds()[0],
         (id("alpha/aria"), WorldState::Disconnected)
     );
+}
+
+/// Returns after the session of `world` handled each request sent before it. While the connect
+/// of `world` is held, a send gets `NotConnected`.
+async fn queue_barrier(portal: &Portal, world: &WorldId) {
+    assert_eq!(
+        portal.send(world, "barrier").await,
+        Err(PortalError::NotConnected(world.clone()))
+    );
+}
+
+/// A world on a held connect, with a portal that connected it.
+async fn world_in_held_connect() -> (Portal, ConnectGate) {
+    let (transport, gate) = FakeTransport::new("aria", PW).held();
+    let (aria, _) = world_on("alpha/aria", PW, transport);
+    let portal = portal(vec![aria], Vec::new());
+    portal.connect_all().await;
+    (portal, gate)
+}
+
+fn has_text(portal: &Portal, text: &str) -> bool {
+    events(portal).iter().any(|event| event.text == text)
+}
+
+#[tokio::test(start_paused = true)]
+async fn wait_covers_game_echo() {
+    let (aria, _) = world("alpha/aria", PW);
+    let portal = started(vec![aria]).await;
+    as_task(async move {
+        portal.send(&id("alpha/aria"), "one").await.unwrap();
+        idle(&portal).await;
+        assert!(has_text(&portal, "You say, \"one\""));
+    })
+    .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn wait_adds_nothing() {
+    let (aria, game) = world("alpha/aria", PW);
+    let portal = started(vec![aria]).await;
+    let last = portal.journal().last();
+    let lines = game.lines();
+    idle(&portal).await;
+    assert_eq!(portal.journal().last(), last);
+    assert_eq!(game.lines(), lines);
+}
+
+#[tokio::test(start_paused = true)]
+async fn wait_on_world_that_is_down() {
+    let (aria, _) = world("alpha/aria", PW);
+    let portal = portal(vec![aria], Vec::new());
+    idle(&portal).await;
+    assert_eq!(events(&portal), []);
+}
+
+#[tokio::test(start_paused = true)]
+async fn wait_outlasts_connect() {
+    let (portal, gate) = world_in_held_connect().await;
+    let aria = id("alpha/aria");
+    let (waited, ()) = tokio::join!(try_idle(&portal), async {
+        queue_barrier(&portal, &aria).await;
+        gate.open();
+    });
+    assert_eq!(waited, Ok(()));
+    assert!(has_text(&portal, "Welcome, aria."));
+}
+
+#[tokio::test(start_paused = true)]
+async fn wait_survives_drop() {
+    let (aria, _) = world("alpha/aria", PW);
+    let portal = started(vec![aria]).await;
+    let aria = id("alpha/aria");
+    let (sent, waited) = tokio::join!(portal.send(&aria, "@drop"), try_idle(&portal));
+    assert!(sent.is_ok());
+    assert_eq!(waited, Ok(()));
+    let gone = of_kind(&portal, EventKind::Disconnected);
+    assert_eq!(gone.len(), 1);
+    assert_eq!(gone[0].world, aria);
+}
+
+#[tokio::test(start_paused = true)]
+async fn wait_survives_failed_connect() {
+    let (portal, gate) = world_in_held_connect().await;
+    let aria = id("alpha/aria");
+    let (waited, ()) = tokio::join!(try_idle(&portal), async {
+        queue_barrier(&portal, &aria).await;
+        drop(gate);
+    });
+    assert_eq!(waited, Ok(()));
+    let gone = of_kind(&portal, EventKind::Disconnected);
+    assert_eq!(gone.len(), 1);
+    assert_eq!(gone[0].world, aria);
+    assert_eq!(gone[0].text, "the connect failed: the connect gate closed");
+}
+
+#[tokio::test(start_paused = true)]
+async fn wait_survives_failed_mark_write() {
+    let (portal, aria) = broken_world(bare_world(BrokenTransport::refusing_writes())).await;
+    assert_eq!(try_idle(&portal).await, Ok(()));
+    let gone = of_kind(&portal, EventKind::Disconnected);
+    assert_eq!(gone.len(), 1);
+    assert_eq!(gone[0].world, aria);
+}
+
+#[tokio::test(start_paused = true)]
+async fn two_waits_on_one_world() {
+    let (aria, _) = world("alpha/aria", PW);
+    let connected = started(vec![aria]).await;
+    let (first, second) = tokio::join!(try_idle(&connected), try_idle(&connected));
+    assert_eq!((first, second), (Ok(()), Ok(())));
+
+    let (held, gate) = world_in_held_connect().await;
+    let aria = id("alpha/aria");
+    let (first, second, ()) = tokio::join!(try_idle(&held), try_idle(&held), async {
+        queue_barrier(&held, &aria).await;
+        gate.open();
+    });
+    assert_eq!((first, second), (Ok(()), Ok(())));
+    assert!(has_text(&held, "Welcome, aria."));
+}
+
+#[tokio::test(start_paused = true)]
+async fn wait_on_journal_with_events_at_start() {
+    let journal = Arc::new(MemoryJournal::new(mu_core::journal::DEFAULT_CAPACITY).unwrap());
+    journal.append(NewEvent {
+        world: id("alpha/aria"),
+        kind: EventKind::Custom,
+        source: Source::Script,
+        text: "early".to_owned(),
+        depth: 0,
+    });
+    let (aria, _) = world("alpha/aria", PW);
+    let portal = Portal::start(journal, vec![aria], vec![on(|_| Vec::new())]);
+    assert_eq!(try_idle(&portal).await, Ok(()));
 }

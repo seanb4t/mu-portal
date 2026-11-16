@@ -14,7 +14,7 @@ use crate::id::WorldId;
 use crate::journal::{Journal, Subscription};
 use crate::script::{Handler, Hook};
 use crate::secret::Secret;
-use crate::session::{self, Request, Router, SessionParts, WorldState};
+use crate::session::{self, Reply, Request, Router, SessionParts, WorldState};
 use crate::transport::Transport;
 use crate::world::ResolvedWorld;
 
@@ -75,6 +75,8 @@ pub struct Portal {
     states: Arc<BTreeMap<WorldId, watch::Receiver<WorldState>>>,
     journal: Arc<dyn Journal>,
     stopped: Arc<AtomicBool>,
+    /// The last event that the server handlers handled. None with no server handlers.
+    handled: Option<watch::Receiver<Seq>>,
 }
 
 impl Portal {
@@ -115,24 +117,31 @@ impl Portal {
                 stopped: Arc::clone(&stopped),
             }));
         }
-        if !server_handlers.is_empty() {
+        let handled = if server_handlers.is_empty() {
+            None
+        } else {
             // The subscription starts here, so the handlers see each event after the start.
-            let next = journal.last().next();
-            if let Ok(subscription) = journal.subscribe(next) {
+            let last = journal.last();
+            let next = last.next();
+            journal.subscribe(next).ok().map(|subscription| {
+                let (progress, handled) = watch::channel(last);
                 tokio::spawn(run_server_handlers(
                     Arc::clone(&journal),
                     subscription,
                     next,
                     Arc::clone(&router),
                     server_handlers,
+                    progress,
                 ));
-            }
-        }
+                handled
+            })
+        };
         Self {
             router,
             states: Arc::new(states),
             journal,
             stopped,
+            handled,
         }
     }
 
@@ -179,18 +188,27 @@ impl Portal {
     /// [`PortalError::UnknownWorld`], [`PortalError::NotConnected`],
     /// [`PortalError::LineBreak`], or [`PortalError::Stopped`].
     pub async fn submit(&self, envelope: Envelope) -> Result<Option<Seq>, PortalError> {
-        let world = envelope.command.world();
+        let world = envelope.command.world().clone();
+        self.ask(&world, |reply| Request::Command {
+            envelope,
+            reply: Some(reply),
+        })
+        .await
+    }
+
+    /// Sends the request that `make` builds from the answer sender to `world`, and waits for the
+    /// answer. A frame answers with no number.
+    async fn ask(
+        &self,
+        world: &WorldId,
+        make: impl FnOnce(oneshot::Sender<Reply>) -> Request,
+    ) -> Reply {
         let sender = self
             .router
             .get(world)
             .ok_or_else(|| PortalError::UnknownWorld(world.clone()))?;
         let (reply, answer) = oneshot::channel();
-        sender
-            .send(Request {
-                envelope,
-                reply: Some(reply),
-            })
-            .map_err(|_| PortalError::Stopped)?;
+        sender.send(make(reply)).map_err(|_| PortalError::Stopped)?;
         answer.await.map_err(|_| PortalError::Stopped)?
     }
 
@@ -239,22 +257,59 @@ impl Portal {
     pub async fn stop(&self) {
         // The flag goes up first, so a connect that a session reads after it fails.
         self.stopped.store(true, Ordering::Release);
-        self.to_every_world(|world| Command::Disconnect { world })
-            .await;
+        self.to_every_world(|world, reply| Request::Command {
+            envelope: Envelope::system(Command::Disconnect { world }),
+            reply: Some(reply),
+        })
+        .await;
     }
 
     /// Connects every world, as the server. Each world logs in when it connects.
     pub async fn connect_all(&self) {
-        self.to_every_world(|world| Command::Connect { world })
-            .await;
+        self.to_every_world(|world, reply| Request::Command {
+            envelope: Envelope::system(Command::Connect { world }),
+            reply: Some(reply),
+        })
+        .await;
     }
 
-    /// Submits one command of the server to each world, in the order of the ids.
-    async fn to_every_world(&self, command: fn(WorldId) -> Command) {
-        for world in self.router.keys() {
-            // Only a stopped engine fails here.
-            let _ = self.submit(Envelope::system(command(world.clone()))).await;
+    /// Waits until the engine has no work left: the server handlers handled each event, each
+    /// world answered a frame, and the journal got no event meanwhile.
+    ///
+    /// Only tests call it. A game that ignores `IAC DO TIMING-MARK` makes it hang.
+    ///
+    /// # Errors
+    ///
+    /// [`PortalError::Stopped`] when a frame gets no answer or the server handlers end.
+    pub async fn wait_idle(&self) -> Result<(), PortalError> {
+        loop {
+            let mark = self.journal.last();
+            if let Some(handled) = &self.handled {
+                handled
+                    .clone()
+                    .wait_for(|seq| *seq >= mark)
+                    .await
+                    .map_err(|_| PortalError::Stopped)?;
+            }
+            for result in self.to_every_world(|_, reply| Request::Frame(reply)).await {
+                result?;
+            }
+            if self.journal.last() == mark {
+                return Ok(());
+            }
         }
+    }
+
+    /// Sends one request to each world, in the order of the ids, and returns each result.
+    async fn to_every_world(
+        &self,
+        make: fn(WorldId, oneshot::Sender<Reply>) -> Request,
+    ) -> Vec<Reply> {
+        let mut results = Vec::with_capacity(self.router.len());
+        for world in self.router.keys() {
+            results.push(self.ask(world, |reply| make(world.clone(), reply)).await);
+        }
+        results
     }
 }
 
@@ -265,6 +320,7 @@ async fn run_server_handlers(
     mut next: Seq,
     router: Router,
     handlers: Vec<Arc<dyn Handler>>,
+    progress: watch::Sender<Seq>,
 ) {
     while let Some(item) = subscription.next().await {
         let Ok(event) = item else {
@@ -277,5 +333,6 @@ async fn run_server_handlers(
         };
         next = event.seq.next();
         session::run_handlers(&handlers, &router, &event);
+        progress.send_replace(event.seq);
     }
 }

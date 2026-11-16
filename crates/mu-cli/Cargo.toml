@@ -28,7 +28,7 @@ cargo_metadata = { workspace = true }
 futures = { workspace = true }
 mu-proto = { path = "../mu-proto" }
 portable-pty = { workspace = true }
-proc-macro2 = { workspace = true }
+proc-macro2 = { workspace = true, features = ["span-locations"] }
 proptest = { workspace = true }
 pulldown-cmark = { workspace = true }
 serde-saphyr = { workspace = true }

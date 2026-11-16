@@ -6,9 +6,10 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use futures::FutureExt as _;
 use futures::future::BoxFuture;
-use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream};
+use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _, DuplexStream};
 use tokio::sync::{mpsc, watch};
 
+use crate::framer::{Framer as _, Inbound, LineFramer};
 use crate::id::WorldId;
 use crate::transport::{ByteStream, Transport};
 
@@ -74,39 +75,51 @@ impl FakeGame {
 ///
 /// It checks the login line `connect <login> <password>` and greets with
 /// `Welcome, <login>.`. After the login it answers each line `<text>` with
-/// `You say, "<text>"`, and closes on `@drop`.
+/// `You say, "<text>"`, and closes on `@drop`. It answers a timing mark at any time.
 async fn serve(stream: DuplexStream, account: Account, game: FakeGame) -> io::Result<()> {
-    let (read, mut write) = tokio::io::split(stream);
-    let mut lines = BufReader::new(read).lines();
+    let (mut read, mut write) = tokio::io::split(stream);
+    let mut framer = LineFramer::game();
     let (say, mut said) = mpsc::unbounded_channel();
     *game.say.lock().unwrap_or_else(PoisonError::into_inner) = Some(say);
     let expected = format!("connect {} {}", account.login, account.password);
     let mut logged_in = false;
+    let mut buffer = vec![0; 4096];
     loop {
-        let line = tokio::select! {
-            line = lines.next_line() => line?,
+        let count = tokio::select! {
+            count = read.read(&mut buffer) => count?,
             Some(text) = said.recv() => {
-                write.write_all(format!("{text}\r\n").as_bytes()).await?;
+                write.write_all(&framer.encode(&text)).await?;
                 continue;
             }
         };
-        let Some(line) = line else { return Ok(()) };
-        let line = line.trim_end_matches('\r').to_owned();
-        game.received.send_modify(|lines| lines.push(line.clone()));
-        let answer = if !logged_in {
-            if line == expected {
-                logged_in = true;
-                format!("Welcome, {}.", account.login)
-            } else {
-                WRONG_LOGIN.to_owned()
-            }
-        } else if line == "@drop" {
-            write.shutdown().await?;
+        if count == 0 {
             return Ok(());
-        } else {
-            format!("You say, \"{line}\"")
-        };
-        write.write_all(format!("{answer}\r\n").as_bytes()).await?;
+        }
+        for inbound in framer.feed(&buffer[..count]) {
+            let line = match inbound {
+                Inbound::Line(line) => line,
+                Inbound::Reply(bytes) => {
+                    write.write_all(&bytes).await?;
+                    continue;
+                }
+                _ => continue,
+            };
+            game.received.send_modify(|lines| lines.push(line.clone()));
+            let answer = if !logged_in {
+                if line == expected {
+                    logged_in = true;
+                    format!("Welcome, {}.", account.login)
+                } else {
+                    WRONG_LOGIN.to_owned()
+                }
+            } else if line == "@drop" {
+                write.shutdown().await?;
+                return Ok(());
+            } else {
+                format!("You say, \"{line}\"")
+            };
+            write.write_all(&framer.encode(&answer)).await?;
+        }
     }
 }
 
@@ -184,15 +197,13 @@ impl Transport for FakeTransport {
 
 #[cfg(test)]
 mod tests {
+    use tokio::io::{AsyncBufReadExt as _, BufReader};
+
     use super::*;
+    use crate::telnet::{DO, IAC, WILL, opt};
 
     async fn open() -> (FakeGame, tokio::io::Lines<BufReader<Box<dyn ByteStream>>>) {
-        let transport = FakeTransport::new("aria", "s3cret-pw");
-        let game = transport.game();
-        let stream = transport
-            .connect(&"alpha/aria".parse().unwrap())
-            .await
-            .unwrap();
+        let (game, stream) = open_raw().await;
         (game, BufReader::new(stream).lines())
     }
 
@@ -210,6 +221,65 @@ mod tests {
             .await
             .unwrap()
             .map(|line| line.trim_end_matches('\r').to_owned())
+    }
+
+    async fn open_raw() -> (FakeGame, Box<dyn ByteStream>) {
+        let transport = FakeTransport::new("aria", "s3cret-pw");
+        let game = transport.game();
+        let stream = transport
+            .connect(&"alpha/aria".parse().unwrap())
+            .await
+            .unwrap();
+        (game, stream)
+    }
+
+    /// Writes `input` in two parts cut at `cut`, and reads `expected.len()` bytes back.
+    async fn write_cut(input: &[u8], cut: usize, expected: &[u8]) -> (FakeGame, Vec<u8>) {
+        let (game, mut stream) = open_raw().await;
+        stream.write_all(&input[..cut]).await.unwrap();
+        stream.write_all(&input[cut..]).await.unwrap();
+        let mut got = vec![0; expected.len()];
+        stream.read_exact(&mut got).await.unwrap();
+        (game, got)
+    }
+
+    const LOGIN: &[u8] = b"connect aria s3cret-pw\r\n";
+    const WELCOME: &[u8] = b"Welcome, aria.\r\n";
+    const MARK: [u8; 3] = [IAC, DO, opt::TIMING_MARK];
+    const MARK_ANSWER: [u8; 3] = [IAC, WILL, opt::TIMING_MARK];
+
+    #[tokio::test]
+    async fn fake_game_answers_mark_in_order() {
+        // Each case: the bytes written, the bytes read back, the lines the game got.
+        let cases: [(Vec<u8>, Vec<u8>, Vec<&str>); 2] = [
+            (
+                [LOGIN, b"one\r\n", &MARK, b"two\r\n"].concat(),
+                [
+                    WELCOME,
+                    b"You say, \"one\"\r\n",
+                    &MARK_ANSWER,
+                    b"You say, \"two\"\r\n",
+                ]
+                .concat(),
+                vec!["connect aria s3cret-pw", "one", "two"],
+            ),
+            (
+                [&MARK[..], LOGIN].concat(),
+                [&MARK_ANSWER[..], WELCOME].concat(),
+                vec!["connect aria s3cret-pw"],
+            ),
+        ];
+        for (input, expected, lines) in cases {
+            for cut in 0..=input.len() {
+                let (game, got) = write_cut(&input, cut, &expected).await;
+                assert_eq!(got, expected, "cut at {cut}");
+                assert_eq!(
+                    game.wait_for_lines(lines.len()).await,
+                    lines,
+                    "cut at {cut}"
+                );
+            }
+        }
     }
 
     #[tokio::test]

@@ -48,19 +48,6 @@ impl Hook for PlayerHook {
     }
 }
 
-/// A handler from a closure.
-struct On<F>(F);
-
-impl<F: Fn(&Event) -> Vec<Command> + Send + Sync + 'static> Handler for On<F> {
-    fn on_event(&self, event: &Event) -> Vec<Command> {
-        (self.0)(event)
-    }
-}
-
-fn on(f: impl Fn(&Event) -> Vec<Command> + Send + Sync + 'static) -> Arc<dyn Handler> {
-    Arc::new(On(f))
-}
-
 fn send(world: &str, text: &str) -> Command {
     Command::Send {
         world: id(world),
@@ -129,7 +116,7 @@ async fn hook_gags_player_line() {
         portal.send(&id("alpha/aria"), "secret plan").await,
         Ok(None)
     );
-    settle().await;
+    idle(&portal).await;
     assert_eq!(game.lines().len(), 1);
     assert!(
         events(&portal)
@@ -158,8 +145,9 @@ async fn handler_answers_line() {
     );
 }
 
-#[tokio::test(start_paused = true)]
-async fn handler_loop_stops_at_depth_limit() {
+/// A portal whose server handler emits each custom event again, so that a loop runs to the
+/// depth limit.
+fn echo_custom_loop() -> Portal {
     let echo_custom = on(|event| {
         if event.kind == EventKind::Custom {
             vec![Command::Emit {
@@ -171,10 +159,15 @@ async fn handler_loop_stops_at_depth_limit() {
         }
     });
     let (aria, _) = world("alpha/aria", PW);
-    let portal = portal(vec![aria], vec![echo_custom]);
+    portal(vec![aria], vec![echo_custom])
+}
+
+#[tokio::test(start_paused = true)]
+async fn handler_loop_stops_at_depth_limit() {
+    let portal = echo_custom_loop();
     portal.submit(emit("ping")).await.unwrap();
     let error = wait_event(&portal, |event| event.kind == EventKind::ScriptError).await;
-    settle().await;
+    idle(&portal).await;
     assert_eq!(of_kind(&portal, EventKind::Custom).len(), 1 + DEPTH);
     let errors = of_kind(&portal, EventKind::ScriptError);
     assert_eq!(errors.len(), 1);
@@ -193,7 +186,7 @@ async fn handler_on_every_event_stops() {
     let portal = portal(vec![aria], vec![answer_all]);
     portal.submit(emit("ping")).await.unwrap();
     let error = wait_event(&portal, |event| event.kind == EventKind::ScriptError).await;
-    settle().await;
+    idle(&portal).await;
     assert_eq!(of_kind(&portal, EventKind::ScriptError).len(), 1);
     assert_eq!(portal.journal().last(), error.seq);
 }
@@ -219,7 +212,7 @@ async fn handler_loop_through_game_is_rate_limited() {
     portal.send(&id("alpha/aria"), "start").await.unwrap();
     wait_event(&portal, |event| event.kind == EventKind::ScriptError).await;
     assert!(start.elapsed() < Duration::from_secs(1));
-    settle().await;
+    idle(&portal).await;
     assert_eq!(count_lines(&game.lines(), "again"), RATE);
     assert_eq!(of_kind(&portal, EventKind::ScriptError).len(), 1);
 }
@@ -239,7 +232,7 @@ async fn rate_limit_refills() {
     portal.send(&id("alpha/aria"), "start").await.unwrap();
     // The login, `start`, the burst, the second `start` and one `again` from the new budget.
     game.wait_for_lines(RATE + 4).await;
-    settle().await;
+    idle(&portal).await;
     assert_eq!(count_lines(&game.lines(), "again"), RATE + 1);
 }
 
@@ -256,7 +249,7 @@ async fn two_drops_give_one_script_error() {
     let portal = started(vec![aria.with_handler(burst)]).await;
     assert!(game.say("go"));
     wait_event(&portal, |event| event.kind == EventKind::ScriptError).await;
-    settle().await;
+    idle(&portal).await;
     assert_eq!(count_lines(&game.lines(), "x"), RATE);
     assert_eq!(of_kind(&portal, EventKind::ScriptError).len(), 1);
 }
@@ -312,7 +305,7 @@ async fn line_break_from_hook(text: &str) {
     let (aria, game) = world("alpha/aria", PW);
     let portal = started(vec![aria.with_hook(Arc::new(hook))]).await;
     assert_eq!(portal.send(&id("alpha/aria"), "hi").await, Ok(None));
-    settle().await;
+    idle(&portal).await;
     assert_eq!(game.lines().len(), 1, "only the login reached the game");
     assert_eq!(of_kind(&portal, EventKind::ScriptError).len(), 1);
     assert_eq!(of_kind(&portal, EventKind::Input), []);
@@ -385,7 +378,7 @@ async fn server_handler_sees_every_world() {
     for greeting in ["Welcome, aria.", "Welcome, bryn."] {
         wait_event(&portal, |event| event.text == greeting).await;
     }
-    settle().await;
+    idle(&portal).await;
     let seen = seen.lock().unwrap().clone();
     assert_eq!(seqs(&seen), seqs(&events(&portal)));
     for world in ["alpha/aria", "beta/bryn"] {
@@ -417,7 +410,7 @@ async fn server_handler_resumes_after_lag() {
         vec![handler],
     );
     portal.submit(emit("burst")).await.unwrap();
-    settle().await;
+    idle(&portal).await;
     let seen = seqs(&seen.lock().unwrap());
     assert_eq!(
         seen,
@@ -440,11 +433,105 @@ async fn handler_cannot_connect_after_stop() {
     });
     let portal = started(vec![aria.with_handler(reconnect)]).await;
     portal.stop().await;
-    settle().await;
+    idle(&portal).await;
     let connects = of_kind(&portal, EventKind::Connected).len();
     assert_eq!(connects, 1, "the handler brought the world back up");
     assert_eq!(
         portal.worlds(),
         [(id("alpha/aria"), WorldState::Disconnected)]
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn stray_mark_is_ignored() {
+    let (aria, game) = world("alpha/aria", PW);
+    let aria = aria.with_framer(on_line("mark", || Inbound::Mark));
+    let portal = started(vec![aria]).await;
+    assert!(game.say("mark"));
+    assert!(game.say("after"));
+    wait_event(&portal, |event| {
+        event.kind == EventKind::Line && event.text == "after"
+    })
+    .await;
+    assert_eq!(portal.worlds(), [(id("alpha/aria"), WorldState::Connected)]);
+}
+
+/// A line framer that gives `becomes` for the game line `trigger`.
+struct OnLine {
+    inner: LineFramer,
+    trigger: &'static str,
+    becomes: fn() -> Inbound,
+}
+
+impl Framer for OnLine {
+    fn feed(&mut self, bytes: &[u8]) -> Vec<Inbound> {
+        self.inner
+            .feed(bytes)
+            .into_iter()
+            .map(|inbound| match inbound {
+                Inbound::Line(line) if line == self.trigger => (self.becomes)(),
+                other => other,
+            })
+            .collect()
+    }
+
+    fn encode(&self, line: &str) -> Vec<u8> {
+        self.inner.encode(line)
+    }
+
+    fn mark(&self) -> Vec<u8> {
+        self.inner.mark()
+    }
+}
+
+fn on_line(trigger: &'static str, becomes: fn() -> Inbound) -> mu_core::NewFramer {
+    Arc::new(move || {
+        Box::new(OnLine {
+            inner: LineFramer::new(),
+            trigger,
+            becomes,
+        })
+    })
+}
+
+fn reply_on_ask() -> mu_core::NewFramer {
+    on_line("ask", || Inbound::Reply(b"reply\n".to_vec()))
+}
+
+#[tokio::test(start_paused = true)]
+async fn reply_of_the_framer_reaches_the_game() {
+    let (aria, game) = world("alpha/aria", PW);
+    let portal = started(vec![aria.with_framer(reply_on_ask())]).await;
+    assert!(game.say("ask"));
+    assert_eq!(game.wait_for_lines(2).await[1], "reply");
+    idle(&portal).await;
+    assert!(events(&portal).iter().all(|event| event.text != "ask"));
+    assert_eq!(portal.worlds(), [(id("alpha/aria"), WorldState::Connected)]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn failed_reply_write_ends_the_connection() {
+    // The write of the mark gets through. Then the game says `ask` and `after`, and the
+    // write of the reply fails.
+    let transport = BrokenTransport::after_writes(1, b"ask\nafter\n");
+    let (portal, _) = broken_world(bare_world(transport).with_framer(reply_on_ask())).await;
+    assert_eq!(try_idle(&portal).await, Ok(()));
+    assert_eq!(of_kind(&portal, EventKind::Disconnected).len(), 1);
+    assert_eq!(of_kind(&portal, EventKind::Line), []);
+    assert_eq!(
+        portal.worlds(),
+        [(id("alpha/aria"), WorldState::Disconnected)]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn wait_covers_server_handler_loop() {
+    let portal = echo_custom_loop();
+    as_task(async move {
+        portal.submit(emit("ping")).await.unwrap();
+        idle(&portal).await;
+        assert_eq!(of_kind(&portal, EventKind::Custom).len(), 1 + DEPTH);
+        assert_eq!(of_kind(&portal, EventKind::ScriptError).len(), 1);
+    })
+    .await;
 }
