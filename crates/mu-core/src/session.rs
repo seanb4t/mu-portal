@@ -15,7 +15,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use crate::command::{Command, Envelope, Origin};
 use crate::error::PortalError;
 use crate::event::{Event, EventKind, NewEvent, Seq, Source};
-use crate::framer::{Framer, Inbound, LineFramer};
+use crate::framer::{Framer, Inbound, NewFramer, has_line_break};
 use crate::id::WorldId;
 use crate::journal::Journal;
 use crate::script::{DEPTH_LIMIT, Handler, Hook, RATE_PER_SECOND, run_hooks};
@@ -65,6 +65,17 @@ pub(crate) fn route(router: &Router, commands: Vec<Command>, depth: u8) {
     }
 }
 
+/// Hands `event` to each handler and routes their commands. A script error goes to no
+/// handler, so a handler that fails cannot start a loop of errors.
+pub(crate) fn run_handlers(handlers: &[Arc<dyn Handler>], router: &Router, event: &Event) {
+    if event.kind == EventKind::ScriptError {
+        return;
+    }
+    for handler in handlers {
+        route(router, handler.on_event(event), event.depth);
+    }
+}
+
 /// The clock of the rate limit. It reads tokio time, so a paused clock drives it.
 #[derive(Clone, Copy, Debug, Default)]
 struct TokioClock;
@@ -92,6 +103,7 @@ pub(crate) struct SessionParts {
     pub(crate) login: Option<Login>,
     pub(crate) password: Option<Secret>,
     pub(crate) transport: Arc<dyn Transport>,
+    pub(crate) framer: NewFramer,
     pub(crate) hooks: Vec<Arc<dyn Hook>>,
     pub(crate) handlers: Vec<Arc<dyn Handler>>,
     pub(crate) journal: Arc<dyn Journal>,
@@ -167,10 +179,6 @@ async fn progress(conn: &mut Conn, buffer: &mut [u8]) -> Step {
     }
 }
 
-fn has_line_break(text: &str) -> bool {
-    text.contains(['\r', '\n'])
-}
-
 impl Session {
     fn world(&self) -> &WorldId {
         &self.parts.world
@@ -190,11 +198,7 @@ impl Session {
             text,
             depth,
         });
-        if kind != EventKind::ScriptError {
-            for handler in &self.parts.handlers {
-                route(&self.parts.router, handler.on_event(&event), event.depth);
-            }
-        }
+        run_handlers(&self.parts.handlers, &self.parts.router, &event);
         event
     }
 
@@ -262,7 +266,7 @@ impl Session {
                 self.conn = Conn::Up {
                     read,
                     write,
-                    framer: Box::new(LineFramer::new()),
+                    framer: (self.parts.framer)(),
                 };
                 self.set_state(WorldState::Connected);
                 self.record(EventKind::Connected, Origin::System, "connected", depth);
@@ -331,6 +335,13 @@ impl Session {
                 let Some(text) = run_hooks(&self.parts.hooks, &text, Hook::on_player_line) else {
                     return Ok(None);
                 };
+                if has_line_break(&text) {
+                    self.script_error(
+                        "a hook replaced a line with text that holds a line break, so the engine dropped the line",
+                        depth,
+                    );
+                    return Ok(None);
+                }
                 self.write_line(&text, depth).await?;
                 Ok(Some(
                     self.record(EventKind::Input, origin, &text, depth).seq,

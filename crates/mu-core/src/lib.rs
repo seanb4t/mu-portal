@@ -20,7 +20,7 @@ pub use command::{Command, Envelope, Origin};
 pub use error::PortalError;
 pub use event::{Event, EventKind, NewEvent, Seq, Source};
 pub use fake::{ConnectGate, FakeGame, FakeTransport};
-pub use framer::{Framer, Inbound, LineFramer};
+pub use framer::{Framer, Inbound, LineFramer, NewFramer};
 pub use id::{BadWorldId, WorldId};
 pub use journal::{Journal, Lagged, MemoryJournal, Subscription};
 pub use portal::{Portal, WorldSetup};

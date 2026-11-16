@@ -175,7 +175,7 @@ fn check_password(password: &str, reference: &SecretRef) -> Result<(), SecretErr
     if MASK.contains(password) {
         return Err(SecretError::Unmaskable(reference.clone()));
     }
-    if password.contains(['\r', '\n']) {
+    if crate::framer::has_line_break(password) {
         return Err(SecretError::LineBreak(reference.clone()));
     }
     Ok(())

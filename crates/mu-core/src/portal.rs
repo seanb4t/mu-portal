@@ -7,7 +7,8 @@ use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::command::{Command, Envelope};
 use crate::error::PortalError;
-use crate::event::{EventKind, Seq};
+use crate::event::Seq;
+use crate::framer::{LineFramer, NewFramer};
 use crate::id::WorldId;
 use crate::journal::{Journal, Subscription};
 use crate::script::{Handler, Hook};
@@ -21,12 +22,13 @@ pub struct WorldSetup {
     world: ResolvedWorld,
     password: Option<Secret>,
     transport: Arc<dyn Transport>,
+    framer: NewFramer,
     hooks: Vec<Arc<dyn Hook>>,
     handlers: Vec<Arc<dyn Handler>>,
 }
 
 impl WorldSetup {
-    /// A world with no hook and no handler.
+    /// A world with the [`LineFramer`], no hook and no handler.
     #[must_use]
     pub fn new(
         world: ResolvedWorld,
@@ -37,9 +39,17 @@ impl WorldSetup {
             world,
             password,
             transport,
+            framer: Arc::new(|| Box::new(LineFramer::new())),
             hooks: Vec::new(),
             handlers: Vec::new(),
         }
+    }
+
+    /// Uses `framer` for each new connection instead of the [`LineFramer`].
+    #[must_use]
+    pub fn with_framer(mut self, framer: NewFramer) -> Self {
+        self.framer = framer;
+        self
     }
 
     /// Adds a hook after the hooks already there.
@@ -92,6 +102,7 @@ impl Portal {
                 login: setup.world.login,
                 password: setup.password,
                 transport: setup.transport,
+                framer: setup.framer,
                 hooks: setup.hooks,
                 handlers: setup.handlers,
                 journal: Arc::clone(&journal),
@@ -248,11 +259,6 @@ async fn run_server_handlers(
             continue;
         };
         next = event.seq.next();
-        if event.kind == EventKind::ScriptError {
-            continue;
-        }
-        for handler in &handlers {
-            session::route(&router, handler.on_event(&event), event.depth);
-        }
+        session::run_handlers(&handlers, &router, &event);
     }
 }

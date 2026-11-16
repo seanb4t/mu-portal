@@ -18,6 +18,14 @@ pub enum Inbound {
     },
 }
 
+/// Whether `text` holds a CR or an LF, which would split it into two lines to the game.
+pub(crate) fn has_line_break(text: &str) -> bool {
+    text.contains(['\r', '\n'])
+}
+
+/// Makes the framer of each new connection of a world.
+pub type NewFramer = std::sync::Arc<dyn Fn() -> Box<dyn Framer> + Send + Sync>;
+
 /// The framing of one connection. #52 adds the telnet framer.
 pub trait Framer: Send + 'static {
     /// Takes the bytes of one read and returns what they complete.

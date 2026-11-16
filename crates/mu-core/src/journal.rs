@@ -293,23 +293,27 @@ mod tests {
         }
     }
 
-    fn unread_receiver_after(events: u64) -> Option<Result<Event, Lagged>> {
+    /// A subscription from 1 that read nothing while `events` events went in.
+    fn unread_after(events: u64) -> Subscription {
         let journal = MemoryJournal::new(4).unwrap();
-        let mut subscription = journal.subscribe(Seq(1)).unwrap();
+        let subscription = journal.subscribe(Seq(1)).unwrap();
         for i in 0..events {
             journal.append(new_event("alpha/aria", &i.to_string()));
         }
-        subscription.try_next()
+        subscription
     }
 
     #[test]
     fn receiver_at_capacity_is_not_cut() {
-        assert_eq!(unread_receiver_after(4).unwrap().unwrap().seq, Seq(1));
+        let mut subscription = unread_after(4);
+        let items: Vec<_> = std::iter::from_fn(|| subscription.try_next()).collect();
+        let seqs: Vec<Seq> = items.into_iter().map(|item| item.unwrap().seq).collect();
+        assert_eq!(seqs, [Seq(1), Seq(2), Seq(3), Seq(4)]);
     }
 
     #[test]
     fn receiver_past_capacity_is_cut() {
-        assert_eq!(unread_receiver_after(5).unwrap().unwrap_err(), Lagged(1));
+        assert_eq!(unread_after(5).try_next().unwrap().unwrap_err(), Lagged(1));
     }
 
     #[test]

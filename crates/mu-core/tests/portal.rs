@@ -1,7 +1,17 @@
 //! The scenarios of the world-sessions and event-journal capabilities, run on the engine
 //! with the fake game.
 
-use mu_core::{EventKind, FakeTransport, PortalError, Source, WorldState};
+use std::io;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
+
+use futures::future::BoxFuture;
+use mu_core::{
+    ByteStream, EventKind, FakeTransport, PortalError, ResolvedWorld, Source, Transport, WorldId,
+    WorldSetup, WorldState,
+};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use support::*;
 
@@ -239,4 +249,59 @@ async fn the_game_drops_the_world() {
     wait_state(&portal, &id("alpha/aria"), WorldState::Disconnected).await;
     let gone = of_kind(&portal, EventKind::Disconnected);
     assert_eq!((gone.len(), gone[0].source), (1, Source::System));
+}
+
+/// A stream that never gives a byte, and whose every write fails.
+struct BrokenWrite;
+
+impl AsyncRead for BrokenWrite {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        _: &mut Context<'_>,
+        _: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Poll::Pending
+    }
+}
+
+impl AsyncWrite for BrokenWrite {
+    fn poll_write(self: Pin<&mut Self>, _: &mut Context<'_>, _: &[u8]) -> Poll<io::Result<usize>> {
+        Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
+struct BrokenTransport;
+
+impl Transport for BrokenTransport {
+    fn connect(&self, _: &WorldId) -> BoxFuture<'static, io::Result<Box<dyn ByteStream>>> {
+        Box::pin(async { Ok(Box::new(BrokenWrite) as Box<dyn ByteStream>) })
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn failed_write_records_disconnect() {
+    let aria = id("alpha/aria");
+    let world = ResolvedWorld {
+        id: aria.clone(),
+        login: None,
+    };
+    let setup = WorldSetup::new(world, None, Arc::new(BrokenTransport));
+    let portal = portal(vec![setup], Vec::new());
+    portal.connect_all().await;
+    wait_state(&portal, &aria, WorldState::Connected).await;
+    assert_eq!(
+        portal.send(&aria, "hello").await,
+        Err(PortalError::NotConnected(aria.clone()))
+    );
+    assert_eq!(of_kind(&portal, EventKind::Disconnected).len(), 1);
+    assert_eq!(of_kind(&portal, EventKind::Input), []);
+    wait_state(&portal, &aria, WorldState::Disconnected).await;
 }

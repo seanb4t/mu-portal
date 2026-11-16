@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use mu_core::{
-    Command, DEPTH_LIMIT, Envelope, Event, EventKind, Handler, Hook, HookAction, Origin,
-    RATE_PER_SECOND, Source, WorldState,
+    Command, DEPTH_LIMIT, Envelope, Event, EventKind, Framer, Handler, Hook, HookAction, Inbound,
+    LineFramer, MemoryJournal, Origin, Portal, Source, WorldState,
 };
 
 use support::*;
@@ -13,6 +13,12 @@ use support::*;
 mod support;
 
 const PW: &str = "s3cret-pw";
+
+/// The rate limit of the spec: 20 commands from handlers in one second.
+const RATE: usize = 20;
+
+/// The depth limit of the spec.
+const DEPTH: usize = 8;
 
 struct GameGag(&'static str);
 
@@ -168,10 +174,7 @@ async fn handler_loop_stops_at_depth_limit() {
     portal.submit(emit("ping")).await.unwrap();
     let error = wait_event(&portal, |event| event.kind == EventKind::ScriptError).await;
     settle().await;
-    assert_eq!(
-        of_kind(&portal, EventKind::Custom).len(),
-        1 + usize::from(DEPTH_LIMIT)
-    );
+    assert_eq!(of_kind(&portal, EventKind::Custom).len(), 1 + DEPTH);
     let errors = of_kind(&portal, EventKind::ScriptError);
     assert_eq!(errors.len(), 1);
     assert!(error.text.contains("depth limit"));
@@ -216,8 +219,7 @@ async fn handler_loop_through_game_is_rate_limited() {
     wait_event(&portal, |event| event.kind == EventKind::ScriptError).await;
     assert!(start.elapsed() < Duration::from_secs(1));
     settle().await;
-    let rate = usize::try_from(RATE_PER_SECOND).unwrap();
-    assert_eq!(count_lines(&game.lines(), "again"), rate);
+    assert_eq!(count_lines(&game.lines(), "again"), RATE);
     assert_eq!(of_kind(&portal, EventKind::ScriptError).len(), 1);
 }
 
@@ -227,26 +229,24 @@ async fn rate_limit_refills() {
     let portal = started(vec![aria]).await;
     portal.send(&id("alpha/aria"), "start").await.unwrap();
     wait_event(&portal, |event| event.kind == EventKind::ScriptError).await;
-    let rate = usize::try_from(RATE_PER_SECOND).unwrap();
     let mut right_after = emit("dropped");
     right_after.command = send("alpha/aria", "again");
     assert_eq!(portal.submit(right_after).await, Ok(None));
-    assert_eq!(count_lines(&game.lines(), "again"), rate);
+    assert_eq!(count_lines(&game.lines(), "again"), RATE);
 
     tokio::time::advance(Duration::from_millis(50)).await;
     portal.send(&id("alpha/aria"), "start").await.unwrap();
     // The login, `start`, the burst, the second `start` and one `again` from the new budget.
-    game.wait_for_lines(rate + 4).await;
+    game.wait_for_lines(RATE + 4).await;
     settle().await;
-    assert_eq!(count_lines(&game.lines(), "again"), rate + 1);
+    assert_eq!(count_lines(&game.lines(), "again"), RATE + 1);
 }
 
 #[tokio::test(start_paused = true)]
 async fn two_drops_give_one_script_error() {
-    let rate = usize::try_from(RATE_PER_SECOND).unwrap();
     let burst = on(move |event| {
         if event.kind == EventKind::Line && event.text == "go" {
-            (0..rate + 2).map(|_| send("alpha/aria", "x")).collect()
+            (0..22).map(|_| send("alpha/aria", "x")).collect()
         } else {
             Vec::new()
         }
@@ -256,7 +256,7 @@ async fn two_drops_give_one_script_error() {
     assert!(game.say("go"));
     wait_event(&portal, |event| event.kind == EventKind::ScriptError).await;
     settle().await;
-    assert_eq!(count_lines(&game.lines(), "x"), rate);
+    assert_eq!(count_lines(&game.lines(), "x"), RATE);
     assert_eq!(of_kind(&portal, EventKind::ScriptError).len(), 1);
 }
 
@@ -301,4 +301,115 @@ async fn handler_connect_has_source_system() {
     .await;
     assert_eq!(back.source, Source::System);
     wait_state(&portal, &id("alpha/aria"), WorldState::Connected).await;
+}
+
+async fn line_break_from_hook(text: &str) {
+    let hook = PlayerHook {
+        from: "hi",
+        action: HookAction::Replace(text.to_owned()),
+    };
+    let (aria, game) = world("alpha/aria", PW);
+    let portal = started(vec![aria.with_hook(Arc::new(hook))]).await;
+    assert_eq!(portal.send(&id("alpha/aria"), "hi").await, Ok(None));
+    settle().await;
+    assert_eq!(game.lines().len(), 1, "only the login reached the game");
+    assert_eq!(of_kind(&portal, EventKind::ScriptError).len(), 1);
+    assert_eq!(of_kind(&portal, EventKind::Input), []);
+}
+
+#[tokio::test(start_paused = true)]
+async fn hook_line_break_is_dropped() {
+    line_break_from_hook("say hi\nsay bye").await;
+    line_break_from_hook("say hi\rsay bye").await;
+}
+
+/// A line framer that sends each line in capitals.
+struct Shout(LineFramer);
+
+impl Framer for Shout {
+    fn feed(&mut self, bytes: &[u8]) -> Vec<Inbound> {
+        self.0.feed(bytes)
+    }
+
+    fn encode(&self, line: &str) -> Vec<u8> {
+        self.0.encode(&line.to_uppercase())
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn world_uses_its_framer() {
+    let (aria, game) = world("alpha/aria", PW);
+    let aria = aria.with_framer(Arc::new(|| Box::new(Shout(LineFramer::new()))));
+    let portal = portal(vec![aria], Vec::new());
+    portal.connect_all().await;
+    let login = format!("CONNECT ARIA {}", PW.to_uppercase());
+    assert_eq!(game.wait_for_lines(1).await[0], login);
+}
+
+/// A server handler that records each event it sees.
+fn recorder() -> (Arc<dyn Handler>, Arc<Mutex<Vec<Event>>>) {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let handler = {
+        let seen = Arc::clone(&seen);
+        on(move |event| {
+            seen.lock().unwrap().push(event.clone());
+            Vec::new()
+        })
+    };
+    (handler, seen)
+}
+
+fn seqs(events: &[Event]) -> Vec<u64> {
+    events.iter().map(|event| event.seq.0).collect()
+}
+
+#[tokio::test(start_paused = true)]
+async fn server_handler_sees_every_world() {
+    let (handler, seen) = recorder();
+    let (aria, _) = world("alpha/aria", PW);
+    let (bryn, _) = world("beta/bryn", PW);
+    let portal = portal(vec![aria, bryn], vec![handler]);
+    portal.connect_all().await;
+    for greeting in ["Welcome, aria.", "Welcome, bryn."] {
+        wait_event(&portal, |event| event.text == greeting).await;
+    }
+    settle().await;
+    let seen = seen.lock().unwrap().clone();
+    assert_eq!(seqs(&seen), seqs(&events(&portal)));
+    for world in ["alpha/aria", "beta/bryn"] {
+        assert!(seen.iter().any(|event| event.world == id(world)), "{world}");
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn server_handler_resumes_after_lag() {
+    // A world handler answers one event with ten, all before the server handler runs, so
+    // the server handler falls behind a live channel of four events.
+    let burst = on(|event| {
+        if event.kind == EventKind::Custom && event.text == "burst" {
+            (0..10)
+                .map(|n| Command::Emit {
+                    world: event.world.clone(),
+                    text: n.to_string(),
+                })
+                .collect()
+        } else {
+            Vec::new()
+        }
+    });
+    let (handler, seen) = recorder();
+    let (aria, _) = world("alpha/aria", PW);
+    let portal = Portal::start(
+        Arc::new(MemoryJournal::new(4).unwrap()),
+        vec![aria.with_handler(burst)],
+        vec![handler],
+    );
+    portal.submit(emit("burst")).await.unwrap();
+    settle().await;
+    let seen = seqs(&seen.lock().unwrap());
+    assert_eq!(
+        seen,
+        (1..=11).collect::<Vec<_>>(),
+        "each event once, in order"
+    );
 }
