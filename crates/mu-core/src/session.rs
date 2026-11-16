@@ -302,6 +302,7 @@ impl Session {
                         return;
                     }
                 }
+                Inbound::Mark => {}
                 Inbound::Message { name, body } => {
                     let text = format!("{name} {}", String::from_utf8_lossy(&body));
                     self.record(EventKind::Message, Origin::System, &text, 0);
