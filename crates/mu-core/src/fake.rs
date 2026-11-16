@@ -141,6 +141,12 @@ impl FakeTransport {
         }
     }
 
+    /// A fake game that accepts `login` with the password in `secret`.
+    #[must_use]
+    pub fn with_secret(login: &str, secret: &crate::secret::Secret) -> Self {
+        Self::new(login, secret.expose())
+    }
+
     /// The same transport, with each connect held until the gate opens.
     #[must_use]
     pub fn held(mut self) -> (Self, ConnectGate) {

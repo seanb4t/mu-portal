@@ -96,6 +96,7 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "serde_json",
             "syn",
             "tempfile",
+            "thiserror",
             "tokio",
             "toml",
             "tracing",

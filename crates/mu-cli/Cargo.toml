@@ -18,6 +18,7 @@ mu-core = { path = "../mu-core" }
 mu-server = { path = "../mu-server" }
 mu-tui = { path = "../mu-tui" }
 rustix = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

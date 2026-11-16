@@ -1,9 +1,16 @@
 //! Command grammar of the `mu` binary.
 
+pub mod client;
+pub mod server;
+pub mod socket;
+
 use std::io::Write;
 use std::process::ExitCode;
 
-use clap::{Args, CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+
+pub use client::ClientArgs;
+pub use server::ServerArgs;
 
 /// One server and many clients for MU* text games.
 #[derive(Debug, Parser)]
@@ -23,17 +30,13 @@ pub struct Cli {
     pub client: ClientArgs,
 }
 
-/// Arguments of the client. `mu` and `mu client` both accept them.
-#[derive(Debug, Default, Args)]
-pub struct ClientArgs {}
-
 /// The verbs of the `mu` binary.
 #[derive(Debug, Subcommand)]
 pub enum Verb {
     /// Start the terminal client (the default verb)
     Client(ClientArgs),
     /// Run the server
-    Server,
+    Server(ServerArgs),
     /// Print the name and the version
     Version,
 }
@@ -50,9 +53,9 @@ pub fn verb_names() -> Vec<String> {
 /// Runs the parsed command and returns the exit status of the process.
 pub fn run(cli: Cli) -> ExitCode {
     match cli.verb {
-        None => client(cli.client),
-        Some(Verb::Client(args)) => client(args),
-        Some(Verb::Server) => not_implemented("server"),
+        None => client::run(&cli.client),
+        Some(Verb::Client(args)) => client::run(&args),
+        Some(Verb::Server(args)) => server::run(&args),
         Some(Verb::Version) => {
             // A closed stdout is not an error of the verb, as it is not for `--version`.
             let _ = write!(
@@ -63,15 +66,4 @@ pub fn run(cli: Cli) -> ExitCode {
             ExitCode::SUCCESS
         }
     }
-}
-
-fn client(_args: ClientArgs) -> ExitCode {
-    not_implemented("client")
-}
-
-/// Reports a verb that has no implementation. Opens no file.
-fn not_implemented(verb: &str) -> ExitCode {
-    // A closed stderr leaves nothing to report to, so the write error is dropped.
-    let _ = writeln!(std::io::stderr(), "{verb}: not implemented");
-    ExitCode::from(1)
 }

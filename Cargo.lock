@@ -1415,6 +1415,7 @@ dependencies = [
  "serde_json",
  "syn 3.0.10",
  "tempfile",
+ "thiserror 2.0.21",
  "tokio",
  "toml",
  "tracing",
