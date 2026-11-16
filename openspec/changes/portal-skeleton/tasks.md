@@ -35,7 +35,7 @@ Load the `rust-best-practices` skill before this group.
   - `handler_loop_stops_at_depth_limit`, which counts exactly 8 custom events after the first one
   - `handler_on_every_event_stops`, which counts exactly one script error and no event after it
   - `handler_loop_through_game_is_rate_limited`, which counts exactly 20 sent lines and one script error in the first second, with the paused clock
-  - `rate_limit_window_edges`, which moves the paused clock to 999 milliseconds and checks that a command is still dropped. It then moves the clock to one second, and checks that the next `start` gives `again`
+  - `rate_limit_refills`, which checks that a command right after the burst is dropped. It then moves the paused clock by 50 milliseconds, and checks that the next `start` gives `again`
   - `two_drops_give_one_script_error`, with a handler that returns 22 sends at once
   - `world_handler_skips_script_error`, with a world handler that counts the events it sees
   - `handler_connect_has_source_system`

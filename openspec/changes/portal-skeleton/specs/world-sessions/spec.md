@@ -151,7 +151,7 @@ The engine SHALL run each handler of a world on each event of that world after t
 - **AND** the journal records no event after that script error
 
 ### Requirement: A loop through the game has a bound
-A line from the game SHALL start at the depth 0. Each world SHALL accept at most 20 commands from handlers in one second. The engine SHALL drop each command over the limit. It SHALL record at most one script error for each second in which it dropped a command. In the next second, the world SHALL accept commands from handlers again.
+A line from the game SHALL start at the depth 0. Each world SHALL accept commands from handlers at a rate of at most 20 in one second, with a burst of at most 20. The engine SHALL drop each command over the limit. It SHALL record at most one script error for each second in which it dropped a command. After a drop, the world SHALL accept commands from handlers again as the rate allows.
 
 #### Scenario: A handler that answers its own echo
 - **GIVEN** a world with a test handler that sends `again` for each game event, and a fake world that echoes each line
