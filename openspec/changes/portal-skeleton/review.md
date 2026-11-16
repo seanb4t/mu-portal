@@ -1,31 +1,38 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-16T07:52:28+00:00
-head: 10c1ee5ee83cdd5b39b3417de546b6b3d7032a8a
-round: 10
-next_id: 183
+reviewed_at: 2026-11-16T17:16:50+00:00
+head: 8a340bba530479b86e16a869383dcccf4e1859af
+round: 11
+next_id: 188
 lenses:
   spec-lint: not-applicable
   approach: ok
   fit: ok
   test-coverage: ok
-  test-honesty: ok
+  test-honesty: partial
   invariants: ok
 ---
 # Review
+
+## Incomplete lenses
+
+- test-honesty: partial, gaps: 2
+  - Requirements and decisions not yet read
+  - Changed test files not yet read
+
+The verdict covers only what the lenses checked. An incomplete lens keeps it from `approve`: the verdict is `approve-with-notes` until the lens is rerun or the gaps are accepted.
 
 ## Findings
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge |
 |---|---|---|---|---|---|---|---|---|
-| R-178 | invariants | blocker | in-change | inv-1: settle now sleeps in a test file, and the gate that design.md names for the rule No sleep in a test refuses that line: review_lint gate time-based-test (rule tests-test-our-code) fires and exits 1. The gate has no exemption, and the design records none, so task 9.2, which needs review_lint --base origin/main to pass, cannot pass.; inv-2: settle takes no real time only on the paused clock. Nothing checks that a caller runs with start_paused: an engine test without it passes after a real wait of 5 seconds, which the design rule for engine tests forbids. | crates/mu-core/tests/support/mod.rs:100 — "tokio::time::sleep(Duration::from_secs(5)).await;" | inv-1: Keep the paused-clock sleep, because it is the only wait that runs until no task can run. Record it as the one exception: change the design row and the Nothing sleeps sentence to allow a sleep on the paused clock in the settle helper, and make task 9.2 accept exactly that one time-based-test hit. Add the paused-clock guard of inv-2 so the exception can never be a wall-clock wait.; inv-2: In settle, take std::time::Instant::now() before the sleep and panic after it if more than one real second passed, with a message that says settle needs start_paused. Then an unpaused caller fails at once. |  |  |
-| R-174 | approach,fit | should-fix | in-change | app-1: The design now says mod.rs of the mu-cli test support holds mu, mu_with, stdout, stderr and mode, and process.rs holds the rest. At head mod.rs also holds repo_root, repo_file, h2_sections, h2_headings, workspace_metadata, files_under and TreeCopy, which repo_config.rs, workspace_boundary.rs and spike_records.rs import from there. The list of mod.rs is still incomplete.; fit-2: The design says mod.rs holds mu, mu_with, stdout, stderr and mode and process.rs holds the rest. At head mod.rs also holds TreeCopy, repo_root, repo_file, h2_sections, h2_headings, workspace_metadata and files_under, the helpers the repository's library row puts there, and the design names none of them. | design.md > Test helpers — "`mod.rs` holds `mu`, `mu_with`, `stdout`, `stderr` and `mode`, and `process.rs` holds the rest:" | app-1: In Test helpers, say that mod.rs also holds the earlier repository helpers (repo_root, repo_file, h2_sections, h2_headings, workspace_metadata, files_under, TreeCopy), or limit the sentence to the helpers this change adds.; fit-2: Say in Test helpers that mod.rs keeps the helpers that predate the change (TreeCopy and the repository readers) beside mu, mu_with, stdout, stderr and mode, and that process.rs holds the rest of the helpers this change adds. | regression |  |
-| R-176 | fit | should-fix | in-change | A server of fake worlds is still spelled two ways. bad_world_id_is_refused, missing_password_variable and password_of_stars_is_refused each hand-build `server --socket <tmp>/s.sock --fake-world <id>=env:<VAR>` with mu_with, which are the arguments and the variable that ServerBuilder::fake_world already composes. | crates/mu-cli/tests/worlds.rs:33 — "&[("PW", Some(PW))]," | Give ServerBuilder a method that runs its command to the exit and returns the Output, and build the three refused starts with ServerBuilder::new().fake_world(...), with env(var, None) for the missing variable. | regression |  |
-| R-179 | invariants | should-fix | in-change | The doc of Subscription::last now says it is the last number when the subscription started, a snapshot. The edge is a read after an append. subscribe_from_middle appends event 7 but checks last() only before the append, so a last() that reads the journal live passes every test. | crates/mu-core/src/journal.rs:53 — "/// The last sequence number in the journal when the subscription started." | In subscribe_from_middle, after the append of event 7, assert that subscription.last() is still Seq(6). |  |  |
-| R-180 | test-coverage | should-fix | in-change | covered row 'A stream past the end' has no verification run | review > not-run — "A stream past the end" | run the covering test and record it in verification-runs.txt |  |  |
-| R-181 | test-coverage | should-fix | in-change | covered row 'A subscriber that does not read' has no verification run | review > not-run — "A subscriber that does not read" | run the covering test and record it in verification-runs.txt |  |  |
-| R-182 | test-coverage | should-fix | in-change | covered row 'A handler connects' has no verification run | review > not-run — "A handler connects" | run the covering test and record it in verification-runs.txt |  |  |
+| R-174 | approach | should-fix | in-change | Test helpers says process.rs holds the rest, and its first bullet under that line names mu(args) and mu_with(args, env). At head both are in support/mod.rs, as the sentence before the list also says, so the design places them in two files. | design.md > Test helpers — "`files_under` and `TreeCopy`. `process.rs` holds the rest:" | Remove the bullet for mu and mu_with from the list of process.rs, or move it above the list as a sentence about mod.rs. | regression |  |
+| R-183 | fit | should-fix | in-change | The Test helpers decision puts mu and mu_with in mod.rs, then lists them again in the bullets under process.rs holds the rest. At head both are in mod.rs, so the design names two homes for one helper. | design.md > Test helpers — "`mu(args)`, moved from `cli.rs`, which runs the built binary to its exit, and `mu_with(args, env)`, which also sets and " | Remove the bullet of mu(args) and mu_with(args, env) from the list of process.rs, or move it above that list as part of mod.rs. |  |  |
+| R-184 | invariants | should-fix | in-change | settle now refuses a clock that runs through advance(Duration::ZERO), and the design states that it panics there, but no test calls settle on a clock that runs. Removing the advance line passes every test, and settle then sleeps five real seconds. | crates/mu-core/tests/support/mod.rs:101 — "tokio::time::advance(Duration::ZERO).await;" | Add a test in crates/mu-core/tests/portal.rs with #[tokio::test] (no start_paused) and #[should_panic(expected = "time is not frozen")] that calls settle().await. |  | repeat? R-178 0.69 |
+| R-185 | test-coverage | should-fix | in-change | covered row 'Ids outside the rule' has no verification run | review > not-run — "Ids outside the rule" | run the covering test and record it in verification-runs.txt |  |  |
+| R-186 | test-coverage | should-fix | in-change | covered row 'Ids inside the rule' has no verification run | review > not-run — "Ids inside the rule" | run the covering test and record it in verification-runs.txt |  |  |
+| R-187 | test-coverage | should-fix | in-change | covered row 'A subscriber at the edge of the buffer' has no verification run | review > not-run — "A subscriber at the edge of the buffer" | run the covering test and record it in verification-runs.txt |  |  |
 
 ## Repeats
 
@@ -33,15 +40,13 @@ lenses:
 |---|---|---|---|---|
 | R-162 | test-coverage | should-fix | covered row 'An empty line' has no verification run | review > not-run — "An empty line" |
 | R-163 | test-coverage | should-fix | covered row 'A lost stream' has no verification run | review > not-run — "A lost stream" |
-| R-164 | test-coverage | should-fix | covered row 'Quit' has no verification run | review > not-run — "Quit" |
-| R-166 | test-coverage | should-fix | covered row 'No world connects during the stop' has no verification run | review > not-run — "No world connects during the stop" |
+| R-156 | test-honesty | should-fix | lens test-honesty reported partial, gaps: 2 | review > lens-status — "test-honesty partial" |
 
 ## Out of bound
 
 | lens | severity | claim | evidence |
 |---|---|---|---|
-| fit | suggestion | Rig in resume.rs repeats Session of the shared support: a server, a client stream, a seen list and an until loop through wait_until. They vary on purpose in two parameters: the socket the stream reads (the server or a relay) and whether Lost, Resumed and Reset items are kept. | crates/mu-cli/tests/resume.rs:42 — "async fn until(&mut self, what: &str, check: impl Fn(&ClientEvent) -> bool) -> ClientEvent {" |
-| fit | should-fix | stream_ends_after_a_lag builds a capacity-4 journal, subscribes from 1 and appends 5 events inline, which is the body of unread_after(5) in the same test module. | crates/mu-core/src/journal.rs:321 — "let journal = MemoryJournal::new(4).unwrap();" |
+| fit | should-fix | journal.rs reads the last sequence number of the stream inline, and worlds.rs defines its own last() for the same read. The shared Session that both files use has no method for it. | crates/mu-cli/tests/journal.rs:29 — "assert_eq!(session.seen().last().map(\|event\| event.seq), Some(6));" |
 
 ## Accepted
 
@@ -66,10 +71,11 @@ lenses:
 | 8 | implementation | follow-up | a8727663cd4c4c87c27c6af8623bd1cb24533269 | 30fe1c4936a585056f5032fab4be9a96072fa442520ab52c16467c33a3444245 | changes-requested | 5 | 2 | 1 | 0 | operator decision |
 | 9 | implementation | follow-up | 9a90d2987db7de402530e1c980e27fd2a76c5178 | 740a83c5fa542f369bbedd616daa9bc9881900c3b9672d1adda0d4c0ecd59103 | changes-requested | 5 | 0 | 0 | 5 | operator decision |
 | 10 | implementation | follow-up | 10c1ee5ee83cdd5b39b3417de546b6b3d7032a8a | 5453cbce2aecfa2d931fac3dca676dfa6b8f624768c78f32887d7ef9ed772796 | changes-requested | 5 | 4 | 2 | 2 | operator decision |
+| 11 | implementation | follow-up | 8a340bba530479b86e16a869383dcccf4e1859af | 30e641532179dd584dc4cf5fa85cef0f9f45b6b8f91de81ce249859aa4764b60 | approve-with-notes | 5 | 3 | 1 | 1 | operator decision |
 
 ## Judge
 
-judge: 8 questions, 0.000 USD
+judge: 7 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -92,24 +98,10 @@ judge: 8 questions, 0.000 USD
 | Activity mark | crates/mu-tui/tests/app.rs: activity_mark | covered | pass |
 | A lost stream | crates/mu-cli/tests/client.rs: lost_stream_resumes_through_relay; crates/mu-tui/tests/app.rs: lost_stream_resumes | covered | not-run |
 | The client resumes before a new event | crates/mu-tui/tests/app.rs: resumed_clears_disconnected | covered | pass |
-| Quit | crates/mu-tui/tests/app.rs: ctrl_c_quits; crates/mu-cli/tests/client.rs: ctrl_c_quits_client_only | covered | not-run |
-| Events of two worlds share one sequence | crates/mu-cli/tests/journal.rs: events_of_two_worlds_share_one_sequence | covered | pass |
-| Sources of a session | crates/mu-cli/tests/journal.rs: sources_of_a_session | covered | pass |
-| The password is replaced | crates/mu-cli/tests/journal.rs: password_is_replaced | covered | pass |
-| A typed password is masked | crates/mu-cli/tests/journal.rs: typed_password_is_masked | covered | pass |
-| A password with a star | crates/mu-cli/tests/journal.rs: password_with_star_masks_whole_text | covered | pass |
-| A password of stars is refused | crates/mu-cli/tests/journal.rs: password_of_stars_is_refused | covered | pass |
-| A stream from the middle | crates/mu-cli/tests/journal.rs: stream_from_the_middle | covered | pass |
-| A stream from 0 | crates/mu-cli/tests/journal.rs: stream_from_zero | covered | pass |
-| A stream from the next number | crates/mu-cli/tests/journal.rs: stream_from_the_next_number | covered | pass |
-| A stream past the end | crates/mu-cli/tests/journal.rs: stream_past_the_end; crates/mu-core/src/journal.rs: subscribe_past_end | covered | not-run |
-| Resume after a cut connection | crates/mu-cli/tests/resume.rs: resume_after_cut_connection | covered | pass |
-| Resume after a restart of the server | crates/mu-cli/tests/resume.rs: resume_after_server_restart | covered | pass |
-| A subscriber that does not read | crates/mu-server/src/service.rs: lagged_stream_ends_with_resource_exhausted; crates/mu-core/src/journal.rs: receiver_past_capacity_is_cut | covered | not-run |
-| A subscriber at the edge of the buffer | crates/mu-core/src/journal.rs: receiver_at_capacity_is_not_cut | covered | pass |
+| Quit | crates/mu-cli/tests/client.rs: ctrl_c_quits_client_only | covered | pass |
 | A bad world id is refused | crates/mu-cli/tests/worlds.rs: bad_world_id_is_refused | covered | pass |
-| Ids outside the rule | crates/mu-core: ids_outside_the_rule | covered | pass |
-| Ids inside the rule | crates/mu-core: ids_inside_the_rule | covered | pass |
+| Ids outside the rule | mu-core: ids_outside_the_rule (task 3.1) | covered | not-run |
+| Ids inside the rule | mu-core: ids_inside_the_rule (task 3.1) | covered | not-run |
 | The fake world answers | crates/mu-cli/tests/worlds.rs: fake_world_answers | covered | pass |
 | The flag is hidden | crates/mu-cli/tests/worlds.rs: fake_world_flag_is_hidden | covered | pass |
 | A missing password variable | crates/mu-cli/tests/worlds.rs: missing_password_variable | covered | pass |
@@ -132,7 +124,21 @@ judge: 8 questions, 0.000 USD
 | A handler that answers every event | crates/mu-core/tests/scripts.rs: handler_on_every_event_stops | covered | pass |
 | A handler that answers its own echo | crates/mu-core/tests/scripts.rs: handler_loop_through_game_is_rate_limited | covered | pass |
 | The limit opens again | crates/mu-core/tests/scripts.rs: rate_limit_refills | covered | pass |
-| A handler connects | crates/mu-core/tests/scripts.rs: handler_connect_has_source_system; crates/mu-core/tests/portal.rs: the_game_drops_the_world | covered | not-run |
+| A handler connects | crates/mu-core/tests/scripts.rs: handler_connect_has_source_system | covered | pass |
+| Events of two worlds share one sequence | crates/mu-cli/tests/journal.rs: events_of_two_worlds_share_one_sequence | covered | pass |
+| Sources of a session | crates/mu-cli/tests/journal.rs: sources_of_a_session | covered | pass |
+| The password is replaced | crates/mu-cli/tests/journal.rs: password_is_replaced | covered | pass |
+| A typed password is masked | crates/mu-cli/tests/journal.rs: typed_password_is_masked | covered | pass |
+| A password with a star | crates/mu-cli/tests/journal.rs: password_with_star_masks_whole_text | covered | pass |
+| A password of stars is refused | crates/mu-cli/tests/journal.rs: password_of_stars_is_refused | covered | pass |
+| A stream from the middle | crates/mu-cli/tests/journal.rs: stream_from_the_middle | covered | pass |
+| A stream from 0 | crates/mu-cli/tests/journal.rs: stream_from_zero | covered | pass |
+| A stream from the next number | crates/mu-cli/tests/journal.rs: stream_from_the_next_number | covered | pass |
+| A stream past the end | crates/mu-cli/tests/journal.rs: stream_past_the_end | covered | pass |
+| Resume after a cut connection | crates/mu-cli/tests/resume.rs: resume_after_cut_connection | covered | pass |
+| Resume after a restart of the server | crates/mu-cli/tests/resume.rs: resume_after_server_restart | covered | pass |
+| A subscriber that does not read | crates/mu-server/src/service.rs: lagged_stream_ends_with_resource_exhausted | covered | pass |
+| A subscriber at the edge of the buffer | crates/mu-core/src/journal.rs: receiver_at_capacity_is_not_cut, receiver_past_capacity_is_cut | covered | not-run |
 | The server serves the API on the named socket | crates/mu-cli/tests/server.rs: serves_on_named_socket | covered | pass |
 | The environment names the socket | crates/mu-cli/tests/server.rs: env_names_socket | covered | pass |
 | The flag wins over the environment | crates/mu-cli/tests/server.rs: flag_wins_over_env | covered | pass |
@@ -141,14 +147,14 @@ judge: 8 questions, 0.000 USD
 | An empty runtime directory | crates/mu-cli/tests/server.rs: empty_runtime_dir_is_ignored | covered | pass |
 | A bare socket name | crates/mu-cli/tests/server.rs: bare_socket_name_is_in_the_working_directory | covered | pass |
 | New directory and socket are private | crates/mu-cli/tests/server.rs: new_socket_dir_is_private | covered | pass |
-| A directory of another user is refused | crates/mu-cli: private_dir_refuses_another_owner | covered | pass |
+| A directory of another user is refused | crates/mu-cli/src/socket.rs: private_dir_refuses_another_owner | covered | pass |
 | An open directory is refused | crates/mu-cli/tests/server.rs: open_socket_dir_is_refused | covered | pass |
 | A second server is refused | crates/mu-cli/tests/server.rs: second_server_is_refused | covered | pass |
 | A stale socket file is replaced | crates/mu-cli/tests/server.rs: stale_socket_is_replaced | covered | pass |
 | A file that is not a socket is kept | crates/mu-cli/tests/server.rs: regular_file_at_socket_path_is_kept | covered | pass |
 | SIGTERM stops the server | crates/mu-cli/tests/server.rs: sigterm_stops_server | covered | pass |
 | The streams get the disconnects | crates/mu-cli/tests/server.rs: sigterm_sends_the_disconnects_first | covered | pass |
-| No world connects during the stop | crates/mu-core/tests/portal.rs: stop_disconnects_every_world_and_refuses_connect; crates/mu-core/tests/scripts.rs: handler_cannot_connect_after_stop | covered | not-run |
+| No world connects during the stop | crates/mu-core/tests/portal.rs: stop_disconnects_every_world_and_refuses_connect | covered | pass |
 | SIGINT stops the server | crates/mu-cli/tests/server.rs: sigint_stops_server | covered | pass |
 | A client with no server starts one | crates/mu-cli/tests/client.rs: client_starts_a_server | covered | pass |
 | No server answers in time | crates/mu-cli/tests/client.rs: client_gives_up_after_five_seconds | covered | pass |
@@ -158,104 +164,98 @@ judge: 8 questions, 0.000 USD
 
 ### Not run
 
-- An empty line: The heading exists in terminal-client and in world-sessions. This row holds the tests of both.
+- An empty line: The heading appears in the terminal-client and the world-sessions spec; one row holds the tests of both.
 - A lost stream: no verification run names this row
-- Quit: no verification run names this row
-- A stream past the end: no verification run names this row
-- A subscriber that does not read: no verification run names this row
-- A handler connects: no verification run names this row
-- No world connects during the stop: no verification run names this row
+- Ids outside the rule: no verification run names this row
+- Ids inside the rule: no verification run names this row
+- A subscriber at the edge of the buffer: no verification run names this row
 
 ## Verification runs
 
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=client_gives_up_after_five_seconds)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=client_needs_a_terminal_on_stdin)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=client_starts_a_server)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=ctrl_c_quits_client_only)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=first_view)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=world_order)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=no_worlds)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=line_prefixes)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=control_characters_are_replaced)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=enter_sends_to_world_in_focus)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=empty_enter_sends_empty_line)'`
 - exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=empty_enter_reaches_the_server)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=lost_stream_resumes_through_relay)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=two_clients_start_one_server)'`
-- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=events_of_two_worlds_share_one_sequence)'`
-- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=password_is_replaced)'`
-- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=password_of_stars_is_refused)'`
-- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=password_with_star_masks_whole_text)'`
-- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=sources_of_a_session)'`
-- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=stream_from_the_middle)'`
-- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=stream_from_the_next_number)'`
-- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=stream_from_zero)'`
-- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=stream_past_the_end)'`
-- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=typed_password_is_masked)'`
-- exit 0: `cargo nextest run -p mu-cli --test resume --locked -E 'test(=resume_after_cut_connection)'`
-- exit 0: `cargo nextest run -p mu-cli --test resume --locked -E 'test(=resume_after_server_restart)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=bare_socket_name_is_in_the_working_directory)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=client_needs_a_terminal)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=default_socket_under_runtime_dir)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=empty_runtime_dir_is_ignored)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=empty_socket_env_is_ignored)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=env_names_socket)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=flag_wins_over_env)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=new_socket_dir_is_private)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=open_socket_dir_is_refused)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=regular_file_at_socket_path_is_kept)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=second_server_is_refused)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=serves_on_named_socket)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=sigint_stops_server)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=sigterm_sends_the_disconnects_first)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=sigterm_stops_server)'`
-- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=stale_socket_is_replaced)'`
-- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=bad_world_id_is_refused)'`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=empty_send_reaches_game)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=enter_with_no_world)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=refused_line_keeps_input)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=ctrl_n_moves_focus)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=ctrl_p_wraps_around)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=ctrl_n_wraps_at_the_end)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=keys_with_no_world)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=one_world_keeps_focus)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=activity_mark)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=lost_stream_resumes_through_relay)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=lost_stream_resumes)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=resumed_clears_disconnected)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=ctrl_c_quits_client_only)'`
+- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=bad_world_id_is_refused)'`
+- exit 0: `cargo nextest run -p mu-core --lib --locked -E 'test(~::ids_outside_the_rule)'`
+- exit 0: `cargo nextest run -p mu-core --lib --locked -E 'test(~::ids_inside_the_rule)'`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=fake_world_answers)'`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=fake_world_flag_is_hidden)'`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=missing_password_variable)'`
-- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=one_world_drops)'`
-- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=send_to_disconnected_world)'`
-- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=send_to_unknown_world)'`
-- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=send_with_cr_is_refused)'`
-- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=send_with_lf_is_refused)'`
-- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=two_characters_on_one_game)'`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=two_worlds_connect)'`
-- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=world_connects_again)'`
-- exit 0: `cargo nextest run -p mu-core --lib --locked -E 'test(~::receiver_at_capacity_is_not_cut)'`
-- exit 0: `cargo nextest run -p mu-core --lib --locked -E 'test(~::receiver_past_capacity_is_cut)'`
-- exit 0: `cargo nextest run -p mu-core --lib --locked -E 'test(~::subscribe_past_end)'`
+- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=two_characters_on_one_game)'`
+- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=send_to_unknown_world)'`
+- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=send_to_disconnected_world)'`
 - exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=failed_write_records_disconnect)'`
 - exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=send_to_connecting_world)'`
-- exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=stop_disconnects_every_world_and_refuses_connect)'`
-- exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=the_game_drops_the_world)'`
-- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_answers_line)'`
-- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_cannot_connect_after_stop)'`
-- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_connect_has_source_system)'`
-- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_loop_stops_at_depth_limit)'`
-- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_loop_through_game_is_rate_limited)'`
-- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_on_every_event_stops)'`
+- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=send_with_cr_is_refused)'`
+- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=send_with_lf_is_refused)'`
+- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=one_world_drops)'`
+- exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=world_connects_again)'`
 - exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=hook_gags_game_line)'`
-- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=hook_gags_player_line)'`
-- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=hook_line_break_is_dropped)'`
 - exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=hook_replaces_player_line)'`
+- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=hook_line_break_is_dropped)'`
+- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=hook_gags_player_line)'`
+- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_answers_line)'`
+- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_loop_stops_at_depth_limit)'`
+- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_on_every_event_stops)'`
+- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_loop_through_game_is_rate_limited)'`
 - exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=rate_limit_refills)'`
+- exit 0: `cargo nextest run -p mu-core --test scripts --locked -E 'test(=handler_connect_has_source_system)'`
+- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=events_of_two_worlds_share_one_sequence)'`
+- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=sources_of_a_session)'`
+- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=password_is_replaced)'`
+- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=typed_password_is_masked)'`
+- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=password_with_star_masks_whole_text)'`
+- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=password_of_stars_is_refused)'`
+- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=stream_from_the_middle)'`
+- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=stream_from_zero)'`
+- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=stream_from_the_next_number)'`
+- exit 0: `cargo nextest run -p mu-cli --test journal --locked -E 'test(=stream_past_the_end)'`
+- exit 0: `cargo nextest run -p mu-cli --test resume --locked -E 'test(=resume_after_cut_connection)'`
+- exit 0: `cargo nextest run -p mu-cli --test resume --locked -E 'test(=resume_after_server_restart)'`
 - exit 0: `cargo nextest run -p mu-server --lib --locked -E 'test(~::lagged_stream_ends_with_resource_exhausted)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=activity_mark)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=control_characters_are_replaced)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=ctrl_c_quits)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=ctrl_n_moves_focus)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=ctrl_n_wraps_at_the_end)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=ctrl_p_wraps_around)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=empty_enter_sends_empty_line)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=enter_sends_to_world_in_focus)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=enter_with_no_world)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=first_view)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=keys_with_no_world)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=line_prefixes)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=lost_stream_resumes)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=no_worlds)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=one_world_keeps_focus)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=refused_line_keeps_input)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=resumed_clears_disconnected)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=world_order)'`
+- exit 0: `cargo nextest run -p mu-core --lib --locked -E 'test(~::receiver_at_capacity_is_not_cut)'`
+- exit 0: `cargo nextest run -p mu-core --lib --locked -E 'test(~::receiver_past_capacity_is_cut)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=serves_on_named_socket)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=env_names_socket)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=flag_wins_over_env)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=default_socket_under_runtime_dir)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=empty_socket_env_is_ignored)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=empty_runtime_dir_is_ignored)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=bare_socket_name_is_in_the_working_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=new_socket_dir_is_private)'`
 - exit 0: `cargo nextest run -p mu-cli --lib --locked -E 'test(~::private_dir_refuses_another_owner)'`
-- exit 0: `cargo nextest run -p mu-core --lib --locked -E 'test(~::ids_inside_the_rule)'`
-- exit 0: `cargo nextest run -p mu-core --lib --locked -E 'test(~::ids_outside_the_rule)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=open_socket_dir_is_refused)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=second_server_is_refused)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=stale_socket_is_replaced)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=regular_file_at_socket_path_is_kept)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=sigterm_stops_server)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=sigterm_sends_the_disconnects_first)'`
+- exit 0: `cargo nextest run -p mu-core --test portal --locked -E 'test(=stop_disconnects_every_world_and_refuses_connect)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=sigint_stops_server)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=client_starts_a_server)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=client_gives_up_after_five_seconds)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=two_clients_start_one_server)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=client_needs_a_terminal)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=client_needs_a_terminal_on_stdin)'`
 
 ## Dropped
 
@@ -263,31 +263,26 @@ None.
 
 ## Lens notes
 
-- approach: The approach lens has no Bash tool, so it could not diff design.md against the base 9a90d29. It took the Test helpers section as the changed text, from the commit subject e2a97f3 and the round-9 rows R-168, R-174 and R-175.
-- approach: Each changed code file of diff-files.txt was read against design.md: greeting now uses WorldId::character (R-175), Subscription::last says it is the number at the start of the subscription (R-177), settle sleeps on the paused clock (R-173), and journal.rs, worlds.rs and resume.rs take PW, TWO_WORLDS and fake_worlds from the support module (R-176). Each holds at head.
-- approach: The bullets of Test helpers hold at head: mu_on_pty(args, on, cwd) is used by server.rs and client.rs, wait_until(bound, what, future) backs the screen waits of PtyClient, and PW, TWO_WORLDS, fake_worlds and Session::with_worlds are each used by more than one test file. greeting is called directly by resume.rs only, but more test files reach it through Session::welcome and PtyClient::wait_greeting.
-- approach: The specs did not change in this round, so they were not read again. A finding on them would fall outside the bound of the follow-up round.
-- fit: Follow-up round: every file of diff-files.txt was read in full except review.md, which this lens must not read.
-- fit: The fixed rows R-157, R-169, R-173, R-175 and R-177 were checked at head, and their defects are not back.
-- fit: worlds.rs last() and journal.rs six_events both read the last seq of Session::seen inline; a Session::last_seq would serve both, too small to report.
-- fit: Without git, the changed lines inside each file are not known; fit-3 and fit-4 can fall out of bound at the merge.
-- invariants: Follow-up round from 9a90d29 to 10c1ee5. Read every changed hunk of crates/ and design.md. review.md was not read.
-- invariants: Probe: inputs under inv-probe/ in the handoff directory. review_lint.py on the settle line tokio::time::sleep(Duration::from_secs(5)) gives gate time-based-test and exit 1. The round-9 form tokio::time::advance(...) gives exit 0. tokio::time::sleep(Duration::ZERO) also gives exit 1, because NOT_ZERO only matches a literal 0. The pattern (?<![\\w.])sleep\\( matches after ::.
-- invariants: git: the settle sleep is new against origin/main (the file does not exist on main). It is the only added sleep( in a test path of the diff against main.
-- invariants: I1: settle returns only when no task can run \| enforced at the paused-clock auto-advance of tokio::time::sleep, crates/mu-core/tests/support/mod.rs:100 \| boundary test crates/mu-core/tests/scripts.rs:397 server_handler_resumes_after_lag (a chain of 10 events drained before the assert). The R-173 defect (advance) is gone at head.
-- invariants: I2: settle takes no real time \| enforced at none \| boundary test none. See inv-2. Every current caller in scripts.rs and portal.rs is in a start_paused test.
-- invariants: I3: No sleep in a test \| enforced at review_lint gate time-based-test \| the gate refuses the settle line. See inv-1.
-- invariants: I4: Subscription::last is the last number at subscribe time \| enforced at crates/mu-core/src/journal.rs:167 under the journal lock \| boundary test none after an append. See inv-3.
-- invariants: I5: greeting(world) gets a valid world id \| enforced at the WorldId parse with unwrap, crates/mu-cli/tests/support/process.rs:28 \| every caller passes a literal valid id (resume.rs:89, process.rs:464, process.rs:565). A bounded set of literals, so no property test.
-- invariants: I6: each world of fake_worlds reads PW from its own variable PW_<n> \| enforced at crates/mu-cli/tests/support/process.rs:148 \| used by every Session::with_worlds test. All worlds now share PW, so no binary test can give two worlds different passwords. No spec scenario needs that.
-- invariants: I7: no masked text holds its password, also for a password with a star \| enforced at crates/mu-core/src/secret.rs:70 \| boundary test password_with_star_masks_whole_text (crates/mu-cli/tests/journal.rs:129, password a*, text aa*) and the property test at secret.rs:271.
-- invariants: The 5-second jump of settle refills the governor budget. The callers that count script errors or lines after settle get stricter from this, not looser: a loop that went on after the refill would raise the count and fail.
-- test-coverage: Follow-up round: read in full the changed crates/mu-cli/tests/journal.rs, the helpers Session::with_worlds, welcome, line and until of support/process.rs, and the capacity and lag tests of crates/mu-core/src/journal.rs. They hold no new weak assertion.
-- test-coverage: Rows for the other test files are graded by test name and by the task text of tasks.md, not by a read of each assertion, and those files did not change in this round.
-- test-coverage: The heading An empty line exists in both terminal-client and world-sessions, so one row holds the tests of both.
-- test-coverage: The REMOVED requirement of cli-entrypoint has no scenario of its own. Its Migration line names the server-process scenarios that check the removal, and both have tests.
-- test-honesty: Read journal.rs, resume.rs, worlds.rs, support/process.rs of mu-cli tests, mu-core tests support/mod.rs and the test module of mu-core journal.rs. Spec artifacts were not read in full; judged assertions against the scenario names and the test comments. No disabled tests, no assertion-free tests, no mock echo found.
-- test-honesty: The only computed expectation is the contiguity check in events_of_two_worlds_share_one_sequence and resume_after_cut_connection, which builds 1..=len from the observed length; it still fails on a gap or a duplicate, so it is not a tautology.
+- approach: Follow-up round from 10c1ee5e. The lens has no git access, so the exact changed lines of design.md and tasks.md were not diffed. The changed code files were read in full and the Test helpers, The journal and the stream, Tests and the clock and What enforces each rule sections were checked against them.
+- approach: The design claim that settle panics on a clock that runs holds: tokio 1.54.1 time::advance panics when the clock is not frozen (src/time/clock.rs:250-277).
+- approach: The design claim that the time-based-test gate fires once, on settle, holds: the only sleep under a test path is crates/mu-core/tests/support/mod.rs:102, and the gate's bare sleep( pattern matches tokio::time::sleep.
+- approach: Tasks 3.2, 6.4 and 6.5 name tests that all exist at head under the stated files. Subscription::last at head is the snapshot at subscribe, which matches the Hello last_seq rule in The journal and the stream.
+- fit: The bound was judged from prior.json and the files in diff-files.txt. This lens has no git tool, so the exact changed lines were inferred from the fixed rows R-174 to R-179.
+- fit: The greeting text Welcome, <character>. is formed in crates/mu-core/src/fake.rs:99, crates/mu-core/tests/support/mod.rs:53 and crates/mu-cli/tests/support/process.rs:29. The two test copies are expected values of tests in two crates, so the exclusion for test fixtures that repeat a production shape on purpose applies, and no finding is raised.
+- fit: settle in crates/mu-core/tests/support/mod.rs sleeps on the paused clock. Its review-lint finding is accepted in R-178, and review_lint.py has no exemption mechanism that the design could use instead.
+- invariants: I1: settle never waits on a clock that runs \| enforced at crates/mu-core/tests/support/mod.rs:101 (advance by zero) \| boundary test none. Probe under probe-settle/ on tokio 1.54.1: settle panics with 'time is not frozen' on a current_thread and on a multi_thread runtime with a running clock, after under 1 ms.
+- invariants: I2: settle returns only when every task is idle on the paused clock \| enforced at crates/mu-core/tests/support/mod.rs:102 (sleep of 5 s with auto-advance) \| boundary test none direct. Probe: 100 spawned tasks with up to 990 yields and a timer each are all done when settle returns, so the defect of R-173 is not back.
+- invariants: I3: each caller of settle runs on the paused clock \| enforced at #[tokio::test(start_paused = true)] on each caller \| checked: all 12 calls in portal.rs and scripts.rs, including the helper refused_line_break, sit in start_paused tests.
+- invariants: I4: Subscription::last is the snapshot at subscribe and does not move after an append \| enforced at crates/mu-core/src/journal.rs (field set once in subscribe) \| boundary test subscribe_from_middle, journal.rs:248, now reads last() after the append of event 7 (R-179 holds as fixed).
+- invariants: I5: ServerBuilder::env(name, None) removes the variable from the child \| enforced at crates/mu-cli/tests/support/process.rs command(), env_remove \| boundary test missing_password_variable (worlds.rs:50). The builder also removes MU_SOCKET, so the three moved tests are at least as hermetic as with mu_with.
+- invariants: I6: the temporary socket directory outlives a refused server \| enforced at ServerBuilder::output(self), which holds self.dir until the await ends \| no test needed.
+- invariants: I7: a wait for a refused server has a bound \| ServerBuilder::output awaits the exit outside wait_until, while ServerProcess waits for an exit through wait_until(BOUND, ...) at process.rs:288 \| enforced at .config/nextest.toml slow-timeout period 20s terminate-after 3. A server that stops refusing then fails at 60 s with no message that names the wait; mu_with had the same unbounded wait before.
+- invariants: I8: the time-based-test gate of review-lint fires on one line in this change, settle \| enforced by no mechanism: a probe of review_lint.py under probe-lint/ gives exit 1 with one finding (crates/mu-core/tests/support/mod.rs:102) for the change diff from 9045245, and the same exit 1 for a diff with a second sleep, so only a reading of the output under task 9.2 separates the two. The finding count at head is one, as design.md says. Related to R-178 (accepted); not raised again.
+- invariants: I9: the refused-server tests keep their exit codes and stderr checks (2 for Alpha_1, 1 for a missing variable and for a password of stars) \| enforced in the mu binary \| no check is weakened by the move from mu_with to ServerBuilder::output.
+- invariants: Probe sources: probe-settle/src/main.rs and probe-lint/*.diff in the handoff directory. No repository test was run.
+- test-coverage: Every scenario heading of the five capability specs maps to a named test that exists at head. No finding is raised; the changed files hold no weaker assertion than the THEN step in the part read.
+- test-coverage gap: Assertion bodies read only for crates/mu-cli/tests/worlds.rs 100-226; elsewhere test-name existence only.
+- test-coverage gap: prior.json rows after R-105 not read.
 
 ## Ledger
 
@@ -448,14 +443,14 @@ None.
 | R-153 | 6 | 6 | should-fix | in-change | ["path","crates/mu-cli/tests/server.rs",215] | fixed | 20c39535c0b2387d3c18eb9b7788d75368a0b669 |  | sigterm_sends_the_disconnects_first builds the alpha/aria and beta/bryn server with the same two fake_world calls as two_worlds() in client.rs. The support module already has ServerBuilder::fake_worlds for this, and the design puts a helper of two test files there. |
 | R-154 | 6 | 6 | should-fix | in-change | ["path","crates/mu-cli/tests/client.rs",34] | fixed | 20c39535c0b2387d3c18eb9b7788d75368a0b669 |  | client_starts_a_server reads the permission bits of the directory inline. That is the same expression as the mode helper of server.rs, so two test files each hold the check that the design's helper rule puts in the support module. |
 | R-155 | 6 | 6 | should-fix | in-change | ["path","crates/mu-core/src/session.rs",269] | fixed | f78fa166041873b49af60169e767552f96629701 |  | Each new connection of a world gets a new framer from the world's NewFramer. world_uses_its_framer checks only the first connection. A reconnect that falls back to LineFramer, or that keeps the framer and its partial line, passes every test. |
-| R-156 | 6 | 7 | should-fix | in-change | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: none; reason: Round 7 runs the test-honesty lens again on the files that changed since round 6, so its gap of round 6 closes there. |  | lens test-honesty reported partial, gaps: 1 |
+| R-156 | 6 | 11 | should-fix | in-change | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: none; reason: Round 7 runs the test-honesty lens again on the files that changed since round 6, so its gap of round 6 closes there. |  | lens test-honesty reported partial, gaps: 1 |
 | R-157 | 7 | 8 | blocker | in-change | ["path","crates/mu-cli/tests/support/process.rs",27] | fixed | 96d5297de1ad76368e2ef2f17f53ce88e32c3e52 |  | fit-1: This round adds TWO_WORLDS to the shared support for the alpha/aria and beta/bryn list, but journal.rs still writes the same two-world list inline twice, so the list now has three copies.; fit-2: TWO_WORLDS writes the test password s3cret-pw as a literal, beside a const PW with the same value in journal.rs, worlds.rs and resume.rs. The shared support now holds a fourth copy instead of the one constant. |
 | R-158 | 7 | 7 | should-fix | in-change | ["path","crates/mu-cli/tests/support/mod.rs",216] | fixed | 95d662bc9149e2ae21b8ad761b9821d57078ca83 |  | The design says support/mod.rs holds mu and mu_with and process.rs holds the rest, and it lists mode among the rest. At head mode is in support/mod.rs, and server.rs and client.rs import it from there. |
 | R-159 | 7 | 7 | should-fix | in-change | ["path","crates/mu-cli/tests/client.rs",201] | fixed | 36c63890620287cf91438bc99f57fa7a8f5b4562 |  | client.rs starts a PtyClient on a two-world server and waits for the row Welcome, aria. three times: in attached(), in lost_stream_resumes_through_relay and in ctrl_c_quits_client_only. The three blocks are alike but for the socket. |
 | R-160 | 7 | 7 | should-fix | in-change | ["artifact",["design.md","The terminal client"],"Before `App` draws any text from the server, a world id, an event line or the reason of a refusal"] | fixed | a94f3458d03ae9786c21a830fbc21bbbaf626df6 |  | inv-1: The design now says App cleans each world id from the server before it draws it, and top_row calls clean on the id. No test gives App a world id that holds a control character, so dropping that clean call passes every test.; inv-2: A player line is cleaned in its own match arm of line(). Every control-character test passes a game line or a refusal reason, so a player line with ESC reaches the screen unfiltered if that arm drops clean. Another client's typed text can hold ESC, because the server refuses only CR and LF.; inv-3: A system or credential line is cleaned in a third match arm of line(). No test passes a control character through that arm. line_prefixes uses plain text only, so a mutant without clean on the `-- ` arm passes. |
 | R-161 | 7 | 7 | suggestion | in-change | ["path","crates/mu-core/src/portal.rs",245] | fixed | 8f8de4ebdc7c0b1efcad05632df1531113a90895 |  | Portal::stop and Portal::connect_all hold the same loop over router.keys() that submits a system envelope to each world and drops the result. They differ only in the command, and stop sets the flag first. |
-| R-162 | 7 | 10 | should-fix | in-change | ["artifact",["review","not-run"],"An empty line"] | refuted | Each test that this row names ran alone at head with exit 0 and one test run, as lines of /private/tmp/claude-501/-Volumes-Code-github-com-seanb4t-mu-portal/2b9a00cd-6a2b-4449-a699-e4907b80bcc6/scratchpad/handoff/review-portal-skeleton-implementation-r10/verification-runs.txt show. The row names several tests, and the merge matches a run to the whole text after the first colon, so no single run can match it. |  | covered row 'An empty line' has no verification run |
-| R-163 | 7 | 10 | should-fix | in-change | ["artifact",["review","not-run"],"A lost stream"] | refuted | Each test that this row names ran alone at head with exit 0 and one test run, as lines of /private/tmp/claude-501/-Volumes-Code-github-com-seanb4t-mu-portal/2b9a00cd-6a2b-4449-a699-e4907b80bcc6/scratchpad/handoff/review-portal-skeleton-implementation-r10/verification-runs.txt show. The row names several tests, and the merge matches a run to the whole text after the first colon, so no single run can match it. |  | covered row 'A lost stream' has no verification run |
+| R-162 | 7 | 11 | should-fix | in-change | ["artifact",["review","not-run"],"An empty line"] | refuted | Each test that this row names ran alone at head with exit 0 and one test run, as lines of /private/tmp/claude-501/-Volumes-Code-github-com-seanb4t-mu-portal/2b9a00cd-6a2b-4449-a699-e4907b80bcc6/scratchpad/handoff/review-portal-skeleton-implementation-r10/verification-runs.txt show. The row names several tests, and the merge matches a run to the whole text after the first colon, so no single run can match it. |  | covered row 'An empty line' has no verification run |
+| R-163 | 7 | 11 | should-fix | in-change | ["artifact",["review","not-run"],"A lost stream"] | refuted | Each test that this row names ran alone at head with exit 0 and one test run, as lines of /private/tmp/claude-501/-Volumes-Code-github-com-seanb4t-mu-portal/2b9a00cd-6a2b-4449-a699-e4907b80bcc6/scratchpad/handoff/review-portal-skeleton-implementation-r10/verification-runs.txt show. The row names several tests, and the merge matches a run to the whole text after the first colon, so no single run can match it. |  | covered row 'A lost stream' has no verification run |
 | R-164 | 7 | 10 | should-fix | in-change | ["artifact",["review","not-run"],"Quit"] | refuted | Each test that this row names ran alone at head with exit 0 and one test run, as lines of /private/tmp/claude-501/-Volumes-Code-github-com-seanb4t-mu-portal/2b9a00cd-6a2b-4449-a699-e4907b80bcc6/scratchpad/handoff/review-portal-skeleton-implementation-r10/verification-runs.txt show. The row names several tests, and the merge matches a run to the whole text after the first colon, so no single run can match it. |  | covered row 'Quit' has no verification run |
 | R-165 | 7 | 7 | should-fix | in-change | ["artifact",["review","not-run"],"Sources of a session"] | refuted | Each test that this row names ran alone at head with exit 0 and one test run, as lines of /private/tmp/claude-501/-Volumes-Code-github-com-seanb4t-mu-portal/2b9a00cd-6a2b-4449-a699-e4907b80bcc6/scratchpad/handoff/review-portal-skeleton-implementation-r7/verification-runs.txt show. The row names several tests, and the merge matches a run to the whole text after the first colon, so no single run can match it. |  | covered row 'Sources of a session' has no verification run |
 | R-166 | 7 | 10 | should-fix | in-change | ["artifact",["review","not-run"],"No world connects during the stop"] | refuted | Each test that this row names ran alone at head with exit 0 and one test run, as lines of /private/tmp/claude-501/-Volumes-Code-github-com-seanb4t-mu-portal/2b9a00cd-6a2b-4449-a699-e4907b80bcc6/scratchpad/handoff/review-portal-skeleton-implementation-r10/verification-runs.txt show. The row names several tests, and the merge matches a run to the whole text after the first colon, so no single run can match it. |  | covered row 'No world connects during the stop' has no verification run |
@@ -466,7 +461,7 @@ None.
 | R-171 | 8 | 8 | blocker | in-change | ["artifact",["review","verification-failed"],"A hook puts a line break in a player line: crates/mu-core/tests/scripts.rs: line_break_from_hook"] | refuted | The row names line_break_from_hook, which no file defines. The scenario is covered by hook_line_break_is_dropped in crates/mu-core/tests/scripts.rs, which passes alone at head, as the round-7 runs and the workspace run show. | operator override | covered row 'A hook puts a line break in a player line' failed its verification run |
 | R-172 | 8 | 8 | should-fix | in-change | ["artifact",["review","not-run"],"A line goes to the world in focus"] | refuted | Each test that this row names ran alone at head with exit 0 and one test run, as lines of /private/tmp/claude-501/-Volumes-Code-github-com-seanb4t-mu-portal/2b9a00cd-6a2b-4449-a699-e4907b80bcc6/scratchpad/handoff/review-portal-skeleton-implementation-r8/verification-runs.txt show. The row names several tests, and the merge matches a run to the whole text after the first colon, so no single run can match it. |  | covered row 'A line goes to the world in focus' has no verification run |
 | R-173 | 9 | 9 | blocker | in-change | ["path","crates/mu-core/tests/support/mod.rs",100] | fixed | 13263a3e1a34610c79dba1049ca058e7d9aaf406 |  | settle() now calls tokio::time::advance, which returns after one yield, so it no longer waits until every task is idle as its doc and its callers assume. A probe on tokio 1.54.1 shows advance returning after 61 of 100 chained task hops, where sleep on the paused clock ran all 100. |
-| R-174 | 9 | 10 | should-fix | in-change | ["artifact",["design.md","Test helpers"],"`mod.rs` holds `mu`, `mu_with` and `mode`, and `process.rs` holds the rest:"] | fixed | f7a09a99b57e23ed288da8b57d9604c05b5f5e51 |  | The design says mod.rs of the mu-cli test support holds mu, mu_with and mode, and process.rs holds the rest. At head mod.rs also holds stdout and stderr, which cli.rs, server.rs, journal.rs, client.rs and worlds.rs import from there. |
+| R-174 | 9 | 11 | should-fix | in-change | ["artifact",["design.md","Test helpers"],"`mod.rs` holds `mu`, `mu_with` and `mode`, and `process.rs` holds the rest:"] |  | regressed from fixed f7a09a99b57e23ed288da8b57d9604c05b5f5e51 |  | The design says mod.rs of the mu-cli test support holds mu, mu_with and mode, and process.rs holds the rest. At head mod.rs also holds stdout and stderr, which cli.rs, server.rs, journal.rs, client.rs and worlds.rs import from there. |
 | R-175 | 9 | 9 | should-fix | in-change | ["path","crates/mu-cli/tests/support/process.rs",29] | fixed | 9bc92b17a35fc230e4dd8d4a7cb78698a620b719 |  | The new shared greeting(world) splits the id string on the slash itself, with a fallback for an id with no slash. mu-core already gives the character part through WorldId::character, the engine test support uses it for the same greeting, and mu-cli tests can reach mu-core as they reach mu_server::SERVING. |
 | R-176 | 9 | 10 | should-fix | in-change | ["path","crates/mu-cli/tests/worlds.rs",10] | fixed | 8a4862fef645dff8f74884595648d9b964b44b61 |  | The round made PW and TWO_WORLDS shared, but a server of fake worlds that all use PW is still spelled three ways: worlds.rs keeps its own with_pw and started, journal.rs writes the pair (alpha/aria, PW) inline three times, and resume.rs names its own variable ALPHA_PW with fake_world. |
 | R-177 | 9 | 9 | should-fix | in-change | ["path","crates/mu-core/src/journal.rs",53] | fixed | 13263a3e1a34610c79dba1049ca058e7d9aaf406 |  | The new doc of Subscription::last says it gives the last number in the journal now, but the field is a snapshot taken in subscribe and never changes. After an append it is one behind the journal, which subscribe_from_middle itself does. |
@@ -475,6 +470,11 @@ None.
 | R-180 | 10 | 10 | should-fix | in-change | ["artifact",["review","not-run"],"A stream past the end"] | refuted | Each test that this row names ran alone at head with exit 0 and one test run, as lines of /private/tmp/claude-501/-Volumes-Code-github-com-seanb4t-mu-portal/2b9a00cd-6a2b-4449-a699-e4907b80bcc6/scratchpad/handoff/review-portal-skeleton-implementation-r10/verification-runs.txt show. The row names several tests, and the merge matches a run to the whole text after the first colon, so no single run can match it. |  | covered row 'A stream past the end' has no verification run |
 | R-181 | 10 | 10 | should-fix | in-change | ["artifact",["review","not-run"],"A subscriber that does not read"] | refuted | Each test that this row names ran alone at head with exit 0 and one test run, as lines of /private/tmp/claude-501/-Volumes-Code-github-com-seanb4t-mu-portal/2b9a00cd-6a2b-4449-a699-e4907b80bcc6/scratchpad/handoff/review-portal-skeleton-implementation-r10/verification-runs.txt show. The row names several tests, and the merge matches a run to the whole text after the first colon, so no single run can match it. |  | covered row 'A subscriber that does not read' has no verification run |
 | R-182 | 10 | 10 | should-fix | in-change | ["artifact",["review","not-run"],"A handler connects"] | refuted | Each test that this row names ran alone at head with exit 0 and one test run, as lines of /private/tmp/claude-501/-Volumes-Code-github-com-seanb4t-mu-portal/2b9a00cd-6a2b-4449-a699-e4907b80bcc6/scratchpad/handoff/review-portal-skeleton-implementation-r10/verification-runs.txt show. The row names several tests, and the merge matches a run to the whole text after the first colon, so no single run can match it. |  | covered row 'A handler connects' has no verification run |
+| R-183 | 11 | 11 | should-fix | in-change | ["artifact",["design.md","Test helpers"],"`mu(args)`, moved from `cli.rs`, which runs the built binary to its exit, and `mu_with(args, env)`, which also sets and removes environment variables"] |  |  |  | The Test helpers decision puts mu and mu_with in mod.rs, then lists them again in the bullets under process.rs holds the rest. At head both are in mod.rs, so the design names two homes for one helper. |
+| R-184 | 11 | 11 | should-fix | in-change | ["path","crates/mu-core/tests/support/mod.rs",101] |  |  |  | settle now refuses a clock that runs through advance(Duration::ZERO), and the design states that it panics there, but no test calls settle on a clock that runs. Removing the advance line passes every test, and settle then sleeps five real seconds. |
+| R-185 | 11 | 11 | should-fix | in-change | ["artifact",["review","not-run"],"Ids outside the rule"] |  |  |  | covered row 'Ids outside the rule' has no verification run |
+| R-186 | 11 | 11 | should-fix | in-change | ["artifact",["review","not-run"],"Ids inside the rule"] |  |  |  | covered row 'Ids inside the rule' has no verification run |
+| R-187 | 11 | 11 | should-fix | in-change | ["artifact",["review","not-run"],"A subscriber at the edge of the buffer"] |  |  |  | covered row 'A subscriber at the edge of the buffer' has no verification run |
 
 ## Reviewed files
 
@@ -501,13 +501,13 @@ None.
 | crates/mu-cli/tests/fixtures/base/crates/mu-server/Cargo.toml | 91ca0daf2ce491f4893fc6791e783108a7f5ea93 |
 | crates/mu-cli/tests/fixtures/base/crates/mu-server/src/lib.rs | e69de29bb2d1d6434b8b29ae775ad8c2e48c5391 |
 | crates/mu-cli/tests/fixtures/base/crates/mu-tui/Cargo.toml | f0f9958ceab73b38ffe7e7aba54ccb12b6511225 |
-| crates/mu-cli/tests/journal.rs | f7272e7892313f20c4cdca1ad175a1c080b46e73 |
+| crates/mu-cli/tests/journal.rs | 02f68ad7683d6b9cfa5cd292dea2cfddceb7d724 |
 | crates/mu-cli/tests/resume.rs | efce6e0cd269a86df9fb06a4652576ac44124881 |
 | crates/mu-cli/tests/server.rs | 7bf9be2bed15615911db1308aa36d9e0cdde0163 |
 | crates/mu-cli/tests/support/mod.rs | cb02438cf9ce6cecce26f223fb4e6dd16d8c511c |
-| crates/mu-cli/tests/support/process.rs | 3138e06ca86f0799319a4d51aeb4798d0ed82be8 |
+| crates/mu-cli/tests/support/process.rs | 84eb0e19f8a2824a5f3887229277622085c1137b |
 | crates/mu-cli/tests/workspace_boundary.rs | 6e89d62b66f369268866946980ff9109c28e83e6 |
-| crates/mu-cli/tests/worlds.rs | c4f67c9a424f63e2ea5cfa143a9cc12034e3808c |
+| crates/mu-cli/tests/worlds.rs | 2f73957e07002064a3825a8223c2aa7ed2ae47de |
 | crates/mu-client/Cargo.toml | 127e327f1d2dd51900293abd02014efe6d3db42d |
 | crates/mu-client/src/lib.rs | 9601cf8af61aedfdda5fb171a6675b9f4a4f79f2 |
 | crates/mu-core/Cargo.toml | ef1f063cf6293f72646b6e4b098bbd4f6e04ff7e |
@@ -517,7 +517,7 @@ None.
 | crates/mu-core/src/fake.rs | e866ffb9681fc9ea2f99390987aedef87a91f9ed |
 | crates/mu-core/src/framer.rs | 8ddbf0f534b602721e8420bae15a1a0ff711869f |
 | crates/mu-core/src/id.rs | b5a941b7451465947b520a4262a4d2969fe35ba4 |
-| crates/mu-core/src/journal.rs | 9f9419c67d0fc7531a19e527703b553982154146 |
+| crates/mu-core/src/journal.rs | 740e70c4deae721b60ba2aea59c955926dfae653 |
 | crates/mu-core/src/lib.rs | 9aa97adfcd4a6605385e5ad8f56f18c885219a1b |
 | crates/mu-core/src/portal.rs | 4c8effeb901e73e4e38083b975fe0d79443c87ab |
 | crates/mu-core/src/script.rs | 66b1cd4328af2884be7ba6aa93e8d607970c4f10 |
@@ -527,7 +527,7 @@ None.
 | crates/mu-core/src/world.rs | 0c22daa3008e4bee35f87f157b64c3e8c7a9fdb1 |
 | crates/mu-core/tests/portal.rs | b3316cb0718b918edba716e4e0b3d527de247954 |
 | crates/mu-core/tests/scripts.rs | 28dd9ef1d7999b6e3b9f18a049d9e2d39de2ee4f |
-| crates/mu-core/tests/support/mod.rs | 59688c7d6ab4292616da5b6f5c709b00dab3a54b |
+| crates/mu-core/tests/support/mod.rs | 9cf170fec226470204ca25e5c4278f14b265ed31 |
 | crates/mu-proto/Cargo.toml | 3450f77894b2d4f23686501bde5ba83730988cc1 |
 | crates/mu-proto/build.rs | 7436f4510d69da2416cad0f0d359421933d12122 |
 | crates/mu-proto/proto/mu/v1/portal.proto | fc1de0aa1f21b15a866f2e8aa4de9052018f7ce1 |
@@ -551,14 +551,14 @@ None.
 | docs/src/content/docs/index.md | ec9f39356bfdb665591105f77a1d646910c7be85 |
 | mise.toml | c5397ad2b5c6076704b3775c50006e9d02b876d3 |
 | openspec/changes/portal-skeleton/.openspec.yaml | 70d2b31bd6d4fd60ee6b4fd384aeff2bf8551165 |
-| openspec/changes/portal-skeleton/design.md | ab5739e1db9a1054f24a753ab47cbf5bf50260f7 |
+| openspec/changes/portal-skeleton/design.md | 8caee739293fc942db77cf523634cae8a8cc1277 |
 | openspec/changes/portal-skeleton/proposal.md | 87acd9f78a975a0b148b7f3c3fc3fe5ffed2eb4a |
 | openspec/changes/portal-skeleton/specs/cli-entrypoint/spec.md | 90fedb75f1dd53f146e97fb7980ef43c82f9d7cc |
 | openspec/changes/portal-skeleton/specs/event-journal/spec.md | c0283663519b913856f50578545493db2f7e5217 |
 | openspec/changes/portal-skeleton/specs/server-process/spec.md | 87f44ad8a70319c855c35e48e34abb5b077cf35a |
 | openspec/changes/portal-skeleton/specs/terminal-client/spec.md | a606ea4e3370556ac17d71954e3a12b501a15a45 |
 | openspec/changes/portal-skeleton/specs/world-sessions/spec.md | b8f427fab7ad22abc0f139e07308aa729f6e9f71 |
-| openspec/changes/portal-skeleton/tasks.md | sha256:e297c3c7a12655d3f56ea48cfea2ca9e5b1c3e6b50f015dc5ef98d8ca2e16533 |
+| openspec/changes/portal-skeleton/tasks.md | sha256:3a9a49c4d92216e3fd994ff42ff528c2fb48987428f5d52383f4875961236a35 |
 | renovate.json | 26ed96ac538a0fd329caca308c93021ca1c5df5e |
 
 ## Plan review (2026-11-16)
