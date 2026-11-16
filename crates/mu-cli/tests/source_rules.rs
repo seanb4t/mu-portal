@@ -7,16 +7,15 @@
 
 use std::fmt;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::str::FromStr;
 
 use proc_macro2::{Literal, TokenStream, TokenTree};
 
+mod support;
+
 /// The one file that holds the codes of telnet.
 const TELNET_HOME: &str = "src/telnet.rs";
-
-/// The file of this rule. It holds the codes and the word `sleep` as data of the rule.
-const THIS_FILE: &str = "tests/source_rules.rs";
 
 /// The codes of telnet that a literal can hold: IAC, WONT, WILL, DO and DONT, and TIMING-MARK.
 const CODES: [u8; 6] = [251, 252, 253, 254, 255, 6];
@@ -66,28 +65,16 @@ impl fmt::Display for Hit {
     }
 }
 
+/// The root of `mu-core`. This test lives in `mu-cli`, so it never scans itself.
 fn crate_root() -> &'static Path {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn files_under(dir: &Path) -> Vec<PathBuf> {
-    let mut files = Vec::new();
-    for entry in fs::read_dir(dir).unwrap() {
-        let entry = entry.unwrap();
-        if entry.file_type().unwrap().is_dir() {
-            files.extend(files_under(&entry.path()));
-        } else {
-            files.push(entry.path());
-        }
-    }
-    files
+    Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../mu-core"))
 }
 
 /// Each Rust file of `src` and `tests`, with its path from the crate root.
 fn rust_files() -> Vec<(String, String)> {
     ["src", "tests"]
         .iter()
-        .flat_map(|dir| files_under(&crate_root().join(dir)))
+        .flat_map(|dir| support::files_under(&crate_root().join(dir)))
         .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
         .map(|path| {
             let relative = path.strip_prefix(crate_root()).unwrap();
@@ -188,7 +175,6 @@ fn is_assigned_six(after: &[TokenTree]) -> bool {
 fn crate_hits(files: &[(String, String)]) -> Vec<String> {
     let mut hits: Vec<Hit> = files
         .iter()
-        .filter(|(name, _)| name != THIS_FILE)
         .flat_map(|(name, text)| scan(name, text, name != TELNET_HOME))
         .collect();
     let mut problems = Vec::new();

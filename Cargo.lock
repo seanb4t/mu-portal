@@ -1443,10 +1443,8 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "governor",
- "proc-macro2",
  "proptest",
  "secrecy",
- "syn 3.0.10",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
