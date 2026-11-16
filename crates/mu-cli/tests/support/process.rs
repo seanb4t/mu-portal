@@ -23,6 +23,9 @@ pub const BOUND: Duration = Duration::from_secs(20);
 
 pub use mu_server::SERVING;
 
+/// The fake worlds `alpha/aria` and `beta/bryn`, each with the password `s3cret-pw`.
+pub const TWO_WORLDS: &[(&str, &str)] = &[("alpha/aria", "s3cret-pw"), ("beta/bryn", "s3cret-pw")];
+
 /// The socket path and the process id of a serving line.
 pub fn served(line: &str) -> Option<(PathBuf, u32)> {
     let rest = line.strip_prefix(SERVING)?.strip_prefix(' ')?;

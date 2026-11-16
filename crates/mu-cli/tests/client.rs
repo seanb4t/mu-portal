@@ -1,24 +1,17 @@
 //! The scenarios of `mu client` on the built binary, in a pseudo-terminal of 80 by 24.
 
-use std::os::unix::fs::PermissionsExt as _;
 use std::time::Duration;
 
 use mu_client::PortalClient;
 use mu_proto::{EventKind, WorldState};
 
 use support::process::{
-    BOUND, PtyClient, PtyOn, Reaper, Relay, SERVING, ServerBuilder, Session, mu_on_pty,
+    BOUND, PtyClient, PtyOn, Reaper, Relay, SERVING, ServerBuilder, Session, TWO_WORLDS, mu_on_pty,
     private_tempdir,
 };
-use support::stderr;
+use support::{mode, stderr};
 
 mod support;
-
-fn two_worlds() -> ServerBuilder {
-    ServerBuilder::new()
-        .fake_world("alpha/aria", "ALPHA_PW", "s3cret-pw")
-        .fake_world("beta/bryn", "BETA_PW", "s3cret-pw")
-}
 
 #[tokio::test]
 async fn client_starts_a_server() {
@@ -31,8 +24,7 @@ async fn client_starts_a_server() {
     client
         .wait_top("no worlds", |top| top.trim() == "no worlds")
         .await;
-    let mode = std::fs::metadata(&run).unwrap().permissions().mode() & 0o777;
-    assert_eq!(mode, 0o700);
+    assert_eq!(mode(&run), 0o700);
     client.send(b"\x03");
     assert!(
         client
@@ -107,8 +99,7 @@ async fn client_gives_up_after_five_seconds() {
 
 /// A server with two worlds, and a client on it that shows the greeting of `alpha/aria`.
 async fn attached() -> (Session, PtyClient) {
-    let session =
-        Session::with_worlds(&[("alpha/aria", "s3cret-pw"), ("beta/bryn", "s3cret-pw")]).await;
+    let session = Session::with_worlds(TWO_WORLDS).await;
     let client = PtyClient::start(session.server.socket(), session.server.dir().path());
     client
         .wait_rows("the greeting", |rows| {
@@ -170,7 +161,7 @@ fn client_needs_a_terminal_on_stdin() {
 
 #[tokio::test]
 async fn lost_stream_resumes_through_relay() {
-    let server = two_worlds().start().await;
+    let server = ServerBuilder::new().fake_worlds(TWO_WORLDS).start().await;
     let relay = Relay::start(&server.dir().path().join("relay.sock"), server.socket());
     let client = PtyClient::start(relay.socket(), server.dir().path());
     client
@@ -206,7 +197,7 @@ async fn lost_stream_resumes_through_relay() {
 
 #[tokio::test]
 async fn ctrl_c_quits_client_only() {
-    let server = two_worlds().start().await;
+    let server = ServerBuilder::new().fake_worlds(TWO_WORLDS).start().await;
     let mut client = PtyClient::start(server.socket(), server.dir().path());
     client
         .wait_rows("the greeting", |rows| {

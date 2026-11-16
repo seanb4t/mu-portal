@@ -3,6 +3,7 @@
 #![allow(dead_code, reason = "each test binary uses a part of this module")]
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -209,4 +210,9 @@ impl TreeCopy {
         fs::write(root.join("Cargo.toml"), manifest).unwrap();
         self
     }
+}
+
+/// The permission bits of `path`.
+pub fn mode(path: &Path) -> u32 {
+    fs::metadata(path).unwrap().permissions().mode() & 0o777
 }

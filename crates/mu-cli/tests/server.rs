@@ -10,8 +10,10 @@ use mu_proto::__buffa::oneof::subscribe_response::Message;
 use mu_proto::EventKind;
 use rustix::process::Signal;
 
-use support::process::{BOUND, PtyOn, ServerBuilder, mu_on_pty, private_tempdir, wait_until};
-use support::{mu_with, stderr};
+use support::process::{
+    BOUND, PtyOn, ServerBuilder, TWO_WORLDS, mu_on_pty, private_tempdir, wait_until,
+};
+use support::{mode, mu_with, stderr};
 
 mod support;
 
@@ -32,10 +34,6 @@ async fn lists_worlds(socket: &Path) {
 
 fn text(path: &Path) -> String {
     path.display().to_string()
-}
-
-fn mode(path: &Path) -> u32 {
-    fs::metadata(path).unwrap().permissions().mode() & 0o777
 }
 
 #[tokio::test]
@@ -211,11 +209,7 @@ async fn stops_on(signal: Signal) {
 
 #[tokio::test]
 async fn sigterm_sends_the_disconnects_first() {
-    let mut server = ServerBuilder::new()
-        .fake_world("alpha/aria", "ALPHA_PW", "s3cret-pw")
-        .fake_world("beta/bryn", "BETA_PW", "s3cret-pw")
-        .start()
-        .await;
+    let mut server = ServerBuilder::new().fake_worlds(TWO_WORLDS).start().await;
     let mut stream = server.client().subscribe(0).await.unwrap();
     let mut greeted = 0;
     while greeted < 2 {
