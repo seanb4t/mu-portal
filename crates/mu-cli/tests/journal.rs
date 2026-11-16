@@ -112,7 +112,7 @@ async fn typed_password_is_masked() {
     let mut session = Session::with_worlds(&[("alpha/aria", PW)]).await;
     session
         .client
-        .send("alpha/aria", "my pw is s3cret-pw")
+        .send("alpha/aria", &format!("my pw is {PW}"))
         .await
         .unwrap();
     session

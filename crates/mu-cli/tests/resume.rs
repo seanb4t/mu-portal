@@ -7,7 +7,7 @@ use futures::{Stream, StreamExt as _};
 use mu_client::{ClientEvent, PortalClient};
 use rustix::process::Signal;
 
-use support::process::{BOUND, PW, Relay, ServerBuilder, ServerProcess, wait_until};
+use support::process::{BOUND, PW, Relay, ServerBuilder, ServerProcess, greeting, wait_until};
 
 mod support;
 
@@ -86,7 +86,7 @@ fn instance(item: &ClientEvent) -> String {
 #[tokio::test]
 async fn resume_after_cut_connection() {
     let mut rig = Rig::start().await;
-    rig.line("Welcome, aria.").await;
+    rig.line(&greeting("alpha/aria")).await;
     // The hold keeps the client out until the server recorded the events of the cut.
     rig.relay.hold();
     assert!(rig.relay.cut() >= 1, "no connection to cut");

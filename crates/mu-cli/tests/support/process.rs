@@ -23,6 +23,14 @@ pub const BOUND: Duration = Duration::from_secs(20);
 
 pub use mu_server::SERVING;
 
+/// The line that the fake game sends after the login of `world`.
+pub fn greeting(world: &str) -> String {
+    let character = world
+        .split_once('/')
+        .map_or(world, |(_, character)| character);
+    format!("Welcome, {character}.")
+}
+
 /// The password of each fake world in the tests.
 pub const PW: &str = "s3cret-pw";
 
@@ -457,8 +465,7 @@ impl Session {
 
     /// Reads to the greeting of `world`, which follows its login.
     pub async fn welcome(&mut self, world: &str) -> mu_proto::Event {
-        let character = world.split_once('/').unwrap().1;
-        self.line(world, &format!("Welcome, {character}.")).await
+        self.line(world, &greeting(world)).await
     }
 
     /// Every event that the stream gave so far.
@@ -559,7 +566,7 @@ impl PtyClient {
     /// Waits until a row shows the greeting of `alpha/aria`.
     pub async fn wait_greeting(&self) {
         self.wait_rows("the greeting", |rows| {
-            rows.iter().any(|row| row.trim() == "Welcome, aria.")
+            rows.iter().any(|row| row.trim() == greeting("alpha/aria"))
         })
         .await;
     }

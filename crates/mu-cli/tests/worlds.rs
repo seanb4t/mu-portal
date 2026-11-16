@@ -2,14 +2,10 @@
 
 use mu_proto::{EventKind, Source, WorldState};
 
-use support::process::{PW, ServerBuilder, Session, private_tempdir};
+use support::process::{PW, ServerBuilder, Session, TWO_WORLDS, private_tempdir};
 use support::{mu, mu_with, stderr, stdout};
 
 mod support;
-
-fn builder(worlds: &[&str]) -> ServerBuilder {
-    ServerBuilder::new().fake_worlds(&with_pw(worlds))
-}
 
 fn with_pw<'a>(worlds: &[&'a str]) -> Vec<(&'a str, &'static str)> {
     worlds.iter().map(|world| (*world, PW)).collect()
@@ -86,7 +82,7 @@ fn missing_password_variable() {
 
 #[tokio::test]
 async fn two_worlds_connect() {
-    let mut session = Session::start(builder(&["alpha/aria", "beta/bryn"])).await;
+    let mut session = Session::start(ServerBuilder::new().fake_worlds(TWO_WORLDS)).await;
     session
         .kind("alpha/aria", EventKind::EVENT_KIND_CONNECTED, 0)
         .await;
@@ -219,7 +215,7 @@ async fn empty_send_reaches_game() {
 
 #[tokio::test]
 async fn one_world_drops() {
-    let mut session = started(&["alpha/aria", "beta/bryn"]).await;
+    let mut session = Session::with_worlds(TWO_WORLDS).await;
     session.client.disconnect("alpha/aria").await.unwrap();
     session
         .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
