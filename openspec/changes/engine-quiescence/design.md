@@ -96,13 +96,13 @@ The two refusal tests in `tests/portal.rs` also call `idle` before they assert. 
 | A frame records no event and sends no line | The test `wait_adds_nothing`. |
 | A drop or a failed connect answers the frames that wait | The tests `wait_survives_drop`, `wait_survives_failed_mark_write` and `wait_survives_failed_connect`. Each asserts that the wait returns `Ok`. A dropped frame gives `Err`. |
 | Each list keeps more than one frame, in order | The test `two_waits_on_one_world`, which asserts `Ok` for both waits, and the unit test `waiting_frames_answer_in_order` in `session.rs`. |
-| The codes of telnet live only in `telnet.rs` | Task 4.1 searches `crates/mu-core/src` outside `telnet.rs` for the codes 251 to 255 in decimal, hex, suffixed and array forms, and for a `u8` constant of 6. |
+| The codes of telnet live only in `telnet.rs` | The test `source_of_mu_core_keeps_its_rules` in `crates/mu-core/tests/source_rules.rs`, in the pattern of `workspace_boundary.rs`. A search that runs once at task time passes a code that a later change adds, and this test runs with each `cargo nextest run`. It reads each Rust file of `src` and `tests` as tokens. It fails with the file and the line for an integer from 251 to 255 and for a `u8` of 6. It also fails for a byte or byte string with a code and for `u8::MAX`. An allow list names each accepted literal with its count and a reason. Its one entry is the byte `0xff` in a test of `secret.rs`. A bare 6 in an untyped array is not found. The tests of the same file try each form of a code. |
 | A mark that no frame waits for changes nothing | The test `stray_mark_is_ignored`. |
 | The progress of the server handlers starts at the last event of the journal | The test `wait_on_journal_with_events_at_start`. |
 | The fake game answers the mark in order and does not count it | The unit test `fake_game_answers_mark_in_order` in `fake.rs`. |
 | The line framer reads a mark in any split and keeps the lines | The unit tests and property tests of task 2.1. |
 | The line framer reads `IAC IAC` as one data byte, before it looks for a mark | The unit test `line_framer_reads_escaped_iac`. The property test `line_framer_lines_stay_in_the_bound` counts a mark only after it reads `IAC IAC` as data. |
-| No test of `mu-core` sleeps | Task 4.1 searches `crates/mu-core/tests` and `crates/mu-core/src` for the word `sleep` in any form, which also finds `sleep_until` and `sleep (`. `review-lint`, gate `time-based-test`, sees only the added lines of a diff. The sleeps in `mu-client` and `mu-cli` are outside this change. |
+| No test of `mu-core` sleeps | The same test, which fails with the file and the line for the name `sleep` or `sleep_until` in any file of `src` or `tests`. `review-lint`, gate `time-based-test`, sees only the added lines of a diff. The sleeps in `mu-client` and `mu-cli` are outside this change. |
 
 ## Risks / Trade-offs
 
