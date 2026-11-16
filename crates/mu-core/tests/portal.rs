@@ -101,7 +101,7 @@ async fn refused_line_break(text: &str) {
         portal.send(&id("alpha/aria"), text).await,
         Err(PortalError::LineBreak)
     );
-    settle().await;
+    idle(&portal).await;
     assert_eq!(portal.journal().last(), last);
     assert_eq!(game.lines(), [format!("connect aria {PW}")]);
 }
@@ -334,7 +334,7 @@ async fn stop_disconnects_every_world_and_refuses_connect() {
     let last = portal.journal().last();
     let refused = portal.connect(&id("alpha/aria")).await;
     assert!(matches!(refused, Err(PortalError::Stopped)), "{refused:?}");
-    settle().await;
+    idle(&portal).await;
     assert_eq!(
         portal.journal().last(),
         last,

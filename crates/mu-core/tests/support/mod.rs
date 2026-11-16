@@ -96,13 +96,6 @@ pub async fn wait_state(portal: &Portal, world: &WorldId, state: WorldState) {
         .unwrap();
 }
 
-/// Waits until every task is idle. It runs only on the paused clock, where the sleep takes no
-/// real time: `advance` panics on a clock that runs.
-pub async fn settle() {
-    tokio::time::advance(Duration::ZERO).await;
-    tokio::time::sleep(Duration::from_secs(5)).await;
-}
-
 /// Waits until the engine has no work left. Panics when the wait fails or passes `BOUND`.
 pub async fn idle(portal: &Portal) {
     try_idle(portal).await.expect("the engine wait failed");
