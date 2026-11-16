@@ -5,18 +5,11 @@ use std::process::{Command, Output};
 
 use proptest::prelude::*;
 
-use support::{stderr, stdout};
+use support::{mu, stderr, stdout};
 
 mod support;
 
 const VERSION_LINE: &str = concat!("mu ", env!("CARGO_PKG_VERSION"), "\n");
-
-fn mu(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_mu"))
-        .args(args)
-        .output()
-        .expect("the mu binary runs")
-}
 
 /// The verbs in the commands section of a help text, each with its description.
 fn listed_verbs(help: &str) -> BTreeMap<String, String> {
