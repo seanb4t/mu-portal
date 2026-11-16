@@ -287,6 +287,11 @@ mod tests {
         prop::sample::select(FAVORED.to_vec())
     }
 
+    /// A byte of a stream: LF, CR, any byte, and the favored bytes.
+    fn stream_byte() -> impl Strategy<Value = u8> {
+        prop_oneof![Just(b'\n'), Just(b'\r'), any::<u8>(), favored_byte()]
+    }
+
     fn line_of(bytes: &[u8]) -> Inbound {
         Inbound::Line(String::from_utf8_lossy(bytes).into_owned())
     }
@@ -431,10 +436,7 @@ mod tests {
         #[test]
         fn line_framer_ignores_read_splits(
             game in any::<bool>(),
-            bytes in prop::collection::vec(
-                prop_oneof![Just(b'\n'), Just(b'\r'), any::<u8>(), favored_byte()],
-                0..200,
-            ),
+            bytes in prop::collection::vec(stream_byte(), 0..200),
             cuts in prop::collection::vec(any::<prop::sample::Index>(), 0..10),
         ) {
             let whole = framer_for(game).feed(&bytes);
@@ -470,10 +472,7 @@ mod tests {
 
         #[test]
         fn line_framer_marks_are_transparent(
-            stream in prop::collection::vec(
-                prop_oneof![Just(b'\n'), Just(b'\r'), any::<u8>(), favored_byte()],
-                0..100,
-            ),
+            stream in prop::collection::vec(stream_byte(), 0..100),
             inserts in prop::collection::vec((any::<prop::sample::Index>(), any::<bool>()), 0..5),
             cuts in prop::collection::vec(any::<prop::sample::Index>(), 0..6),
         ) {
