@@ -1,6 +1,6 @@
 //! Rules of the workspace: members, dependency edges, license, lints and
 //! the shared dependency table. `ALLOWED_EDGES` is the single source of the
-//! edge rule.
+//! edge rule, and `ALLOWED_CRATES` of the third-party crates of each member.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -16,9 +16,94 @@ mod support;
 /// Each member and the members that it can depend on.
 const ALLOWED_EDGES: &[(&str, &[&str])] = &[
     ("mu-proto", &[]),
-    ("mu-core", &["mu-proto"]),
-    ("mu-tui", &["mu-proto"]),
-    ("mu-cli", &["mu-proto", "mu-core", "mu-tui"]),
+    ("mu-core", &[]),
+    ("mu-server", &["mu-core", "mu-proto"]),
+    ("mu-client", &["mu-proto"]),
+    ("mu-tui", &["mu-client", "mu-proto"]),
+    (
+        "mu-cli",
+        &["mu-core", "mu-server", "mu-tui", "mu-client", "mu-proto"],
+    ),
+];
+
+/// Each member and the third-party crates that it can use, in any dependency table.
+/// `mu-core` and `mu-tui` get no crate of the wire format.
+const ALLOWED_CRATES: &[(&str, &[&str])] = &[
+    ("mu-proto", &["buffa", "connectrpc", "connectrpc-build"]),
+    (
+        "mu-core",
+        &[
+            "futures",
+            "governor",
+            "proptest",
+            "secrecy",
+            "thiserror",
+            "tokio",
+            "tracing",
+        ],
+    ),
+    (
+        "mu-server",
+        &[
+            "axum",
+            "buffa",
+            "connectrpc",
+            "futures",
+            "tempfile",
+            "thiserror",
+            "tokio",
+            "tokio-stream",
+            "tracing",
+            "uuid",
+        ],
+    ),
+    (
+        "mu-client",
+        &[
+            "backon",
+            "buffa",
+            "connectrpc",
+            "futures",
+            "http",
+            "thiserror",
+            "tokio",
+        ],
+    ),
+    (
+        "mu-tui",
+        &[
+            "crossterm",
+            "futures",
+            "proptest",
+            "ratatui",
+            "ratatui-textarea",
+            "tokio",
+        ],
+    ),
+    (
+        "mu-cli",
+        &[
+            "buffa",
+            "cargo_metadata",
+            "clap",
+            "connectrpc",
+            "futures",
+            "portable-pty",
+            "proc-macro2",
+            "proptest",
+            "pulldown-cmark",
+            "rustix",
+            "serde-saphyr",
+            "serde_json",
+            "syn",
+            "tempfile",
+            "tokio",
+            "toml",
+            "tracing",
+            "tracing-subscriber",
+            "vt100",
+        ],
+    ),
 ];
 
 const LICENSE: &str = "Apache-2.0";
@@ -36,6 +121,10 @@ enum Violation {
         member: String,
     },
     ForbiddenEdge {
+        from: String,
+        to: String,
+    },
+    ForbiddenCrate {
         from: String,
         to: String,
     },
@@ -73,6 +162,13 @@ fn allowed(from: &str) -> Option<&'static [&'static str]> {
         .iter()
         .find(|(member, _)| *member == from)
         .map(|(_, to)| *to)
+}
+
+fn allowed_crates(from: &str) -> &'static [&'static str] {
+    ALLOWED_CRATES
+        .iter()
+        .find(|(member, _)| *member == from)
+        .map_or(&[], |(_, to)| *to)
 }
 
 /// Returns each rule that the workspace at `root` breaks.
@@ -129,6 +225,11 @@ fn violations(root: &Path) -> Vec<Violation> {
                         to,
                     });
                 }
+            } else if !allowed_crates(&member).contains(&to.as_str()) {
+                found.push(Violation::ForbiddenCrate {
+                    from: member.clone(),
+                    to,
+                });
             }
         }
 
@@ -433,19 +534,19 @@ fn git_tui_to_core_fails() {
 
 #[test]
 fn local_dependency_version_fails() {
-    let fixture = fixture().append("mu-tui", "anyhow = \"1\"\n");
+    let fixture = fixture().append("mu-tui", "tokio = \"1\"\n");
     assert_eq!(
         violations(fixture.root()),
-        not_from_workspace("mu-tui", "anyhow")
+        not_from_workspace("mu-tui", "tokio")
     );
 }
 
 #[test]
 fn local_dev_dependency_version_fails() {
-    let fixture = fixture().append("mu-tui", "\n[dev-dependencies]\nanyhow = \"1\"\n");
+    let fixture = fixture().append("mu-tui", "\n[dev-dependencies]\ntokio = \"1\"\n");
     assert_eq!(
         violations(fixture.root()),
-        not_from_workspace("mu-tui", "anyhow")
+        not_from_workspace("mu-tui", "tokio")
     );
 }
 
@@ -453,11 +554,11 @@ fn local_dev_dependency_version_fails() {
 fn local_target_dependency_version_fails() {
     let fixture = fixture().append(
         "mu-tui",
-        "\n[target.'cfg(unix)'.build-dependencies]\nanyhow = \"1\"\n",
+        "\n[target.'cfg(unix)'.build-dependencies]\ntokio = \"1\"\n",
     );
     assert_eq!(
         violations(fixture.root()),
-        not_from_workspace("mu-tui", "anyhow")
+        not_from_workspace("mu-tui", "tokio")
     );
 }
 
@@ -465,11 +566,11 @@ fn local_target_dependency_version_fails() {
 fn renamed_local_dependency_version_fails() {
     let fixture = fixture().append(
         "mu-tui",
-        "errors = { package = \"anyhow\", version = \"1\" }\n",
+        "runtime = { package = \"tokio\", version = \"1\" }\n",
     );
     assert_eq!(
         violations(fixture.root()),
-        not_from_workspace("mu-tui", "errors")
+        not_from_workspace("mu-tui", "runtime")
     );
 }
 
@@ -477,6 +578,52 @@ fn renamed_local_dependency_version_fails() {
 fn core_to_tui_fails() {
     let fixture = fixture().append("mu-core", "mu-tui = { path = \"../mu-tui\" }\n");
     assert_eq!(violations(fixture.root()), forbidden("mu-core", "mu-tui"));
+}
+
+fn forbidden_crate(from: &str, to: &str) -> Vec<Violation> {
+    vec![Violation::ForbiddenCrate {
+        from: from.to_owned(),
+        to: to.to_owned(),
+    }]
+}
+
+#[test]
+fn core_to_proto_fails() {
+    let fixture = fixture().append("mu-core", "mu-proto = { path = \"../mu-proto\" }\n");
+    assert_eq!(violations(fixture.root()), forbidden("mu-core", "mu-proto"));
+}
+
+#[test]
+fn core_to_buffa_fails() {
+    let fixture = fixture().append("mu-core", "buffa = { workspace = true }\n");
+    assert_eq!(
+        violations(fixture.root()),
+        forbidden_crate("mu-core", "buffa")
+    );
+}
+
+#[test]
+fn tui_to_connectrpc_fails() {
+    let fixture = fixture().append("mu-tui", "connectrpc = { workspace = true }\n");
+    assert_eq!(
+        violations(fixture.root()),
+        forbidden_crate("mu-tui", "connectrpc")
+    );
+}
+
+#[test]
+fn client_to_core_fails() {
+    let fixture = fixture().append("mu-client", "mu-core = { path = \"../mu-core\" }\n");
+    assert_eq!(
+        violations(fixture.root()),
+        forbidden("mu-client", "mu-core")
+    );
+}
+
+#[test]
+fn tui_to_server_fails() {
+    let fixture = fixture().append("mu-tui", "mu-server = { path = \"../mu-server\" }\n");
+    assert_eq!(violations(fixture.root()), forbidden("mu-tui", "mu-server"));
 }
 
 #[test]

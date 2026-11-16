@@ -51,7 +51,13 @@ model {
       description 'API schema and generated code.'
     }
     muCore = crate 'mu-core' {
-      description 'Server engine.'
+      description 'Server engine. It does not know the wire format.'
+    }
+    muServer = crate 'mu-server' {
+      description 'API server: the adapter between the engine and the schema.'
+    }
+    muClient = crate 'mu-client' {
+      description 'API client, with the resume of the event stream.'
     }
     muTui = crate 'mu-tui' {
       description 'Terminal client.'
@@ -60,10 +66,15 @@ model {
       description 'The mu binary and its verbs.'
     }
 
-    muCore -> muProto 'depends on'
+    muServer -> muCore 'depends on'
+    muServer -> muProto 'depends on'
+    muClient -> muProto 'depends on'
+    muTui -> muClient 'depends on'
     muTui -> muProto 'depends on'
-    muCli -> muProto 'depends on'
     muCli -> muCore 'depends on'
+    muCli -> muServer 'depends on'
     muCli -> muTui 'depends on'
+    muCli -> muClient 'depends on'
+    muCli -> muProto 'depends on'
   }
 }

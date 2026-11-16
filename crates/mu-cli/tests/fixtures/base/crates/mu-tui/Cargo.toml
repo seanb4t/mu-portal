@@ -11,4 +11,5 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+mu-client = { path = "../mu-client" }
 mu-proto = { path = "../mu-proto" }

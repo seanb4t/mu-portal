@@ -1,0 +1,25 @@
+[package]
+name = "mu-client"
+description = "API client of mu with the resume of the event stream"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+backon = { workspace = true }
+buffa = { workspace = true }
+connectrpc = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+mu-proto = { path = "../mu-proto" }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
