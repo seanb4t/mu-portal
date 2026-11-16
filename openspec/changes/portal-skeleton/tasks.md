@@ -105,7 +105,7 @@ Load the `rust-best-practices` skill before this group.
 
 ## 8. Documentation
 
-- [ ] 8.1 Remove the rule for a verb without an implementation from `docs/src/content/docs/contributing/openspec.md`. Change the text that says the verbs print `not implemented` in `README.md` and `docs/src/content/docs/index.md`. Add the page `docs/src/content/docs/guides/first-run.md`. It shows how to start a server with two fake worlds and attach a client. Add a Guides group for the directory `guides` to the sidebar in `docs/astro.config.mjs`. Make sure that `mise run docs:check` passes, that the page is in the sidebar of the built site, and that `rg -n 'not implemented' README.md docs/src` prints nothing.
+- [x] 8.1 Remove the rule for a verb without an implementation from `docs/src/content/docs/contributing/openspec.md`. Change the text that says the verbs print `not implemented` in `README.md` and `docs/src/content/docs/index.md`. Add the page `docs/src/content/docs/guides/first-run.md`. It shows how to start a server with two fake worlds and attach a client. Add a Guides group for the directory `guides` to the sidebar in `docs/astro.config.mjs`. Make sure that `mise run docs:check` passes, that the page is in the sidebar of the built site, and that `rg -n 'not implemented' README.md docs/src` prints nothing.
 
 ## 9. Review and checks
 
