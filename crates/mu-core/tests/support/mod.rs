@@ -2,12 +2,13 @@
 
 #![allow(dead_code, reason = "each test binary uses a part of this module")]
 
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
 use mu_core::{
-    Event, EventKind, FakeGame, FakeTransport, Handler, MemoryJournal, Portal, ResolvedWorld,
-    Secret, Seq, WorldId, WorldSetup, WorldState,
+    Event, EventKind, FakeGame, FakeTransport, Handler, MemoryJournal, Portal, PortalError,
+    ResolvedWorld, Secret, Seq, WorldId, WorldSetup, WorldState,
 };
 
 /// The bound of each wait. On the paused clock it passes only when nothing else can run.
@@ -100,6 +101,28 @@ pub async fn wait_state(portal: &Portal, world: &WorldId, state: WorldState) {
 pub async fn settle() {
     tokio::time::advance(Duration::ZERO).await;
     tokio::time::sleep(Duration::from_secs(5)).await;
+}
+
+/// Waits until the engine has no work left. Panics when the wait fails or passes `BOUND`.
+pub async fn idle(portal: &Portal) {
+    try_idle(portal).await.expect("the engine wait failed");
+}
+
+/// Like [`idle`], but gives the result of the wait.
+pub async fn try_idle(portal: &Portal) -> Result<(), PortalError> {
+    tokio::time::timeout(BOUND, portal.wait_idle())
+        .await
+        .unwrap_or_else(|_| {
+            panic!(
+                "the engine never went idle; the journal holds {:#?}",
+                events(portal)
+            )
+        })
+}
+
+/// Runs `scenario` as a task, in line with the tasks of the engine.
+pub async fn as_task<T: Send + 'static>(scenario: impl Future<Output = T> + Send + 'static) -> T {
+    tokio::spawn(scenario).await.unwrap()
 }
 
 /// The events of `kind`.

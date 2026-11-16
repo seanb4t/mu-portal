@@ -448,3 +448,60 @@ async fn handler_cannot_connect_after_stop() {
         [(id("alpha/aria"), WorldState::Disconnected)]
     );
 }
+
+/// A line framer that gives the end of a mark for the game line `mark`.
+struct MarkOnLine(LineFramer);
+
+impl Framer for MarkOnLine {
+    fn feed(&mut self, bytes: &[u8]) -> Vec<Inbound> {
+        self.0
+            .feed(bytes)
+            .into_iter()
+            .map(|inbound| match inbound {
+                Inbound::Line(line) if line == "mark" => Inbound::Mark,
+                other => other,
+            })
+            .collect()
+    }
+
+    fn encode(&self, line: &str) -> Vec<u8> {
+        self.0.encode(line)
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn stray_mark_is_ignored() {
+    let (aria, game) = world("alpha/aria", PW);
+    let aria = aria.with_framer(Arc::new(|| Box::new(MarkOnLine(LineFramer::new()))));
+    let portal = started(vec![aria]).await;
+    assert!(game.say("mark"));
+    assert!(game.say("after"));
+    wait_event(&portal, |event| {
+        event.kind == EventKind::Line && event.text == "after"
+    })
+    .await;
+    assert_eq!(portal.worlds(), [(id("alpha/aria"), WorldState::Connected)]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn wait_covers_server_handler_loop() {
+    let echo_custom = on(|event| {
+        if event.kind == EventKind::Custom {
+            vec![Command::Emit {
+                world: event.world.clone(),
+                text: event.text.clone(),
+            }]
+        } else {
+            Vec::new()
+        }
+    });
+    let (aria, _) = world("alpha/aria", PW);
+    let portal = portal(vec![aria], vec![echo_custom]);
+    as_task(async move {
+        portal.submit(emit("ping")).await.unwrap();
+        idle(&portal).await;
+        assert_eq!(of_kind(&portal, EventKind::Custom).len(), 1 + DEPTH);
+        assert_eq!(of_kind(&portal, EventKind::ScriptError).len(), 1);
+    })
+    .await;
+}
