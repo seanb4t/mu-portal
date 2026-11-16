@@ -56,10 +56,6 @@ enum Side {
     #[default]
     Client,
     /// Reads the client, and answers its marks.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "only LineFramer::game builds it")
-    )]
     Game,
 }
 
@@ -107,10 +103,6 @@ impl LineFramer {
     }
 
     /// A framer for the game side: it answers the mark of a client.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the fake game is the only user")
-    )]
     pub(crate) fn game() -> Self {
         Self {
             side: Side::Game,
