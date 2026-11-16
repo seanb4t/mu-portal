@@ -26,7 +26,7 @@ pub(crate) fn has_line_break(text: &str) -> bool {
 /// Makes the framer of each new connection of a world.
 pub type NewFramer = std::sync::Arc<dyn Fn() -> Box<dyn Framer> + Send + Sync>;
 
-/// The framing of one connection. #52 adds the telnet framer.
+/// The framing of one connection: how its bytes become lines, and its lines bytes.
 pub trait Framer: Send + 'static {
     /// Takes the bytes of one read and returns what they complete.
     fn feed(&mut self, bytes: &[u8]) -> Vec<Inbound>;

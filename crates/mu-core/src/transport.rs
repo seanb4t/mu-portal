@@ -1,4 +1,4 @@
-//! Transports: the byte stream of a world. #54 adds TCP and #58 TLS.
+//! Transports: the byte stream of a world.
 
 use std::io;
 

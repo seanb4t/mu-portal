@@ -27,9 +27,7 @@ impl Login {
     }
 }
 
-/// One world after the merge of its configuration layers.
-///
-/// #53 builds it from the layers. In this change the `--fake-world` flags build it.
+/// One world after the merge of its configuration layers. The `--fake-world` flags build it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedWorld {
     /// The id of the world.

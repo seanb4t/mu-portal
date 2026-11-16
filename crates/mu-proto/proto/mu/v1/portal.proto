@@ -38,7 +38,7 @@ message SubscribeResponse {
 message Hello {
   // A random id of each start of the server.
   string instance_id = 1;
-  // The last sequence number at the time of the call, or 0 for no event.
+  // The last sequence number in the journal when the stream starts, or 0 for no event.
   uint64 last_seq = 2;
 }
 

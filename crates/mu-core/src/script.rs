@@ -1,5 +1,5 @@
-//! Hooks and handlers: code that changes lines and reacts to events. #59 and #60 add the
-//! real ones. The binary has none in this change.
+//! Hooks and handlers: code that changes lines and reacts to events. The binary registers
+//! none.
 
 use crate::command::Command;
 use crate::event::Event;
