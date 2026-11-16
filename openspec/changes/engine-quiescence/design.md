@@ -63,7 +63,7 @@ The fake game writes the bytes of each `Inbound::Reply`, in the order of the fra
 
 ### Progress of the server handlers through a watch channel
 
-`Portal::start` makes a `watch::channel(journal.last())` next to the subscription of the server handlers. The subscription starts at `journal.last().next()`, so each event up to `journal.last()` is already handled from the view of the wait. `run_server_handlers` sends `event.seq` after `run_handlers` returns for each event. A wait for the server handlers is `wait_for(|seq| *seq >= mark)`. With no server handlers, there is no task and no channel, and the wait skips this step.
+`Portal::start` makes a `watch::channel(journal.last())` next to the subscription of the server handlers. The subscription starts at `journal.last().next()`, so each event up to `journal.last()` is already handled from the view of the wait. `run_server_handlers` stores `event.seq` with `send_replace` after `run_handlers` returns for each event. The method `send` drops the value when no receiver exists, and `send_replace` does not. A wait for the server handlers is `wait_for(|seq| *seq >= mark)`. With no server handlers, there is no task and no channel, and the wait skips this step.
 
 ### The order of a round
 
@@ -115,3 +115,28 @@ Task 1.1 fills this table: each fact about RFC 860, RFC 854, RFC 1143 and `tokio
 
 | Fact | Source |
 |---|---|
+| TIMING-MARK has the option code 6. | RFC 860, section 1. |
+| `IAC DO TIMING-MARK` asks the receiver to send `WILL TIMING-MARK` in the data stream at the appropriate place. | RFC 860, section 2. |
+| When the sender of the DO reads `WILL TIMING-MARK`, all data that the other side sent before the mark is delivered to it. The session reads one stream in order, so it has handled each earlier line when it reads the mark. | RFC 860, section 5, the paragraph that starts "When A receives the WILL TIMING-MARK". |
+| `IAC WONT TIMING-MARK` refuses to synchronize. The requester still learns that the other side received all earlier data, though not that it processed them. | RFC 860, sections 2 and 4. |
+| The default of the option is WONT. RFC 1143 asks each implementation to refuse an option it does not support. So only a silent game makes the wait hang. | RFC 860, section 3, and RFC 1143, section 2, the last rule. |
+| RFC 860 describes one answer for one `DO TIMING-MARK`. It has no rule against a second DO, so the design sends one DO for each frame. | RFC 860, sections 2 and 5. |
+| The command codes are IAC 255, WILL 251, WONT 252, DO 253 and DONT 254. | RFC 854, "TELNET COMMAND STRUCTURE", the table of commands. |
+| A negotiation is three bytes: IAC, the command and the option code. So a mark has three bytes, and a read can end after one or two of them. | RFC 854, "TELNET COMMAND STRUCTURE", first paragraph. |
+| The data byte 255 is sent as `IAC IAC`. No other code needs doubling. The design keeps each IAC sequence that is not a mark in the line as data, as the framer does today. | RFC 854, "TELNET COMMAND STRUCTURE", first paragraph. |
+| An implementation must not start a `DO` for an option that is already on. The state machine calls that case an error. | RFC 1143, section 2, and section 7, "If we decide to ask him to enable", state YES. |
+| On `WILL` for an option that is already on, the Q method ignores it and sends no answer. The same holds on our side with DO and WILL swapped. | RFC 1143, section 7, "Upon receipt of WILL", and the last paragraph of the example. |
+| So one `DO TIMING-MARK` for each frame does not fit the option table of the Q method. A game that treats the mark as an ordinary option ignores a second DO. Real games are left to the telnet-engine change. | RFC 1143, sections 2 and 7. |
+| Cargo.lock pins tokio 1.54.1. The workspace enables the features `sync`, `macros` and `time`, and `mu-core` adds `test-util` for tests. | `Cargo.lock`, `Cargo.toml` and `crates/mu-core/Cargo.toml`. The docs and the source of 1.54.1 were read. |
+| `watch::channel(init)` makes a sender and a receiver, and `init` is the current value. | tokio 1.54.1 docs, `sync::watch::channel`. |
+| `Sender::send_replace` always stores the value and returns the old one, even with no receiver. `Sender::send` stores nothing and returns an error when no receiver exists. | tokio 1.54.1 docs, `sync::watch::Sender::send` and `Sender::send_replace`. Edit: the design now names `send_replace`. |
+| `Receiver::wait_for` first calls the closure on the current value, even a value that is already seen. It returns at once when the closure gives true. | tokio 1.54.1 docs, `sync::watch::Receiver::wait_for`. |
+| A watch channel keeps only the latest value, so `wait_for` can skip updates. The test `seq >= mark` is safe because `seq` only grows. | tokio 1.54.1 docs, `sync::watch::Receiver::wait_for`. |
+| `wait_for` takes `&mut self`, so each wait needs its own receiver. It returns `Err(RecvError)` when the sender is gone and the closure is false for the last value. | tokio 1.54.1 docs, `sync::watch::Receiver::wait_for`, and `watch.rs` in the source. |
+| `select!` starts at a pseudo-random branch and takes the first branch that is ready. So with two ready branches, either one can run first. The mode `biased` polls from top to bottom. | tokio 1.54.1 docs, `select!`, the section "Fairness". |
+| `UnboundedReceiver::recv` is cancel safe. If the other branch of `select!` wins, no request is lost. | tokio 1.54.1 docs, `sync::mpsc::UnboundedReceiver::recv`, "Cancel safety". |
+| An unbounded `mpsc` channel is a queue, and `send` never waits. The source gives each message the next slot with an atomic counter, so the order of receive follows the order of send. | tokio 1.54.1 docs, `sync::mpsc` module, and `sync/mpsc/list.rs` in the source. |
+| Pausing the clock needs the `current_thread` runtime. Tasks are scheduled cooperatively and switch only at an `.await`. In `Session::record`, no `.await` sits between `append` and `run_handlers`. | tokio 1.54.1 docs, `time::pause` and the `tokio::task` module, "Tasks are scheduled cooperatively". Repository: `crates/mu-core/src/session.rs`, `record`. |
+| A paused clock advances to the next timer only when the runtime has no work to do. A chain of ready tasks never lets the `BOUND` timer fire. | tokio 1.54.1 docs, `time::pause`, the section "Auto-advance". |
+| `RuntimeMetrics::num_alive_tasks` counts a task from its spawn to its exit, so a waiting task counts. No stable call of `RuntimeMetrics` reports that every task waits. | tokio 1.54.1 docs, `runtime::RuntimeMetrics::num_alive_tasks`, and `runtime/metrics/runtime.rs` in the source. |
+| The runtime promises no order among ready tasks, and `yield_now` does not change that. So a count of `yield_now` calls proves nothing. | tokio 1.54.1 docs, `tokio::runtime`, "Detailed runtime behavior", the paragraph on scheduling order. |
