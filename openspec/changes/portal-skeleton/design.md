@@ -100,7 +100,7 @@ The transport returns an `AsyncRead + AsyncWrite` stream. The framer sits betwee
 
 Each event has `seq`, `world`, `kind`, `source`, `text` and `time`. The kinds are `connected`, `disconnected`, `line`, `prompt`, `message`, `input`, `echo`, `login`, `custom` and `script_error`. An `Echo` command records one event of the kind `echo`, and sends nothing to the game. The sources are `game`, `player`, `script`, `system` and `credential`.
 
-The live channel holds 1024 events. tokio rounds a broadcast capacity up to a power of two and panics at 0. So `MemoryJournal::new` refuses 0, a capacity that is not a power of two, and a capacity above 65536. A receiver that lags gets `RecvError::Lagged`. `Subscription::into_stream` in `mu-core` turns the backlog and the receiver into one stream that ends after a lag, and the adapter maps the lag to `resource_exhausted`. The receiver stays inside `mu-core`, so the adapter needs no `tokio-stream`. The edge is in the receiver, before the stream polls it. So a unit test in `mu-core` holds a receiver with the capacity 4 and reads nothing. After 4 events, its first read gives event 1. After 5 events, its first read gives the lag. The adapter test checks only that a lagged receiver ends the stream with `resource_exhausted`.
+The live channel holds 1024 events. tokio rounds a broadcast capacity up to a power of two and panics at 0. So `MemoryJournal::new` refuses 0, a capacity that is not a power of two, and a capacity above 65536. A receiver that lags gets `RecvError::Lagged`. `Subscription::into_stream` in `mu-core` turns the backlog and the receiver into one stream that ends after a lag, and the adapter maps the lag to `resource_exhausted`. The receiver stays inside `mu-core`, so the adapter needs no `tokio-stream`. The adapter puts a biased `select` with the stop signal over that stream, so the stop ends a stream only when no event is ready. The events recorded before the stop, for example the disconnect of each world, still go out. The edge is in the receiver, before the stream polls it. So a unit test in `mu-core` holds a receiver with the capacity 4 and reads nothing. After 4 events, its first read gives event 1. After 5 events, its first read gives the lag. The adapter test checks only that a lagged receiver ends the stream with `resource_exhausted`.
 
 Each server start makes a new random instance id with the `uuid` crate. The first message of each stream is `Hello { instance_id, last_seq }`, through a `oneof` in the stream message. A `from_seq` of 0 or 1 starts at the first event. A `from_seq` of `last_seq + 1` sends only the `Hello` and then the live events. A `from_seq` greater than `last_seq + 1` sends the `Hello` and then ends the stream with `out_of_range`. Thus a client that resumes after a restart always reads the new instance id first.
 
@@ -130,9 +130,11 @@ The schema is `crates/mu-proto/proto/mu/v1/portal.proto`, package `mu.v1`, servi
 | `Connect` | `world` | empty |
 | `Disconnect` | `world` | empty |
 
-If a hook gagged the line, the reply of `Send` holds no sequence number. The server refuses a text with CR or LF with `invalid_argument`. Such a text writes two lines to the game, and the second one skips the hooks.
+If a hook gagged the line, the reply of `Send` holds no sequence number. The server refuses a text with CR or LF with `invalid_argument`. Such a text writes two lines to the game, and the second one skips the hooks. The session also checks the text that the hooks return. If a hook put CR or LF in it, the session drops the line, records one `script_error` event and replies with no number. `has_line_break` in the framer module holds the rule for both checks and for the password check of step 1.
 
-The engine returns a `PortalError` enum. The adapter maps `UnknownWorld` to `not_found`, `NotConnected` to `failed_precondition`, `LineBreak` to `invalid_argument` and `PastEnd` to `out_of_range`. One function holds the map, with a test for each arm. `NotConnected` covers the states `connecting` and `disconnected`.
+If the write of a line to the game fails, the session moves the world to `disconnected` and records one `disconnected` event with the source system. It records no `input` event and returns `NotConnected`.
+
+The engine returns a `PortalError` enum. The adapter maps `UnknownWorld` to `not_found`, `NotConnected` to `failed_precondition`, `LineBreak` to `invalid_argument` and `PastEnd` to `out_of_range`. One function holds the map, with a test for each arm. `NotConnected` covers the states `connecting` and `disconnected`, and a failed write. `Stopped` maps to `unavailable`.
 
 The API carries binary protobuf only. `connectrpc-build` runs with `generate_json(false)`, and `connectrpc` has its default features off, so no crate needs `serde`. A JSON request gets `unimplemented`. `buf curl` still works, because it takes JSON on its command line and sends binary protobuf.
 
@@ -158,6 +160,8 @@ The flag `--socket` with the variable `MU_SOCKET` is one `SocketArgs` struct in 
 
 One function in `mu-cli`, `private_dir`, creates a missing socket directory with mode 0700 and refuses an existing one that is not private. It takes the expected owner as an argument, so a test can pass another user id. `rustix` reads the user id, and `std::os::unix::fs::MetadataExt` reads the owner and the mode. The verbs `mu server` and `mu client` both call it before they write a file there. `mu-server` does not call it. It gets the socket path after the check.
 
+`SocketArgs::private_socket` gives the path to both verbs. It makes a relative socket path absolute against the working directory with `std::path::absolute`, and then calls `private_dir` for its parent. So a bare name such as `s.sock` has a real directory, and the serving line and the server that the client starts both get the absolute path.
+
 An empty or relative `XDG_RUNTIME_DIR` counts as unset, so the default path is always absolute. An empty `MU_SOCKET` also counts as unset. The value parser of `SocketArgs` turns an empty value into none, so `clap` does not refuse it.
 
 ### The server process
@@ -170,7 +174,7 @@ An empty or relative `XDG_RUNTIME_DIR` counts as unset, so the default path is a
 4. If a file exists at the socket path, check its type. A socket file is stale, because the lock makes sure that no other server serves it, and the server removes it. Any other file is an error that names the path, and the server exits with status 1.
 5. Bind, set mode 0600, and write the line with the path to stderr.
 6. Build the `Portal` with the resolved worlds, and send `Connect` with the origin `System` to each world. Each session sends its login as soon as it connects.
-7. Serve. On SIGTERM or SIGINT from `tokio::signal::unix`, stop the sessions, end the streams, remove the socket file and exit with status 0.
+7. Serve. On SIGTERM or SIGINT from `tokio::signal::unix`, call `Portal::stop`, end the streams, remove the socket file and exit with status 0. `Portal::stop` is the twin of `connect_all`: it sends `Disconnect` with the origin `System` to each world. It first sets a flag that each session reads, so from then on each `Connect` fails with `Stopped`, from the API and from a handler alike. Thus no world comes back up while axum still accepts calls, and each open stream gets the disconnect events before it ends.
 
 A lock file decides ownership. The other choice was to probe the socket with a connect. A probe has a race: two servers can both find no answer and both bind. The lock closes that race, so two clients that start at the same time get one server.
 
@@ -189,7 +193,7 @@ A second client that starts at the same moment starts a second server. That serv
 
 `mu-tui` has an `App` with four methods: `on_event`, `on_reply`, `on_key` and `draw`. `on_key` returns an action, for example `Send { world, text }` or `Quit`, and does no I/O. The loop runs the call of each action. It gives the result to `on_reply`, for example a refused `Send` with its reason. A loop in `mu-tui` joins three inputs: the `EventStream` of `crossterm`, the stream of `PortalClient` and the replies of the calls. Thus a test drives `App` with `ClientEvent` values, replies and keys, with no terminal and no server. It reads the screen through the `TestBackend` of `ratatui`.
 
-The worlds are in the order of their game part and then their character part. A server that the client started has no world. Then the top row shows `no worlds`, and Enter shows a line with the prefix `-- ` that says that no world has the focus. Ctrl+N and Ctrl+P do nothing with no world. The focus is an index that the code checks, never a division by the count. A property test runs any sequence of keys and events. It makes sure that the focus is then on a world that exists, or on none with no world.
+The worlds are in the order of their game part and then their character part. A server that the client started has no world. Then the top row shows `no worlds`, and Enter shows a line with the prefix `-- ` that says that no world has the focus. Ctrl+N and Ctrl+P do nothing with no world. The focus is an index that the code checks, never a division by the count. Before `App` draws any text from the server, a world id, an event line or the reason of a refusal, it replaces a tab with a space and each `char` for which `char::is_control` holds (C0, DEL and C1) with U+FFFD. So a game cannot move the cursor or change the terminal. A property test runs any sequence of keys and events. It makes sure that the focus is then on a world that exists, or on none with no world.
 
 The input line is a `TextArea` of `ratatui-textarea` from crates.io, with one line. The input editor decision chose that crate. Its two patches matter for long poses with wide text, so they wait for #56. Every item under Not tested of that decision also waits for #56. That change replaces this input line with the pose editor.
 
@@ -202,14 +206,15 @@ The tests of the built binary run `mu client` in a pseudo-terminal with `portabl
 - `mu(args)`, moved from `cli.rs`, which runs the built binary to its exit, and `mu_with(args, env)`, which also sets and removes environment variables
 - `ServerProcess`, which starts `mu server` on a socket in a temporary directory and kills it on drop. Its builder takes the arguments and the environment
 - `Relay`, which forwards a Unix socket. It can cut the connection and hold, which refuses each new connection until the test releases it
-- `mu_on_pty(args, stream)`, which starts the binary with a pseudo-terminal on stdin only or on stdout only. `server.rs` and `client.rs` both use it
-- `wait_until(bound, check)`, the one bounded wait. It fails the test at the bound and prints what it saw.
+- `mu_on_pty(args, on, cwd)`, which starts the binary in `cwd` with a pseudo-terminal on stdin only or on stdout only, as `on` says. `server.rs` and `client.rs` both use it
+- `wait_until(bound, what, future)`, the one bounded wait. It fails the test at the bound with a message that names `what`. The screen waits of `PtyClient` go through it, and their `what` prints the screen
+- `Session::with_worlds`, `ServerBuilder::fake_worlds`, `TWO_WORLDS` and `mode`, which more than one test file uses
 
 ### Tests and the clock
 
 The engine tests use `#[tokio::test(start_paused = true)]`, so the backoff and the timeouts do not wait on the wall clock. A test of the built binary waits through `wait_until` on an event, for example a line on stderr or an event on the stream. Nothing sleeps.
 
-Six rules get property tests with `proptest`, which the workspace already has:
+Seven rules get property tests with `proptest`, which the workspace already has:
 
 - `WorldId` parses each id that it displays, and refuses each string outside the rule.
 - A journal of any length, cut at any point, gives each number once to a reader that resumes from the cut.
@@ -217,6 +222,7 @@ Six rules get property tests with `proptest`, which the workspace already has:
 - No masked text holds its password, for any text and any password.
 - `LineFramer` gives the same lines for any split of the same bytes into reads.
 - Any sequence of keys and events leaves the focus of `App` on a world that exists.
+- No control character of a line from the server reaches the screen: a tab shows as a space and each other control character as U+FFFD.
 
 ### Third-party crates
 

@@ -92,7 +92,7 @@ Only one server SHALL serve a socket at a time. A second server for a socket tha
 - **AND** `<dir>/s.sock` still holds the text `keep`
 
 ### Requirement: The server stops on a signal
-If the server gets SIGTERM or SIGINT, it SHALL close its connections to the worlds first, so each open event stream gets the disconnected event of each world. Then it SHALL end each open event stream. Then it SHALL remove its socket file and exit with status 0.
+If the server gets SIGTERM or SIGINT, it SHALL close its connections to the worlds first, so each open event stream gets the disconnected event of each world. From then on it SHALL refuse each connect, from the API and from a handler. Then it SHALL end each open event stream. Then it SHALL remove its socket file and exit with status 0.
 
 #### Scenario: SIGTERM stops the server
 - **GIVEN** a server serves `<dir>/s.sock`, and a client reads its event stream
@@ -105,6 +105,12 @@ If the server gets SIGTERM or SIGINT, it SHALL close its connections to the worl
 - **GIVEN** a server with the fake worlds `alpha/aria` and `beta/bryn`, and a client reads its event stream
 - **WHEN** the server process gets SIGTERM
 - **THEN** the stream holds a disconnected event for `alpha/aria` and one for `beta/bryn` before it ends
+
+#### Scenario: No world connects during the stop
+- **GIVEN** a server with the fake world `alpha/aria` and a handler that connects its world on each disconnect
+- **WHEN** the server stops
+- **THEN** `alpha/aria` stays disconnected, and the journal holds one connected event for it
+- **AND** a `Connect` call for `alpha/aria` fails, and the journal gets no event
 
 #### Scenario: SIGINT stops the server
 - **GIVEN** a server serves `<dir>/s.sock`

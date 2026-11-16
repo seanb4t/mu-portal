@@ -26,6 +26,7 @@ Load the `rust-best-practices` skill before this group.
   - `failed_write_records_disconnect`, with a test transport whose writes fail
   - `two_characters_on_one_game`, `send_to_unknown_world`, `send_to_disconnected_world`, `send_to_connecting_world`, `empty_send_reaches_game`, `send_with_lf_is_refused`, `send_with_cr_is_refused`, `one_world_drops` and `world_connects_again`
   - `connect_from_api_has_source_system`
+  - `stop_disconnects_every_world_and_refuses_connect`, for `Portal::stop`
   - `login_event_is_redacted`: the fake game gets the password, and no event holds it
   - `typed_password_is_masked`: a player line and its echo hold `****` in the journal
   - `password_with_star_masks_whole_text`: the password `a*` and the text `aa*` give `****`
@@ -33,7 +34,8 @@ Load the `rust-best-practices` skill before this group.
 - [x] 3.8 Add the `Hook` and `Handler` traits, the depth of each event, the depth limit and the rate limit. Add the server-handler task, which reads the journal. Add these tests, each with a test hook or handler:
   - `hook_gags_game_line`, `hook_replaces_player_line` and `hook_gags_player_line`
   - `hook_line_break_is_dropped`, once with LF and once with CR in the text of the hook
-  - `world_uses_its_framer`, with a test framer that `WorldSetup::with_framer` gives
+  - `world_uses_its_framer`, with a test framer that `WorldSetup::with_framer` gives, which also checks that a reconnect gets a new framer
+  - `handler_cannot_connect_after_stop`, with a handler that connects its world on each disconnect
   - `handler_answers_line`, which checks that the event of the send has the source script
   - `handler_loop_stops_at_depth_limit`, which counts exactly 8 custom events after the first one
   - `handler_on_every_event_stops`, which counts exactly one script error and no event after it
@@ -49,7 +51,7 @@ Load the `rust-best-practices` skill before this group.
 ## 4. The server adapter
 
 - [x] 4.1 In `mu-server`, add the conversion between engine types and protobuf types, and the map from `PortalError` to codes. Add the test `portal_errors_map_to_codes`, with one case for each arm. Make sure that `cargo nextest run -p mu-server --locked` passes.
-- [x] 4.2 Add the `PortalService` implementation over `Portal`, with the `Hello` message first on each stream. Turn the subscription into a stream with `Subscription::into_stream`, and end a lagging stream with `resource_exhausted`. Add the in-process test `lagged_stream_ends_with_resource_exhausted`, with a second subscriber that reads every event in order. The edge of 4 and 5 events is in the tests of task 3.2. Make sure that `cargo nextest run -p mu-server --locked` passes.
+- [x] 4.2 Add the `PortalService` implementation over `Portal`, with the `Hello` message first on each stream. Turn the subscription into a stream with `Subscription::into_stream`, put a biased stop over it, and end a lagging stream with `resource_exhausted`. Add `stop_sends_the_ready_events_first`. Add the in-process test `lagged_stream_ends_with_resource_exhausted`, with a second subscriber that reads every event in order. The edge of 4 and 5 events is in the tests of task 3.2. Make sure that `cargo nextest run -p mu-server --locked` passes.
 - [x] 4.3 Add the steps of the process that `mu-server` owns, in the order of the design: the lock and the check of the file at the socket path. Then bind, write the line on stderr, build the `Portal`, connect each world, and stop on a signal. Make sure that `cargo nextest run -p mu-server --locked` passes. The tests of the built binary are in group 6.
 
 ## 5. The client library
