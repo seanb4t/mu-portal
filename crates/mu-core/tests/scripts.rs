@@ -145,8 +145,9 @@ async fn handler_answers_line() {
     );
 }
 
-#[tokio::test(start_paused = true)]
-async fn handler_loop_stops_at_depth_limit() {
+/// A portal whose server handler emits each custom event again, so that a loop runs to the
+/// depth limit.
+fn echo_custom_loop() -> Portal {
     let echo_custom = on(|event| {
         if event.kind == EventKind::Custom {
             vec![Command::Emit {
@@ -158,7 +159,12 @@ async fn handler_loop_stops_at_depth_limit() {
         }
     });
     let (aria, _) = world("alpha/aria", PW);
-    let portal = portal(vec![aria], vec![echo_custom]);
+    portal(vec![aria], vec![echo_custom])
+}
+
+#[tokio::test(start_paused = true)]
+async fn handler_loop_stops_at_depth_limit() {
+    let portal = echo_custom_loop();
     portal.submit(emit("ping")).await.unwrap();
     let error = wait_event(&portal, |event| event.kind == EventKind::ScriptError).await;
     idle(&portal).await;
@@ -472,18 +478,7 @@ async fn stray_mark_is_ignored() {
 
 #[tokio::test(start_paused = true)]
 async fn wait_covers_server_handler_loop() {
-    let echo_custom = on(|event| {
-        if event.kind == EventKind::Custom {
-            vec![Command::Emit {
-                world: event.world.clone(),
-                text: event.text.clone(),
-            }]
-        } else {
-            Vec::new()
-        }
-    });
-    let (aria, _) = world("alpha/aria", PW);
-    let portal = portal(vec![aria], vec![echo_custom]);
+    let portal = echo_custom_loop();
     as_task(async move {
         portal.submit(emit("ping")).await.unwrap();
         idle(&portal).await;
