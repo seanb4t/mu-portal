@@ -53,7 +53,7 @@ Rejected: a channel to the fake game outside the stream. It cannot order the mar
 
 A new crate-private module, `crates/mu-core/src/telnet.rs`, holds the codes in the layout of the spike `spikes/telnet-engine/src/lib.rs`. The command codes IAC (255), DO (253), WILL (251) and WONT (252) are at the top of the module, as in the spike. The option code TIMING-MARK (6) is in the inner module `opt`, where the spike keeps its option codes. The spike has no TIMING-MARK, so the telnet-engine change adds nothing for it. It grows `telnet.rs` into the engine, and that module stays the one home of the codes. The line framer and the fake game both use them.
 
-`LineFramer` does not parse telnet yet. It learns the mark only. A sequence that starts with IAC and is not a mark stays in the line as data, as today. The framer holds up to two bytes of a mark at the end of a read until the next read shows whether a mark follows. Bytes that it gives back to the line go through the same cut as any other byte, so no line is longer than `MAX_LINE`. When a mark comes after a full line, the framer gives the line first. So a cut at `MAX_LINE` never holds a byte of the mark.
+`LineFramer` does not parse telnet yet. It learns the mark and the escape `IAC IAC` only. It reads `IAC IAC` as one data byte 255, as RFC 854 says, and it looks for a mark only after that. So `IAC IAC WILL TIMING-MARK` gives the data bytes 255, 251 and 6 and no mark, on both sides. The escaped byte reaches the line as one byte 255, not as two. Any other sequence that starts with IAC and is not a mark stays in the line as data, as today. The framer holds up to two bytes of a mark, or one IAC, at the end of a read until the next read shows what follows. Bytes that it gives back to the line go through the same cut as any other byte, so no line is longer than `MAX_LINE`. When a mark comes after a full line, the framer gives the line first. So a cut at `MAX_LINE` never holds a byte of the mark.
 
 ### The fake game reads through the line framer
 
@@ -101,6 +101,7 @@ The two refusal tests in `tests/portal.rs` also call `idle` before they assert. 
 | The progress of the server handlers starts at the last event of the journal | The test `wait_on_journal_with_events_at_start`. |
 | The fake game answers the mark in order and does not count it | The unit test `fake_game_answers_mark_in_order` in `fake.rs`. |
 | The line framer reads a mark in any split and keeps the lines | The unit tests and property tests of task 2.1. |
+| The line framer reads `IAC IAC` as one data byte, before it looks for a mark | The unit test `line_framer_reads_escaped_iac`. The property test `line_framer_lines_stay_in_the_bound` counts a mark only after it reads `IAC IAC` as data. |
 | No test of `mu-core` sleeps | Task 4.1 searches `crates/mu-core/tests` and `crates/mu-core/src` for the word `sleep` in any form, which also finds `sleep_until` and `sleep (`. `review-lint`, gate `time-based-test`, sees only the added lines of a diff. The sleeps in `mu-client` and `mu-cli` are outside this change. |
 
 ## Risks / Trade-offs
@@ -123,7 +124,7 @@ Task 1.1 fills this table: each fact about RFC 860, RFC 854, RFC 1143 and `tokio
 | RFC 860 describes one answer for one `DO TIMING-MARK`. It has no rule against a second DO, so the design sends one DO for each frame. | RFC 860, sections 2 and 5. |
 | The command codes are IAC 255, WILL 251, WONT 252, DO 253 and DONT 254. | RFC 854, "TELNET COMMAND STRUCTURE", the table of commands. |
 | A negotiation is three bytes: IAC, the command and the option code. So a mark has three bytes, and a read can end after one or two of them. | RFC 854, "TELNET COMMAND STRUCTURE", first paragraph. |
-| The data byte 255 is sent as `IAC IAC`. No other code needs doubling. The design keeps each IAC sequence that is not a mark in the line as data, as the framer does today. | RFC 854, "TELNET COMMAND STRUCTURE", first paragraph. |
+| The data byte 255 is sent as `IAC IAC`. No other code needs doubling. The framer reads `IAC IAC` as one data byte 255, so an escaped 255 never starts a mark. It keeps each other IAC sequence that is not a mark in the line as data, as it does today. | RFC 854, "TELNET COMMAND STRUCTURE", first paragraph. |
 | An implementation must not start a `DO` for an option that is already on. The state machine calls that case an error. | RFC 1143, section 2, and section 7, "If we decide to ask him to enable", state YES. |
 | On `WILL` for an option that is already on, the Q method ignores it and sends no answer. The same holds on our side with DO and WILL swapped. | RFC 1143, section 7, "Upon receipt of WILL", and the last paragraph of the example. |
 | So one `DO TIMING-MARK` for each frame does not fit the option table of the Q method. A game that treats the mark as an ordinary option ignores a second DO. Real games are left to the telnet-engine change. | RFC 1143, sections 2 and 7. |

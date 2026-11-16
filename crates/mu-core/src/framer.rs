@@ -85,9 +85,9 @@ enum Held {
     Verb(u8),
 }
 
-/// Splits on LF and drops each CR. It reads the mark of the game and gives it as
-/// [`Inbound::Mark`], and it gives no prompt or other message. Any other IAC sequence stays in
-/// the line.
+/// Splits on LF and drops each CR. It reads `IAC IAC` as one data byte 255. It reads the mark of
+/// the game and gives it as [`Inbound::Mark`], and it gives no prompt or other message. Any
+/// other IAC sequence stays in the line.
 #[derive(Debug, Default)]
 pub struct LineFramer {
     partial: Vec<u8>,
@@ -114,6 +114,10 @@ impl LineFramer {
         match (self.held, byte) {
             (Held::Nothing, IAC) => self.held = Held::Iac,
             (Held::Nothing, byte) => self.push(byte, out),
+            (Held::Iac, IAC) => {
+                self.held = Held::Nothing;
+                self.push(IAC, out);
+            }
             (Held::Iac, verb) if self.side.reads_verb(verb) => self.held = Held::Verb(verb),
             (Held::Verb(_), opt::TIMING_MARK) => {
                 self.held = Held::Nothing;
@@ -255,6 +259,30 @@ mod tests {
         }
     }
 
+    /// The marks and the data bytes of `bytes`, with `IAC IAC` read as one data byte.
+    fn count_marks(bytes: &[u8], game: bool) -> (usize, usize) {
+        let verbs: &[u8] = if game { &[DO] } else { &[WILL, WONT] };
+        let (mut marks, mut data, mut rest) = (0, 0, bytes);
+        while !rest.is_empty() {
+            let used = match rest {
+                [IAC, verb, TM, ..] if verbs.contains(verb) => {
+                    marks += 1;
+                    3
+                }
+                [IAC, IAC, ..] => {
+                    data += 1;
+                    2
+                }
+                _ => {
+                    data += 1;
+                    1
+                }
+            };
+            rest = &rest[used..];
+        }
+        (marks, data)
+    }
+
     fn favored_byte() -> impl Strategy<Value = u8> {
         prop::sample::select(FAVORED.to_vec())
     }
@@ -290,6 +318,47 @@ mod tests {
                 feed_split(framer, &bytes, &points),
                 [line_of(&bytes[..bytes.len() - 1])]
             );
+        }
+    }
+
+    #[test]
+    fn line_framer_reads_escaped_iac() {
+        let answer = Inbound::Reply(vec![IAC, WILL, TM]);
+        // Each case: the framer, the bytes read, the data bytes of the line, what the framer answers.
+        let cases = [
+            (LineFramer::new(), vec![IAC, IAC], vec![IAC], vec![]),
+            (LineFramer::game(), vec![IAC, IAC], vec![IAC], vec![]),
+            (
+                LineFramer::new(),
+                vec![IAC, IAC, WILL, TM],
+                vec![IAC, WILL, TM],
+                vec![],
+            ),
+            (
+                LineFramer::game(),
+                vec![IAC, IAC, DO, TM],
+                vec![IAC, DO, TM],
+                vec![],
+            ),
+            (
+                LineFramer::new(),
+                vec![IAC, IAC, IAC, WONT, TM],
+                vec![IAC],
+                vec![Inbound::Mark],
+            ),
+            (
+                LineFramer::game(),
+                vec![IAC, IAC, IAC, DO, TM],
+                vec![IAC],
+                vec![answer],
+            ),
+        ];
+        for (framer, sequence, data, answers) in cases {
+            let bytes = [b"a".as_slice(), &sequence, b"b\n"].concat();
+            let line = [b"a".as_slice(), &data, b"b"].concat();
+            let expected = [answers, vec![line_of(&line)]].concat();
+            let points: Vec<usize> = (1..bytes.len()).collect();
+            assert_eq!(feed_split(framer, &bytes, &points), expected);
         }
     }
 
@@ -366,11 +435,7 @@ mod tests {
             let prefix = MAX_LINE - 4;
             let bytes = [vec![b'a'; prefix], tail, vec![b'\n']].concat();
             let points: Vec<usize> = cuts.iter().map(|cut| cut.index(bytes.len() + 1)).collect();
-            let verbs: &[u8] = if game { &[DO] } else { &[WILL, WONT] };
-            let answers = bytes
-                .windows(3)
-                .filter(|window| window[0] == IAC && verbs.contains(&window[1]) && window[2] == TM)
-                .count();
+            let (answers, data) = count_marks(&bytes[..bytes.len() - 1], game);
             let mut seen = 0;
             let mut chars = 0;
             for item in feed_split(framer_for(game), &bytes, &points) {
@@ -384,7 +449,7 @@ mod tests {
                 }
             }
             prop_assert_eq!(seen, answers);
-            prop_assert_eq!(chars, bytes.len() - 1 - 3 * answers);
+            prop_assert_eq!(chars, data);
         }
 
         #[test]
