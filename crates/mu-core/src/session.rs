@@ -50,6 +50,11 @@ pub(crate) enum Request {
     Frame(oneshot::Sender<Reply>),
 }
 
+/// Answers `frame` with no result. The caller can give up on the answer.
+fn answer(frame: oneshot::Sender<Reply>) {
+    let _ = frame.send(Ok(None));
+}
+
 /// The frames that wait for a mark, in the order of their requests.
 #[derive(Default)]
 struct WaitingFrames(VecDeque<oneshot::Sender<Reply>>);
@@ -66,8 +71,7 @@ impl WaitingFrames {
     /// Answers the oldest frame. With no frame, it does nothing.
     fn answer_first(&mut self) {
         if let Some(frame) = self.0.pop_front() {
-            // The caller can give up on the answer.
-            let _ = frame.send(Ok(None));
+            answer(frame);
         }
     }
 
@@ -312,10 +316,7 @@ impl Session {
 
     async fn on_frame(&mut self, frame: oneshot::Sender<Reply>) {
         match &mut self.conn {
-            Conn::Down => {
-                // The caller can give up on the answer.
-                let _ = frame.send(Ok(None));
-            }
+            Conn::Down => answer(frame),
             Conn::Connecting { frames, .. } => frames.push(frame),
             Conn::Up { frames, .. } => {
                 frames.push(frame);
