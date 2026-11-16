@@ -26,7 +26,7 @@ Load the `rust-best-practices` skill before this group.
 
 - [x] 3.1 In `session.rs`, add the control frame request beside the command request. A frame on a world that is down gets its answer at once. A frame during a connect waits in the list of `Conn::Connecting`. A frame on a world that is up goes into the list of `Conn::Up`, and then the session writes its mark. Each `Inbound::Mark` answers the first frame in that list, and a mark with an empty list changes nothing. Put the list in a small type over a `VecDeque`, with the unit test `waiting_frames_answer_in_order`. `Session::down` answers each frame in the list of the state that it leaves. Make sure that `cargo nextest run -p mu-core --locked` passes.
 - [x] 3.2 In `portal.rs`, make `Portal::start` create `watch::channel(journal.last())` next to the subscription of the server handlers. Make `run_server_handlers` send each `event.seq` after it handles the event. Add one private method that sends a `Request` to a world and waits for its answer, and make `Portal::submit` use it. Make `to_every_world` take a function from `WorldId` to the kind of request and return the result of each world. Use it for `stop`, `connect_all` and the frames of a round. Add `Portal::wait_idle`, the engine wait until no work is left, with the round of the design. It returns `Err(PortalError::Stopped)` when a frame gets no answer. Its documentation says that only tests call it. Make sure that `cargo nextest run -p mu-core --locked` passes.
-- [ ] 3.3 In `tests/support/mod.rs`, add `idle(&portal)`, which runs `wait_idle` under `timeout(BOUND, ...)`. In `tests/portal.rs`, add these tests:
+- [x] 3.3 In `tests/support/mod.rs`, add `idle(&portal)`, which runs `wait_idle` under `timeout(BOUND, ...)`. In `tests/portal.rs`, add these tests:
   - `wait_covers_game_echo`, for the scenario "A wait covers the echo of the game"
   - `wait_adds_nothing`, for the scenario "A wait adds nothing"
   - `wait_on_world_that_is_down`, for the scenario "A wait on a world that is down"
@@ -42,8 +42,8 @@ Load the `rust-best-practices` skill before this group.
 
 ## 4. No sleep in a test
 
-- [ ] 4.1 Delete `settle` from `tests/support/mod.rs`. Change each call in `tests/portal.rs` and `tests/scripts.rs` to `idle`, also in `refused_line_break` and in `stop_disconnects_every_world_and_refuses_connect`. Make sure that `rg -n 'settle' crates/` and `rg -n -i 'sleep' crates/mu-core/tests crates/mu-core/src` find nothing. Make sure that `rg -n 'const [A-Z_]+: u8 = (6|25[0-5]);' crates/mu-core/src` finds only lines of `telnet.rs`, and that `cargo nextest run -p mu-core --locked` passes.
-- [ ] 4.2 Run `mise run check` and `uv run ~/.agents/plugins/sb/skills/review-lint/scripts/review_lint.py --base origin/main`. Make sure that both pass, and that the gate `time-based-test` reports no finding.
+- [x] 4.1 Delete `settle` from `tests/support/mod.rs`. Change each call in `tests/portal.rs` and `tests/scripts.rs` to `idle`, also in `refused_line_break` and in `stop_disconnects_every_world_and_refuses_connect`. Make sure that `rg -n 'settle' crates/` and `rg -n -i 'sleep' crates/mu-core/tests crates/mu-core/src` find nothing. Make sure that `rg -n 'const [A-Z_]+: u8 = (6|25[0-5]);' crates/mu-core/src` finds only lines of `telnet.rs`, and that `cargo nextest run -p mu-core --locked` passes.
+- [x] 4.2 Run `mise run check` and `uv run ~/.agents/plugins/sb/skills/review-lint/scripts/review_lint.py --base origin/main`. Make sure that both pass, and that the gate `time-based-test` reports no finding.
 
 ## 5. Review
 
