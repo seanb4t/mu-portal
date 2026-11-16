@@ -10,7 +10,7 @@
 
 ## 2. The schema
 
-- [ ] 2.1 Write `crates/mu-proto/proto/mu/v1/portal.proto` with the calls and messages of the design. `Subscribe` streams a `oneof` of `Hello` and `Event`. The other calls are `ListWorlds`, `Send` with an optional sequence number in its reply, `Connect` and `Disconnect`. Enums hold the kind, the source and the state. Generate the code in `build.rs` with `connectrpc-build`. Make sure that `mise exec -- cargo build -p mu-proto --locked` passes, with the `protoc` of `mise.toml`.
+- [x] 2.1 Write `crates/mu-proto/proto/mu/v1/portal.proto` with the calls and messages of the design. `Subscribe` streams a `oneof` of `Hello` and `Event`. The other calls are `ListWorlds`, `Send` with an optional sequence number in its reply, `Connect` and `Disconnect`. Enums hold the kind, the source and the state. Generate the code in `build.rs` with `connectrpc-build`. Make sure that `mise exec -- cargo build -p mu-proto --locked` passes, with the `protoc` of `mise.toml`.
 
 ## 3. The engine
 

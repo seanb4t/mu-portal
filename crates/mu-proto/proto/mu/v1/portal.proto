@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+package mu.v1;
+
+// The API of the mu server: commands to worlds and one event stream for
+// all worlds.
+service PortalService {
+  // Streams a Hello, the recorded events from `from_seq`, then each new event.
+  rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
+
+  // Returns each world with its state.
+  rpc ListWorlds(ListWorldsRequest) returns (ListWorldsResponse);
+
+  // Sends one line to one world.
+  rpc Send(SendRequest) returns (SendResponse);
+
+  // Connects one world.
+  rpc Connect(ConnectRequest) returns (ConnectResponse);
+
+  // Disconnects one world.
+  rpc Disconnect(DisconnectRequest) returns (DisconnectResponse);
+}
+
+// `from_seq` is the first sequence number that the client wants. 0 and 1
+// both mean the start of the journal.
+message SubscribeRequest {
+  uint64 from_seq = 1;
+}
+
+message SubscribeResponse {
+  oneof message {
+    Hello hello = 1;
+    Event event = 2;
+  }
+}
+
+// The first message of each stream.
+message Hello {
+  // A random id of each start of the server.
+  string instance_id = 1;
+  // The last sequence number at the time of the call, or 0 for no event.
+  uint64 last_seq = 2;
+}
+
+message Event {
+  uint64 seq = 1;
+  string world = 2;
+  EventKind kind = 3;
+  Source source = 4;
+  string text = 5;
+  // Milliseconds since the Unix epoch.
+  int64 time_ms = 6;
+}
+
+enum EventKind {
+  EVENT_KIND_UNSPECIFIED = 0;
+  EVENT_KIND_CONNECTED = 1;
+  EVENT_KIND_DISCONNECTED = 2;
+  EVENT_KIND_LINE = 3;
+  EVENT_KIND_PROMPT = 4;
+  EVENT_KIND_MESSAGE = 5;
+  EVENT_KIND_INPUT = 6;
+  EVENT_KIND_ECHO = 7;
+  EVENT_KIND_LOGIN = 8;
+  EVENT_KIND_CUSTOM = 9;
+  EVENT_KIND_SCRIPT_ERROR = 10;
+}
+
+enum Source {
+  SOURCE_UNSPECIFIED = 0;
+  SOURCE_GAME = 1;
+  SOURCE_PLAYER = 2;
+  SOURCE_SCRIPT = 3;
+  SOURCE_SYSTEM = 4;
+  SOURCE_CREDENTIAL = 5;
+}
+
+enum WorldState {
+  WORLD_STATE_UNSPECIFIED = 0;
+  WORLD_STATE_CONNECTING = 1;
+  WORLD_STATE_CONNECTED = 2;
+  WORLD_STATE_DISCONNECTED = 3;
+}
+
+message ListWorldsRequest {}
+
+message ListWorldsResponse {
+  repeated World worlds = 1;
+}
+
+message World {
+  string id = 1;
+  WorldState state = 2;
+}
+
+message SendRequest {
+  string world = 1;
+  string text = 2;
+}
+
+// No `seq` means that a hook gagged the line.
+message SendResponse {
+  optional uint64 seq = 1;
+}
+
+message ConnectRequest {
+  string world = 1;
+}
+
+message ConnectResponse {}
+
+message DisconnectRequest {
+  string world = 1;
+}
+
+message DisconnectResponse {}

@@ -134,6 +134,8 @@ If a hook gagged the line, the reply of `Send` holds no sequence number. The ser
 
 The engine returns a `PortalError` enum. The adapter maps `UnknownWorld` to `not_found`, `NotConnected` to `failed_precondition`, `LineBreak` to `invalid_argument` and `PastEnd` to `out_of_range`. One function holds the map, with a test for each arm. `NotConnected` covers the states `connecting` and `disconnected`.
 
+The API carries binary protobuf only. `connectrpc-build` runs with `generate_json(false)`, and `connectrpc` has its default features off, so no crate needs `serde`. A JSON request gets `unimplemented`. `buf curl` still works, because it takes JSON on its command line and sends binary protobuf.
+
 The server serves the axum router of `connectrpc` on a tokio `UnixListener`, as the spike did. The client uses `Http2Connection::lazy_unix` from `connectrpc`. A task reads the current documentation of `connectrpc` before the work depends on these two facts.
 
 ### The client and its resume
