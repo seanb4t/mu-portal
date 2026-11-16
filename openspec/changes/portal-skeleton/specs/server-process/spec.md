@@ -7,11 +7,12 @@ Defines the life of the `mu` server process: where it listens, how one server ow
 ## ADDED Requirements
 
 ### Requirement: The server listens on a Unix socket
-`mu server` SHALL serve the API on one Unix socket. The flag `--socket <path>` and the environment variable `MU_SOCKET` name the socket, and the flag wins. Without either, the socket is `server.sock` in the directory `mu` under `XDG_RUNTIME_DIR`. If `XDG_RUNTIME_DIR` is not set, the directory is `mu-<uid>` under the temporary directory of the user. The server SHALL write one line to stderr that names the socket path.
+`mu server` SHALL serve the API on one Unix socket. The flag `--socket <path>` and the environment variable `MU_SOCKET` name the socket, and the flag wins. Without either, the socket is `server.sock` in the directory `mu` under `XDG_RUNTIME_DIR`. If `XDG_RUNTIME_DIR` is not set, empty or relative, the directory is `mu-<uid>` under the temporary directory of the user. The server SHALL write one line to stderr that names the socket path.
 
 #### Scenario: The server serves the API on the named socket
 - **WHEN** the user runs `mu server --socket <dir>/s.sock`
 - **THEN** stderr gets a line that contains `<dir>/s.sock`
+- **AND** stderr does not contain `not implemented`
 - **AND** an API call to list the worlds on `<dir>/s.sock` succeeds
 
 #### Scenario: The environment names the socket
@@ -30,6 +31,12 @@ Defines the life of the `mu` server process: where it listens, how one server ow
 - **WHEN** the user runs `mu server`
 - **THEN** an API call on `<dir>/mu/server.sock` succeeds
 
+#### Scenario: An empty runtime directory
+- **GIVEN** `XDG_RUNTIME_DIR` is set to an empty value, and the working directory is `<dir>`
+- **WHEN** the user runs `mu server`
+- **THEN** stderr gets a line that names an absolute socket path under the temporary directory of the user
+- **AND** no directory `<dir>/mu` exists
+
 ### Requirement: Only the owner can reach the socket
 The server and the client SHALL create a missing socket directory with mode 0700. The server SHALL create the socket with mode 0600. The server SHALL refuse a socket directory that another user owns, or whose mode gives access to the group or to others. For such a directory, the server SHALL write an error to stderr that names the directory. The exit status SHALL be 1.
 
@@ -38,6 +45,11 @@ The server and the client SHALL create a missing socket directory with mode 0700
 - **WHEN** the user runs `mu server --socket <dir>/run/s.sock`
 - **THEN** the mode of `<dir>/run` is 0700
 - **AND** the mode of `<dir>/run/s.sock` is 0600
+
+#### Scenario: A directory of another user is refused
+- **GIVEN** the directory `<dir>/run` has mode 0700, and the check expects an owner other than its owner
+- **WHEN** the private directory check runs for `<dir>/run`
+- **THEN** the check fails with an error that names `<dir>/run`
 
 #### Scenario: An open directory is refused
 - **GIVEN** the directory `<dir>/run` exists with mode 0755
@@ -107,6 +119,7 @@ If stdin or stdout of `mu client` is not a terminal, the client SHALL start no s
 - **GIVEN** `<dir>` is an empty directory, and no server serves `<dir>/s.sock`
 - **WHEN** the user runs `mu client --socket <dir>/s.sock` with stdout as a pipe
 - **THEN** stderr contains the text `terminal`
+- **AND** stderr does not contain `not implemented`
 - **AND** the exit status is 1
 - **AND** the directory `<dir>` is still empty
 

@@ -17,9 +17,9 @@ The client SHALL use the alternate screen. The top row SHALL list the worlds in 
 - **AND** the screen shows no line of `beta/bryn`
 
 #### Scenario: The order of the worlds
-- **GIVEN** a server with the fake worlds `alpha-2/bea` and `alpha/aria`
+- **GIVEN** a server with the fake worlds `alpha-2/cy`, `alpha/bea` and `alpha/aria`
 - **WHEN** the user starts `mu client`
-- **THEN** the top row shows `[alpha/aria]` before `alpha-2/bea`
+- **THEN** the top row shows `[alpha/aria]`, then `alpha/bea`, then `alpha-2/cy`
 
 #### Scenario: No worlds
 - **GIVEN** a server with no world
@@ -76,6 +76,17 @@ Ctrl+N SHALL move the focus to the next world and Ctrl+P to the one before. Both
 - **WHEN** the user presses Ctrl+P
 - **THEN** the top row shows the last world in square brackets
 
+#### Scenario: Next world wraps at the end
+- **GIVEN** the world in focus is `beta/bryn`, the last world
+- **WHEN** the user presses Ctrl+N
+- **THEN** the top row shows `[alpha/aria]`
+
+#### Scenario: Keys with no world
+- **GIVEN** a server with no world
+- **WHEN** the user presses Ctrl+N and then Ctrl+P
+- **THEN** the top row shows `no worlds`
+- **AND** the client is still running
+
 #### Scenario: One world keeps the focus
 - **GIVEN** a server with the one fake world `alpha/aria`
 - **WHEN** the user presses Ctrl+N and then Ctrl+P
@@ -91,12 +102,17 @@ Ctrl+N SHALL move the focus to the next world and Ctrl+P to the one before. Both
 If the event stream ends, the client SHALL show `disconnected` in the top row and resume the stream with no gap. After the resume, the top row SHALL no longer show `disconnected`.
 
 #### Scenario: A lost stream
-- **GIVEN** the client shows `alpha/aria`
-- **WHEN** the stream of the client is lost
+- **GIVEN** the client shows `alpha/aria`, and reads the stream through a relay
+- **WHEN** the relay cuts the connection
 - **THEN** the top row shows `disconnected`
-- **WHEN** the stream resumes, and `alpha/aria` gets the game line `after the cut` once
-- **THEN** the screen shows `after the cut` on exactly one row
+- **WHEN** the relay passes again, and a test sends `after the cut` to `alpha/aria` through the API
+- **THEN** the screen shows `You say, "after the cut"` on exactly one row
 - **AND** the top row no longer shows `disconnected`
+
+#### Scenario: The client resumes before a new event
+- **GIVEN** the top row shows `disconnected`
+- **WHEN** the stream resumes on the same server, and no world gets a new event
+- **THEN** the top row no longer shows `disconnected`
 
 ### Requirement: Ctrl+C quits the client only
 If the user presses Ctrl+C, the client SHALL leave the alternate screen, restore the terminal and exit with status 0. The server and its worlds SHALL keep running.

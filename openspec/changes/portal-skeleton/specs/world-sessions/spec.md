@@ -15,7 +15,7 @@ Each world SHALL have an id of the form `<game>/<character>`. Each id SHALL have
 - **AND** the exit status is 2
 
 #### Scenario: Ids outside the rule
-- **WHEN** the engine parses `-alpha/aria`, `alpha`, `alpha/b/c`, `alpha/`, `1alpha/aria` and `alpha/arïa`
+- **WHEN** the engine parses `-alpha/aria`, `alpha`, `alpha/b/c`, `alpha/`, `1alpha/aria`, `alpha/arïa`, `Alpha/aria` and `alpha/a_b`
 - **THEN** each parse fails
 
 #### Scenario: Ids inside the rule
@@ -73,6 +73,17 @@ The API call `Send` SHALL send one line to the world it names, and no other worl
 - **GIVEN** the world `alpha/aria` is in the state `connecting`
 - **WHEN** a client sends `hello` to `alpha/aria`
 - **THEN** the call fails with the code `failed_precondition`
+- **AND** the server records no event
+
+#### Scenario: An empty line
+- **GIVEN** the world `alpha/aria` is connected
+- **WHEN** a client sends an empty text to `alpha/aria`
+- **THEN** the fake world gets an empty line
+- **AND** the stream holds a player event with an empty text for `alpha/aria`
+
+#### Scenario: A carriage return in the text
+- **WHEN** a client sends `one` followed by CR and `two` to `alpha/aria`
+- **THEN** the call fails with the code `invalid_argument`
 - **AND** the server records no event
 
 #### Scenario: A line break in the text
@@ -138,3 +149,12 @@ The engine SHALL run each handler of a world on each event of that world after t
 - **WHEN** one custom event starts the loop
 - **THEN** the journal holds exactly one event of the kind script error
 - **AND** the journal records no event after that script error
+
+### Requirement: A loop through the game has a bound
+A line from the game SHALL start at the depth 0. Each world SHALL accept at most 20 commands from handlers in one second. The engine SHALL drop each command over the limit. It SHALL record at most one script error for each second in which it dropped a command.
+
+#### Scenario: A handler that answers its own echo
+- **GIVEN** a world with a test handler that sends `again` for each game event, and a fake world that echoes each line
+- **WHEN** a client sends `start`
+- **THEN** the game gets exactly 20 lines `again` in the first second
+- **AND** the journal holds exactly one script error for that second
