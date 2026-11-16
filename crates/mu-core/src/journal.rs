@@ -245,6 +245,7 @@ mod tests {
         assert_eq!(ready(&mut subscription), [4, 5, 6]);
         journal.append(new_event("alpha/aria", "7"));
         assert_eq!(ready(&mut subscription), [7]);
+        assert_eq!(subscription.last(), Seq(6));
     }
 
     #[test]
