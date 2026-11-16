@@ -39,4 +39,6 @@ None.
 - `crates/mu-core/src/portal.rs`: the wait method, and the progress of the server handlers.
 - `crates/mu-core/src/fake.rs`: the fake game answers the mark.
 - `crates/mu-core/tests/support/mod.rs`, `portal.rs`, `scripts.rs`: `settle` goes.
-- No new dependency.
+- `crates/mu-cli/tests/source_rules.rs`: a new test that reads each Rust file of `mu-core` as tokens. It finds a code of telnet outside `telnet.rs` and a sleep. It sits beside `workspace_boundary.rs` and uses `support::files_under`.
+- `crates/mu-cli/Cargo.toml`: the dev-dependency `proc-macro2` gets the feature `span-locations`, which gives the line of a hit. The test also uses `syn`, which `mu-cli` already has.
+- No new crate, and `mu-core` gets no new dependency.
