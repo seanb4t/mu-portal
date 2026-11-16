@@ -201,7 +201,7 @@ The tests of the built binary run `mu client` in a pseudo-terminal with `portabl
 
 ### Test helpers
 
-`crates/mu-cli/tests/support/` holds every helper that more than one test file uses. `mod.rs` holds `mu`, `mu_with` and `mode`, and `process.rs` holds the rest:
+`crates/mu-cli/tests/support/` holds every helper that more than one test file uses. `mod.rs` holds `mu`, `mu_with`, `stdout`, `stderr` and `mode`, and `process.rs` holds the rest:
 
 - `mu(args)`, moved from `cli.rs`, which runs the built binary to its exit, and `mu_with(args, env)`, which also sets and removes environment variables
 - `ServerProcess`, which starts `mu server` on a socket in a temporary directory and kills it on drop. Its builder takes the arguments and the environment
