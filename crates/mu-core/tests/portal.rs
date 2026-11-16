@@ -8,9 +8,8 @@ use std::task::{Context, Poll};
 
 use futures::future::BoxFuture;
 use mu_core::{
-    ByteStream, Command, ConnectGate, Event, EventKind, FakeTransport, Handler, Journal,
-    MemoryJournal, NewEvent, Portal, PortalError, ResolvedWorld, Source, Transport, WorldId,
-    WorldSetup, WorldState,
+    ByteStream, ConnectGate, EventKind, FakeTransport, Journal, MemoryJournal, NewEvent, Portal,
+    PortalError, ResolvedWorld, Source, Transport, WorldId, WorldSetup, WorldState,
 };
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
@@ -287,8 +286,8 @@ impl Transport for BrokenTransport {
     }
 }
 
-#[tokio::test(start_paused = true)]
-async fn failed_write_records_disconnect() {
+/// A started portal whose only world is up on [`BrokenTransport`], with no login.
+async fn broken_world() -> (Portal, WorldId) {
     let aria = id("alpha/aria");
     let world = ResolvedWorld {
         id: aria.clone(),
@@ -298,6 +297,12 @@ async fn failed_write_records_disconnect() {
     let portal = portal(vec![setup], Vec::new());
     portal.connect_all().await;
     wait_state(&portal, &aria, WorldState::Connected).await;
+    (portal, aria)
+}
+
+#[tokio::test(start_paused = true)]
+async fn failed_write_records_disconnect() {
+    let (portal, aria) = broken_world().await;
     assert_eq!(
         portal.send(&aria, "hello").await,
         Err(PortalError::NotConnected(aria.clone()))
@@ -441,15 +446,7 @@ async fn wait_survives_failed_connect() {
 
 #[tokio::test(start_paused = true)]
 async fn wait_survives_failed_mark_write() {
-    let aria = id("alpha/aria");
-    let world = ResolvedWorld {
-        id: aria.clone(),
-        login: None,
-    };
-    let setup = WorldSetup::new(world, None, Arc::new(BrokenTransport));
-    let portal = portal(vec![setup], Vec::new());
-    portal.connect_all().await;
-    wait_state(&portal, &aria, WorldState::Connected).await;
+    let (portal, aria) = broken_world().await;
     assert_eq!(try_idle(&portal).await, Ok(()));
     let gone = of_kind(&portal, EventKind::Disconnected);
     assert_eq!(gone.len(), 1);
@@ -473,15 +470,6 @@ async fn two_waits_on_one_world() {
     assert!(has_text(&held, "Welcome, aria."));
 }
 
-/// A server handler that answers no event.
-struct Quiet;
-
-impl Handler for Quiet {
-    fn on_event(&self, _: &Event) -> Vec<Command> {
-        Vec::new()
-    }
-}
-
 #[tokio::test(start_paused = true)]
 async fn wait_on_journal_with_events_at_start() {
     let journal = Arc::new(MemoryJournal::new(mu_core::journal::DEFAULT_CAPACITY).unwrap());
@@ -493,6 +481,6 @@ async fn wait_on_journal_with_events_at_start() {
         depth: 0,
     });
     let (aria, _) = world("alpha/aria", PW);
-    let portal = Portal::start(journal, vec![aria], vec![Arc::new(Quiet)]);
+    let portal = Portal::start(journal, vec![aria], vec![on(|_| Vec::new())]);
     assert_eq!(try_idle(&portal).await, Ok(()));
 }

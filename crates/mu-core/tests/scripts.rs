@@ -48,19 +48,6 @@ impl Hook for PlayerHook {
     }
 }
 
-/// A handler from a closure.
-struct On<F>(F);
-
-impl<F: Fn(&Event) -> Vec<Command> + Send + Sync + 'static> Handler for On<F> {
-    fn on_event(&self, event: &Event) -> Vec<Command> {
-        (self.0)(event)
-    }
-}
-
-fn on(f: impl Fn(&Event) -> Vec<Command> + Send + Sync + 'static) -> Arc<dyn Handler> {
-    Arc::new(On(f))
-}
-
 fn send(world: &str, text: &str) -> Command {
     Command::Send {
         world: id(world),

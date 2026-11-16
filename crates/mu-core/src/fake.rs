@@ -203,12 +203,7 @@ mod tests {
     use crate::telnet::{DO, IAC, WILL, opt};
 
     async fn open() -> (FakeGame, tokio::io::Lines<BufReader<Box<dyn ByteStream>>>) {
-        let transport = FakeTransport::new("aria", "s3cret-pw");
-        let game = transport.game();
-        let stream = transport
-            .connect(&"alpha/aria".parse().unwrap())
-            .await
-            .unwrap();
+        let (game, stream) = open_raw().await;
         (game, BufReader::new(stream).lines())
     }
 
@@ -255,37 +250,35 @@ mod tests {
 
     #[tokio::test]
     async fn fake_game_answers_mark_in_order() {
-        let input = [LOGIN, b"one\r\n", &MARK, b"two\r\n"].concat();
-        let expected = [
-            WELCOME,
-            b"You say, \"one\"\r\n",
-            &MARK_ANSWER,
-            b"You say, \"two\"\r\n",
-        ]
-        .concat();
-        for cut in 0..=input.len() {
-            let (game, got) = write_cut(&input, cut, &expected).await;
-            assert_eq!(got, expected, "cut at {cut}");
-            assert_eq!(
-                game.wait_for_lines(3).await,
-                ["connect aria s3cret-pw", "one", "two"],
-                "cut at {cut}"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn fake_game_answers_mark_before_login() {
-        let input = [&MARK[..], LOGIN].concat();
-        let expected = [&MARK_ANSWER[..], WELCOME].concat();
-        for cut in 0..=input.len() {
-            let (game, got) = write_cut(&input, cut, &expected).await;
-            assert_eq!(got, expected, "cut at {cut}");
-            assert_eq!(
-                game.wait_for_lines(1).await,
-                ["connect aria s3cret-pw"],
-                "cut at {cut}"
-            );
+        // Each case: the bytes written, the bytes read back, the lines the game got.
+        let cases: [(Vec<u8>, Vec<u8>, Vec<&str>); 2] = [
+            (
+                [LOGIN, b"one\r\n", &MARK, b"two\r\n"].concat(),
+                [
+                    WELCOME,
+                    b"You say, \"one\"\r\n",
+                    &MARK_ANSWER,
+                    b"You say, \"two\"\r\n",
+                ]
+                .concat(),
+                vec!["connect aria s3cret-pw", "one", "two"],
+            ),
+            (
+                [&MARK[..], LOGIN].concat(),
+                [&MARK_ANSWER[..], WELCOME].concat(),
+                vec!["connect aria s3cret-pw"],
+            ),
+        ];
+        for (input, expected, lines) in cases {
+            for cut in 0..=input.len() {
+                let (game, got) = write_cut(&input, cut, &expected).await;
+                assert_eq!(got, expected, "cut at {cut}");
+                assert_eq!(
+                    game.wait_for_lines(lines.len()).await,
+                    lines,
+                    "cut at {cut}"
+                );
+            }
         }
     }
 

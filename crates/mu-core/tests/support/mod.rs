@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use mu_core::{
-    Event, EventKind, FakeGame, FakeTransport, Handler, MemoryJournal, Portal, PortalError,
-    ResolvedWorld, Secret, Seq, WorldId, WorldSetup, WorldState,
+    Command, Event, EventKind, FakeGame, FakeTransport, Handler, MemoryJournal, Portal,
+    PortalError, ResolvedWorld, Secret, Seq, WorldId, WorldSetup, WorldState,
 };
 
 /// The bound of each wait. On the paused clock it passes only when nothing else can run.
@@ -124,4 +124,17 @@ pub fn of_kind(portal: &Portal, kind: EventKind) -> Vec<Event> {
         .into_iter()
         .filter(|event| event.kind == kind)
         .collect()
+}
+
+/// A handler from a closure.
+struct On<F>(F);
+
+impl<F: Fn(&Event) -> Vec<Command> + Send + Sync + 'static> Handler for On<F> {
+    fn on_event(&self, event: &Event) -> Vec<Command> {
+        (self.0)(event)
+    }
+}
+
+pub fn on(f: impl Fn(&Event) -> Vec<Command> + Send + Sync + 'static) -> Arc<dyn Handler> {
+    Arc::new(On(f))
 }
