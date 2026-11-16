@@ -1,6 +1,6 @@
 //! The task of one world: its transport, framer, hooks and handlers.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::io;
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -38,9 +38,44 @@ pub enum WorldState {
 /// The reply to a command: the sequence number of its event, or none.
 pub(crate) type Reply = Result<Option<Seq>, PortalError>;
 
-pub(crate) struct Request {
-    pub(crate) envelope: Envelope,
-    pub(crate) reply: Option<oneshot::Sender<Reply>>,
+/// What a world queue holds.
+pub(crate) enum Request {
+    /// A command, with the reply for its caller if it has one.
+    Command {
+        envelope: Envelope,
+        reply: Option<oneshot::Sender<Reply>>,
+    },
+    /// A control frame. The session answers it after each request before it and, if the
+    /// world is up, after the game answers a mark. It is not a command and no event records it.
+    Frame(oneshot::Sender<()>),
+}
+
+/// The frames that wait for a mark, in the order of their requests.
+#[derive(Default)]
+struct WaitingFrames(VecDeque<oneshot::Sender<()>>);
+
+impl WaitingFrames {
+    fn push(&mut self, frame: oneshot::Sender<()>) {
+        self.0.push_back(frame);
+    }
+
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Answers the oldest frame. With no frame, it does nothing.
+    fn answer_first(&mut self) {
+        if let Some(frame) = self.0.pop_front() {
+            // The caller can give up on the answer.
+            let _ = frame.send(());
+        }
+    }
+
+    fn answer_all(&mut self) {
+        while !self.0.is_empty() {
+            self.answer_first();
+        }
+    }
 }
 
 /// The command channel of each world.
@@ -59,7 +94,7 @@ pub(crate) fn route(router: &Router, commands: Vec<Command>, depth: u8) {
             depth: depth.saturating_add(1),
         };
         // A closed channel means the server stops.
-        let _ = sender.send(Request {
+        let _ = sender.send(Request::Command {
             envelope,
             reply: None,
         });
@@ -120,11 +155,13 @@ enum Conn {
     Connecting {
         connect: BoxFuture<'static, io::Result<Box<dyn ByteStream>>>,
         depth: u8,
+        frames: WaitingFrames,
     },
     Up {
         read: ReadHalf<Box<dyn ByteStream>>,
         write: WriteHalf<Box<dyn ByteStream>>,
         framer: Box<dyn Framer>,
+        frames: WaitingFrames,
     },
 }
 
@@ -157,13 +194,14 @@ pub(crate) async fn run(parts: SessionParts) {
         };
         match step {
             Step::Request(None) => return,
-            Step::Request(Some(request)) => {
-                let reply = session.handle(request.envelope).await;
-                if let Some(sender) = request.reply {
+            Step::Request(Some(Request::Command { envelope, reply })) => {
+                let result = session.handle(envelope).await;
+                if let Some(sender) = reply {
                     // The caller can give up on the reply.
-                    let _ = sender.send(reply);
+                    let _ = sender.send(result);
                 }
             }
+            Step::Request(Some(Request::Frame(frame))) => session.on_frame(frame).await,
             Step::Connected(result, depth) => session.on_connect(result, depth).await,
             Step::Read(Ok(0) | Err(_)) => {
                 session.down("the game closed the connection", 0);
@@ -176,7 +214,7 @@ pub(crate) async fn run(parts: SessionParts) {
 /// The next step of the connection: a finished connect or a read. Pending with no connection.
 async fn progress(conn: &mut Conn, buffer: &mut [u8]) -> Step {
     match conn {
-        Conn::Connecting { connect, depth } => Step::Connected(connect.await, *depth),
+        Conn::Connecting { connect, depth, .. } => Step::Connected(connect.await, *depth),
         Conn::Up { read, .. } => Step::Read(read.read(buffer).await),
         Conn::Down => std::future::pending().await,
     }
@@ -228,22 +266,63 @@ impl Session {
         self.parts.state.send_replace(state);
     }
 
+    /// Ends the connection or the connect, records it, and answers each waiting frame.
     fn down(&mut self, reason: &str, depth: u8) {
-        self.conn = Conn::Down;
+        let mut frames = match std::mem::replace(&mut self.conn, Conn::Down) {
+            Conn::Connecting { frames, .. } | Conn::Up { frames, .. } => frames,
+            Conn::Down => WaitingFrames::default(),
+        };
         self.set_state(WorldState::Disconnected);
         self.record(EventKind::Disconnected, Origin::System, reason, depth);
+        frames.answer_all();
     }
 
-    async fn write_line(&mut self, line: &str, depth: u8) -> Result<(), PortalError> {
-        let Conn::Up { write, framer, .. } = &mut self.conn else {
+    async fn write_bytes(&mut self, bytes: &[u8], depth: u8) -> Result<(), PortalError> {
+        let Conn::Up { write, .. } = &mut self.conn else {
             return Err(PortalError::NotConnected(self.world().clone()));
         };
-        let bytes = framer.encode(line);
-        if write.write_all(&bytes).await.is_err() || write.flush().await.is_err() {
+        if write.write_all(bytes).await.is_err() || write.flush().await.is_err() {
             self.down("the connection failed", depth);
             return Err(PortalError::NotConnected(self.world().clone()));
         }
         Ok(())
+    }
+
+    async fn write_line(&mut self, line: &str, depth: u8) -> Result<(), PortalError> {
+        let Conn::Up { framer, .. } = &self.conn else {
+            return Err(PortalError::NotConnected(self.world().clone()));
+        };
+        let bytes = framer.encode(line);
+        self.write_bytes(&bytes, depth).await
+    }
+
+    /// Writes the mark for the oldest waiting frame. A framer with no mark bytes answers
+    /// that frame at once.
+    async fn write_mark(&mut self, depth: u8) -> Result<(), PortalError> {
+        let Conn::Up { framer, frames, .. } = &mut self.conn else {
+            return Err(PortalError::NotConnected(self.world().clone()));
+        };
+        let bytes = framer.mark();
+        if bytes.is_empty() {
+            frames.answer_first();
+            return Ok(());
+        }
+        self.write_bytes(&bytes, depth).await
+    }
+
+    async fn on_frame(&mut self, frame: oneshot::Sender<()>) {
+        match &mut self.conn {
+            Conn::Down => {
+                // The caller can give up on the answer.
+                let _ = frame.send(());
+            }
+            Conn::Connecting { frames, .. } => frames.push(frame),
+            Conn::Up { frames, .. } => {
+                frames.push(frame);
+                // A failed write already answered the frame through `down`.
+                let _ = self.write_mark(0).await;
+            }
+        }
     }
 
     async fn login(&mut self, depth: u8) -> Reply {
@@ -266,15 +345,26 @@ impl Session {
         match result {
             Ok(stream) => {
                 let (read, write) = tokio::io::split(stream);
+                let frames = match &mut self.conn {
+                    Conn::Connecting { frames, .. } => std::mem::take(frames),
+                    Conn::Down | Conn::Up { .. } => WaitingFrames::default(),
+                };
+                let waiting = frames.len();
                 self.conn = Conn::Up {
                     read,
                     write,
                     framer: (self.parts.framer)(),
+                    frames,
                 };
                 self.set_state(WorldState::Connected);
                 self.record(EventKind::Connected, Origin::System, "connected", depth);
-                // A failed login line already recorded the disconnect.
+                // A failed write already recorded the disconnect and answered each frame.
                 let _ = self.login(depth).await;
+                for _ in 0..waiting {
+                    if self.write_mark(depth).await.is_err() {
+                        break;
+                    }
+                }
             }
             Err(error) => self.down(&format!("the connect failed: {error}"), depth),
         }
@@ -302,7 +392,11 @@ impl Session {
                         return;
                     }
                 }
-                Inbound::Mark => {}
+                Inbound::Mark => {
+                    if let Conn::Up { frames, .. } = &mut self.conn {
+                        frames.answer_first();
+                    }
+                }
                 Inbound::Message { name, body } => {
                     let text = format!("{name} {}", String::from_utf8_lossy(&body));
                     self.record(EventKind::Message, Origin::System, &text, 0);
@@ -357,7 +451,11 @@ impl Session {
                 }
                 if matches!(self.conn, Conn::Down) {
                     let connect = self.parts.transport.connect(self.world());
-                    self.conn = Conn::Connecting { connect, depth };
+                    self.conn = Conn::Connecting {
+                        connect,
+                        depth,
+                        frames: WaitingFrames::default(),
+                    };
                     self.set_state(WorldState::Connecting);
                 }
                 Ok(None)
@@ -377,5 +475,33 @@ impl Session {
                 self.record(EventKind::Custom, origin, &text, depth).seq,
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::sync::oneshot::error::TryRecvError;
+
+    use super::*;
+
+    #[test]
+    fn waiting_frames_answer_in_order() {
+        let mut frames = WaitingFrames::default();
+        let mut answers: Vec<_> = (0..3)
+            .map(|_| {
+                let (frame, answer) = oneshot::channel();
+                frames.push(frame);
+                answer
+            })
+            .collect();
+        frames.answer_first();
+        assert_eq!(answers[0].try_recv(), Ok(()));
+        assert_eq!(answers[1].try_recv(), Err(TryRecvError::Empty));
+        assert_eq!(answers[2].try_recv(), Err(TryRecvError::Empty));
+        frames.answer_all();
+        assert_eq!(answers[1].try_recv(), Ok(()));
+        assert_eq!(answers[2].try_recv(), Ok(()));
+        // With no frame left, an answer changes nothing.
+        frames.answer_first();
     }
 }
