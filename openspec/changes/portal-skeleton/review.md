@@ -55,6 +55,7 @@ None.
 | id | severity | disposition | reason | ticket |
 |---|---|---|---|---|
 | R-87 | should-fix | accepted | The controller checked pull requests 42 and 50 with gh api in this session: each has 0 review threads and one approving review with 0 findings, so the design claim holds. |  |
+| R-156 | should-fix | accepted | Round 7 runs the test-honesty lens again on the files that changed since round 6, so its gap of round 6 closes there. |  |
 
 ## Rounds
 
@@ -435,7 +436,7 @@ None.
 | R-153 | 6 | 6 | should-fix | in-change | ["path","crates/mu-cli/tests/server.rs",215] | fixed | 20c39535c0b2387d3c18eb9b7788d75368a0b669 |  | sigterm_sends_the_disconnects_first builds the alpha/aria and beta/bryn server with the same two fake_world calls as two_worlds() in client.rs. The support module already has ServerBuilder::fake_worlds for this, and the design puts a helper of two test files there. |
 | R-154 | 6 | 6 | should-fix | in-change | ["path","crates/mu-cli/tests/client.rs",34] | fixed | 20c39535c0b2387d3c18eb9b7788d75368a0b669 |  | client_starts_a_server reads the permission bits of the directory inline. That is the same expression as the mode helper of server.rs, so two test files each hold the check that the design's helper rule puts in the support module. |
 | R-155 | 6 | 6 | should-fix | in-change | ["path","crates/mu-core/src/session.rs",269] | fixed | f78fa166041873b49af60169e767552f96629701 |  | Each new connection of a world gets a new framer from the world's NewFramer. world_uses_its_framer checks only the first connection. A reconnect that falls back to LineFramer, or that keeps the framer and its partial line, passes every test. |
-| R-156 | 6 | 6 | should-fix | in-change | ["artifact",["review","lens-status"],"test-honesty partial"] |  |  |  | lens test-honesty reported partial, gaps: 1 |
+| R-156 | 6 | 6 | should-fix | in-change | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: none; reason: Round 7 runs the test-honesty lens again on the files that changed since round 6, so its gap of round 6 closes there. |  | lens test-honesty reported partial, gaps: 1 |
 
 ## Reviewed files
 
