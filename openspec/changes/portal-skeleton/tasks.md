@@ -51,7 +51,7 @@ Load the `rust-best-practices` skill before this group.
 
 ## 5. The client library
 
-- [ ] 5.1 In `mu-client`, add `PortalClient` with the calls and `events()`. It resumes after an error and after a clean end of the stream, with the backoff of `backon` and no limit of tries. It yields `Resumed` after each `Hello` with the same instance id, and `Reset` on a new one. Add the unit test `backoff_schedule`, which checks the waits 100, 200, 400, 800, 1600, 3200 and then 5000 milliseconds. Add `backoff_runs_past_four_tries`. Both use the paused clock. Make sure that `cargo nextest run -p mu-client --locked` passes. The resume tests are in task 6.6.
+- [x] 5.1 In `mu-client`, add `PortalClient` with the calls and `events()`. It resumes after an error and after a clean end of the stream, with the backoff of `backon` and no limit of tries. It yields `Resumed` after each `Hello` with the same instance id, and `Reset` on a new one. Add the unit test `backoff_schedule`, which checks the waits 100, 200, 400, 800, 1600, 3200 and then 5000 milliseconds. Add `backoff_runs_past_four_tries`. Both use the paused clock. Make sure that `cargo nextest run -p mu-client --locked` passes. The resume tests are in task 6.6.
 
 ## 6. The verbs
 

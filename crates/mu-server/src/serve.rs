@@ -90,6 +90,10 @@ fn clear(socket: &Path) -> Result<(), ServeError> {
 /// stderr, build the `Portal`, connect each world, and serve until `shutdown` resolves.
 /// Then it ends each stream, disconnects each world and removes the socket file.
 ///
+/// The parent of `socket` must be a private directory: owned by this user, with mode 0700.
+/// Only that directory keeps other users from the socket before its mode changes to 0600.
+/// `mu-cli` makes sure of it with `private_dir` before it calls this function.
+///
 /// # Errors
 ///
 /// A [`ServeError`] that names the path.
