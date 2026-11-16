@@ -1,10 +1,10 @@
 ---
-verdict: approve-with-notes
+verdict: approve
 phase: implementation
-reviewed_at: 2026-11-16T22:50:03+00:00
-head: da8f81af2ac95dfad9419dbf2c24075f84535847
-round: 6
-next_id: 62
+reviewed_at: 2026-11-16T23:02:09+00:00
+head: bad45a792bf8ba433f8f1138983bde701eb42fea
+round: 7
+next_id: 68
 lenses:
   spec-lint: not-applicable
   approach: ok
@@ -19,17 +19,12 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge |
 |---|---|---|---|---|---|---|---|---|
-| R-53 | approach | should-fix | in-change | mu-core gains proc-macro2 (with span-locations) and syn as dev-dependencies for source_rules.rs, and workspace_boundary.rs allows them. The proposal says the change adds no dependency, and design.md records no deviation. | crates/mu-core/Cargo.toml:23 — "proc-macro2 = { workspace = true, features = ["span-locations"] }" | In the source_rules.rs row of the Enforcement table in design.md, record the two new dev-dependencies of mu-core and the span-locations feature. Then change the Impact line of proposal.md, and list source_rules.rs and workspace_boundary.rs there. |  |  |
-| R-54 | approach,invariants | should-fix | in-change | app-2: source_rules.rs exempts its own file from the codes rule as a whole, beside the allow list, and that file holds the literals 251 to 255. The design says the allow list names each accepted literal and has one entry, so this second exemption is not recorded.; app-3: The no-sleep row says the test fails for sleep or sleep_until in any file of src or tests. crate_hits skips tests/source_rules.rs for both rules, so a sleep that is added to that file passes.; inv-3: crate_hits drops tests/source_rules.rs from both rules, though the file holds the word sleep only in strings, so only the code rule needs the exemption. A probe gave no problem for std::thread::sleep(d) in that file, while the design says the rule covers any file of tests. | crates/mu-core/tests/source_rules.rs:191 — ".filter(\|(name, _)\| name != THIS_FILE)" | app-2: Drop the THIS_FILE filter and add allow-list entries for the five literals of CODES in tests/source_rules.rs, each with its count and reason. The probe forms are str literals, so nothing else in the file is hit. Or name the file exemption in the row.; app-3: Scan tests/source_rules.rs with the sleep rule too. Its sleep words are str literals and no identifier there is named sleep. Or else state the exemption in the row.; inv-3: Scan THIS_FILE with the telnet rule off, as TELNET_HOME is, in place of the filter; add a case to a_code_outside_the_list_fails_with_file_and_line with a sleep in tests/source_rules.rs. |  |  |
-| R-55 | approach | should-fix | in-change | The codes row says the test fails for a u8 of 6 and names only a bare 6 in an untyped array as a miss. The scan finds a 6 only with a u8 suffix or right after `u8 =`, so [u8; 1] = [6], 6 as u8 and -> u8 { 6 } pass. | crates/mu-core/tests/source_rules.rs:158 — "Ok(value) => (value != 6 && is_code(value)) \|\| (value == 6 && int.suffix() == "u8")," | In the row, name the two forms of a 6 that the test finds (a u8 suffix and `u8 = 6`) and the forms it misses, or extend the scan and the probe list to cover them. |  |  |
-| R-56 | approach | should-fix | in-change | Task 2.1 says line_framer_marks_are_transparent inserts marks into a stream with no byte 255. At head the stream holds any byte, and each 255 goes on the wire as IAC IAC. | crates/mu-core/src/framer.rs:484 — "// The stream holds data bytes. On the wire, each byte 255 is `IAC IAC`." | In task 2.1, describe the property as marks inserted anywhere in a data stream whose byte 255 is escaped as IAC IAC. |  |  |
-| R-57 | fit | should-fix | deviates-design | source_rules.rs copies files_under line for line from the mu-cli test helpers, the repository's test-helper row. It tokenizes the same mu-core files that workspace_boundary.rs already walks, and it adds proc-macro2 and syn to mu-core for that. | crates/mu-core/tests/source_rules.rs:73 — "fn files_under(dir: &Path) -> Vec<PathBuf> {"; scope basis: design.md > Enforcement of each rule — "The test `source_of_mu_core_keeps_its_rules` in `crates/mu-core/tests/source_rules.rs`, in the pattern of `workspace_bou" | Move the source rules into crates/mu-cli/tests beside workspace_boundary.rs and call support::files_under. Otherwise name the copy and the reason for keeping it in mu-core in the design. |  | scope? in-change 0.78 |
-| R-58 | fit | should-fix | in-change | failed_reply_write_ends_the_connection repeats the body of broken_world: a portal on one bare_world, connect_all and a wait for Connected. Only the transport and the framer differ. | crates/mu-core/tests/scripts.rs:523 — "let aria = bare_world(transport).with_framer(reply_on_ask());" | Move broken_world to tests/support/mod.rs with the WorldSetup as its parameter, and call it from both tests. |  | severity? suggestion 0.71 |
-| R-59 | fit | should-fix | in-change | The byte strategy of the stream in line_framer_marks_are_transparent is the same prop_oneof! as in line_framer_ignores_read_splits, next to the shared helper favored_byte. | crates/mu-core/src/framer.rs:474 — "prop_oneof![Just(b'\\n'), Just(b'\\r'), any::<u8>(), favored_byte()]," | Add a stream_byte() strategy beside favored_byte and use it in both property tests. |  | scope? beyond-scope 0.60 |
-| R-39 | invariants | should-fix | in-change | The no-sleep rule finds only the names sleep and sleep_until. A probe of the scanner under the handoff directory gave no hit for tokio::time::interval(d).tick().await or for timeout(d, pending()).await, which wait on the clock exactly as a sleep does. | crates/mu-core/tests/source_rules.rs:25 — "const SLEEPS: [&str; 2] = ["sleep", "sleep_until"];" | Add the clock waits of tokio::time (interval, interval_at, and timeout on a future that never ends, or timeout in tests outright) to SLEEPS or a second list, and add those forms to sleep_is_found_in_each_form. | regression | scope? deviates-design 0.60 |
-| R-48 | invariants | should-fix | in-change | The telnet-code rule misses IAC written as !0u8, as `let iac: u8 = !0`, as (-1i8) as u8, as <u8>::MAX, as u8::max_value(), and the codes in a C string c"\\xff\\xfd\\x06". A probe of the scanner gave no hit for any of the six. | crates/mu-core/tests/source_rules.rs:155 — "fn holds_code(literal: &Literal) -> bool {" | Flag a `!` before an integer literal and u8::max_value, match `u8 >` before `::MAX`, read syn::Lit::CStr like a byte string, and add these forms to telnet_code_is_found_in_each_form; or narrow the rule in the design to the forms the scanner finds. | regression | scope? beyond-scope 0.60 |
-| R-60 | invariants | should-fix | in-change | A doc test is a test of mu-core, and mise run test runs the doc tests, but the scanner reads a doc comment as a string, and its own test asserts that a doc comment with sleep passes. So a doc test that sleeps passes the no-sleep rule. | crates/mu-core/tests/source_rules.rs:280 — ""/// 255 and sleep"," | Parse the code blocks of each doc attribute (the text between ``` fences) as tokens and scan them with the sleep rule, with a case in sleep_is_found_in_each_form; or name the doc tests as outside the rule in the design. |  |  |
-| R-61 | fit | suggestion | in-change | The new test framer ReplyOnAsk has the shape of MarkOnLine: wrap LineFramer and turn one game line into another Inbound. They differ only in the line and the Inbound. | crates/mu-core/tests/scripts.rs:488 — "Inbound::Line(line) if line == "ask" => Inbound::Reply(b"reply\\n".to_vec())," | Make one test framer with the trigger line and the Inbound it becomes as parameters, and build both cases from it. |  |  |
+| R-62 | approach | should-fix | in-change | The codes row says the source test finds a 6 in two forms only and misses each other 6. At head the test also fails for a 6 in a byte or a byte string, such as b'\\x06' or b"\\x06", because CODES holds 6 and the Byte and ByteStr branches of holds_code check every code with no exception for 6. | design.md > Enforcement of each rule — "It misses each other 6, such as `[u8; 1] = [6]`, `6 as u8`, `-> u8 { 6 }` and `Some(6)`." | In the codes row of design.md, name the byte and the byte string as forms that find a 6 too. Then 'each other 6' covers only the integer forms that the test misses. |  |  |
+| R-63 | fit | should-fix | in-change | rust_files in source_rules.rs repeats the Rust-file walk of include_violations in workspace_boundary.rs: files_under over directories, the .rs filter, strip_prefix of a root and read_to_string of each file. Only the name format and the panic text differ. | crates/mu-cli/tests/source_rules.rs:78 — ".filter(\|path\| path.extension().is_some_and(\|ext\| ext == "rs"))" | Add one helper to crates/mu-cli/tests/support/mod.rs that gives each Rust file under a directory with its path from a root and its text, and call it from rust_files and include_violations. |  | scope? beyond-scope 0.68; severity? suggestion 0.74 |
+| R-64 | fit | should-fix | in-change | crate_root builds its own path from CARGO_MANIFEST_DIR to mu-core, while the test-helper row support/mod.rs already has repo_root for the same manifest-relative path. The design names neither repo_root nor a reason. | crates/mu-cli/tests/source_rules.rs:70 — "Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../mu-core"))" | Make crate_root return support::repo_root().join("crates/mu-core"). |  |  |
+| R-65 | invariants | should-fix | in-change | The no-sleep rule compares the raw text of each identifier, so tokio::time::r#sleep(d) passes the scan, and the new list of missed forms under the enforcement table does not name raw identifiers. A probe under the handoff directory gave no hit for it and one hit for the plain sleep control. | design.md > Enforcement of each rule — "The source test is a best-effort check. It does not find these forms:" | Strip a leading r# from the identifier before the compare (name.trim_start_matches("r#")), and add "fn f() { tokio::time::r#sleep(d).await; }" to sleep_is_found_in_each_form. Otherwise name raw identifiers in the list of missed forms. |  |  |
+| R-66 | invariants | should-fix | in-change | The list of forms that the codes rule misses is incomplete. A probe gave no hit for const WILL: u8 = 250 + 1;, const IAC: u8 = (1 << 8) - 1;, const TM: u8 = 3 + 3; or r#u8::MAX, and the list names none of them, so a second home of the codes in those forms passes unrecorded. | design.md > Enforcement of each rule — "A code of telnet written as `!0u8`, `<u8>::MAX`, `u8::max_value()`, a cast such as `(-1i8) as u8`, or a C string such as" | Add a code computed by arithmetic (such as 250 + 1) and a raw identifier r#u8 to the list of missed forms in design.md, or strip r# before the u8 compare and add r#u8::MAX to telnet_code_is_found_in_each_form. |  |  |
+| R-67 | fit | suggestion | in-change | scan_tokens walks the parsed source, recurses into each group and looks ahead at the next trees, as reaches_spikes does in workspace_boundary.rs. is_u8_max and is_assigned_six test a Punct char inline, which is_punct of workspace_boundary.rs already does. The two walkers differ only in the check of each tree. | crates/mu-cli/tests/source_rules.rs:159 — "if first.as_char() == ':' && second.as_char() == ':' && name == "MAX"" | Move is_punct to support/mod.rs and use it in is_u8_max and is_assigned_six. If a third rule of this kind comes, name the parameter: a check of one tree with the trees after it, under one recursive walk in support. |  | scope? beyond-scope 0.70 |
 
 ## Repeats
 
@@ -37,7 +32,9 @@ None.
 
 ## Out of bound
 
-None.
+| lens | severity | claim | evidence |
+|---|---|---|---|
+| test-honesty | should-fix | line_framer_client_marks_with_do_timing_mark compares mark() with the same telnet.rs constants production builds it from, so a wrong code value passes it. | crates/mu-core/src/framer.rs:427 — "assert_eq!(LineFramer::new().mark(), [IAC, DO, TM]);" |
 
 ## Accepted
 
@@ -46,6 +43,12 @@ None.
 | R-39 | should-fix | accepted | Operator accepted as a known limit of the best-effort source scanner; the design lists the forms it does not find. |  |
 | R-48 | should-fix | accepted | Operator accepted as a known limit of the best-effort source scanner; the design lists the forms it does not find. |  |
 | R-60 | should-fix | accepted | Operator accepted as a known limit of the best-effort source scanner; the design lists the forms it does not find. |  |
+| R-62 | should-fix | accepted | Deferred to https://github.com/seanb4t/mu-portal/issues/73, one issue for the source-rules list and the shared test helpers. |  |
+| R-63 | should-fix | accepted | Deferred to https://github.com/seanb4t/mu-portal/issues/73, one issue for the source-rules list and the shared test helpers. |  |
+| R-64 | should-fix | accepted | Deferred to https://github.com/seanb4t/mu-portal/issues/73, one issue for the source-rules list and the shared test helpers. |  |
+| R-65 | should-fix | accepted | Deferred to https://github.com/seanb4t/mu-portal/issues/73, one issue for the source-rules list and the shared test helpers. |  |
+| R-66 | should-fix | accepted | Deferred to https://github.com/seanb4t/mu-portal/issues/73, one issue for the source-rules list and the shared test helpers. |  |
+| R-67 | suggestion | accepted | Deferred to https://github.com/seanb4t/mu-portal/issues/73, one issue for the source-rules list and the shared test helpers. |  |
 
 ## Rounds
 
@@ -57,10 +60,11 @@ None.
 | 4 | implementation | full | fd138e482a5bf2715e92afec1547817f29c87ccd | 3ad7f6b96bbf7a7b8783e61e8746e568d1f262636268ad6a16de36b99a2184e7 | approve-with-notes | 7 | 0 | 2 | 0 |  |
 | 5 | implementation | follow-up | b8b5da4e7e18c9adf404c0e2787029c1ca5b165c | 02662d01b9ba559f746008959f07dac3dfc3010e27ff46eb94f4fa55c63fe01c | approve-with-notes | 4 | 0 | 1 | 1 |  |
 | 6 | implementation | follow-up | da8f81af2ac95dfad9419dbf2c24075f84535847 | 2b30a4bfe5c6d8fc20bb7469a8412c4f06c8e82cf61a21968eb37dfd73f2de59 | approve-with-notes | 9 | 0 | 2 | 0 |  |
+| 7 | implementation | follow-up | bad45a792bf8ba433f8f1138983bde701eb42fea | 0598edc21afc6436fb090ac4f65c47cbe2b5c97317fc21de9cdead038903e049 | approve-with-notes | 6 | 0 | 0 | 1 | operator decision |
 
 ## Judge
 
-judge: 22 questions, 0.001 USD
+judge: 12 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -106,28 +110,26 @@ None.
 
 ## Lens notes
 
-- approach: This lens has no git, so the bound comes from diff-files.txt and the commit subjects since the base. Each finding puts a file from that list first.
-- approach: The session code of the frame (Request::Frame, WaitingFrames, down, write_mark, on_connect, on_bytes) matches the decision 'TIMING-MARK for the round trip through the game'.
-- approach: The new tests reply_of_the_framer_reaches_the_game and failed_reply_write_ends_the_connection in tests/scripts.rs cover the Reply path of R-51. No design row names them. That is a coverage question, not one for this lens.
-- fit: The library rows came from the context of openspec/config.yaml. The test-helper row names crates/mu-cli/tests/support/mod.rs.
-- fit: The lens had no git access. The bound rests on diff-files.txt and on the commits after the base that fix R-45, R-49, R-51 and R-52.
-- fit: session.rs now shares one answer function between WaitingFrames and on_frame, so the defect of R-50 did not come back.
-- invariants: Follow-up round since b8b5da4; read every file of diff-files.txt except review.md. Findings are all in source_rules.rs, a file new since the base.
-- invariants: Probe: a scratch binary under probe-source-rules/ in the handoff directory includes source_rules.rs and calls scan and crate_hits on 14 edge inputs. It built offline with syn 3.0.10 and proc-macro2 1.0.107 (span-locations); no input crashed it.
-- invariants: I1: The telnet codes 251 to 255 and a u8 of 6 appear only in src/telnet.rs \| enforced at crates/mu-core/tests/source_rules.rs scan/holds_code/is_u8_max/is_assigned_six \| boundary test telnet_code_is_found_in_each_form (251, 255) and bytes_that_are_not_codes_pass (250, 256, 0x66, 6u32); gaps in inv-2.
-- invariants: I2: No file of src or tests of mu-core sleeps \| enforced at source_rules.rs SLEEPS and scan_tokens \| boundary test sleep_is_found_in_each_form, time_that_does_not_wait_passes; gaps in inv-1, inv-3, inv-4.
-- invariants: I3: Each allowed literal appears exactly its count \| enforced at source_rules.rs crate_hits \| boundary test an_allowed_literal_with_another_count_fails (2) and an_allowed_literal_that_is_gone_fails (0); count 1 by the real run.
-- invariants: I4: src/telnet.rs is exempt from the code rule only, not from the sleep rule \| enforced at source_rules.rs line 192 \| boundary test telnet_home_may_hold_the_codes and sleep_is_found_in_the_home_of_the_codes.
-- invariants: I5: An escaped IAC IAC is one data byte 255 and never starts a mark, at any position and split \| enforced at framer.rs LineFramer::step \| boundary test line_framer_marks_are_transparent now draws any byte, CR and the favored bytes, and escapes each 255 on the wire; line_framer_reads_escaped_iac.
-- invariants: I6: Marks come after the lines that end before them and before the lines that end after them \| enforced at framer.rs step order \| boundary test line_framer_marks_are_transparent, with expected lines from data_lines, which drops every CR as push does.
-- invariants: I7: A failed write of a reply ends the connection, answers the waiting frame and stops the rest of the read \| enforced at session.rs write_bytes and down \| boundary test failed_reply_write_ends_the_connection (one disconnect, no Line event for the after line, try_idle Ok); success path reply_of_the_framer_reaches_the_game.
-- invariants: I8: Every waiting frame gets Ok(None) on down, and a frame on a down world at once \| enforced at session.rs answer, answer_first, answer_all (lines 54, 72, 78, 281, 319) \| the refactor to one fn answer keeps the behavior; boundary tests from earlier rounds unchanged.
-- invariants: I9: BrokenStream lets writes_allowed writes through, then fails each write, and gives incoming once only after those writes \| enforced at tests/support/mod.rs BrokenStream poll_read and poll_write \| used at writes_allowed 0 (broken_world) and 1 (failed_reply_write_ends_the_connection).
-- invariants: The workspace sets syn with default-features = false; whether Lit::new and LitByteStr::value compile without the parsing feature is left to the controller's run, which the probe build suggests they do.
-- test-coverage: Follow-up round: no changed test text weakens a scenario assertion.
-- test-honesty: Read source_rules.rs, the framer.rs tests, the session.rs unit test, the wait tests of portal.rs, and the reply and mark tests of scripts.rs. No ignored test, no test without assertion, no tautology found.
-- test-honesty: The framer property tests compute their expected values with helpers (count_marks, data_lines) that do not call the framer, so they are not tautologies.
-- test-coverage gap: mu-cli worlds.rs tests matched by name only; not read.
+- approach: Follow-up round since da8f81a. The changed text was read: source_rules.rs and workspace_boundary.rs in mu-cli, both Cargo.toml files, framer.rs, tests/support/mod.rs, tests/portal.rs, tests/scripts.rs, and design.md, proposal.md and tasks.md.
+- approach: The fixed rows R-53, R-54, R-55, R-56, R-57, R-58, R-59 and R-61 do not come back at head. mu-core has no proc-macro2 or syn. The source test lives in mu-cli and uses support::files_under. Only src/telnet.rs is exempt. broken_world and OnLine are shared helpers.
+- approach: The diff-files list has no Bash git diff behind it, so I took the Enforcement row of design.md as changed text because it now names crates/mu-cli/tests/source_rules.rs, which this round added.
+- approach: Each of the four requirements has a decision that produces it. The cited behaviors of portal.rs (the watch channel from journal.last(), send_replace, ask, to_every_world, wait_idle) and of framer.rs (Held, the cut through push, game() and Side) hold at head.
+- fit: Follow-up round since da8f81a: read every changed code file (mu-cli source_rules.rs, workspace_boundary.rs, Cargo.toml; mu-core Cargo.toml, framer.rs, tests/portal.rs, tests/scripts.rs, tests/support/mod.rs) and the changed artifacts. session.rs, portal.rs and fake.rs did not change and are out of bound.
+- fit: Library rows came from openspec/config.yaml; the test-helper row is crates/mu-cli/tests/support/mod.rs, which fit-1 and fit-2 cite.
+- fit: fit-1 is the part of R-57 (fixed) that stays: the files_under copy and the new mu-core dependencies are gone, but the walk over the Rust files around files_under is still written twice.
+- fit: Fixed rows R-46, R-53, R-54, R-57, R-58, R-59 and R-61 were checked at head and their defects are gone.
+- fit: The spike tests that the telnet-engine change may port hold 0u8..255; the source rule would flag that range, which pushes it to 0u8..IAC. Not reported: the rule works as intended there.
+- invariants: I1: The source test scans every Rust file of src and tests of mu-core and exempts only src/telnet.rs from the codes rule \| enforced at crates/mu-cli/tests/source_rules.rs crate_root and crate_hits (THIS_FILE filter removed; the test now lives in mu-cli) \| boundary test telnet_home_may_hold_the_codes, sleep_is_found_in_the_home_of_the_codes; the allow entry for src/secret.rs fails if src is not scanned. R-54 is fixed at head.
+- invariants: I2: An integer from 251 to 255 outside telnet.rs fails, whatever the base and suffix \| enforced at source_rules.rs holds_code \| boundary test bytes_that_are_not_codes_pass (250, 256) and telnet_code_is_found_in_each_form (251 as 0xfb, 255 in several bases and suffixes).
+- invariants: I3: A 6 typed as u8 fails, other 6s pass \| enforced at holds_code and is_assigned_six \| boundary test telnet_code_is_found_in_each_form (6u8, u8 = 6, 0x06) and bytes_that_are_not_codes_pass (u8 = 5, u8 = 7 via MAX, 6u32, usize = 6).
+- invariants: I4: The allow list matches by exact count \| enforced at crate_hits \| boundary test an_allowed_literal_with_another_count_fails (2) and an_allowed_literal_that_is_gone_fails (0).
+- invariants: I5: No file of src or tests of mu-core names sleep or sleep_until \| enforced at scan_tokens \| boundary test sleep_is_found_in_each_form and time_that_does_not_wait_passes (asleep); misses r#sleep (inv-1).
+- invariants: I6: A mark with an empty waiting list changes nothing \| enforced at session.rs WaitingFrames \| boundary test stray_mark_is_ignored. Its framer is now on_line("mark", ...), which forwards mark() to LineFramer where MarkOnLine gave no mark bytes; the test calls no wait, so no frame is sent and the stray mark still meets an empty list.
+- invariants: I7: broken_world(setup) is the shared set-up for failed_write_records_disconnect, wait_survives_failed_mark_write and failed_reply_write_ends_the_connection; each world has no login, so the mark is the first write \| enforced at tests/support/mod.rs bare_world and broken_world \| boundary test BrokenTransport::after_writes(1, ...) in failed_reply_write_ends_the_connection.
+- invariants: I8: The two framer property tests share one byte strategy (stream_byte) with the same four arms as before; the lengths 0..200 and 0..100 are unchanged, so no generator is weakened.
+- invariants: Probe: a copy of scan, holds_code, is_u8_max and is_assigned_six from source_rules.rs at head, built offline against proc-macro2 1.0.107 and syn 3.0.10, is under probe-inv in the handoff directory. It found tokio::time::sleep and let tm: u8 = 6, and missed r#sleep, 250 + 1, (1 << 8) - 1, 3 + 3 and r#u8::MAX.
+- test-coverage: Follow-up round: no BREAKING requirement in the delta spec. Test bodies for the pre-existing mu-cli scenarios were matched by name only.
+- test-honesty: Read in full: tests of mu-cli source_rules.rs, framer.rs tests, new tests in portal.rs and scripts.rs, tests/support/mod.rs. No disabled, no-assertion or constant tests found. Not read: the fake.rs unit tests, which are not in the diff files list.
 
 ## Ledger
 
@@ -194,29 +196,33 @@ None.
 | R-59 | 6 | 6 | should-fix | in-change | ["path","crates/mu-core/src/framer.rs",474] | fixed | abedb6f032ff8553a957afde003d11386753520b |  | The byte strategy of the stream in line_framer_marks_are_transparent is the same prop_oneof! as in line_framer_ignores_read_splits, next to the shared helper favored_byte. |
 | R-60 | 6 | 6 | should-fix | in-change | ["path","crates/mu-core/tests/source_rules.rs",280] | accepted | ticket: none; reason: Operator accepted as a known limit of the best-effort source scanner; the design lists the forms it does not find. |  | A doc test is a test of mu-core, and mise run test runs the doc tests, but the scanner reads a doc comment as a string, and its own test asserts that a doc comment with sleep passes. So a doc test that sleeps passes the no-sleep rule. |
 | R-61 | 6 | 6 | suggestion | in-change | ["path","crates/mu-core/tests/scripts.rs",488] | fixed | 4f67ff436194ff978fc164b8a1dc311dfb9aab8b |  | The new test framer ReplyOnAsk has the shape of MarkOnLine: wrap LineFramer and turn one game line into another Inbound. They differ only in the line and the Inbound. |
+| R-62 | 7 | 7 | should-fix | in-change | ["artifact",["design.md","Enforcement of each rule"],"It misses each other 6, such as `[u8; 1] = [6]`, `6 as u8`, `-> u8 { 6 }` and `Some(6)`."] | accepted | ticket: none; reason: Deferred to https://github.com/seanb4t/mu-portal/issues/73, one issue for the source-rules list and the shared test helpers. |  | The codes row says the source test finds a 6 in two forms only and misses each other 6. At head the test also fails for a 6 in a byte or a byte string, such as b'\\x06' or b"\\x06", because CODES holds 6 and the Byte and ByteStr branches of holds_code check every code with no exception for 6. |
+| R-63 | 7 | 7 | should-fix | in-change | ["path","crates/mu-cli/tests/source_rules.rs",78] | accepted | ticket: none; reason: Deferred to https://github.com/seanb4t/mu-portal/issues/73, one issue for the source-rules list and the shared test helpers. |  | rust_files in source_rules.rs repeats the Rust-file walk of include_violations in workspace_boundary.rs: files_under over directories, the .rs filter, strip_prefix of a root and read_to_string of each file. Only the name format and the panic text differ. |
+| R-64 | 7 | 7 | should-fix | in-change | ["path","crates/mu-cli/tests/source_rules.rs",70] | accepted | ticket: none; reason: Deferred to https://github.com/seanb4t/mu-portal/issues/73, one issue for the source-rules list and the shared test helpers. |  | crate_root builds its own path from CARGO_MANIFEST_DIR to mu-core, while the test-helper row support/mod.rs already has repo_root for the same manifest-relative path. The design names neither repo_root nor a reason. |
+| R-65 | 7 | 7 | should-fix | in-change | ["artifact",["design.md","Enforcement of each rule"],"The source test is a best-effort check. It does not find these forms:"] | accepted | ticket: none; reason: Deferred to https://github.com/seanb4t/mu-portal/issues/73, one issue for the source-rules list and the shared test helpers. |  | The no-sleep rule compares the raw text of each identifier, so tokio::time::r#sleep(d) passes the scan, and the new list of missed forms under the enforcement table does not name raw identifiers. A probe under the handoff directory gave no hit for it and one hit for the plain sleep control. |
+| R-66 | 7 | 7 | should-fix | in-change | ["artifact",["design.md","Enforcement of each rule"],"A code of telnet written as `!0u8`, `<u8>::MAX`, `u8::max_value()`, a cast such as `(-1i8) as u8`, or a C string such as `c\\"\\\\xff\\"`."] | accepted | ticket: none; reason: Deferred to https://github.com/seanb4t/mu-portal/issues/73, one issue for the source-rules list and the shared test helpers. |  | The list of forms that the codes rule misses is incomplete. A probe gave no hit for const WILL: u8 = 250 + 1;, const IAC: u8 = (1 << 8) - 1;, const TM: u8 = 3 + 3; or r#u8::MAX, and the list names none of them, so a second home of the codes in those forms passes unrecorded. |
+| R-67 | 7 | 7 | suggestion | in-change | ["path","crates/mu-cli/tests/source_rules.rs",159] | accepted | ticket: none; reason: Deferred to https://github.com/seanb4t/mu-portal/issues/73, one issue for the source-rules list and the shared test helpers. |  | scan_tokens walks the parsed source, recurses into each group and looks ahead at the next trees, as reaches_spikes does in workspace_boundary.rs. is_u8_max and is_assigned_six test a Punct char inline, which is_punct of workspace_boundary.rs already does. The two walkers differ only in the check of each tree. |
 
 ## Reviewed files
 
 | path | content |
 |---|---|
-| Cargo.lock | 516bc465dfacdcaa4e8bb275c828ef6314797369 |
-| crates/mu-cli/tests/workspace_boundary.rs | bc0cd798383f7fa5fcc7707211114a61904e0e33 |
-| crates/mu-core/Cargo.toml | 9a01114b18c68a3c840e947aedc5872b5118ba5b |
+| crates/mu-cli/Cargo.toml | aa534f9d59e38f86b80cb629f6debb88c4e1e75d |
+| crates/mu-cli/tests/source_rules.rs | 9935f3b5e370381460a213fab9b72b84787aec9d |
 | crates/mu-core/src/fake.rs | 474a1f022ac34cf15e9ee7645fcf645da25be6e8 |
-| crates/mu-core/src/framer.rs | a5b30e96bbeb01554a2e863ae95d9eb3deb46427 |
+| crates/mu-core/src/framer.rs | 70596fb19bbe89cba9cbac92b8527f141bf8ada0 |
 | crates/mu-core/src/lib.rs | c8f9731010211e46355962fe97a02f1fcc5f5e39 |
 | crates/mu-core/src/portal.rs | c351d686da51b3954dac00341022e8398b233f5b |
 | crates/mu-core/src/session.rs | 40be06f5e15d05eb62b37b250a716e448668a37c |
 | crates/mu-core/src/telnet.rs | 09b4d1e77c63b06931fc0de8f09aff211eec7514 |
-| crates/mu-core/tests/portal.rs | 957faf34bdd557cffa492b00165dbefede20fad5 |
-| crates/mu-core/tests/scripts.rs | 7a7701f714d612a7bcd05c9cfc9ed3f01bc896c9 |
-| crates/mu-core/tests/source_rules.rs | 41ecec760dfad4aed9998d8ac9ea2d1b77cf11ba |
-| crates/mu-core/tests/support/mod.rs | aa5ef3add1ea2b1080281f50d2905640d664fae8 |
+| crates/mu-core/tests/portal.rs | f8debce61cf852183236c19c3df1cc4864472ca7 |
+| crates/mu-core/tests/scripts.rs | d180857e3c399153765ae6194b8482704f84ed2f |
+| crates/mu-core/tests/support/mod.rs | 7e68d704646181068c0af8cf071d9da5779b2aab |
 | openspec/changes/engine-quiescence/.openspec.yaml | cfbed6e8fdb007b75eb7f423f77f14d16ff7b4b4 |
-| openspec/changes/engine-quiescence/design.md | 91c087bd563d75df6d1e8b3d4d67cd371a7dab02 |
-| openspec/changes/engine-quiescence/proposal.md | 8030d37ddde8211bcf9620b54049abd24ecf68d8 |
+| openspec/changes/engine-quiescence/design.md | 7c802b400ae426b34392a5c4c6380911ce68ebd4 |
+| openspec/changes/engine-quiescence/proposal.md | 1789c2c771567436fe6297507c78c9d1f8659332 |
 | openspec/changes/engine-quiescence/specs/world-sessions/spec.md | e979d8acec8e6b70e598819344f8cfed7979ebdc |
-| openspec/changes/engine-quiescence/tasks.md | sha256:a08f4745df5f1c56669293b9801f448a9abd97156c896cae54c43bca7789ca65 |
+| openspec/changes/engine-quiescence/tasks.md | sha256:7a00148e4c69a6ddd096a668b191569bc6dfe57e6ac9584b3141ab8e897c1056 |
 
 ## Plan review (2026-11-16)
 
