@@ -100,7 +100,7 @@ The transport returns an `AsyncRead + AsyncWrite` stream. The framer sits betwee
 
 Each event has `seq`, `world`, `kind`, `source`, `text` and `time`. The kinds are `connected`, `disconnected`, `line`, `prompt`, `message`, `input`, `echo`, `login`, `custom` and `script_error`. An `Echo` command records one event of the kind `echo`, and sends nothing to the game. The sources are `game`, `player`, `script`, `system` and `credential`.
 
-The live channel holds 1024 events. tokio rounds a broadcast capacity up to a power of two and panics at 0. So `MemoryJournal::new` refuses 0, a capacity that is not a power of two, and a capacity above 65536. A receiver that lags gets `RecvError::Lagged`. `tokio-stream` turns the receiver into a stream with `BroadcastStream`, as the spike did, and the adapter maps the lag to `resource_exhausted`. The edge is in the receiver, before the stream polls it. So a unit test in `mu-core` holds a receiver with the capacity 4 and reads nothing. After 4 events, its first read gives event 1. After 5 events, its first read gives the lag. The adapter test checks only that a lagged receiver ends the stream with `resource_exhausted`.
+The live channel holds 1024 events. tokio rounds a broadcast capacity up to a power of two and panics at 0. So `MemoryJournal::new` refuses 0, a capacity that is not a power of two, and a capacity above 65536. A receiver that lags gets `RecvError::Lagged`. `Subscription::into_stream` in `mu-core` turns the backlog and the receiver into one stream that ends after a lag, and the adapter maps the lag to `resource_exhausted`. The receiver stays inside `mu-core`, so the adapter needs no `tokio-stream`. The edge is in the receiver, before the stream polls it. So a unit test in `mu-core` holds a receiver with the capacity 4 and reads nothing. After 4 events, its first read gives event 1. After 5 events, its first read gives the lag. The adapter test checks only that a lagged receiver ends the stream with `resource_exhausted`.
 
 Each server start makes a new random instance id with the `uuid` crate. The first message of each stream is `Hello { instance_id, last_seq }`, through a `oneof` in the stream message. A `from_seq` of 0 or 1 starts at the first event. A `from_seq` of `last_seq + 1` sends only the `Hello` and then the live events. A `from_seq` greater than `last_seq + 1` sends the `Hello` and then ends the stream with `out_of_range`. Thus a client that resumes after a restart always reads the new instance id first.
 
@@ -224,7 +224,7 @@ Each crate enters through `[workspace.dependencies]`, at the latest version at t
 
 | Crate | For |
 |---|---|
-| `tokio`, `tokio-stream` | the runtime, channels, signals and the Unix socket. `BroadcastStream` needs the `sync` feature of `tokio-stream`, and the paused clock needs the `test-util` feature of `tokio` in the dev-dependencies |
+| `tokio` | the runtime, channels, signals and the Unix socket. The paused clock needs the `test-util` feature of `tokio` in the dev-dependencies |
 | `connectrpc`, `connectrpc-build`, `buffa` | the API, as the spike used them |
 | `axum` | the router that `connectrpc` serves |
 | `futures` | stream combinators |

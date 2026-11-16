@@ -52,7 +52,6 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "tempfile",
             "thiserror",
             "tokio",
-            "tokio-stream",
             "tracing",
             "uuid",
         ],
