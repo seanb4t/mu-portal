@@ -34,7 +34,8 @@ None.
 ## Impact
 
 - `crates/mu-core/src/session.rs`: a frame request beside the command request, and the answer of a frame after the game's mark.
-- `crates/mu-core/src/framer.rs`: the line framer encodes the mark and reads the answer.
+- `crates/mu-core/src/telnet.rs`: a new crate-private module with the codes of the mark.
+- `crates/mu-core/src/framer.rs`: the line framer encodes the mark and reads the answer. `Framer::mark` has a default body, so a framer outside the crate still compiles.
 - `crates/mu-core/src/portal.rs`: the wait method, and the progress of the server handlers.
 - `crates/mu-core/src/fake.rs`: the fake game answers the mark.
 - `crates/mu-core/tests/support/mod.rs`, `portal.rs`, `scripts.rs`: `settle` goes.

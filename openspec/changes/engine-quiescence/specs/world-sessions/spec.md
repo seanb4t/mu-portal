@@ -42,7 +42,7 @@ When the world goes down, or its connect fails, the session SHALL answer each fr
 - **THEN** the journal holds a game event with the text `after`, and the world is still connected
 
 ### Requirement: The engine can wait until it has no work left
-The task of the server handlers SHALL publish the sequence number of the last event that it handled. Before it handles an event, it SHALL publish the last sequence number of the journal at the start of the engine. A wait of the engine SHALL send rounds. Each round SHALL wait until the server handlers handle the last event of the journal, and SHALL then send one frame to each world. The wait SHALL return after the first round that adds no event to the journal.
+The server handlers SHALL publish the number of the last event they handled, from the last number of the journal at the start. A wait of the engine SHALL send rounds. Each round SHALL wait until the server handlers handle the last event of the journal, and SHALL then send one frame to each world. The wait SHALL return after the first round that adds no event to the journal. If a world ends a frame with no answer, the wait SHALL fail.
 
 #### Scenario: A wait covers a loop of server handlers
 - **GIVEN** a server handler that returns one custom event for each custom event it sees
