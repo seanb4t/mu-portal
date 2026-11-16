@@ -201,7 +201,7 @@ The tests of the built binary run `mu client` in a pseudo-terminal with `portabl
 
 ### Test helpers
 
-`crates/mu-cli/tests/support/` holds every helper that more than one test file uses. `mod.rs` holds `mu`, `mu_with`, `stdout`, `stderr` and `mode`, and `process.rs` holds the rest:
+`crates/mu-cli/tests/support/` holds every helper that more than one test file uses. `mod.rs` holds the helpers that run `mu` once or read the repository: `mu`, `mu_with`, `stdout`, `stderr`, `mode`, `repo_root`, `repo_file`, `h2_sections`, `h2_headings`, `workspace_metadata`, `files_under` and `TreeCopy`. `process.rs` holds the rest:
 
 - `mu(args)`, moved from `cli.rs`, which runs the built binary to its exit, and `mu_with(args, env)`, which also sets and removes environment variables
 - `ServerProcess`, which starts `mu server` on a socket in a temporary directory and kills it on drop. Its builder takes the arguments and the environment
@@ -259,7 +259,7 @@ Each crate enters through `[workspace.dependencies]`, at the latest version at t
 | No handler loop without a bound | the depth limit test, the script error test and the rate limit test |
 | The focus is always a world that exists | the property test of `App` |
 | No I/O in a hook or a handler | review, until #60 adds the Lua limits |
-| No sleep in a test | `review-lint`, gate `time-based-test` |
+| No sleep in a test | `review-lint`, gate `time-based-test`. The gate fires on `settle` in the `mu-core` test support, which sleeps on the paused clock and panics on a clock that runs. That one finding is known and accepted. |
 
 ## Risks / Trade-offs
 

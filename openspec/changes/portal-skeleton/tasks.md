@@ -119,7 +119,7 @@ Load the `rust-best-practices` skill before this group.
 ## 9. Review and checks
 
 - [ ] 9.1 Run `/sb:openspec-review portal-skeleton implementation` and treat changes-requested as a blocker. Make sure that `review.md` has a verdict that is not changes-requested.
-- [ ] 9.2 Run `mise run check` and `uv run ~/.agents/plugins/sb/skills/review-lint/scripts/review_lint.py --base origin/main`. Make sure that both pass.
+- [ ] 9.2 Run `mise run check` and `uv run ~/.agents/plugins/sb/skills/review-lint/scripts/review_lint.py --base origin/main`. Make sure that both pass, except the one accepted `time-based-test` finding on `settle` that the design names.
 
 ## Workflow follow-up
 
