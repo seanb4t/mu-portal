@@ -85,7 +85,7 @@ Load the `rust-best-practices` skill before this group.
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 7.1 In `mu-tui`, add `App` with `on_event`, `on_reply`, `on_key` and `draw`, and the input line on `ratatui-textarea`. Add `crates/mu-tui/tests/app.rs` with `TestBackend`, and one test for each scenario. Make sure that `cargo nextest run -p mu-tui --locked` passes, with these tests:
+- [x] 7.1 In `mu-tui`, add `App` with `on_event`, `on_reply`, `on_key` and `draw`, and the input line on `ratatui-textarea`. Add `crates/mu-tui/tests/app.rs` with `TestBackend`, and one test for each scenario. Make sure that `cargo nextest run -p mu-tui --locked` passes, with these tests:
   - `first_view`, `world_order` and `no_worlds`
   - `line_prefixes` (requirement: lines show their source), which checks the prefixes `> ` and `-- `, and a game line with no prefix
   - `enter_sends_to_world_in_focus`, `empty_enter_sends_empty_line`, `enter_with_no_world` and `refused_line_keeps_input`
