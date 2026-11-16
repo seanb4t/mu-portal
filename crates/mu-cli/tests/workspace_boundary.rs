@@ -35,8 +35,10 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
         &[
             "futures",
             "governor",
+            "proc-macro2",
             "proptest",
             "secrecy",
+            "syn",
             "thiserror",
             "tokio",
             "tracing",
