@@ -49,4 +49,4 @@ Load the `rust-best-practices` skill before this group.
 
 ## 5. Review
 
-- [ ] 5.1 Run `/sb:openspec-review engine-quiescence implementation`. Make sure that the verdict in `review.md` is not changes-requested.
+- [x] 5.1 Run `/sb:openspec-review engine-quiescence implementation`. Make sure that the verdict in `review.md` is not changes-requested.
