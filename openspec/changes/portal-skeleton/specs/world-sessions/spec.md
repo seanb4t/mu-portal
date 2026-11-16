@@ -23,7 +23,7 @@ Each world SHALL have an id of the form `<game>/<character>`. Each id SHALL have
 - **THEN** each parse succeeds, and the display of each id is the text it came from
 
 ### Requirement: The fake world stands in for a game
-The hidden flag `--fake-world <id>=env:<NAME>` of `mu server` SHALL add a fake world. The flag can repeat. The fake world SHALL take the password from the environment variable `<NAME>` and the login name from the character part of the id. It SHALL greet, accept the login line `connect <login> <password>`, and answer each later line `<text>` with `You say, "<text>"`. `mu server --help` SHALL NOT list the flag.
+The hidden flag `--fake-world <id>=env:<NAME>` of `mu server` SHALL add a fake world. The flag can repeat. The fake world SHALL take the password from the environment variable `<NAME>` and the login name from the character part of the id. It SHALL greet, accept the login line `connect <login> <password>`, and answer each later line `<text>` with `You say, "<text>"`. The line `@drop` SHALL make the fake world close the connection from its side. `mu server --help` SHALL NOT list the flag.
 
 #### Scenario: The fake world answers
 - **GIVEN** a server with `--fake-world alpha/aria=env:ALPHA_PW`
@@ -140,13 +140,13 @@ The engine SHALL run each handler of a world on each event of that world after t
 
 #### Scenario: A loop of handlers stops
 - **GIVEN** a server handler that returns one custom event for each custom event it sees
-- **WHEN** one custom event starts the loop
+- **WHEN** a test emits one custom event with the text `ping` on `alpha/aria`
 - **THEN** the journal holds exactly 8 custom events from the handler after the first one
 - **AND** the journal holds one event of the kind script error that names the depth limit
 
 #### Scenario: A handler that answers every event
 - **GIVEN** a server handler that returns one custom event for each event of any kind
-- **WHEN** one custom event starts the loop
+- **WHEN** a test emits one custom event with the text `ping` on `alpha/aria`
 - **THEN** the journal holds exactly one event of the kind script error
 - **AND** the journal records no event after that script error
 
@@ -169,5 +169,5 @@ An input from a handler SHALL have the source script. A connect or a disconnect 
 
 #### Scenario: A handler connects
 - **GIVEN** a world with a test handler that returns a connect for each disconnect of its world
-- **WHEN** the fake world drops the connection
+- **WHEN** a client sends `@drop` to the world
 - **THEN** the journal holds a connect event with the source system after the disconnect

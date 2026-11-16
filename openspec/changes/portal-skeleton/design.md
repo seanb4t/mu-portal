@@ -70,7 +70,7 @@ Each event in the engine carries a depth. An event from a command gets the depth
 
 A line from the game starts again at the depth 0. So a handler that sends a line, and gets the echo of the game, makes a loop that the depth cannot see. A rate limit bounds that loop. Each world accepts at most 20 commands from handlers in one second. The engine drops each command over the limit, and records at most one `script_error` event for each second. The window starts at the first command and lasts one second. The limit is a constant in `mu-core`, and a test with the paused clock checks it, also in the next window.
 
-The counter is written by hand, about 20 lines. `governor` was the other choice. Its clock is separate from the clock of tokio, so a test with the paused clock cannot move it. The counter reads `tokio::time::Instant`, so the paused clock drives it.
+The `governor` crate gives the limit. Its `RateLimiter` takes any clock through its `Clock` trait. A small clock in `mu-core` reads `tokio::time::Instant`, so the paused clock of a test drives the limit. The engine adds the rule of one script error for each second on top.
 
 The world handlers run in the task of their world. The server handlers run in one more task, the server-handler task. That task reads the journal through `subscribe`, as a client does. If it lags, it subscribes again from the number after the last event it read, because the journal keeps every event. Thus no server handler sees an event twice. Its commands go to the `Portal` with the depth of the event plus one.
 
@@ -98,7 +98,7 @@ The transport returns an `AsyncRead + AsyncWrite` stream. The framer sits betwee
 
 `MemoryJournal` holds a `Vec` of events and a `tokio::sync::broadcast` sender under one `Mutex`. `subscribe(from)` takes the backlog from `from` and a new receiver under the same lock, so no event falls between them. The ConnectRPC decision records this pattern, and the spike tested it.
 
-Each event has `seq`, `world`, `kind`, `source`, `text` and `time`. The kinds are `connected`, `disconnected`, `line`, `prompt`, `message`, `input`, `login`, `custom` and `script_error`. The sources are `game`, `player`, `script`, `system` and `credential`.
+Each event has `seq`, `world`, `kind`, `source`, `text` and `time`. The kinds are `connected`, `disconnected`, `line`, `prompt`, `message`, `input`, `echo`, `login`, `custom` and `script_error`. An `Echo` command records one event of the kind `echo`, and sends nothing to the game. The sources are `game`, `player`, `script`, `system` and `credential`.
 
 The live channel holds 1024 events. tokio rounds a broadcast capacity up to a power of two and panics at 0. So `MemoryJournal::new` refuses 0, a capacity that is not a power of two, and a capacity above 65536. A receiver that lags gets `RecvError::Lagged`. `tokio-stream` turns the receiver into a stream with `BroadcastStream`, as the spike did, and the adapter maps the lag to `resource_exhausted`. The edge is in the receiver, before the stream polls it. So a unit test in `mu-core` holds a receiver with the capacity 4 and reads nothing. After 4 events, its first read gives event 1. After 5 events, its first read gives the lag. The adapter test checks only that a lagged receiver ends the stream with `resource_exhausted`.
 
@@ -191,7 +191,7 @@ The worlds are in the order of their game part and then their character part. A 
 
 The input line is a `TextArea` of `ratatui-textarea` from crates.io, with one line. The input editor decision chose that crate. Its two patches matter for long poses with wide text, so they wait for #56. Every item under Not tested of that decision also waits for #56. That change replaces this input line with the pose editor.
 
-The tests of the built binary run `mu client` in a pseudo-terminal with `portable-pty`, and read the screen with `vt100`. A task reads the documentation of both crates before the tests depend on them.
+The tests of the built binary run `mu client` in a pseudo-terminal with `portable-pty`, and read the screen with `vt100`. `portable-pty` puts stdin, stdout and stderr all on the terminal. The two tests of a missing terminal need the terminal on one stream only. So a helper opens a pseudo-terminal with `rustix::pty`. It starts the binary with `std::process::Command`, with the terminal on one stream and a pipe on the other. A task reads the documentation of these crates before the tests depend on them.
 
 ### Test helpers
 
@@ -200,6 +200,7 @@ The tests of the built binary run `mu client` in a pseudo-terminal with `portabl
 - `mu(args)`, moved from `cli.rs`, which runs the built binary to its exit, and `mu_with(args, env)`, which also sets and removes environment variables
 - `ServerProcess`, which starts `mu server` on a socket in a temporary directory and kills it on drop. Its builder takes the arguments and the environment
 - `Relay`, which forwards a Unix socket. It can cut the connection and hold, which refuses each new connection until the test releases it
+- `mu_on_pty(args, stream)`, which starts the binary with a pseudo-terminal on stdin only or on stdout only. `server.rs` and `client.rs` both use it
 - `wait_until(bound, check)`, the one bounded wait. It fails the test at the bound and prints what it saw.
 
 ### Tests and the clock
@@ -217,7 +218,7 @@ Six rules get property tests with `proptest`, which the workspace already has:
 
 ### Third-party crates
 
-Each crate enters through `[workspace.dependencies]`, at the latest version at the time of the work. Renovate moves the pins after that.
+Each crate enters through `[workspace.dependencies]`, at the latest version at the time of the work. Renovate moves the pins after that. A Renovate group named `crossterm` holds `crossterm` and `ratatui`, so the two always update in one pull request. `cargo deny` refuses two copies of `crossterm` in the build, so a pull request that splits them fails.
 
 | Crate | For |
 |---|---|
@@ -233,6 +234,7 @@ Each crate enters through `[workspace.dependencies]`, at the latest version at t
 | `ratatui`, `ratatui-textarea`, `crossterm` | the terminal client. `crossterm` is its own dependency, because the async key stream needs its `event-stream` feature, and `ratatui` cannot turn that feature on. Its version is the one that `ratatui` uses, so the build has one copy |
 | `tracing`, `tracing-subscriber` | the log lines on stderr |
 | `portable-pty`, `vt100` | tests of the terminal client only |
+| `governor` | the rate limit of handler commands |
 
 `clap` gets its `env` feature.
 
