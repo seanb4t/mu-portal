@@ -305,3 +305,42 @@ async fn failed_write_records_disconnect() {
     assert_eq!(of_kind(&portal, EventKind::Input), []);
     wait_state(&portal, &aria, WorldState::Disconnected).await;
 }
+
+#[tokio::test(start_paused = true)]
+async fn stop_disconnects_every_world_and_refuses_connect() {
+    let (aria, _) = world("alpha/aria", PW);
+    let (bryn, _) = world("beta/bryn", PW);
+    let portal = started(vec![aria, bryn]).await;
+    portal.stop().await;
+    assert_eq!(
+        portal.worlds(),
+        [
+            (id("alpha/aria"), WorldState::Disconnected),
+            (id("beta/bryn"), WorldState::Disconnected)
+        ]
+    );
+    let gone: Vec<(WorldId, Source)> = of_kind(&portal, EventKind::Disconnected)
+        .into_iter()
+        .map(|event| (event.world, event.source))
+        .collect();
+    assert_eq!(
+        gone,
+        [
+            (id("alpha/aria"), Source::System),
+            (id("beta/bryn"), Source::System)
+        ]
+    );
+    let last = portal.journal().last();
+    let refused = portal.connect(&id("alpha/aria")).await;
+    assert!(matches!(refused, Err(PortalError::Stopped)), "{refused:?}");
+    settle().await;
+    assert_eq!(
+        portal.journal().last(),
+        last,
+        "a connect after the stop records no event"
+    );
+    assert_eq!(
+        portal.worlds()[0],
+        (id("alpha/aria"), WorldState::Disconnected)
+    );
+}

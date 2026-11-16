@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::{mpsc, oneshot, watch};
 
@@ -73,6 +74,7 @@ pub struct Portal {
     router: Router,
     states: Arc<BTreeMap<WorldId, watch::Receiver<WorldState>>>,
     journal: Arc<dyn Journal>,
+    stopped: Arc<AtomicBool>,
 }
 
 impl Portal {
@@ -96,6 +98,7 @@ impl Portal {
             receivers.push((setup, requests, state));
         }
         let router: Router = Arc::new(senders);
+        let stopped = Arc::new(AtomicBool::new(false));
         for (setup, requests, state) in receivers {
             tokio::spawn(session::run(SessionParts {
                 world: setup.world.id,
@@ -109,6 +112,7 @@ impl Portal {
                 router: Arc::clone(&router),
                 state,
                 requests,
+                stopped: Arc::clone(&stopped),
             }));
         }
         if !server_handlers.is_empty() {
@@ -128,6 +132,7 @@ impl Portal {
             router,
             states: Arc::new(states),
             journal,
+            stopped,
         }
     }
 
@@ -226,6 +231,22 @@ impl Portal {
         }))
         .await
         .map(|_| ())
+    }
+
+    /// Stops the engine, as the server: disconnects every world, and from now on each
+    /// connect fails with [`PortalError::Stopped`], from the API and from a handler alike.
+    /// When it returns, no world is up.
+    pub async fn stop(&self) {
+        // The flag goes up first, so a connect that a session reads after it fails.
+        self.stopped.store(true, Ordering::Release);
+        for world in self.router.keys() {
+            // Only a stopped engine fails here.
+            let _ = self
+                .submit(Envelope::system(Command::Disconnect {
+                    world: world.clone(),
+                }))
+                .await;
+        }
     }
 
     /// Connects every world, as the server. Each world logs in when it connects.

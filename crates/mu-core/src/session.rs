@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::io;
 use std::num::NonZeroU32;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use futures::future::BoxFuture;
@@ -110,6 +111,8 @@ pub(crate) struct SessionParts {
     pub(crate) router: Router,
     pub(crate) state: watch::Sender<WorldState>,
     pub(crate) requests: mpsc::UnboundedReceiver<Request>,
+    /// Set by [`crate::Portal::stop`]. After it, the session refuses each connect.
+    pub(crate) stopped: Arc<AtomicBool>,
 }
 
 enum Conn {
@@ -348,6 +351,9 @@ impl Session {
                 ))
             }
             Command::Connect { .. } => {
+                if self.parts.stopped.load(Ordering::Acquire) {
+                    return Err(PortalError::Stopped);
+                }
                 if matches!(self.conn, Conn::Down) {
                     let connect = self.parts.transport.connect(self.world());
                     self.conn = Conn::Connecting { connect, depth };

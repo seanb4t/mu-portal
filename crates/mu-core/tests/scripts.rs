@@ -1,5 +1,6 @@
 //! The scenarios of hooks and handlers, with the depth limit and the rate limit.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -339,11 +340,22 @@ impl Framer for Shout {
 #[tokio::test(start_paused = true)]
 async fn world_uses_its_framer() {
     let (aria, game) = world("alpha/aria", PW);
-    let aria = aria.with_framer(Arc::new(|| Box::new(Shout(LineFramer::new()))));
+    let made = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&made);
+    let aria = aria.with_framer(Arc::new(move || {
+        count.fetch_add(1, Ordering::Relaxed);
+        Box::new(Shout(LineFramer::new()))
+    }));
     let portal = portal(vec![aria], Vec::new());
     portal.connect_all().await;
     let login = format!("CONNECT ARIA {}", PW.to_uppercase());
     assert_eq!(game.wait_for_lines(1).await[0], login);
+    // A new connection gets a new framer from the same factory.
+    portal.disconnect(&id("alpha/aria")).await.unwrap();
+    wait_state(&portal, &id("alpha/aria"), WorldState::Disconnected).await;
+    portal.connect(&id("alpha/aria")).await.unwrap();
+    assert_eq!(game.wait_for_lines(2).await, [login.clone(), login]);
+    assert_eq!(made.load(Ordering::Relaxed), 2);
 }
 
 /// A server handler that records each event it sees.
@@ -411,5 +423,28 @@ async fn server_handler_resumes_after_lag() {
         seen,
         (1..=11).collect::<Vec<_>>(),
         "each event once, in order"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn handler_cannot_connect_after_stop() {
+    let (aria, _) = world("alpha/aria", PW);
+    let reconnect = on(|event| {
+        if event.kind == EventKind::Disconnected {
+            vec![Command::Connect {
+                world: event.world.clone(),
+            }]
+        } else {
+            Vec::new()
+        }
+    });
+    let portal = started(vec![aria.with_handler(reconnect)]).await;
+    portal.stop().await;
+    settle().await;
+    let connects = of_kind(&portal, EventKind::Connected).len();
+    assert_eq!(connects, 1, "the handler brought the world back up");
+    assert_eq!(
+        portal.worlds(),
+        [(id("alpha/aria"), WorldState::Disconnected)]
     );
 }
