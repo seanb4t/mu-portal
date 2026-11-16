@@ -207,10 +207,10 @@ impl AsyncWrite for BrokenStream {
             return Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()));
         }
         self.writes_left -= 1;
-        if self.writes_left == 0 {
-            if let Some(reader) = self.reader.take() {
-                reader.wake();
-            }
+        if self.writes_left == 0
+            && let Some(reader) = self.reader.take()
+        {
+            reader.wake();
         }
         Poll::Ready(Ok(bytes.len()))
     }
