@@ -142,6 +142,20 @@ fn control_characters_are_replaced() {
 }
 
 #[test]
+fn control_characters_are_replaced_in_every_part() {
+    let world = "alpha/a\u{1b}x";
+    let mut app = app(&[world]);
+    app.on_event(event(world, Source::SOURCE_PLAYER, "hi\u{7}"));
+    app.on_event(event(world, Source::SOURCE_SYSTEM, "up\u{9b}"));
+    app.on_event(event(world, Source::SOURCE_CREDENTIAL, "pw\u{7f}"));
+    assert_eq!(top(&app), "[alpha/a\u{fffd}x]");
+    assert_eq!(
+        rows(&app),
+        ["> hi\u{fffd}", "-- up\u{fffd}", "-- pw\u{fffd}"]
+    );
+}
+
+#[test]
 fn enter_sends_to_world_in_focus() {
     let mut app = two_worlds();
     app.on_key(ctrl('n'));
