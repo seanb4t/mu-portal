@@ -123,7 +123,7 @@ fn line_prefixes() {
 #[test]
 fn control_characters_are_replaced() {
     let mut app = app(&["alpha/aria"]);
-    app.on_event(game("alpha/aria", "\u{1b}[2Jhi\tthere\u{7}"));
+    app.on_event(game("alpha/aria", "\u{1b}[2Jhi\tthere\u{7}\u{7f}\u{9b}"));
     app.on_reply(Reply::Refused {
         world: "alpha/aria".to_owned(),
         text: String::new(),
@@ -132,7 +132,7 @@ fn control_characters_are_replaced() {
     assert_eq!(
         rows(&app),
         [
-            "\u{fffd}[2Jhi there\u{fffd}",
+            "\u{fffd}[2Jhi there\u{fffd}\u{fffd}\u{fffd}",
             "-- bad\u{fffd}]0;title\u{fffd}"
         ]
     );
@@ -273,6 +273,24 @@ fn resumed_clears_disconnected() {
 #[test]
 fn ctrl_c_quits() {
     assert_eq!(app(&["alpha/aria"]).on_key(ctrl('c')), Some(Action::Quit));
+}
+
+proptest! {
+    #[test]
+    fn no_control_character_is_drawn(line in "[a \\x00-\\x1f\\x7f\\u{80}-\\u{9f}]{0,40}") {
+        let mut app = app(&["alpha/aria"]);
+        app.on_event(game("alpha/aria", &line));
+        let want: String = line
+            .chars()
+            .map(|c| match c {
+                '\t' => ' ',
+                c if c.is_control() => '\u{fffd}',
+                c => c,
+            })
+            .collect();
+        let drawn = rows(&app).first().cloned().unwrap_or_default();
+        prop_assert_eq!(drawn, want.trim_end());
+    }
 }
 
 #[derive(Clone, Debug)]
