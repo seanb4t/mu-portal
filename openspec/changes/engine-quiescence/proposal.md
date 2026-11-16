@@ -6,7 +6,7 @@ The `mu-core` tests show that something did not happen by calling `settle`, whic
 
 ## What Changes
 
-- The engine gets a control frame: a request on the queue of a world that is not a command and that the journal never records. The session answers it after it handles every request that came before it.
+- The engine gets a control frame: a request on the queue of a world. It is not a command, and the journal never records it. The session answers it after it handles every request that came before it.
 - When the world is up, the frame also makes a round trip through the game with the telnet option TIMING-MARK (RFC 860). The answer then also covers each line that the game sent before the mark.
 - The task of the server handlers publishes the sequence number of the last event it handled.
 - `Portal` gets a method that sends rounds of frames to every world and to the server handlers. It returns after a round that adds no event to the journal.
@@ -19,6 +19,7 @@ The `mu-core` tests show that something did not happen by calling `settle`, whic
 - TIMING-MARK for the production telnet engine and the world-type profiles. The telnet-engine change decides how real games answer it.
 - The test cleanups of issues #67, #68 and #69.
 - A change to the `time-based-test` gate of `review-lint`.
+- The sleeps in `mu-client` and `mu-cli`, in production code and in one unit test of `mu-client`.
 
 ## Capabilities
 
@@ -28,7 +29,7 @@ None.
 
 ### Modified Capabilities
 
-- `world-sessions`: a new requirement for the control frame and for the wait of the engine until no work is left, and the fake world answers TIMING-MARK.
+- `world-sessions`: three new requirements: the control frame, the answer to a waiting frame on a drop, and the wait of the engine. The fake world answers TIMING-MARK.
 
 ## Impact
 

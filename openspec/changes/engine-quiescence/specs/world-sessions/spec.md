@@ -34,7 +34,7 @@ When the world goes down, or its connect fails, the session SHALL answer each fr
 #### Scenario: A wait survives a failed connect
 - **GIVEN** an engine with the fake world `alpha/aria`, whose connect is held
 - **WHEN** a test connects the world, starts a wait, and then drops the gate of the connect
-- **THEN** the wait returns, and the journal already holds a disconnect event of `alpha/aria` that names the failed connect
+- **THEN** the wait returns, and the journal already holds a disconnect event of `alpha/aria` with the text `the connect failed: the connect gate closed`
 
 #### Scenario: A mark that no frame waits for
 - **GIVEN** a world whose framer gives the end of a mark for the game line `mark`

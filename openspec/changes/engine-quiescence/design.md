@@ -39,9 +39,9 @@ Rejected: an idle check on the tokio runtime. Tokio has no stable call that repo
 
 When the world is up, the session writes `IAC DO TIMING-MARK` (RFC 860) to the game. When the framer reads `IAC WILL TIMING-MARK` or `IAC WONT TIMING-MARK`, the session answers the frame. The game answers in the order it reads. So the session already read and recorded each line that the game sent before the mark. Each handler command of those lines is also already on a queue.
 
-The session keeps a list of the frames that wait for a mark, in order. Each answer of the game takes the first one. A mark that no frame waits for changes nothing. The session goes on with other requests while a frame waits, so a frame never blocks the queue.
+`Conn::Up` keeps the list of the frames that wait for a mark, in order. Each answer of the game takes the first one. A frame goes into the list before the session writes its mark. So a failed write of that mark reaches `down` with the frame already in the list. A mark that no frame waits for changes nothing. The session goes on with other requests while a frame waits, so a frame never blocks the queue.
 
-A frame that comes during a connect waits in a second list. When the connect ends and the world is up, the session sends a mark for each frame in that list. A frame on a world that is down gets its answer at once. `Session::down` answers every frame in both lists. Each path that ends a connection or a connect reaches `down`: a failed connect, a failed write, a closed read and a disconnect.
+`Conn::Connecting` keeps a second list, of the frames that come during a connect. When the connect ends and the world is up, those frames move to the list of `Conn::Up`. The session then sends a mark for each one. Each list lives in the state that it belongs to, like the read half and the framer of `Conn::Up`. A frame on a world that is down gets its answer at once. `Session::down` answers each frame in the list of the state that it leaves. Each path that ends a connection or a connect reaches `down`: a failed connect, a failed write, a closed read and a disconnect.
 
 The mark is sent and read outside the state of the telnet options. RFC 860 asks for an answer to each `DO TIMING-MARK`. The Q method of RFC 1143 sends no second `DO` for an option that is already on. So the telnet-engine change keeps `Framer::mark` and `Inbound::Mark` apart from its option table and its accept policy.
 
@@ -51,13 +51,13 @@ Rejected: a channel to the fake game outside the stream. It cannot order the mar
 
 ### The telnet bytes of the mark live in one place
 
-`framer.rs` holds crate-private constants for IAC (255), DO (253), WILL (251), WONT (252) and TIMING-MARK (6). The line framer and the fake game both use them.
+A new crate-private module, `crates/mu-core/src/telnet.rs`, holds the constants IAC (255), DO (253), WILL (251), WONT (252) and TIMING-MARK (6). The line framer and the fake game both use them. The spike `spikes/telnet-engine/src/lib.rs` defines the same codes. The telnet-engine change grows `telnet.rs` into the engine, so that module stays the one home of the codes.
 
-`LineFramer` does not parse telnet yet. It learns the mark only. A sequence that starts with IAC and is not a mark stays in the line as data, as today. The framer holds an IAC at the end of a read until the next read shows whether a mark follows. When a mark comes after a full line, the framer gives the line first. So a cut at `MAX_LINE` never holds a byte of the mark.
+`LineFramer` does not parse telnet yet. It learns the mark only. A sequence that starts with IAC and is not a mark stays in the line as data, as today. The framer holds up to two bytes of a mark at the end of a read until the next read shows whether a mark follows. Bytes that it gives back to the line go through the same cut as any other byte, so no line is longer than `MAX_LINE`. When a mark comes after a full line, the framer gives the line first. So a cut at `MAX_LINE` never holds a byte of the mark.
 
 ### The fake game reads through the line framer
 
-The fake game reads bytes and feeds them to a `LineFramer` for the game side. That framer reads `IAC DO TIMING-MARK` as `Inbound::Mark` and gives the lines as before. The side is a parameter of the constructor: the client side ends a mark on WILL or WONT, and the game side ends it on DO. So the split of the lines and the search for a mark in any split of reads have one implementation.
+The fake game reads bytes and feeds them to a `LineFramer` for the game side. That framer reads `IAC DO TIMING-MARK` as `Inbound::Mark` and gives the lines as before. `LineFramer::new()` stays the client side, which ends a mark on WILL or WONT. A crate-private named constructor, `LineFramer::game()`, gives the game side, which ends a mark on DO. The crate adds a variant through a named method, not an argument of `new`. So the split of the lines and the search for a mark in any split of reads have one implementation.
 
 The fake game answers each `Inbound::Mark` with `IAC WILL TIMING-MARK`, in the order of the framer output. It answers before and after the login, and it does not check the login state for a mark. A mark does not go into the lines that the game got, so `FakeGame::lines` and `wait_for_lines` count the same lines as before.
 
@@ -78,7 +78,7 @@ Step 2 comes before step 3 so that each frame goes on a queue after the commands
 
 A command of a world handler for another world is safe in any order. If it reaches the other queue after the frame, it adds an event later, and the next round sees it.
 
-`Portal::submit` and step 3 share one private method that sends a `Request` to a world and waits for its answer. The kind of request, a command or a frame, is its parameter.
+`Portal::submit` and step 3 share one private method that sends a `Request` to a world and waits for its answer. The kind of request, a command or a frame, is its parameter. `to_every_world` takes a function from `WorldId` to that kind, so `stop`, `connect_all` and step 3 share one loop in the order of the ids.
 
 ### The test helper
 
@@ -92,12 +92,13 @@ The two refusal tests in `tests/portal.rs` also call `idle` before they assert. 
 |---|---|
 | The answer of a frame comes after each request before it | The tests `wait_covers_game_echo` and `wait_covers_server_handler_loop`, and the loop tests in `tests/scripts.rs`. |
 | A frame records no event and sends no line | The test `wait_adds_nothing`. |
-| A drop or a failed connect answers the frames that wait | The tests `wait_survives_drop` and `wait_survives_failed_connect`. |
+| A drop or a failed connect answers the frames that wait | The tests `wait_survives_drop`, `wait_survives_failed_mark_write` and `wait_survives_failed_connect`. |
+| Each list keeps more than one frame in order | The test `two_waits_on_one_world`. |
 | A mark that no frame waits for changes nothing | The test `stray_mark_is_ignored`. |
 | The progress of the server handlers starts at the last event of the journal | The test `wait_on_journal_with_events_at_start`. |
 | The fake game answers the mark in order and does not count it | The unit test `fake_game_answers_mark_in_order` in `fake.rs`. |
 | The line framer reads a mark in any split and keeps the lines | The unit tests and property tests of task 2.1. |
-| No test in the workspace sleeps | Task 4.1 searches `crates/*/tests` and `crates/*/src` for `sleep(`. `review-lint`, gate `time-based-test`, sees only the added lines of a diff. |
+| No test of `mu-core` sleeps | Task 4.1 searches `crates/mu-core/tests` and `crates/mu-core/src` for `sleep(`. `review-lint`, gate `time-based-test`, sees only the added lines of a diff. The sleeps in `mu-client` and `mu-cli` are outside this change. |
 
 ## Risks / Trade-offs
 
