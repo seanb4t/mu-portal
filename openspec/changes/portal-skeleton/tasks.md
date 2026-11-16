@@ -3,10 +3,10 @@
 ## 1. Crates and dependencies
 
 - [ ] 1.1 Read the current documentation of `connectrpc`, `connectrpc-build` and `buffa` with Context7. Read how to serve the router on a tokio `UnixListener`, `Http2Connection::lazy_unix`, server streams, error codes and the `oneof` in generated messages. Note each difference from the design in the design. Make sure that the design names no fact that the documentation contradicts.
-- [ ] 1.2 Read the current documentation of `tokio` with Context7: `broadcast` and its capacity rules, `signal::unix` and `start_paused`. Read it also for `tokio-stream` and its `BroadcastStream`, and for `backon` and the limit of tries of its `ExponentialBuilder`. Read it for `secrecy`, and for `rustix` and its calls for the user id and the file owner. Then read it for `ratatui` with its `TestBackend` and its export of `crossterm`, `ratatui-textarea`, `portable-pty` and `vt100`. Make sure that the design names no fact that the documentation contradicts.
+- [ ] 1.2 Read the current documentation of `tokio` with Context7: `broadcast` and its capacity rules, `signal::unix` and `start_paused`. Read it also for `tokio-stream` and its `BroadcastStream`, and for `backon` and the limit of retries of its `ExponentialBuilder`. Read it for `secrecy`, and for `rustix` and its calls for the user id and the file owner. Then read it for `ratatui` and its `TestBackend`, `crossterm` and its `EventStream`, `ratatui-textarea`, `portable-pty` and `vt100`. Make sure that the design names no fact that the documentation contradicts.
 - [ ] 1.3 Add the crates `crates/mu-server` and `crates/mu-client`, with the workspace package fields and lints. In `crates/mu-cli/tests/workspace_boundary.rs`, change the allowlist and the base fixture to the edges of the design. Remove the edge from `mu-core` to `mu-proto` from both. Add `mu-server` and `mu-client` to the base fixture.
-- [ ] 1.4 Add a second allowlist to the boundary test: the third-party crates that each member can use, in the form of the list of edges. Add the fixture tests `core_to_proto_fails`, `core_to_buffa_fails`, `tui_to_connectrpc_fails`, `client_to_core_fails` and `tui_to_server_fails`. Add the new failure to the list in `docs/src/content/docs/contributing/workspace.md`, and change the crate table and the text that says four crates. Change the crates in `architecture/model.c4`, and the view `crateLayout` and its description in `architecture/views.c4`. Make sure that `cargo nextest run -p mu-cli --test workspace_boundary --locked` and `mise run docs:check` pass.
-- [ ] 1.5 Add each crate of the design table to `[workspace.dependencies]` at its latest version. Add the `env` feature to `clap`. Pin `protoc` as a tool in `mise.toml`, where Renovate reads it. Name each crate with `workspace = true` in each crate that uses it. Make sure that `mise run deny` passes.
+- [ ] 1.4 Add a second allowlist to the boundary test: the third-party crates that each member can use, in the form of the list of edges. Add the fixture tests `core_to_proto_fails`, `core_to_buffa_fails`, `tui_to_connectrpc_fails`, `client_to_core_fails` and `tui_to_server_fails`. Add the new failure to the list in `docs/src/content/docs/contributing/workspace.md`, and change the crate table and the text that says four crates. Add a step to its how-to: a new third-party crate also goes in the allowlist of each member that uses it. Change the description and the text of `docs/src/content/docs/architecture/crate-layout.mdx`, which say four crates. Change the crates in `architecture/model.c4`, and the view `crateLayout` and its description in `architecture/views.c4`. Make sure that `cargo nextest run -p mu-cli --test workspace_boundary --locked` and `mise run docs:check` pass.
+- [ ] 1.5 Add each crate of the design table to `[workspace.dependencies]` at its latest version. Add the `env` feature to `clap`. Pin `protoc` as a tool in `mise.toml`, where Renovate reads it. Turn on the `sync` feature of `tokio-stream`, and the `test-util` feature of `tokio` in the dev-dependencies. Turn on the `event-stream` feature of `crossterm`, at the version that `ratatui` uses. Name each crate with `workspace = true` in each crate that uses it. Make sure that `mise run deny` passes.
 
 ## 2. The schema
 
@@ -35,31 +35,34 @@ Load the `rust-best-practices` skill before this group.
   - `handler_loop_stops_at_depth_limit`, which counts exactly 8 custom events after the first one
   - `handler_on_every_event_stops`, which counts exactly one script error and no event after it
   - `handler_loop_through_game_is_rate_limited`, which counts exactly 20 sent lines and one script error in the first second, with the paused clock
-  - `server_handler_sees_every_world` and `server_handler_resumes_after_lag`
+  - `rate_limit_opens_in_next_second`, which moves the paused clock one second and checks that the next `start` gives `again`
+  - `world_handler_skips_script_error`, with a world handler that counts the events it sees
+  - `handler_connect_has_source_system`
+  - `server_handler_sees_every_world`, and `server_handler_resumes_after_lag`, which checks that the handler sees each event once
 
   Make sure that `cargo nextest run -p mu-core --locked` passes.
 
 ## 4. The server adapter
 
 - [ ] 4.1 In `mu-server`, add the conversion between engine types and protobuf types, and the map from `PortalError` to codes. Add the test `portal_errors_map_to_codes`, with one case for each arm. Make sure that `cargo nextest run -p mu-server --locked` passes.
-- [ ] 4.2 Add the `PortalService` implementation over `Portal`, with the `Hello` message first on each stream. Turn the live receiver into a stream with `BroadcastStream`, and end a lagging stream with `resource_exhausted`. Add the in-process test `lagged_stream_ends_with_resource_exhausted`. The edge of 4 and 5 events is in the tests of task 3.2. Make sure that `cargo nextest run -p mu-server --locked` passes.
+- [ ] 4.2 Add the `PortalService` implementation over `Portal`, with the `Hello` message first on each stream. Turn the live receiver into a stream with `BroadcastStream`, and end a lagging stream with `resource_exhausted`. Add the in-process test `lagged_stream_ends_with_resource_exhausted`, with a second subscriber that reads every event in order. The edge of 4 and 5 events is in the tests of task 3.2. Make sure that `cargo nextest run -p mu-server --locked` passes.
 - [ ] 4.3 Add the steps of the process that `mu-server` owns, in the order of the design: the lock and the check of the file at the socket path. Then bind, write the line on stderr, build the `Portal`, connect each world, and stop on a signal. Make sure that `cargo nextest run -p mu-server --locked` passes. The tests of the built binary are in group 6.
 
 ## 5. The client library
 
-- [ ] 5.1 In `mu-client`, add `PortalClient` with the calls and `events()`. It resumes after an error and after a clean end of the stream, with the backoff of `backon` and no limit of tries. It yields `Resumed` after each `Hello` with the same instance id, and `Reset` on a new one. Add the unit tests `backoff_schedule` and `backoff_runs_past_three_tries` with the paused clock. Make sure that `cargo nextest run -p mu-client --locked` passes. The resume tests are in task 6.6.
+- [ ] 5.1 In `mu-client`, add `PortalClient` with the calls and `events()`. It resumes after an error and after a clean end of the stream, with the backoff of `backon` and no limit of tries. It yields `Resumed` after each `Hello` with the same instance id, and `Reset` on a new one. Add the unit tests `backoff_schedule` and `backoff_runs_past_four_tries` with the paused clock. Make sure that `cargo nextest run -p mu-client --locked` passes. The resume tests are in task 6.6.
 
 ## 6. The verbs
 
-- [ ] 6.1 In `mu-cli`, add `SocketArgs` with `--socket` and `MU_SOCKET`, the default path and `private_dir`. Flatten `SocketArgs` into `ClientArgs` and into the arguments of `mu server`. Wire `mu server` with the hidden `--fake-world`, which a `clap` value parser reads. Read the secrets and call `private_dir` before `mu-server` runs. Remove `not_implemented` and the tests `server_not_implemented`, `client_not_implemented` and `stub_verbs_leave_files_alone` from `crates/mu-cli/tests/cli.rs`. Add the unit tests `default_socket_under_runtime_dir_path`, `default_socket_without_runtime_dir`, `empty_runtime_dir_counts_as_unset`, `relative_runtime_dir_counts_as_unset` and `private_dir_refuses_another_owner`. Make sure that `cargo nextest run -p mu-cli --locked` passes, with `help_lists_verbs` and `no_verb_equals_client`.
-- [ ] 6.2 Move the helper `mu` from `cli.rs` to `crates/mu-cli/tests/support/mod.rs`, and add `mu_with` with an environment. Add `ServerProcess` with a builder for the arguments and the environment, `Relay` and `wait_until` there, as the design says. `ServerProcess` starts the built `mu server` on a socket in a temporary directory. It waits for the line on stderr through `wait_until` and returns a `PortalClient`. It kills the process on drop. Make sure that `cargo nextest run -p mu-cli --locked` passes.
+- [ ] 6.1 In `mu-cli`, add `SocketArgs` with `--socket` and `MU_SOCKET`, the default path and `private_dir`. Flatten `SocketArgs` into `ClientArgs` and into the arguments of `mu server`. Wire `mu server` with the hidden `--fake-world`, which a `clap` value parser reads. Read the secrets and call `private_dir` before `mu-server` runs. Remove `not_implemented` and the tests `server_not_implemented`, `client_not_implemented` and `stub_verbs_leave_files_alone` from `crates/mu-cli/tests/cli.rs`. Add the unit tests `default_socket_under_runtime_dir_path`, `default_socket_without_runtime_dir` and `empty_runtime_dir_counts_as_unset`. Add `relative_runtime_dir_counts_as_unset` and `empty_socket_env_counts_as_unset`. Add `private_dir_refuses_another_owner`, which passes the user id of the owner plus 1. Make sure that `cargo nextest run -p mu-cli --locked` passes, with `help_lists_verbs` and `no_verb_equals_client`.
+- [ ] 6.2 Move the helper `mu` from `cli.rs` to `crates/mu-cli/tests/support/mod.rs`, and add `mu_with` with an environment. Add `ServerProcess` with a builder for the arguments and the environment, `Relay` with its cut and hold, and `wait_until` there, as the design says. `ServerProcess` starts the built `mu server` on a socket in a temporary directory. It waits for the line on stderr through `wait_until` and returns a `PortalClient`. It kills the process on drop. Make sure that `cargo nextest run -p mu-cli --locked` passes.
 - [ ] 6.3 Add `crates/mu-cli/tests/server.rs` with one test for each scenario of the server-process spec that needs no terminal. Make sure that `cargo nextest run -p mu-cli --test server --locked` passes on Linux and on macOS in CI, with these tests:
-  - `serves_on_named_socket`, `env_names_socket`, `flag_wins_over_env`, `default_socket_under_runtime_dir` and `empty_runtime_dir_is_ignored`
+  - `serves_on_named_socket`, `env_names_socket`, `flag_wins_over_env`, `default_socket_under_runtime_dir`, `empty_runtime_dir_is_ignored` and `empty_socket_env_is_ignored`
   - `new_socket_dir_is_private`, which checks the mode 0700 of the directory and the mode 0600 of the socket
-  - `open_socket_dir_is_refused` with the modes 0755, 0750, 0705 and 0701
+  - `open_socket_dir_is_refused` with the modes 0755, 0750, 0705, 0701, 0720 and 0702
   - `second_server_is_refused`, `stale_socket_is_replaced` and `regular_file_at_socket_path_is_kept`
   - `sigterm_stops_server` and `sigint_stops_server`
-  - `client_needs_a_terminal`, which pipes stdout, and checks that the directory is still empty and that stderr does not contain `not implemented`
+  - `client_needs_a_terminal`, which gives the client a terminal on stdin and a pipe on stdout. It checks that the directory is still empty, and that stderr does not contain `not implemented`
 - [ ] 6.4 Add `crates/mu-cli/tests/worlds.rs` with one test for each scenario of the world-sessions spec on the binary. Make sure that `cargo nextest run -p mu-cli --test worlds --locked` passes, with these tests:
   - `bad_world_id_is_refused`
   - `fake_world_answers`
@@ -74,14 +77,14 @@ Load the `rust-best-practices` skill before this group.
   - `empty_send_reaches_game`
   - `one_world_drops`
   - `world_connects_again`
-- [ ] 6.5 Add `crates/mu-cli/tests/journal.rs` with one test for each scenario of the event-journal spec on the binary. The tests are `events_of_two_worlds_share_one_sequence`, `sources_of_a_session`, `password_is_replaced`, `typed_password_is_masked`, `password_with_star_masks_whole_text`, `stream_from_the_middle`, `stream_from_zero`, `stream_from_the_next_number` and `stream_past_the_end`. `password_is_replaced` also reads the stderr of the server. Make sure that `cargo nextest run -p mu-cli --test journal --locked` passes.
+- [ ] 6.5 Add `crates/mu-cli/tests/journal.rs` with one test for each scenario of the event-journal spec on the binary. The tests are `events_of_two_worlds_share_one_sequence`, `sources_of_a_session`, `password_is_replaced`, `typed_password_is_masked`, `password_with_star_masks_whole_text`, `password_of_stars_is_refused`, `password_with_line_break_is_refused`, `stream_from_the_middle`, `stream_from_zero`, `stream_from_the_next_number` and `stream_past_the_end`. `password_is_replaced` also reads the stderr of the server. Make sure that `cargo nextest run -p mu-cli --test journal --locked` passes.
 - [ ] 6.6 Add `crates/mu-cli/tests/resume.rs` with `PortalClient` and the relay. Add the tests `resume_after_cut_connection` (scenario: resume after a cut connection) and `resume_after_server_restart` (scenario: resume after a restart of the server). Add `resume_after_clean_end`, which stops the server with SIGTERM, starts it again, and checks that the client resets and reads the new events. Make sure that `cargo nextest run -p mu-cli --test resume --locked` passes.
 
 ## 7. The terminal client
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 7.1 In `mu-tui`, add `App` with `on_event`, `on_reply`, `on_key` and `draw`, and the input line on `ratatui-textarea`. Use `crossterm` through `ratatui::crossterm`. Add `crates/mu-tui/tests/app.rs` with `TestBackend`, and one test for each scenario. Make sure that `cargo nextest run -p mu-tui --locked` passes, with these tests:
+- [ ] 7.1 In `mu-tui`, add `App` with `on_event`, `on_reply`, `on_key` and `draw`, and the input line on `ratatui-textarea`. Add `crates/mu-tui/tests/app.rs` with `TestBackend`, and one test for each scenario. Make sure that `cargo nextest run -p mu-tui --locked` passes, with these tests:
   - `first_view`, `world_order`, `no_worlds` and `line_prefixes`
   - `enter_sends_to_world_in_focus`, `empty_enter_sends_empty_line`, `enter_with_no_world` and `refused_line_keeps_input`
   - `ctrl_n_moves_focus`, `ctrl_p_wraps_around`, `ctrl_n_wraps_at_the_end`, `keys_with_no_world`, `one_world_keeps_focus` and `activity_mark`
@@ -92,10 +95,11 @@ Load the `rust-best-practices` skill before this group.
 - [ ] 7.2 Add the loop that joins `crossterm` keys, `PortalClient::events()` and the replies. The loop uses the alternate screen. It restores the terminal on exit and on a panic. Wire `mu client` to it, with the steps of the design: the check for a terminal first, then `private_dir`, then the start of a server. Make sure that `cargo build -p mu-cli --locked` passes.
 - [ ] 7.3 Add `crates/mu-cli/tests/client.rs`. It runs the built `mu client` with `portable-pty`, in a pseudo-terminal of 80 by 24. It reads the screen with `vt100` and waits through `wait_until`. A failure prints the screen. Make sure that `cargo nextest run -p mu-cli --test client --locked` passes on Linux and on macOS in CI, with these tests:
   - `client_starts_a_server`, which also checks the mode 0700 of the new directory
-  - `two_clients_start_one_server`, which checks that `server.log` holds exactly one line that names the socket as served
+  - `two_clients_start_one_server`, which checks that each screen shows `no worlds`, and that `server.log` holds exactly one line that names the socket as served
+  - `client_gives_up_after_five_seconds` (scenario: no server answers in time)
   - `client_needs_a_terminal_on_stdin`, which gives the client a terminal on stdout and a pipe on stdin
   - `lost_stream_resumes_through_relay` (scenario: a lost stream)
-  - `ctrl_c_quits_client_only`
+  - `ctrl_c_quits_client_only`, which checks with `ListWorlds` that each world is still `connected`
 
 ## 8. Documentation
 

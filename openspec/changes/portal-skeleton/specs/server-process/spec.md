@@ -7,7 +7,7 @@ Defines the life of the `mu` server process: where it listens, how one server ow
 ## ADDED Requirements
 
 ### Requirement: The server listens on a Unix socket
-`mu server` SHALL serve the API on one Unix socket. The flag `--socket <path>` and the environment variable `MU_SOCKET` name the socket, and the flag wins. Without either, the socket is `server.sock` in the directory `mu` under `XDG_RUNTIME_DIR`. If `XDG_RUNTIME_DIR` is not set, empty or relative, the directory is `mu-<uid>` under the temporary directory of the user. The server SHALL write one line to stderr that names the socket path.
+`mu server` SHALL serve the API on one Unix socket. The flag `--socket <path>` and the environment variable `MU_SOCKET` name the socket, and the flag wins. An empty value of `MU_SOCKET` SHALL count as unset. Without either, the socket is `server.sock` in the directory `mu` under `XDG_RUNTIME_DIR`. If `XDG_RUNTIME_DIR` is not set, empty or relative, the directory is `mu-<uid>` under the temporary directory of the user. The server SHALL write one line to stderr that names the socket path.
 
 #### Scenario: The server serves the API on the named socket
 - **WHEN** the user runs `mu server --socket <dir>/s.sock`
@@ -31,6 +31,11 @@ Defines the life of the `mu` server process: where it listens, how one server ow
 - **WHEN** the user runs `mu server`
 - **THEN** an API call on `<dir>/mu/server.sock` succeeds
 
+#### Scenario: An empty socket variable
+- **GIVEN** `MU_SOCKET` is set to an empty value, and `XDG_RUNTIME_DIR` is `<dir>`
+- **WHEN** the user runs `mu server`
+- **THEN** an API call on `<dir>/mu/server.sock` succeeds
+
 #### Scenario: An empty runtime directory
 - **GIVEN** `XDG_RUNTIME_DIR` is set to an empty value, and the working directory is `<dir>`
 - **WHEN** the user runs `mu server`
@@ -47,7 +52,7 @@ The server and the client SHALL create a missing socket directory with mode 0700
 - **AND** the mode of `<dir>/run/s.sock` is 0600
 
 #### Scenario: A directory of another user is refused
-- **GIVEN** the directory `<dir>/run` has mode 0700, and the check expects an owner other than its owner
+- **GIVEN** the directory `<dir>/run` has mode 0700, and the check expects the user id of its owner plus 1
 - **WHEN** the private directory check runs for `<dir>/run`
 - **THEN** the check fails with an error that names `<dir>/run`
 
@@ -59,7 +64,7 @@ The server and the client SHALL create a missing socket directory with mode 0700
 - **AND** no file `<dir>/run/s.sock` exists
 
 ### Requirement: One server for each socket
-Only one server SHALL serve a socket at a time. A second server for a socket that a running server serves SHALL write an error to stderr that names the socket. The exit status of the second server SHALL be 1. The first server SHALL keep serving. If a socket file exists at the path and no server serves it, the new server SHALL replace it and serve. If the file at the path is not a socket, the server SHALL keep it, write an error that names the path, and exit with status 1.
+Only one server SHALL serve a socket at a time. A second server for a socket that a running server serves SHALL write an error to stderr that names the socket. The exit status of the second server SHALL be 1. The first server SHALL keep serving. If a socket file exists at the path and no server serves it, the new server SHALL replace it and serve. A file at the path can be something other than a socket. Then the server SHALL keep it, write an error that names the path, and exit with status 1.
 
 #### Scenario: A second server is refused
 - **GIVEN** a server serves `<dir>/s.sock`
@@ -106,6 +111,12 @@ If `mu client` finds no server on its socket, it SHALL start `mu server` for tha
 - **AND** the mode of `<dir>/run` is 0700
 - **AND** the file `<dir>/run/server.log` exists
 
+#### Scenario: No server answers in time
+- **GIVEN** a test holds the lock `<dir>/s.sock.lock`, and nothing serves `<dir>/s.sock`
+- **WHEN** the user runs `mu client --socket <dir>/s.sock` in a terminal
+- **THEN** after at most 5 seconds stderr contains `<dir>/s.sock` and `server.log`
+- **AND** the exit status is 1
+
 #### Scenario: Two clients start at the same time
 - **GIVEN** no server serves `<dir>/s.sock`
 - **WHEN** two clients start with `--socket <dir>/s.sock` at the same time
@@ -117,7 +128,7 @@ If stdin or stdout of `mu client` is not a terminal, the client SHALL start no s
 
 #### Scenario: No terminal
 - **GIVEN** `<dir>` is an empty directory, and no server serves `<dir>/s.sock`
-- **WHEN** the user runs `mu client --socket <dir>/s.sock` with stdout as a pipe
+- **WHEN** the user runs `mu client --socket <dir>/s.sock` with stdin on a terminal and stdout as a pipe
 - **THEN** stderr contains the text `terminal`
 - **AND** stderr does not contain `not implemented`
 - **AND** the exit status is 1

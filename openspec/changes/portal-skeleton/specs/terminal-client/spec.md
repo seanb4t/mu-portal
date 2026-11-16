@@ -7,7 +7,7 @@ Defines what the plain terminal client shows and sends: the list of worlds, the 
 ## ADDED Requirements
 
 ### Requirement: The screen has three parts
-The client SHALL use the alternate screen. The top row SHALL list the worlds in order by their game part and then by their character part, with the world in focus in square brackets. With no world, the top row SHALL show `no worlds`. The bottom row SHALL hold the input line. The rows between SHALL show the latest lines of the world in focus, the newest at the bottom.
+The client SHALL use the alternate screen. The top row SHALL list the worlds in order by their game part and then by their character part. The world in focus SHALL be in square brackets. With no world, the top row SHALL show `no worlds`. The bottom row SHALL hold the input line. The rows between SHALL show the latest lines of the world in focus, the newest at the bottom.
 
 #### Scenario: The first view
 - **GIVEN** a server with the fake worlds `alpha/aria` and `beta/bryn`
@@ -103,9 +103,9 @@ If the event stream ends, the client SHALL show `disconnected` in the top row an
 
 #### Scenario: A lost stream
 - **GIVEN** the client shows `alpha/aria`, and reads the stream through a relay
-- **WHEN** the relay cuts the connection
+- **WHEN** the relay cuts the connection and holds
 - **THEN** the top row shows `disconnected`
-- **WHEN** the relay passes again, and a test sends `after the cut` to `alpha/aria` through the API
+- **WHEN** the relay releases, and a test sends `after the cut` to `alpha/aria` through the API
 - **THEN** the screen shows `You say, "after the cut"` on exactly one row
 - **AND** the top row no longer shows `disconnected`
 

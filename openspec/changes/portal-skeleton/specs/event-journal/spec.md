@@ -27,12 +27,12 @@ Each event SHALL have exactly one source. The sources are the game, the player, 
 - **AND** the event of the echo of `hello` from the fake world has the source game
 
 ### Requirement: The journal never holds a password
-The server SHALL send the real password to the game. Before any event of a world reaches the journal, the server SHALL replace each occurrence of the password of that world in its text with `****`. If the result still holds the password, the whole text SHALL become `****`. No event, and no line that the server writes to stderr or to its log, SHALL contain the password.
+The server SHALL send the real password to the game. The server SHALL mask each event of a world before the journal records it. To mask, it SHALL replace each occurrence of the password of that world with `****`. If the result still holds the password, the whole text SHALL become `****`. No event, and no line that the server writes to stderr or to its log, SHALL contain the password.
 
 #### Scenario: The password is replaced
 - **GIVEN** the environment variable `ALPHA_PW` holds `s3cret-pw`, and the fake world `alpha/aria` reads its password from it
 - **WHEN** the world connects and logs in
-- **THEN** the fake world reports that the login succeeded
+- **THEN** the stream holds a game event with the text `Welcome, aria.`
 - **AND** the stream holds a login event with the text `connect aria ****`
 - **AND** no event in the stream contains `s3cret-pw`
 - **AND** the stderr of the server does not contain `s3cret-pw`
@@ -49,6 +49,15 @@ The server SHALL send the real password to the game. Before any event of a world
 - **WHEN** a client sends `aa*` to `alpha/aria`
 - **THEN** the player event of the line has the text `****`
 - **AND** no event in the stream contains `a*`
+
+### Requirement: A password that cannot be masked is refused
+At the start, the server SHALL refuse a password that `****` holds, and a password with CR or LF. It SHALL write an error that names the world and the variable, and exit with status 1.
+
+#### Scenario: A password of stars is refused
+- **GIVEN** the environment variable `ALPHA_PW` holds `**`
+- **WHEN** the user runs `mu server --socket <dir>/s.sock --fake-world alpha/aria=env:ALPHA_PW`
+- **THEN** stderr contains `alpha/aria` and `ALPHA_PW`
+- **AND** the exit status is 1
 
 ### Requirement: A stream starts from a sequence number
 The `Subscribe` call SHALL take the first sequence number the client wants. The stream SHALL send every recorded event from that number in order, and then each new event as it arrives. 0 and 1 SHALL both mean the start of the journal. The first message of each stream SHALL carry the id of the server instance and the last sequence number at the time of the call.
@@ -72,7 +81,7 @@ The `Subscribe` call SHALL take the first sequence number the client wants. The 
 - **AND** the next event on the stream is the next event that the server records, as event 7
 
 ### Requirement: A stream past the end ends
-If the first sequence number of `Subscribe` is greater than the last sequence number plus 1, the stream SHALL send the first message and then end with the code `out_of_range`. Thus a client that resumes after a restart reads the new server instance id first.
+The first number of a `Subscribe` call can be greater than the last sequence number plus 1. Then the stream SHALL send the first message and end with the code `out_of_range`. Thus a client that resumes after a restart reads the new server instance id first.
 
 #### Scenario: A stream past the end
 - **GIVEN** the journal holds events 1 to 6
@@ -89,10 +98,11 @@ A client that loses its stream SHALL subscribe again from the sequence number af
 - **THEN** the client reads each sequence number once, in order, with no gap
 
 #### Scenario: Resume after a restart of the server
-- **GIVEN** a client read events 1 to 5 from a server
-- **WHEN** the server restarts and the client resumes
+- **GIVEN** a client read events 1 to 5 from a server, and one of them has the text `before`
+- **WHEN** the server restarts, a test sends `after` to `alpha/aria`, and the client resumes
 - **THEN** the first message of the new stream carries a different server instance id
-- **AND** the client shows only the events of the new server instance
+- **AND** the first event that the client holds after the reset has the sequence number 1
+- **AND** the client holds no event with the text `before`
 
 ### Requirement: A slow subscriber cannot block the server
 If a subscriber falls too far behind the live events, the server SHALL end its stream with the code `resource_exhausted`. The other subscribers and the worlds SHALL go on without a pause.

@@ -64,13 +64,15 @@ API --Envelope--> Portal --mpsc--> Session task --> Framer --> Transport --> gam
 
 The `Command` enum is the only way to act on a world: `Send`, `Connect`, `Disconnect`, `Login`, `Echo` and `Emit`. The API, a handler and a later timer all produce the same enum. Each command travels in an `Envelope` with its origin and its depth. The origin is `Player`, `Script` or `System`. The API sets `Player`, a handler sets `Script`, and the server start sets `System`.
 
-The source of an event comes from its kind. A line or a prompt from the game has the source game. A connect and a disconnect have the source system, whatever command caused them. A login has the source credential. A custom event and a script error have the source script. Only an input takes its source from the origin of its command: `Player` gives player, and `Script` gives script. Thus the event of a send from a handler has the source script, and a `Connect` from the API has the source system.
+The source of an event comes from its kind. A line or a prompt from the game has the source game. A connect and a disconnect have the source system, whatever command caused them. A login has the source credential. A custom event and a script error have the source script. A message of a side protocol has the source game. Only an input and an echo take their source from the origin of their command: `Player` gives player, `Script` gives script, and `System` gives system. Thus the event of a send from a handler has the source script. A `Connect` from a handler or from the API has the source system.
 
 Each event in the engine carries a depth. An event from a command gets the depth of the command. A line from the game has the depth 0. A command from a handler gets the depth of its event plus one. At the depth limit, the engine drops the command and records one `script_error` event. No handler runs on a `script_error` event, so an error cannot start a second loop. The limit is 8, a constant in `mu-core`. The depth stays in the engine, and the schema does not carry it.
 
-A line from the game starts again at the depth 0. So a handler that sends a line, and gets the echo of the game, makes a loop that the depth cannot see. A rate limit bounds that loop. Each world accepts at most 20 commands from handlers in one second. The engine drops each command over the limit, and records at most one `script_error` event for each second. The limit is a constant in `mu-core`, and a test with the paused clock checks it.
+A line from the game starts again at the depth 0. So a handler that sends a line, and gets the echo of the game, makes a loop that the depth cannot see. A rate limit bounds that loop. Each world accepts at most 20 commands from handlers in one second. The engine drops each command over the limit, and records at most one `script_error` event for each second. The window starts at the first command and lasts one second. The limit is a constant in `mu-core`, and a test with the paused clock checks it, also in the next window.
 
-The world handlers run in the task of their world. The server handlers run in one more task, the server-handler task. That task reads the journal through `subscribe`, as a client does. If it lags, it subscribes again from its last number, because the journal keeps every event. Its commands go to the `Portal` with the depth of the event plus one.
+The counter is written by hand, about 20 lines. `governor` was the other choice. Its clock is separate from the clock of tokio, so a test with the paused clock cannot move it. The counter reads `tokio::time::Instant`, so the paused clock drives it.
+
+The world handlers run in the task of their world. The server handlers run in one more task, the server-handler task. That task reads the journal through `subscribe`, as a client does. If it lags, it subscribes again from the number after the last event it read, because the journal keeps every event. Thus no server handler sees an event twice. Its commands go to the `Portal` with the depth of the event plus one.
 
 The other choice was one task for all worlds. It is simpler, but a slow hook stalls every world, which the [concurrent worlds decision](/decisions/concurrent-worlds/) rules out.
 
@@ -112,7 +114,7 @@ The server reads the secret of each world at the start, before it takes the lock
 
 The session fills the login template `connect {login} {password}` itself. It writes the real line to the transport. It records the event with the text that the template gives for a password of `****`. Thus the login text with the password never exists as an event.
 
-The player can also type the password, and the game can echo it. So the session masks each event of its world before it records the event. It replaces each occurrence of the password of that world with `****`. A password can hold `*`, so the replacement alone can form the password again. For example, the password `a*` in the text `aa*` gives `a****`, which still holds `a*`. So if the masked text still holds the password, the session replaces the whole text with `****`. A property test makes sure that no masked text holds its password, for any text and any password. The journal is the only sink, so a later sink, for example a log on disk, gets the masked text.
+The player can also type the password, and the game can echo it. So the session masks each event of its world before it records the event. It replaces each occurrence of the password of that world with `****`. A password can hold `*`, so the replacement alone can form the password again. For example, the password `a*` in the text `aa*` gives `a****`, which still holds `a*`. So if the masked text still holds the password, the session replaces the whole text with `****`. A password that `****` itself holds, one to four stars, cannot be masked at all. So step 1 of the server refuses it, and also a password with CR or LF, which splits the login line. The error names the world and the variable, never the password. A property test makes sure that no masked text holds its password, for any text and any password. The journal is the only sink, so a later sink, for example a log on disk, gets the masked text.
 
 Enforced by the redaction tests below, and by review for a new sink.
 
@@ -138,9 +140,9 @@ The server serves the axum router of `connectrpc` on a tokio `UnixListener`, as 
 
 `PortalClient` in `mu-client` wraps the generated client. Its method `events()` returns a stream of `ClientEvent`, one of `Reset`, `Resumed`, `Event` and `Lost`. The method keeps the last sequence number and the instance id.
 
-The stream can end with an error. If the server stops on a signal, the stream ends with no error. In both cases, `events()` yields `Lost` and subscribes again from the next number. The ConnectRPC decision says to resume on every error, and not to choose by code. After the `Hello` of each new stream, it yields `Resumed` for the same instance id. On a new instance id, it yields `Reset` and starts from 1. Thus the client learns at once that the stream is back. A new event is not necessary.
+The stream can end with an error. If the server stops on a signal, the stream ends with no error. In both cases, `events()` yields `Lost` and subscribes again from the next number. The ConnectRPC decision says to resume on every error, and not to choose by code. After the `Hello` of each new stream, it yields `Resumed` for the same instance id. On a new instance id, it yields `Reset` and starts from 1. The id belongs to the start of the server, because the journal lives in memory. When #57 keeps the journal on disk, the id moves into the journal, so a restart does not reset each client. Thus the client learns at once that the stream is back. A new event is not necessary.
 
-The `backon` crate gives the wait between two tries: an exponential backoff from 100 milliseconds to at most 5 seconds, with no end. The `ExponentialBuilder` of `backon` stops after 3 tries by default, so the client turns that limit off. A test makes sure that the backoff runs past the third try. The start of a server by the client uses the same crate, with a total limit of 5 seconds. A unit test in `mu-client` checks the schedule of the backoff with the paused clock.
+The `backon` crate gives the wait between two tries: an exponential backoff from 100 milliseconds to at most 5 seconds, with no end. The `ExponentialBuilder` of `backon` stops after 3 retries by default, so the client calls `without_max_times`. A test makes sure that the backoff runs past the fourth try. The start of a server by the client uses the same crate, with a total limit of 5 seconds. If no server answers in that time, the client writes an error that names the socket and `server.log`, and exits with status 1. A unit test in `mu-client` checks the schedule of the backoff with the paused clock.
 
 The resume tests need a real server that records events and restarts. `mu-client` cannot depend on `mu-server`. So the resume tests live in `crates/mu-cli/tests/resume.rs` and run the built binary through the shared test helpers. The relay for these tests lives in `crates/mu-cli/tests/support/`.
 
@@ -154,7 +156,7 @@ The flag `--socket` with the variable `MU_SOCKET` is one `SocketArgs` struct in 
 
 One function in `mu-cli`, `private_dir`, creates a missing socket directory with mode 0700 and refuses an existing one that is not private. It takes the expected owner as an argument, so a test can pass another user id. `rustix` reads the user id and the owner. The verbs `mu server` and `mu client` both call it before they write a file there. `mu-server` does not call it. It gets the socket path after the check.
 
-An empty or relative `XDG_RUNTIME_DIR` counts as unset, so the default path is always absolute.
+An empty or relative `XDG_RUNTIME_DIR` counts as unset, so the default path is always absolute. An empty `MU_SOCKET` also counts as unset. The value parser of `SocketArgs` turns an empty value into none, so `clap` does not refuse it.
 
 ### The server process
 
@@ -183,7 +185,7 @@ A second client that starts at the same moment starts a second server. That serv
 
 ### The terminal client
 
-`mu-tui` has an `App` with four methods: `on_event`, `on_reply`, `on_key` and `draw`. `on_key` returns an action, for example `Send { world, text }` or `Quit`, and does no I/O. The loop runs the call of each action. It gives the result to `on_reply`, for example a refused `Send` with its reason. A loop in `mu-tui` joins three inputs: the key events of `crossterm`, the stream of `PortalClient` and the replies of the calls. The loop uses the copy of `crossterm` that `ratatui` exports. Thus a test drives `App` with `ClientEvent` values, replies and keys, with no terminal and no server. It reads the screen through the `TestBackend` of `ratatui`.
+`mu-tui` has an `App` with four methods: `on_event`, `on_reply`, `on_key` and `draw`. `on_key` returns an action, for example `Send { world, text }` or `Quit`, and does no I/O. The loop runs the call of each action. It gives the result to `on_reply`, for example a refused `Send` with its reason. A loop in `mu-tui` joins three inputs: the `EventStream` of `crossterm`, the stream of `PortalClient` and the replies of the calls. Thus a test drives `App` with `ClientEvent` values, replies and keys, with no terminal and no server. It reads the screen through the `TestBackend` of `ratatui`.
 
 The worlds are in the order of their game part and then their character part. A server that the client started has no world. Then the top row shows `no worlds`, and Enter shows a line with the prefix `-- ` that says that no world has the focus. Ctrl+N and Ctrl+P do nothing with no world. The focus is an index that the code checks, never a division by the count. A property test runs any sequence of keys and events. It makes sure that the focus is then on a world that exists, or on none with no world.
 
@@ -197,7 +199,7 @@ The tests of the built binary run `mu client` in a pseudo-terminal with `portabl
 
 - `mu(args)`, moved from `cli.rs`, which runs the built binary to its exit, and `mu_with(args, env)`, which also sets and removes environment variables
 - `ServerProcess`, which starts `mu server` on a socket in a temporary directory and kills it on drop. Its builder takes the arguments and the environment
-- `Relay`, which forwards a Unix socket and can cut the connection
+- `Relay`, which forwards a Unix socket. It can cut the connection and hold, which refuses each new connection until the test releases it
 - `wait_until(bound, check)`, the one bounded wait. It fails the test at the bound and prints what it saw.
 
 ### Tests and the clock
@@ -219,7 +221,7 @@ Each crate enters through `[workspace.dependencies]`, at the latest version at t
 
 | Crate | For |
 |---|---|
-| `tokio`, `tokio-stream` | the runtime, channels, signals, the Unix socket, and `BroadcastStream` |
+| `tokio`, `tokio-stream` | the runtime, channels, signals and the Unix socket. `BroadcastStream` needs the `sync` feature of `tokio-stream`, and the paused clock needs the `test-util` feature of `tokio` in the dev-dependencies |
 | `connectrpc`, `connectrpc-build`, `buffa` | the API, as the spike used them |
 | `axum` | the router that `connectrpc` serves |
 | `futures` | stream combinators |
@@ -228,7 +230,7 @@ Each crate enters through `[workspace.dependencies]`, at the latest version at t
 | `secrecy` | the password type |
 | `uuid` | the server instance id |
 | `rustix` | the user id and the owner of the socket directory |
-| `ratatui`, `ratatui-textarea` | the terminal client. `crossterm` comes through `ratatui::crossterm`, as the input editor spike used it |
+| `ratatui`, `ratatui-textarea`, `crossterm` | the terminal client. `crossterm` is its own dependency, because the async key stream needs its `event-stream` feature, and `ratatui` cannot turn that feature on. Its version is the one that `ratatui` uses, so the build has one copy |
 | `tracing`, `tracing-subscriber` | the log lines on stderr |
 | `portable-pty`, `vt100` | tests of the terminal client only |
 
@@ -264,4 +266,4 @@ None. No release exists. The stub output `not implemented` goes, and its tests g
 
 ## Open Questions
 
-- The default socket path on macOS uses the temporary directory of the user, because macOS has no `XDG_RUNTIME_DIR`. If the path length limit of a Unix socket allows it, a later change can move it to `~/Library/Application Support/mu/`. The tests of the binary name the socket with the flag, with `MU_SOCKET`, or with `XDG_RUNTIME_DIR`. The unit test of the default without `XDG_RUNTIME_DIR` checks the rule against the temporary directory of the platform, not a fixed path. So this choice does not change the tests.
+- The default socket path on macOS uses the temporary directory of the user, because macOS has no `XDG_RUNTIME_DIR`. If the path length limit of a Unix socket allows it, a later change can move it to `~/Library/Application Support/mu/`. Most tests of the binary name the socket with the flag, with `MU_SOCKET`, or with `XDG_RUNTIME_DIR`. Two tests run without a usable `XDG_RUNTIME_DIR`: the unit test of the default and the binary test with an empty value. Both check the path against the temporary directory of the platform, not a fixed path. So this choice does not change the tests.

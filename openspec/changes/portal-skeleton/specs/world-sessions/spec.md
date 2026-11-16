@@ -50,7 +50,7 @@ At the start of the server, each world SHALL connect. Each world with a login SH
 - **THEN** the reply holds `alpha/aria` and `beta/bryn`, each in the state `connected`
 
 ### Requirement: A command reaches only its world
-The API call `Send` SHALL send one line to the world it names, and no other world. The reply SHALL hold the sequence number of the player event, or no number if a hook gagged the line. An unknown world SHALL fail with `not_found`. A world in the state `connecting` or `disconnected` SHALL fail with `failed_precondition`. A text with CR or LF SHALL fail with `invalid_argument`. A failed call SHALL record no event.
+The API call `Send` SHALL send one line to the world it names, and no other world. The reply SHALL hold the sequence number of the player event. If a hook gagged the line, the reply SHALL hold no number. An unknown world SHALL fail with `not_found`. A world in the state `connecting` or `disconnected` SHALL fail with `failed_precondition`. A text with CR or LF SHALL fail with `invalid_argument`. A failed call SHALL record no event.
 
 #### Scenario: Two characters on one game
 - **GIVEN** a server with the fake worlds `alpha/aria` and `alpha/ash`
@@ -130,7 +130,7 @@ The engine SHALL run each hook of a world on each line from the game and from th
 - **AND** no event contains `secret plan`
 
 ### Requirement: A handler acts through commands
-The engine SHALL run each handler of a world on each event of that world after the journal records it. A server handler SHALL run on the events of every world. A handler SHALL return commands. The engine SHALL run each command and SHALL record its result as a new event with the source script. A command from a handler SHALL NOT run the same handler again for its own event in the same step. No handler SHALL run on an event of the kind script error.
+The engine SHALL run each handler of a world on each event of that world after the journal records it. A server handler SHALL run on the events of every world. A handler SHALL return commands. The engine SHALL run each command and SHALL record its result as a new event. A command from a handler SHALL NOT run the same handler again for its own event in the same step. No handler SHALL run on an event of the kind script error.
 
 #### Scenario: A handler answers a line
 - **GIVEN** a world with a test handler that returns a send of `wave` for each game event with the text `Hello?`
@@ -151,10 +151,23 @@ The engine SHALL run each handler of a world on each event of that world after t
 - **AND** the journal records no event after that script error
 
 ### Requirement: A loop through the game has a bound
-A line from the game SHALL start at the depth 0. Each world SHALL accept at most 20 commands from handlers in one second. The engine SHALL drop each command over the limit. It SHALL record at most one script error for each second in which it dropped a command.
+A line from the game SHALL start at the depth 0. Each world SHALL accept at most 20 commands from handlers in one second. The engine SHALL drop each command over the limit. It SHALL record at most one script error for each second in which it dropped a command. In the next second, the world SHALL accept commands from handlers again.
 
 #### Scenario: A handler that answers its own echo
 - **GIVEN** a world with a test handler that sends `again` for each game event, and a fake world that echoes each line
 - **WHEN** a client sends `start`
 - **THEN** the game gets exactly 20 lines `again` in the first second
 - **AND** the journal holds exactly one script error for that second
+
+#### Scenario: The limit opens again
+- **GIVEN** the loop of `again` stopped at the limit in the first second
+- **WHEN** one second passes, and a client sends `start` again
+- **THEN** the game gets the line `again` again
+
+### Requirement: The events of handler commands name their source
+An input from a handler SHALL have the source script. A connect or a disconnect from a handler SHALL have the source system.
+
+#### Scenario: A handler connects
+- **GIVEN** a world with a test handler that returns a connect for each disconnect of its world
+- **WHEN** the fake world drops the connection
+- **THEN** the journal holds a connect event with the source system after the disconnect
