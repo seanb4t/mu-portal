@@ -27,7 +27,7 @@ The client SHALL use the alternate screen. The top row SHALL list the worlds in 
 - **THEN** the top row shows `no worlds`
 
 ### Requirement: Lines show their source
-The client SHALL show a line from the game as it is. It SHALL show a line from the player with the prefix `> `. It SHALL show an event of the system or a credential with the prefix `-- `.
+The client SHALL show a line from the game as it is. It SHALL show a line from the player with the prefix `> `. It SHALL show an event of the system or a credential with the prefix `-- `. Text from the server can hold control characters. The client SHALL show a tab as a space and each other control character as U+FFFD, so no text sends a sequence to the terminal.
 
 #### Scenario: Prefixes
 - **GIVEN** the client shows `alpha/aria`
@@ -35,6 +35,11 @@ The client SHALL show a line from the game as it is. It SHALL show a line from t
 - **THEN** the screen shows `> hello`
 - **AND** the next row shows `You say, "hello"`
 - **AND** the screen shows `-- connect aria ****`
+
+#### Scenario: Control characters
+- **GIVEN** the client shows `alpha/aria`
+- **WHEN** the game sends a line that holds ESC, BEL, DEL, a tab and the C1 character U+009B
+- **THEN** the screen shows U+FFFD for each of ESC, BEL, DEL and U+009B, and a space for the tab
 
 ### Requirement: Enter sends the input to the world in focus
 If the user presses Enter, the client SHALL send the text of the input line to the world in focus and clear the input line. An empty input line SHALL send an empty line. If the server refuses the line, the client SHALL keep the text in the input line. It SHALL show the reason as a line with the prefix `-- `.

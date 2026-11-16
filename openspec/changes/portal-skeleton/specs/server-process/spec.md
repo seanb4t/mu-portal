@@ -7,7 +7,7 @@ Defines the life of the `mu` server process: where it listens, how one server ow
 ## ADDED Requirements
 
 ### Requirement: The server listens on a Unix socket
-`mu server` SHALL serve the API on one Unix socket. The flag `--socket <path>` and the environment variable `MU_SOCKET` name the socket, and the flag wins. An empty value of `MU_SOCKET` SHALL count as unset. Without either, the socket is `server.sock` in the directory `mu` under `XDG_RUNTIME_DIR`. If `XDG_RUNTIME_DIR` is not set, empty or relative, the directory is `mu-<uid>` under the temporary directory of the user. The server SHALL write one line to stderr that names the socket path.
+`mu server` SHALL serve the API on one Unix socket. The flag `--socket <path>` and the environment variable `MU_SOCKET` name the socket, and the flag wins. An empty value of `MU_SOCKET` SHALL count as unset. Without either, the socket is `server.sock` in the directory `mu` under `XDG_RUNTIME_DIR`. If `XDG_RUNTIME_DIR` is not set, empty or relative, the directory is `mu-<uid>` under the temporary directory of the user. A relative socket path SHALL be relative to the working directory. The server SHALL write one line to stderr that names the absolute socket path.
 
 #### Scenario: The server serves the API on the named socket
 - **WHEN** the user runs `mu server --socket <dir>/s.sock`
@@ -41,6 +41,12 @@ Defines the life of the `mu` server process: where it listens, how one server ow
 - **WHEN** the user runs `mu server`
 - **THEN** stderr gets a line that names an absolute socket path under the temporary directory of the user
 - **AND** no directory `<dir>/mu` exists
+
+#### Scenario: A bare socket name
+- **GIVEN** the working directory is `<dir>`, a private directory
+- **WHEN** the user runs `mu server --socket s.sock`
+- **THEN** stderr gets a line that names `<dir>/s.sock`
+- **AND** an API call on `<dir>/s.sock` succeeds
 
 ### Requirement: Only the owner can reach the socket
 The server and the client SHALL create a missing socket directory with mode 0700. The server SHALL create the socket with mode 0600. The server SHALL refuse a socket directory that another user owns, or whose mode gives access to the group or to others. For such a directory, the server SHALL write an error to stderr that names the directory. The exit status SHALL be 1.
@@ -86,7 +92,7 @@ Only one server SHALL serve a socket at a time. A second server for a socket tha
 - **AND** `<dir>/s.sock` still holds the text `keep`
 
 ### Requirement: The server stops on a signal
-If the server gets SIGTERM or SIGINT, it SHALL close its connections to the worlds and end each open event stream. Then it SHALL remove its socket file and exit with status 0.
+If the server gets SIGTERM or SIGINT, it SHALL close its connections to the worlds first, so each open event stream gets the disconnected event of each world. Then it SHALL end each open event stream. Then it SHALL remove its socket file and exit with status 0.
 
 #### Scenario: SIGTERM stops the server
 - **GIVEN** a server serves `<dir>/s.sock`, and a client reads its event stream
@@ -94,6 +100,11 @@ If the server gets SIGTERM or SIGINT, it SHALL close its connections to the worl
 - **THEN** the event stream of the client ends
 - **AND** the server exits with status 0
 - **AND** no file `<dir>/s.sock` exists
+
+#### Scenario: The streams get the disconnects
+- **GIVEN** a server with the fake worlds `alpha/aria` and `beta/bryn`, and a client reads its event stream
+- **WHEN** the server process gets SIGTERM
+- **THEN** the stream holds a disconnected event for `alpha/aria` and one for `beta/bryn` before it ends
 
 #### Scenario: SIGINT stops the server
 - **GIVEN** a server serves `<dir>/s.sock`

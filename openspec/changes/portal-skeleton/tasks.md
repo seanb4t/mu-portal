@@ -23,6 +23,7 @@ Load the `rust-best-practices` skill before this group.
 - [x] 3.5 Add the `Transport` trait, the fake game and `FakeTransport`. The fake game greets, checks the login line, and answers each line as the world-sessions spec says. A fake transport can hold the connect open, so that a test can see the state `connecting`. The line `@drop` makes the fake game close the connection. Add the tests `fake_game_accepts_login`, `fake_game_refuses_wrong_password`, `fake_game_answers_line` and `fake_game_drops_on_request`. Make sure that `cargo nextest run -p mu-core --locked` passes.
 - [x] 3.6 Add the `Framer` trait and `LineFramer`. `Inbound` has a variant for a message of a side protocol, which `LineFramer` never gives. Add the tests `line_framer_splits_on_lf`, `line_framer_drops_cr` and `line_framer_keeps_a_partial_line`, and the property test `line_framer_ignores_read_splits`. Make sure that `cargo nextest run -p mu-core --locked` passes.
 - [x] 3.7 Add the session task and `Portal`, with one task for each world. Add the login with redaction at the source, and the mask of the password in each event. Add `Send`, `Connect`, `Disconnect` and `ListWorlds`. Use the paused clock. Make sure that `cargo nextest run -p mu-core --locked` passes, with these tests:
+  - `failed_write_records_disconnect`, with a test transport whose writes fail
   - `two_characters_on_one_game`, `send_to_unknown_world`, `send_to_disconnected_world`, `send_to_connecting_world`, `empty_send_reaches_game`, `send_with_lf_is_refused`, `send_with_cr_is_refused`, `one_world_drops` and `world_connects_again`
   - `connect_from_api_has_source_system`
   - `login_event_is_redacted`: the fake game gets the password, and no event holds it
@@ -31,6 +32,8 @@ Load the `rust-best-practices` skill before this group.
   - the property test `mask_never_leaves_the_password`, for any text and any password that the secret store accepts
 - [x] 3.8 Add the `Hook` and `Handler` traits, the depth of each event, the depth limit and the rate limit. Add the server-handler task, which reads the journal. Add these tests, each with a test hook or handler:
   - `hook_gags_game_line`, `hook_replaces_player_line` and `hook_gags_player_line`
+  - `hook_line_break_is_dropped`, once with LF and once with CR in the text of the hook
+  - `world_uses_its_framer`, with a test framer that `WorldSetup::with_framer` gives
   - `handler_answers_line`, which checks that the event of the send has the source script
   - `handler_loop_stops_at_depth_limit`, which counts exactly 8 custom events after the first one
   - `handler_on_every_event_stops`, which counts exactly one script error and no event after it
@@ -63,6 +66,7 @@ Load the `rust-best-practices` skill before this group.
   - `open_socket_dir_is_refused` with the modes 0740, 0720, 0710, 0704, 0702 and 0701, one for each access bit, and 0755
   - `second_server_is_refused`, `stale_socket_is_replaced` and `regular_file_at_socket_path_is_kept`
   - `sigterm_stops_server` and `sigint_stops_server`
+  - `sigterm_sends_the_disconnects_first` (scenario: the streams get the disconnects) and `bare_socket_name_is_in_the_working_directory`
   - `client_needs_a_terminal`, which uses `mu_on_pty` to give the client a terminal on stdin and a pipe on stdout. It checks that the directory is still empty, and that stderr does not contain `not implemented`
 - [x] 6.4 Add `crates/mu-cli/tests/worlds.rs` with one test for each scenario of the world-sessions spec on the binary. Make sure that `cargo nextest run -p mu-cli --test worlds --locked` passes, with these tests:
   - `bad_world_id_is_refused`
@@ -94,9 +98,11 @@ Load the `rust-best-practices` skill before this group.
   - `lost_stream_resumes`, which feeds `Lost`, then `Resumed` and the line once, and checks the top row and the rows
   - `resumed_clears_disconnected`, which feeds `Lost` and then `Resumed` with no event
   - the property test `focus_is_always_valid`, for any sequence of keys and events
+  - `control_characters_are_replaced` (scenario: control characters), and the property test `no_control_character_is_drawn`, for any text
 - [x] 7.2 Add the loop that joins `crossterm` keys, `PortalClient::events()` and the replies. The loop uses the alternate screen. It restores the terminal on exit and on a panic. Wire `mu client` to it, with the steps of the design: the check for a terminal first, then `private_dir`, then the start of a server. Make sure that `cargo build -p mu-cli --locked` passes.
 - [x] 7.3 Add `crates/mu-cli/tests/client.rs`. It runs the built `mu client` with `portable-pty`, in a pseudo-terminal of 80 by 24. It reads the screen with `vt100` and waits through `wait_until`. A failure prints the screen. Make sure that `cargo nextest run -p mu-cli --test client --locked` passes on Linux and on macOS in CI, with these tests:
-  - `client_starts_a_server`, which also checks the mode 0700 of the new directory
+  - `client_starts_a_server`, which also checks the mode 0700 of the new directory, quits the client, calls `ListWorlds` after the exit, and reads `server.log`
+  - `typed_line_reaches_the_server` and `empty_enter_reaches_the_server`, which check the player event on the server after Enter in the client
   - `two_clients_start_one_server`, which checks that each screen shows `no worlds`, and that `server.log` holds exactly one line that names the socket as served
   - `client_gives_up_after_five_seconds` (scenario: no server answers in time), which also checks that the client still runs at 4 seconds
   - `client_needs_a_terminal_on_stdin`, which uses `mu_on_pty` to give the client a terminal on stdout and a pipe on stdin

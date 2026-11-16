@@ -50,7 +50,7 @@ At the start of the server, each world SHALL connect. Each world with a login SH
 - **THEN** the reply holds `alpha/aria` and `beta/bryn`, each in the state `connected`
 
 ### Requirement: A command reaches only its world
-The API call `Send` SHALL send one line to the world it names, and no other world. The reply SHALL hold the sequence number of the player event. If a hook gagged the line, the reply SHALL hold no number. An unknown world SHALL fail with `not_found`. A world in the state `connecting` or `disconnected` SHALL fail with `failed_precondition`. A text with CR or LF SHALL fail with `invalid_argument`. A failed call SHALL record no event.
+The API call `Send` SHALL send one line to the world it names, and no other world. The reply SHALL hold the sequence number of the player event. If a hook gagged the line, the reply SHALL hold no number. An unknown world SHALL fail with `not_found`. A world in the state `connecting` or `disconnected` SHALL fail with `failed_precondition`. A text with CR or LF SHALL fail with `invalid_argument`. A call that the server refuses SHALL record no event. If the write of the line to the game fails, the call SHALL fail with `failed_precondition`, and the server SHALL record the disconnect of the world and no player event.
 
 #### Scenario: Two characters on one game
 - **GIVEN** a server with the fake worlds `alpha/aria` and `alpha/ash`
@@ -68,6 +68,13 @@ The API call `Send` SHALL send one line to the world it names, and no other worl
 - **WHEN** a client sends `hello` to `alpha/aria`
 - **THEN** the call fails with the code `failed_precondition`
 - **AND** the server records no event
+
+#### Scenario: A write that fails
+- **GIVEN** the world `alpha/aria` is connected on a test transport whose writes fail
+- **WHEN** a client sends `hello` to `alpha/aria`
+- **THEN** the call fails with the code `failed_precondition`
+- **AND** the server records one disconnected event for `alpha/aria`
+- **AND** the server records no player event
 
 #### Scenario: A world that is still connecting
 - **GIVEN** the world `alpha/aria` is in the state `connecting`
@@ -108,7 +115,7 @@ The API calls `Connect` and `Disconnect` SHALL change the state of the world the
 - **AND** `ListWorlds` returns `alpha/aria` in the state `connected`
 
 ### Requirement: A hook can change a line before the journal
-The engine SHALL run each hook of a world on each line from the game and from the player. The hooks run before the event reaches the journal. A hook SHALL pass the line, replace its text, or gag it. A gagged line SHALL make no event. A gagged player line SHALL not reach the game.
+The engine SHALL run each hook of a world on each line from the game and from the player. The hooks run before the event reaches the journal. A hook SHALL pass the line, replace its text, or gag it. A gagged line SHALL make no event. A gagged player line SHALL not reach the game. A hook can replace a player line with a text that holds CR or LF. Then the line SHALL not reach the game and SHALL make no player event, and the engine SHALL record a script error.
 
 #### Scenario: A hook gags a game line
 - **GIVEN** a world with a test hook that gags each game line that contains `spam`
@@ -121,6 +128,13 @@ The engine SHALL run each hook of a world on each line from the game and from th
 - **WHEN** a client sends `hi`
 - **THEN** the game gets the line `say hi`
 - **AND** the journal holds a player event with the text `say hi`
+
+#### Scenario: A hook puts a line break in a player line
+- **GIVEN** a world with a test hook that replaces the player line `hi` with a text that holds LF
+- **WHEN** a client sends `hi`
+- **THEN** the reply holds no sequence number
+- **AND** the game gets no line
+- **AND** the journal holds one script error and no player event
 
 #### Scenario: A hook gags a player line
 - **GIVEN** a world with a test hook that gags the player line `secret plan`

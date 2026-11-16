@@ -156,7 +156,7 @@ The resume tests need a real server that records events and restarts. `mu-client
 
 The flag `--socket` with the variable `MU_SOCKET` is one `SocketArgs` struct in `mu-cli`. `ClientArgs` and the arguments of `mu server` both flatten it. The `env` feature of `clap` reads the variable. One function in `mu-cli` gives the default path from the spec.
 
-One function in `mu-cli`, `private_dir`, creates a missing socket directory with mode 0700 and refuses an existing one that is not private. It takes the expected owner as an argument, so a test can pass another user id. `rustix` reads the user id and the owner. The verbs `mu server` and `mu client` both call it before they write a file there. `mu-server` does not call it. It gets the socket path after the check.
+One function in `mu-cli`, `private_dir`, creates a missing socket directory with mode 0700 and refuses an existing one that is not private. It takes the expected owner as an argument, so a test can pass another user id. `rustix` reads the user id, and `std::os::unix::fs::MetadataExt` reads the owner and the mode. The verbs `mu server` and `mu client` both call it before they write a file there. `mu-server` does not call it. It gets the socket path after the check.
 
 An empty or relative `XDG_RUNTIME_DIR` counts as unset, so the default path is always absolute. An empty `MU_SOCKET` also counts as unset. The value parser of `SocketArgs` turns an empty value into none, so `clap` does not refuse it.
 
@@ -197,7 +197,7 @@ The tests of the built binary run `mu client` in a pseudo-terminal with `portabl
 
 ### Test helpers
 
-`crates/mu-cli/tests/support/mod.rs` holds every helper that more than one test file uses:
+`crates/mu-cli/tests/support/` holds every helper that more than one test file uses. `mod.rs` holds `mu` and `mu_with`, and `process.rs` holds the rest:
 
 - `mu(args)`, moved from `cli.rs`, which runs the built binary to its exit, and `mu_with(args, env)`, which also sets and removes environment variables
 - `ServerProcess`, which starts `mu server` on a socket in a temporary directory and kills it on drop. Its builder takes the arguments and the environment
@@ -232,7 +232,7 @@ Each crate enters through `[workspace.dependencies]`, at the latest version at t
 | `thiserror` | error enums |
 | `secrecy` | the password type |
 | `uuid` | the server instance id |
-| `rustix` | the user id and the owner of the socket directory |
+| `rustix` | the user id of the process |
 | `ratatui`, `ratatui-textarea`, `crossterm` | the terminal client. `crossterm` is its own dependency, because the async key stream needs its `event-stream` feature, and `ratatui` cannot turn that feature on. Its version is the one that `ratatui` uses, so the build has one copy |
 | `tracing`, `tracing-subscriber` | the log lines on stderr |
 | `portable-pty`, `vt100` | tests of the terminal client only |
