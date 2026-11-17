@@ -281,19 +281,27 @@ fn violations(root: &Path) -> Vec<Violation> {
             }
         }
     }
-    found.extend(include_violations(
-        metadata.workspace_root.as_std_path(),
-        member_directories
-            .iter()
-            .map(|directory| directory.as_std_path()),
-    ));
-    found.extend(link_violations(
+    found.extend(file_violations(
         metadata.workspace_root.as_std_path(),
         spikes.as_std_path(),
+        &member_directories,
+    ));
+    found
+}
+
+/// The include rule and the link rule for the files of the member directories.
+fn file_violations(
+    root: &Path,
+    spikes: &Path,
+    member_directories: &[&cargo_metadata::camino::Utf8Path],
+) -> Vec<Violation> {
+    let directories = || {
         member_directories
             .iter()
-            .map(|directory| directory.as_std_path()),
-    ));
+            .map(|directory| directory.as_std_path())
+    };
+    let mut found = include_violations(root, directories());
+    found.extend(link_violations(root, spikes, directories()));
     found
 }
 
