@@ -35,7 +35,7 @@ Load the `rust-best-practices` skill before this group.
 
 ## 3. The transcripts
 
-- [ ] 3.1 Copy the six files of `spikes/telnet-engine/transcripts/` to `crates/mu-core/tests/fixtures/telnet/`. Add a parser of the transcript format to `crates/mu-core/tests/support/mod.rs`, with `hex` for the bytes. Add `crates/mu-core/tests/telnet_transcripts.rs` with these tests:
+- [x] 3.1 Copy the six files of `spikes/telnet-engine/transcripts/` to `crates/mu-core/tests/fixtures/telnet/`. Add a parser of the transcript format to `crates/mu-core/tests/support/mod.rs`, with `hex` for the bytes. Add `crates/mu-core/tests/telnet_transcripts.rs` with these tests:
   - `transcripts_have_no_protocol_error` and `transcripts_in_other_reads`, for the scenario "The recorded transcripts in other reads"
 
   In `crates/mu-cli/tests/workspace_boundary.rs`, add `Violation::SpikeLink` for a symbolic link in a member directory whose target resolves into the `spikes` directory of the workspace root. Add the probe test `spike_link_fails`, which makes such a link in a `TreeCopy` of the fixture. Make sure that `cargo nextest run -p mu-core --test telnet_transcripts --locked` and `cargo nextest run -p mu-cli --test workspace_boundary --locked` pass.

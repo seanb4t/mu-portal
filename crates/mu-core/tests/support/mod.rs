@@ -258,3 +258,37 @@ pub fn reads<'a>(bytes: &'a [u8], points: &[usize]) -> Vec<&'a [u8]> {
     }
     out
 }
+
+/// The reads of the game in a transcript of the telnet spike, in order.
+///
+/// Each record is one line: `<` for a read of the game or `>` for a write to it, the seconds
+/// since the connect, and the hex of the bytes. A line that starts with `#` is a note.
+pub fn transcript_reads(text: &str) -> Vec<Vec<u8>> {
+    text.lines()
+        .map(str::trim_end)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(|line| {
+            let mut fields = line.splitn(3, ' ');
+            let direction = fields.next().unwrap();
+            assert!(matches!(direction, "<" | ">"), "bad record: {line}");
+            let _seconds: f64 = fields.next().unwrap().parse().unwrap();
+            let bytes = hex::decode(fields.next().unwrap_or_default()).unwrap();
+            (direction == "<").then_some(bytes)
+        })
+        .collect()
+}
+
+/// The text of each transcript under `tests/fixtures/telnet`, with its file name.
+pub fn transcripts() -> Vec<(String, String)> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/telnet");
+    let mut files: Vec<(String, String)> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|entry| {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            (name, std::fs::read_to_string(&path).unwrap())
+        })
+        .collect();
+    files.sort();
+    files
+}
