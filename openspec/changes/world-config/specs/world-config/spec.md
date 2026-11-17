@@ -97,7 +97,7 @@ A game file SHALL name its type with `extends`. A user type file can name anothe
 #### Scenario: A user type extends a built-in type
 - **GIVEN** `types/rp.toml` sets `extends = "tinymux"` and `columns = 78`, and the game `alpha` sets `extends = "rp"`
 - **WHEN** the user runs `mu world show alpha/aria --config <dir>`
-- **THEN** stdout shows the character set of `tinymux` and `columns = 78`
+- **THEN** stdout shows `charset = "iso-8859-1"` and `columns = 78`
 
 #### Scenario: An unknown type
 - **GIVEN** the game `alpha` sets `extends = "nosuch"`
@@ -171,6 +171,7 @@ Rules and scripts SHALL share one space of ids in a world. An id twice in one ar
 
 #### Scenario: A rule and a script with one id
 - **GIVEN** `global.toml` has the rule `greet`, and the game `alpha` has the script `greet`
+- **OR** the game `alpha` has both the rule `greet` and the script `greet`
 - **WHEN** the user runs `mu world list --config <dir>`
 - **THEN** stderr names `games/alpha.toml` and `greet`
 - **AND** the exit status is 1
@@ -284,10 +285,10 @@ A layer from a shared plugin source SHALL NOT set `host`, `port`, `tls`, `login.
 - **THEN** the resolved world has `columns = 72`
 
 ### Requirement: A world has a place to connect
-After the merge, each world SHALL have `host` and `port`. A world with `login.name` or `login.secret` SHALL have both. A world with neither SHALL log in by hand. Without `login.name` and `login.secret`, a `login.template` SHALL NOT count. A world with `keepalive.command` or `keepalive.seconds` SHALL have both. A missing field SHALL be an error that names the world and the field.
+After the merge, each world SHALL have `host` and `port`, and `host` SHALL NOT be empty. A world with `login.name` or `login.secret` SHALL have both. A world with neither SHALL log in by hand. Without `login.name` and `login.secret`, a `login.template` SHALL NOT count. A world with `keepalive.command` or `keepalive.seconds` SHALL have both. A missing field SHALL be an error that names the world and the field.
 
 #### Scenario: A world with no host or port
-- **GIVEN** no layer of `alpha/aria` sets `host`, or no layer sets `port`
+- **GIVEN** no layer of `alpha/aria` sets `host`, or the last layer that sets it sets `host = ""`, or no layer sets `port`
 - **WHEN** the user runs `mu world list --config <dir>`
 - **THEN** stderr names `alpha/aria` and the missing field
 - **AND** the exit status is 1
