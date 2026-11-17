@@ -74,4 +74,4 @@ Load the `rust-best-practices` skill before this group.
 
 ## 6. Review
 
-- [ ] 6.1 Run `/sb:openspec-review telnet-engine implementation`. Make sure that the verdict in `review.md` is not changes-requested.
+- [x] 6.1 Run `/sb:openspec-review telnet-engine implementation`. Make sure that the verdict in `review.md` is not changes-requested.

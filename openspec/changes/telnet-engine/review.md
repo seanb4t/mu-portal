@@ -1,9 +1,9 @@
 ---
-verdict: changes-requested
+verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-17T02:35:47+00:00
-head: 8d4c0d7f8d6dc925a2a11ad2d74f52b96131b177
-round: 6
+reviewed_at: 2026-11-17T02:42:20+00:00
+head: 8774c38a4b156df7ab79d681ddc74e56406597b9
+round: 7
 next_id: 92
 lenses:
   spec-lint: not-applicable
@@ -19,30 +19,24 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge |
 |---|---|---|---|---|---|---|---|---|
-| R-86 | approach | blocker | in-change | The scenario 'A bare CR in a line to the game' has the session send a line with a CR through the telnet framer. The session refuses every such line with PortalError::LineBreak before it calls encode, and no login template holds a CR, so no path of the session reaches the CR NUL step that design.md gives TelnetFramer::encode. | specs/telnet-protocol/spec.md > Scenario: A bare CR in a line to the game — "**WHEN** the session sends the line `a\\rb`, or `a\\r`, through the telnet framer" | Reword the WHEN to 'the telnet framer encodes the line', and state in the decision on encode that the session refuses a line with a CR, so the CR NUL step serves only a direct caller of encode; or drop the CR NUL rule from the requirement. |  | severity? should-fix 0.72 |
-| R-87 | fit | should-fix | in-change | The new support::parse_reads polls every event and takes the output after each read, but telnet_parser.rs keeps its own drain for the same step. Each test that calls receive and then drain does what parse_reads does with one read, so the parser tests hold two helpers for one step. | crates/mu-core/tests/support/mod.rs:326 — "events.extend(std::iter::from_fn(\|\| parser.poll_event()));" | Remove drain from telnet_parser.rs and replace each pair of parser.receive(x) and drain(&mut parser) with parse_reads(&mut parser, &[x]). |  |  |
-| R-88 | invariants | should-fix | in-change | The TTYPE gate turns off on Disabled(Local, TTYPE), but no test sends a TTYPE SEND after DONT TTYPE. A mutant that deletes the Disabled arm passes every TTYPE test: each test either never turns TTYPE on or sends no request after DONT. | crates/mu-core/src/framer.rs:400 — "Event::Disabled(Side::Local, opt::TTYPE) => self.terminal_type_on = false," | Add a case to ttype_request_while_ttype_is_off: feed IAC DO TTYPE and IAC DONT TTYPE, then IAC SB TTYPE SEND IAC SE in a later read and in the same read, and assert that no IS answer goes out. A probe at head gives no reply for the later-read case, so the test passes today and fails on the mutant. |  |  |
-| R-89 | invariants | should-fix | in-change | The reply-order rule fails for a Data event. flush_data stamps buffered data with the output length at flush time, after negotiate has already written its reply. For the read `a IAC DO NAWS`, a reply sent after polling Data([97]) lands after IAC WILL NAWS (probe output), though the parser sent nothing before `a`. | crates/mu-core/src/telnet/parser.rs:301 — ".push_back((Event::Data(data), self.output.len()));" | Flush the buffered data before each byte that the parser writes during receive, for example call self.flush_data() at the top of write when the cursor is None. Add a parser test: receive `a IAC DO NAWS` with NAWS accepted, poll Data, call send_subnegotiation, and assert that the reply comes before IAC WILL NAWS. The TelnetFramer sends no reply on Data today, so the fault does not show through the framer. |  |  |
-| R-90 | invariants | should-fix | in-change | take_output shifts the stored positions of queued events so that a later splice stays inside the output. No test calls take_output while events are queued: the framer, drain and parse_reads all poll every event first. If that loop were removed, a reply after the next poll would splice past the end of an empty Vec, and Vec::splice panics there. | crates/mu-core/src/telnet/parser.rs:229 — "*position = position.saturating_sub(taken.len());" | Add a parser test in crates/mu-core/tests/telnet_parser.rs: accept TTYPE, receive IAC DO TTYPE, IAC SB TTYPE SEND IAC SE and IAC DONT TTYPE, call take_output first, then poll each event and call send_subnegotiation after the subnegotiation. Assert that nothing panics and the second take_output holds only the reply. A probe at head ran this sequence without a panic. |  |  |
-| R-91 | invariants | suggestion | in-change | Reply order of the framer for any split of the read is an order-independence property over an unbounded domain. Only one fixed example tests it (ttype_answer_in_the_order_of_the_read). telnet_framer_lines_ignore_read_splits compares lines only, and the parser split test compares output with no caller replies. | specs/telnet-protocol/spec.md > Requirement: The telnet framer answers the terminal type — "Each reply of the framer SHALL reach the game in the order of the events of the read." | Add a proptest to crates/mu-core/tests/telnet_framer.rs, beside telnet_framer_lines_ignore_read_splits. It builds random sequences of DO/DONT TTYPE, DO NAWS, TTYPE SEND and CHARSET REQUEST parts and splits them into random reads. It asserts that the joined Inbound::Reply bytes equal those of the whole stream in one read. A probe at head gave equal replies for every two-read split of the fixed TTYPE case. |  | severity? should-fix 0.71 |
+| R-91 | invariants | suggestion | in-change | Reply order for any read split is still checked on one fixed input only. The new loop tries every split of a single TTYPE stream, and the only framer split property compares lines and never replies. | crates/mu-core/tests/telnet_framer.rs:266 — "for point in 0..=bytes.len() {" | With proptest, extend stream_byte in crates/mu-core/tests/telnet_framer.rs with DO/DONT TTYPE, TTYPE SEND, DO NAWS and a CHARSET REQUEST, and add a proptest next to telnet_framer_lines_ignore_read_splits that asserts the joined Reply bytes are equal for the whole stream and for random reads. | regression | severity? should-fix 0.64 |
 
 ## Repeats
 
 | id | lens | severity | claim | evidence |
 |---|---|---|---|---|
 | R-73 | test-coverage | should-fix | covered row 'Random streams in random reads' has no verification run | review > not-run — "Random streams in random reads" |
-| R-74 | test-coverage | should-fix | covered row 'The recorded transcripts in other reads' has no verification run | review > not-run — "The recorded transcripts in other reads" |
 | R-75 | test-coverage | should-fix | covered row 'A line of exactly the bound' has no verification run | review > not-run — "A line of exactly the bound" |
 
 ## Out of bound
 
-| lens | severity | claim | evidence |
-|---|---|---|---|
-| approach | should-fix | The enforcement row for 'The mark changes no option' cites answer_to_a_mark, a framer test that checks only the lines and the Mark item and cannot see option state. The parser test that checks the option state is answer_to_a_mark_changes_no_option, which the row does not name. | design.md > Enforcement of each rule — "\| The mark changes no option \| The tests `answer_to_a_mark` and `mark_from_the_game`. \|" |
+None.
 
 ## Accepted
 
-None.
+| id | severity | disposition | reason | ticket |
+|---|---|---|---|---|
+| R-91 | suggestion | deferred | The order in which TelnetFramer sends its replies across read splits is tested on one fixed TTYPE input only; no property test covers reply order for random streams split into random reads. | https://github.com/seanb4t/mu-portal/issues/78 |
 
 ## Rounds
 
@@ -54,10 +48,11 @@ None.
 | 4 | implementation | full | 9a60b3922a66172ac5e87f0ce81a4e1a7e0c8120 | 3af2d398e309a213c030a3c38bd5626ca4031fc35795d57a8effadcb738ed57e | approve-with-notes | 17 | 0 | 1 | 0 |  |
 | 5 | implementation | follow-up | 3515e234ce3b95811611dcbc7f0d2e51b4f03bfa | c728e94c6f93b9a5e32a48c743007432f64dfaff9f40e2c1f40e3fff5517c6e5 | approve-with-notes | 10 | 2 | 1 | 1 |  |
 | 6 | implementation | follow-up | 8d4c0d7f8d6dc925a2a11ad2d74f52b96131b177 | 5bc8febef7632e06baf31e60ec5be3d932b291a7edd9b4b65b592c540b9b9e00 | changes-requested | 6 | 3 | 0 | 1 |  |
+| 7 | implementation | follow-up | 8774c38a4b156df7ab79d681ddc74e56406597b9 | 66d81d6f03c6f2650ef7a5c831c96ee60fd82cee50c52a8cea6825c8cdbebefc | approve-with-notes | 0 | 2 | 1 | 0 | operator decision |
 
 ## Judge
 
-judge: 12 questions, 0.000 USD
+judge: 2 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -88,7 +83,7 @@ judge: 12 questions, 0.000 USD
 | Plain bytes after the answer to DONT | crates/mu-core/tests/telnet_parser.rs: plain_bytes_after_the_answer_to_dont | covered | pass |
 | A stream that breaks inside a command | crates/mu-core/tests/telnet_parser.rs: bad_stream_that_breaks_inside_a_command | covered | pass |
 | Random streams in random reads | crates/mu-core/tests/telnet_parser.rs: parser_matches_the_oracle, parser_ignores_read_splits | covered | not-run |
-| The recorded transcripts in other reads | crates/mu-core/tests/telnet_transcripts.rs: transcripts_have_no_protocol_error, transcripts_in_other_reads | covered | not-run |
+| The recorded transcripts in other reads | crates/mu-core/tests/telnet_transcripts.rs: transcripts_in_other_reads | covered | pass |
 | Line ends | crates/mu-core/tests/telnet_framer.rs: line_ends | covered | pass |
 | A bare CR in a line to the game | crates/mu-core/tests/telnet_framer.rs: bare_cr_in_a_line_to_the_game | covered | pass |
 | Lines in a compressed stream | crates/mu-core/tests/telnet_framer.rs: compressed_lines | covered | pass |
@@ -131,7 +126,6 @@ judge: 12 questions, 0.000 USD
 ### Not run
 
 - Random streams in random reads: no verification run names this row
-- The recorded transcripts in other reads: no verification run names this row
 - A line of exactly the bound: no verification run names this row
 
 ## Verification runs
@@ -162,7 +156,6 @@ judge: 12 questions, 0.000 USD
 - exit 0: `cargo nextest run -p mu-core --test telnet_parser --locked -E 'test(=bad_stream_that_breaks_inside_a_command)'`
 - exit 0: `cargo nextest run -p mu-core --test telnet_parser --locked -E 'test(=parser_matches_the_oracle)'`
 - exit 0: `cargo nextest run -p mu-core --test telnet_parser --locked -E 'test(=parser_ignores_read_splits)'`
-- exit 0: `cargo nextest run -p mu-core --test telnet_transcripts --locked -E 'test(=transcripts_have_no_protocol_error)'`
 - exit 0: `cargo nextest run -p mu-core --test telnet_transcripts --locked -E 'test(=transcripts_in_other_reads)'`
 - exit 0: `cargo nextest run -p mu-core --test telnet_framer --locked -E 'test(=line_ends)'`
 - exit 0: `cargo nextest run -p mu-core --test telnet_framer --locked -E 'test(=bare_cr_in_a_line_to_the_game)'`
@@ -209,25 +202,36 @@ None.
 
 ## Lens notes
 
-- approach: No Bash tool: the changed lines since 3515e23 were inferred from diff-files.txt, the commit subjects and the fixed rows of round 5, not from a git diff. The bound of each finding is a best judgment.
-- approach: Checked against head and found to hold: the reply cursor of Parser (poll_event, write, take_output) gives the order of the read for TTYPE and NAWS; the TIMING-MARK branch answers DO with WONT before the Q table and ignores DONT; the TTYPE gate follows Enabled and Disabled events; LineBuffer drops CR before the cut check; TelnetFramer drops a NUL after a CR across reads; recovery after a bad stream resets state and payload and reads WONT MCCP2 as a negotiation; Violation::SpikeLink walks member directories and compares with workspace_root.join("spikes").
-- fit: The lens has no git tool, so the bound of this follow-up round was taken from diff-files.txt, the commit subjects since the base and the fixed rows R-76 to R-85 of prior.json.
-- fit: The fixes of R-79 to R-85 hold at head: the CR drop has one home in LineBuffer, the transcript test calls support::parse_reads, WONT_MCCP2 is used, mark_from_the_game loops over two policies, every_split holds the split loop, and spike_link_fails runs one case list.
-- fit: The reply cursor of Parser (write, poll_event, take_output) differs from the spike, which appended each reply at the end. The design states the rule and its reason under 'The parser API', so it is not raised as an unjustified deviation.
-- fit: TelnetFramer keeps terminal_type_on beside the Q table of the parser. It holds the state at the polled event, which Parser::is_enabled cannot give after the whole read, so it is not raised as a concept duplication.
-- invariants: I1: A reply that the caller sends after poll_event goes right after the bytes that the parser sent before that event \| enforced at crates/mu-core/src/telnet/parser.rs:217-223 (cursor) and 256-266 (write), except for Data events (inv-2) \| boundary test telnet_framer.rs ttype_answer_in_the_order_of_the_read
-- invariants: I2: The stored position of each queued event never exceeds the output length \| enforced at parser.rs:228-230 (take_output) and 263-265 (write) \| boundary test none (inv-3)
-- invariants: I3: The framer answers TTYPE SEND only while TTYPE is on for the client at that event \| enforced at framer.rs:347 and 399-400 \| boundary test ttype_request_while_ttype_is_off (before DO, alone and in the same read) and ttype_answer_in_the_order_of_the_read; off after DONT: none (inv-1)
-- invariants: I4: Each CR in a line to the game goes as CR NUL \| enforced at TelnetFramer::encode \| boundary test bare_cr_in_a_line_to_the_game, now with the trailing-CR edge a\\r
-- invariants: I5: A read that adds no byte to the partial line gives no prompt (a CR or a NUL after CR alone) \| enforced at framer.rs:320-326 (partial length compare; LineBuffer is the one home of the CR drop) \| boundary test cr_or_nul_alone_gives_no_prompt and line_of_exactly_the_bound with CR LF
-- invariants: I6: The parser refuses each DO TIMING-MARK, whatever the policy, and ignores DONT TIMING-MARK \| enforced at parser.rs:406-412 \| boundary test mark_from_the_game, with a refusing and an accepting policy and a DONT
-- invariants: I7: A symbolic link from a crate into spikes/ fails the boundary test, for a file and for a directory \| enforced at Violation::SpikeLink \| boundary test spike_link_fails, two cases in one loop; no case was lost in the merge
-- invariants: I8: After a bad stream, the events from the error on are the same for any split \| enforced at Parser::recover \| boundary test plain_bytes_after_the_answer_to_dont and bad_stream_that_breaks_inside_a_command through every_split; the split at every byte is kept, and the added third read is empty
-- invariants: Probe: a scratch crate under the handoff directory (probe/) built mu-core at head and ran four edge inputs. (1) take_output between poll and reply: no panic, and the reply goes after bytes already taken, which no design can avoid. (2) The framer's TTYPE replies are equal for every two-read split. (3) SEND after DONT TTYPE gives no reply. (4) Data before DO NAWS: the reply lands after WILL NAWS (inv-2).
-- invariants: The removed line `added = true` and the removed CR skip in TelnetFramer::data drop no check: LineBuffer now drops each CR, and the partial-length comparison replaces the flag. cr_or_nul_alone_gives_no_prompt still covers that edge.
-- invariants: No row of prior.json is raised again. R-82 (gate timing) is fixed at head; inv-1 concerns the missing off-side test of the new flag.
-- test-coverage: The oracle proptests (parser_matches_the_oracle, parser_ignores_read_splits) were read by signature and part builders only, not the full property bodies. The controller records their run.
-- test-honesty: Read the changed tests: spike_link_fails, bad_stream_that_breaks_inside_a_command, mark_from_the_game, two_marks_in_a_row, same_prompt_after_a_line. Each asserts literal expected values and can fail for its named reason. No ignore attribute was found in crates.
+- approach: Follow-up round since 8d4c0d7. The files read first: telnet/parser.rs, telnet_parser.rs, telnet_framer.rs, design.md, spec.md and tasks.md.
+- approach: The parser API decision now says the parser ends buffered data before a reply of its own. Parser::write does this: it calls flush_data before it appends while the cursor is None. So R-89 holds as fixed.
+- approach: Parser::take_output shifts the positions of queued events and clears the cursor, and the test reply_after_output_taken_with_events_queued exists. So R-90 holds as fixed.
+- approach: The encode decision says CR NUL serves only a direct caller of encode. Session refuses a Send with a CR or an LF with PortalError::LineBreak, and the login line comes from a WorldId part limited to a-z, 0-9 and '-'. The spec scenario 'A bare CR in a line to the game' now has the framer encode the line itself, which bare_cr_in_a_line_to_the_game does. So R-86 and R-76 hold as fixed.
+- approach: The mark decision answers DO TIMING-MARK with WONT before the table and ignores DONT TIMING-MARK. Parser::negotiate does this, and mark_from_the_game runs with both policies. So R-77 holds as fixed.
+- approach: The checked fact on MCCP2 errors now says the parser reads plain telnet after WONT MCCP2, as Parser::recover does. So R-78 holds as fixed.
+- approach: Each test name in the design tables 'Enforcement of each rule' and 'Standards we claim', and in task 4.4, exists at head.
+- approach: No finding falls inside the bound of this round.
+- fit: Follow-up round since 8d4c0d7. The fit lens has no git tool, so the changed lines were found from diff-files.txt, the commit subjects and the open rows of prior.json (R-89, R-90, R-91), not from a line diff.
+- fit: Parser::write now ends buffered data before a reply at the end of the output (parser.rs:256-268). This reuses flush_data, the same step that emit uses, and adds no second mechanism for the reply order.
+- fit: The new and changed tests (reply_after_data_goes_before_a_later_reply, reply_after_output_taken_with_events_queued, ttype_answer_in_the_order_of_the_read, mark_from_the_game) use the shared helpers support::subnegotiation, support::parse_reads through drain and run_reads, and reply_to. No new copy of a helper was found.
+- fit: telnet_framer.rs:202 writes the mark bytes as a literal next to telnet::MARK. This is the independent expected value of the test and falls under the exclusion for test fixtures that repeat a production shape on purpose.
+- fit: The refused-verb reply map (WILL to DONT, DO to WONT) appears in both malformed_framing (telnet_parser.rs:285) and negotiation_part (telnet_parser.rs:524). It was not reported, because the lens could not show that either copy changed since the base.
+- invariants: I1: A reply that the caller sends after poll_event goes right after the bytes that the parser sent before that event \| enforced at crates/mu-core/src/telnet/parser.rs:216-221 (poll_event sets cursor) and 256-268 (write splices at cursor) \| boundary test reply_after_data_goes_before_a_later_reply, reply_after_output_taken_with_events_queued
+- invariants: I2: Before the parser writes a reply of its own, the data read before it ends as an event \| enforced at crates/mu-core/src/telnet/parser.rs:258-259 (flush_data in the None branch of write) \| boundary test reply_after_data_goes_before_a_later_reply (data then reply) and reply_after_output_taken_with_events_queued (no data before the reply)
+- invariants: I3: Each queued event position stays within the output after take_output, so a later splice never passes the end \| enforced at crates/mu-core/src/telnet/parser.rs:226-229 (saturating_sub) \| boundary test reply_after_output_taken_with_events_queued
+- invariants: I4: Queued event positions are non-decreasing and never below the cursor, so Vec::splice at the cursor cannot panic \| enforced at parser.rs write (cursor and queued positions grow by the same length) and receive (cursor reset to None) \| boundary test none beyond the two new parser tests; reasoned from the code, not probed
+- invariants: I5: The framer replies reach the game in the order of the read for any split \| enforced by the parser cursor and TelnetFramer::feed polling every event before take_output (framer.rs:387-418) \| boundary test ttype_answer_in_the_order_of_the_read, every split point 0..=len including both ends; only one input stream (inv-1)
+- invariants: I6: After DONT TTYPE the framer answers no TTYPE SEND \| enforced at crates/mu-core/src/framer.rs:396 (Disabled arm) \| boundary test ttype_answer_in_the_order_of_the_read, the after-DONT assert at each split
+- invariants: I7: TelnetFramer::encode sends each CR as CR NUL, then CR LF \| enforced at crates/mu-core/src/framer.rs:428-437 \| boundary test bare_cr_in_a_line_to_the_game, CR inside the line and CR as the last byte
+- invariants: I8: The session passes no line with a CR or an LF to encode \| enforced at crates/mu-core/src/session.rs:425 and 434 for Send, secret.rs:178 for the password, id.rs:50-51 for the login name; the login template is only the constant DEFAULT_LOGIN_TEMPLATE, and Login.template is a public field with no check \| boundary test send_with_lf_is_refused and the CR case at crates/mu-core/tests/portal.rs:110. A CR in a future template would still go out as CR NUL, so no defect follows
+- invariants: I9: A Data event is never empty \| enforced at crates/mu-core/src/telnet/parser.rs flush_data (is_empty guard) \| boundary test none needed; structural guard
+- invariants: The drain helper of telnet_parser.rs now calls parse_reads with one empty read; receive of an empty read only resets the cursor and flushes no data, so no check is weakened.
+- invariants: No probe was run: every enforcement point in the bound is Rust code, not a script, and a probe would need a test build, which only the controller runs.
+- invariants: Follow-up round: only text changed since 8d4c0d7 was reviewed; requirements and decisions with no changed text are outside the bound.
+- test-coverage: No BREAKING requirement in the spec delta.
+- test-coverage: Tests reply_after_data_goes_before_a_later_reply, reply_after_output_taken_with_events_queued and answer_to_a_mark_changes_no_option are explained by task 4.4.
+- test-honesty: Read the changed tests of telnet_parser.rs and telnet_framer.rs (mark, bad-stream recovery, reply order, TTYPE gate, line bound) against the spec THENs; each asserts concrete events and bytes, none is a tautology, mock echo, constant or disabled test.
+- test-honesty: telnet_framer.rs subnegotiation_over_the_bound names the option by a substring check of the option number only; a minor looseness, not a finding.
+- test-coverage gap: Bodies of the MCCP2 parser tests at lines 300-378 and of telnet_transcripts.rs not read; matched by name.
 
 ## Ledger
 
@@ -305,9 +309,9 @@ None.
 | R-70 | 4 | 4 | suggestion | in-change | ["path","crates/mu-core/src/telnet/parser.rs",115] | refuted | A generic Sides<T> would drop the const fn of Policy::accepts and add a type to replace four two-arm matches over fixed arrays; the copies cannot drift apart in a way a test would miss. |  | Policy and Parser each keep a local and a remote table of 256 entries and pick one with a match on Side in four methods: accept, accepts, q and set_q. The blocks vary only in the element type. |
 | R-71 | 4 | 4 | suggestion | in-change | ["path","crates/mu-core/src/framer.rs",307] | fixed | 4c747651088a26e327aeb12a9eff9795b46108df |  | The design lets world-sessions add each world quirk to TelnetSettings so that new keeps its signature, but TelnetFramer copies charset, columns and rows out of the settings into its own fields. Each quirk that world-sessions adds then needs a new field and a new line in new as well. |
 | R-72 | 4 | 4 | note | in-change | ["path","crates/mu-core/tests/telnet_parser.rs",175] | fixed | 90947402876dd80ac6794d8d49b9899902029905 |  | Two tests match no scenario and no task line: unrequested_answer_is_an_error and compressed_lines. |
-| R-73 | 4 | 6 | should-fix | in-change | ["artifact",["review","not-run"],"Random streams in random reads"] | refuted | The merge matches a run only to the whole covered_by text, and these rows name two tests each; every named test ran once at head and passed, as verification-runs.txt of round 6 shows. |  | covered row 'Random streams in random reads' has no verification run |
+| R-73 | 4 | 7 | should-fix | in-change | ["artifact",["review","not-run"],"Random streams in random reads"] | refuted | The merge matches a run only to the whole covered_by text, and these rows name two tests each; every named test ran once at head and passed, as verification-runs.txt of round 7 shows. |  | covered row 'Random streams in random reads' has no verification run |
 | R-74 | 4 | 6 | should-fix | in-change | ["artifact",["review","not-run"],"The recorded transcripts in other reads"] | refuted | The merge matches a run only to the whole covered_by text, and these rows name two tests each; every named test ran once at head and passed, as verification-runs.txt of round 6 shows. |  | covered row 'The recorded transcripts in other reads' has no verification run |
-| R-75 | 4 | 6 | should-fix | in-change | ["artifact",["review","not-run"],"A line of exactly the bound"] | refuted | The merge matches a run only to the whole covered_by text, and these rows name two tests each; every named test ran once at head and passed, as verification-runs.txt of round 6 shows. |  | covered row 'A line of exactly the bound' has no verification run |
+| R-75 | 4 | 7 | should-fix | in-change | ["artifact",["review","not-run"],"A line of exactly the bound"] | refuted | The merge matches a run only to the whole covered_by text, and these rows name two tests each; every named test ran once at head and passed, as verification-runs.txt of round 7 shows. |  | covered row 'A line of exactly the bound' has no verification run |
 | R-76 | 5 | 5 | should-fix | in-change | ["path","crates/mu-core/src/framer.rs",425] | fixed | bea88cbe3e1eaff385eecfb14c67ffe039f7fe51 |  | app-1: TelnetFramer::encode now sends each CR of a line as CR NUL, as the spec asks, but both design decisions on encode still say it gives the escaped line in the character set and then CR LF, with no CR NUL step and no recorded deviation.; inv-2: Each CR of a line to the game goes as CR NUL, but the only test puts the CR in the middle of the line. No test has a CR as the last byte before the CR LF end, two adjacent CRs, or a CR next to an escaped 255.; inv-3: TelnetFramer::encode now combines two escapes, IAC doubling and CR NUL, over an unbounded domain of lines. No property test feeds encode's output back to a TelnetFramer; parser_round_trip uses telnet::escape alone and latin1_round_trip skips CR. |
 | R-77 | 5 | 5 | should-fix | in-change | ["path","crates/mu-core/src/telnet/parser.rs",383] | fixed | bea88cbe3e1eaff385eecfb14c67ffe039f7fe51 |  | app-2: The parser now answers IAC DO TIMING-MARK with WONT before the Q table, whatever the policy, but the decision still says DO TIMING-MARK goes through the table like a refused option; read as written, a policy that accepts TIMING-MARK would answer WILL, against the scenario with such a policy.; inv-4: The new TIMING-MARK branch of negotiate drops IAC DONT TIMING-MARK in its catch-all arm, where before it went through the Q method. WILL, WONT and DO each have a test; no test sends DONT TIMING-MARK to show it gives no reply, no event and no state change. |
 | R-78 | 5 | 5 | should-fix | in-change | ["artifact",["design.md","Checked facts"],"After a decompression error, the MCCP specification lets the client send `DONT MCCP2` and go on as plain telnet. This design does that."] | fixed | bea88cbe3e1eaff385eecfb14c67ffe039f7fe51 |  | The checked fact says that after a decompression error the client may send DONT MCCP2 and go on as plain telnet, and that this design does that. The design and the parser drop every byte until IAC WONT MCCP2 instead, so the design does not go on as plain telnet. |
@@ -323,7 +327,7 @@ None.
 | R-88 | 6 | 6 | should-fix | in-change | ["path","crates/mu-core/src/framer.rs",400] | fixed | c0348786c12766c7e4042cba419692ae2513614b |  | The TTYPE gate turns off on Disabled(Local, TTYPE), but no test sends a TTYPE SEND after DONT TTYPE. A mutant that deletes the Disabled arm passes every TTYPE test: each test either never turns TTYPE on or sends no request after DONT. |
 | R-89 | 6 | 6 | should-fix | in-change | ["path","crates/mu-core/src/telnet/parser.rs",301] | fixed | c0348786c12766c7e4042cba419692ae2513614b |  | The reply-order rule fails for a Data event. flush_data stamps buffered data with the output length at flush time, after negotiate has already written its reply. For the read `a IAC DO NAWS`, a reply sent after polling Data([97]) lands after IAC WILL NAWS (probe output), though the parser sent nothing before `a`. |
 | R-90 | 6 | 6 | should-fix | in-change | ["path","crates/mu-core/src/telnet/parser.rs",229] | fixed | c0348786c12766c7e4042cba419692ae2513614b |  | take_output shifts the stored positions of queued events so that a later splice stays inside the output. No test calls take_output while events are queued: the framer, drain and parse_reads all poll every event first. If that loop were removed, a reply after the next poll would splice past the end of an empty Vec, and Vec::splice panics there. |
-| R-91 | 6 | 6 | suggestion | in-change | ["artifact",["specs/telnet-protocol/spec.md","Requirement: The telnet framer answers the terminal type"],"Each reply of the framer SHALL reach the game in the order of the events of the read."] | fixed | c0348786c12766c7e4042cba419692ae2513614b |  | Reply order of the framer for any split of the read is an order-independence property over an unbounded domain. Only one fixed example tests it (ttype_answer_in_the_order_of_the_read). telnet_framer_lines_ignore_read_splits compares lines only, and the parser split test compares output with no caller replies. |
+| R-91 | 6 | 7 | suggestion | in-change | ["artifact",["specs/telnet-protocol/spec.md","Requirement: The telnet framer answers the terminal type"],"Each reply of the framer SHALL reach the game in the order of the events of the read."] | deferred | ticket: https://github.com/seanb4t/mu-portal/issues/78; reason: The order in which TelnetFramer sends its replies across read splits is tested on one fixed TTYPE input only; no property test covers reply order for random streams split into random reads. |  | Reply order of the framer for any split of the read is an order-independence property over an unbounded domain. Only one fixed example tests it (ttype_answer_in_the_order_of_the_read). telnet_framer_lines_ignore_read_splits compares lines only, and the parser split test compares output with no caller replies. |
 
 ## Reviewed files
 
@@ -338,7 +342,7 @@ None.
 | crates/mu-core/src/framer.rs | ede3e921c99f7543557a809ab9aa2a6ff05c9281 |
 | crates/mu-core/src/lib.rs | 454db19132b1a75ba30144f15968729bed30e491 |
 | crates/mu-core/src/telnet.rs | 976f5e5a7cbd5e9d03cf4705236b29f952f94b18 |
-| crates/mu-core/src/telnet/parser.rs | 0e77a423081510c29e400efa359e5242732c6868 |
+| crates/mu-core/src/telnet/parser.rs | c482285717bca7f35b4877b098f0aa1654cd879f |
 | crates/mu-core/src/telnet/q.rs | 263cb16c3e9b697cdbb290cb613e8e072003e11a |
 | crates/mu-core/tests/fixtures/telnet/aresmush.txt | 964175e4ae3b1fd9a5e4b30db98ca4db81158de0 |
 | crates/mu-core/tests/fixtures/telnet/evennia.txt | c5adb927f65a63be4b19e69119654402f426e717 |
@@ -347,17 +351,17 @@ None.
 | crates/mu-core/tests/fixtures/telnet/tinymux-latin1.txt | 69832fbb9dc3fc02076a0fa507b32ff045ff6534 |
 | crates/mu-core/tests/fixtures/telnet/tinymux-utf8.txt | 6dfb3ba11818d2432bc37da78252fb9183585eea |
 | crates/mu-core/tests/support/mod.rs | 3da8b4cd1fe3aa77610b9dd0ef91047201c7966b |
-| crates/mu-core/tests/telnet_framer.rs | e6ab9a98c44272c9020ad948734408385e1a8b0a |
-| crates/mu-core/tests/telnet_parser.rs | e0aee803d25e385e05ca04e837a395e73c5ac7a1 |
+| crates/mu-core/tests/telnet_framer.rs | 56a91d282a19976f9f3e6443e8fb48ce931da4f4 |
+| crates/mu-core/tests/telnet_parser.rs | 4c1d291a7cc75fc28de975afeda409cee70891fa |
 | crates/mu-core/tests/telnet_transcripts.rs | e03db55084f7d0528df4073482ee6881b4876101 |
 | docs/src/content/docs/architecture/server-and-clients.mdx | b5897a34d643b3797bf46467b7bbb1b80fd4375c |
 | docs/src/content/docs/contributing/spikes.md | 694be560c8e0316d961546c89ee7846f2762c63d |
 | docs/src/content/docs/contributing/workspace.md | a6e10785e0fb9fde5e96b7140543065d461ae5c3 |
 | openspec/changes/telnet-engine/.openspec.yaml | cfbed6e8fdb007b75eb7f423f77f14d16ff7b4b4 |
-| openspec/changes/telnet-engine/design.md | 0c65649404e2479abd71c9f1fdee80b6e9a15a1e |
+| openspec/changes/telnet-engine/design.md | 9bb80fb310887b07a4602668db9f1e6e58aa4dd0 |
 | openspec/changes/telnet-engine/proposal.md | 28290906fc22826e08f117f6cc2d0e5fe808097a |
-| openspec/changes/telnet-engine/specs/telnet-protocol/spec.md | 6abcbb9faab3617cd652ff68e597348f7d2a61bb |
-| openspec/changes/telnet-engine/tasks.md | sha256:c59d2fb8483907b9ad6d15dc80ac74ecfd4625b3d96d6b9b89dffbd165bb25cb |
+| openspec/changes/telnet-engine/specs/telnet-protocol/spec.md | c973b3dbc85b5bf2347d757ba482c95cfb780c7a |
+| openspec/changes/telnet-engine/tasks.md | sha256:f402daa407b035bbbbe45087ff0c867c7e36352dd9e7b2186b78e300914db009 |
 
 ## Plan review (2026-11-17)
 
