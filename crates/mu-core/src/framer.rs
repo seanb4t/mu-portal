@@ -49,6 +49,38 @@ pub trait Framer: Send + 'static {
 /// lines of this length, so a game cannot grow the buffer without a bound.
 pub const MAX_LINE: usize = 64 * 1024;
 
+/// The partial line of a framer. It splits on LF, drops each CR and cuts a run of bytes with
+/// no LF at [`MAX_LINE`]. A full partial line followed by LF is one line.
+#[derive(Debug, Default)]
+pub(crate) struct LineBuffer {
+    partial: Vec<u8>,
+}
+
+impl LineBuffer {
+    /// Takes one data byte, and gives the bytes of the line that it ends or cuts.
+    pub(crate) fn push(&mut self, byte: u8) -> Option<Vec<u8>> {
+        match byte {
+            b'\n' => Some(self.take()),
+            b'\r' => None,
+            byte => {
+                let cut = (self.partial.len() == MAX_LINE).then(|| self.take());
+                self.partial.push(byte);
+                cut
+            }
+        }
+    }
+
+    /// The bytes of the partial line.
+    pub(crate) fn partial(&self) -> &[u8] {
+        &self.partial
+    }
+
+    /// The partial line, which this clears.
+    pub(crate) fn take(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.partial)
+    }
+}
+
 /// Which end of the connection a [`LineFramer`] reads for.
 #[derive(Clone, Copy, Debug, Default)]
 enum Role {
@@ -90,7 +122,7 @@ enum Held {
 /// other IAC sequence stays in the line.
 #[derive(Debug, Default)]
 pub struct LineFramer {
-    partial: Vec<u8>,
+    buffer: LineBuffer,
     role: Role,
     held: Held,
 }
@@ -138,21 +170,9 @@ impl LineFramer {
     }
 
     fn push(&mut self, byte: u8, out: &mut Vec<Inbound>) {
-        match byte {
-            b'\n' => out.push(self.take_line()),
-            b'\r' => {}
-            byte => {
-                self.partial.push(byte);
-                if self.partial.len() == MAX_LINE {
-                    out.push(self.take_line());
-                }
-            }
+        if let Some(line) = self.buffer.push(byte) {
+            out.push(Inbound::Line(String::from_utf8_lossy(&line).into_owned()));
         }
-    }
-
-    fn take_line(&mut self) -> Inbound {
-        let line = std::mem::take(&mut self.partial);
-        Inbound::Line(String::from_utf8_lossy(&line).into_owned())
     }
 }
 
@@ -231,6 +251,40 @@ mod tests {
         assert_eq!(cut.len(), 1);
         assert_eq!(cut[0].len(), MAX_LINE);
         assert_eq!(lines(framer.feed(b"\n")), ["aaa"]);
+    }
+
+    #[test]
+    fn line_framer_line_of_exactly_the_bound() {
+        for end in [b"\n".as_slice(), b"\r\n"] {
+            let bytes = [vec![b'a'; MAX_LINE], end.to_vec()].concat();
+            assert_eq!(
+                lines(LineFramer::new().feed(&bytes)),
+                ["a".repeat(MAX_LINE)]
+            );
+        }
+    }
+
+    #[test]
+    fn line_buffer_splits_on_lf_and_drops_cr() {
+        let mut buffer = LineBuffer::default();
+        let found: Vec<Vec<u8>> = b"a\rb\nc"
+            .iter()
+            .filter_map(|byte| buffer.push(*byte))
+            .collect();
+        assert_eq!(found, [b"ab".to_vec()]);
+        assert_eq!(buffer.partial(), b"c");
+    }
+
+    #[test]
+    fn line_buffer_cuts_on_the_byte_after_the_bound() {
+        let mut buffer = LineBuffer::default();
+        for _ in 0..MAX_LINE {
+            assert_eq!(buffer.push(b'a'), None);
+        }
+        assert_eq!(buffer.push(b'\r'), None);
+        assert_eq!(buffer.push(b'b'), Some(vec![b'a'; MAX_LINE]));
+        assert_eq!(buffer.take(), b"b");
+        assert_eq!(buffer.partial(), b"");
     }
 
     #[test]
