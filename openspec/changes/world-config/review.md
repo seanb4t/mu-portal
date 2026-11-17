@@ -1,10 +1,10 @@
 ---
-verdict: approve
+verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-17T16:03:30+00:00
-head: e93268cd0285174dd3a37447c882c356a18a8c13
-round: 8
-next_id: 87
+reviewed_at: 2026-11-17T16:52:25+00:00
+head: 9e9821d94110bd81d0680322241d02e47a5d55d7
+round: 9
+next_id: 92
 lenses:
   spec-lint: not-applicable
   approach: ok
@@ -19,14 +19,25 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge |
 |---|---|---|---|---|---|---|---|---|
+| R-87 | fit | should-fix | in-change | The missing-directory warning writes its own stderr line with the prefix `mu:`, while every other line of mu-cli goes through crate::fail as `mu <verb>:`, and the design names no reason. | crates/mu-cli/src/config.rs:57 — ""mu: {}: the configuration directory does not exist, so no worlds are \\" | Split the one-write line of crate::fail into a helper that fail calls, and write the warning through it with the verb of the caller, for example by returning the missing path from ConfigArgs::worlds to world.rs and server.rs. |  |  |
+| R-88 | fit | should-fix | in-change | Two mechanisms decide that the configuration directory is missing: try_exists in ConfigArgs::worlds for the warning, and the NotFound branch of fs::metadata in TomlDirSource::layers for the empty result. | crates/mu-cli/src/config.rs:52 — "&& matches!(named.try_exists(), Ok(false))" | Make the source the one place that knows a missing root, for example a TomlDirSource method that layers and ConfigArgs::worlds both call, so the warning and the empty result cannot disagree. |  |  |
+| R-89 | fit | should-fix | in-change | The change writes the same two status sentences about mu world and the configured worlds into both README.md and the docs index, so the status paragraph keeps two copies to edit at each step. | README.md:7 — "`mu world` reads the configured worlds from the configuration directory. The server holds the configured worlds, but onl" | Keep the status paragraph in the docs index alone, and make the Status section of README.md link to it. |  |  |
+| R-90 | fit | should-fix | in-change | Two verbs write stdout under two policies: mu world fails on every write error but a broken pipe, while mu version drops every write error. A failed print has two meanings in one binary. | crates/mu-cli/src/world.rs:63 — "Err(error) if error.kind() != std::io::ErrorKind::BrokenPipe => fail(&error)," | Put one print helper in lib.rs beside fail, which takes the verb and the text and applies one policy for a closed stdout, and call it from mu world and mu version. |  |  |
+| R-91 | invariants | should-fix | in-change | The new public FieldError states that its text never holds the value, but check_ids builds a FieldError whose message holds the value of rules[N].id, as the spec requires. | crates/mu-core/src/world/error.rs:48 — "/// and what is wrong. The text never holds the value." | Narrow the FieldError doc to the rule that holds, as ConfigError states it: the text never holds the value of a field under login. Or give check_ids a doc note that an id is named on purpose. |  |  |
 
 ## Repeats
 
-None.
+| id | lens | severity | claim | evidence |
+|---|---|---|---|---|
+| R-84 | test-coverage | should-fix | covered row 'Each built-in type reads as quirks' has no verification run | review > not-run — "Each built-in type reads as quirks" |
+| R-85 | test-coverage | should-fix | covered row 'A port out of range' has no verification run | review > not-run — "A port out of range" |
 
 ## Out of bound
 
-None.
+| lens | severity | claim | evidence |
+|---|---|---|---|
+| approach | should-fix | The Context section states as present facts of the code names and behavior that are not so at head: SocketValue and parse_socket no longer exist, is_part is pub(crate), world.rs is now world/mod.rs, mu_with no longer passes the inherited environment, and mu-cli takes toml as a normal dependency. | design.md > Context — "`SocketValue` and `parse_socket` in `crates/mu-cli/src/socket.rs` read an empty value as none." |
+| test-honesty | should-fix | built_in_types_hold_only_quirks asserts only that built_in_layers lists the names of BUILT_IN_TYPES, and compares the length with the same table; it never checks that a built-in file holds only quirks. | crates/mu-core/tests/world_config.rs:161 — "assert_eq!(BUILT_IN_TYPES.len(), names.len());" |
 
 ## Accepted
 
@@ -49,20 +60,16 @@ None.
 | 6 | implementation | follow-up | b29e2c0b13402597119e0600af32f34c36db9acf | 1a73ecd38a0293386993af0f23199524ba176cb81b66f81db33e35cb8a34c73b | approve-with-notes | 5 | 0 | 0 | 1 |  |
 | 7 | implementation | follow-up | d1c4e17fae9f518a8197a438d66ac6fc044c1248 | 7c044470648832a32489633be15a56f3ffc25f0f128e54634db96580ea019807 | approve-with-notes | 5 | 0 | 0 | 1 |  |
 | 8 | implementation | follow-up | e93268cd0285174dd3a37447c882c356a18a8c13 | cb84c7c9a3d25d111612b019fcc03f33b433d9182307c242d6dbad5eb5636cbc | approve | 0 | 0 | 0 | 0 | operator decision |
+| 9 | implementation | follow-up | 9e9821d94110bd81d0680322241d02e47a5d55d7 | dd280ce143c9e8e44f06b96d5ca1cd1a1febdce25c2eb0712c376e9507a56c82 | approve-with-notes | 5 | 2 | 0 | 2 | operator decision |
 
 ## Judge
 
-judge: 0 questions, 0.000 USD
+judge: 10 questions, 0.000 USD
 
 ## Coverage matrix
 
 | scenario | covered by | status | verified |
 |---|---|---|---|
-| Help lists the verbs | crates/mu-cli/tests/cli.rs: help_lists_verbs | covered | pass |
-| Help for one verb | crates/mu-cli/tests/cli.rs: help_for_one_verb | covered | pass |
-| Two worlds connect | crates/mu-cli/tests/worlds.rs: two_worlds_connect | covered | pass |
-| A configured world waits | crates/mu-cli/tests/worlds.rs: configured_world_waits | covered | pass |
-| A configured world cannot connect yet | crates/mu-cli/tests/worlds.rs: configured_world_cannot_connect_yet | covered | pass |
 | The flag wins over the environment | crates/mu-cli/tests/world_config.rs: flag_wins_over_the_environment | covered | pass |
 | The default directory | crates/mu-cli/tests/world_config.rs: default_directory | covered | pass |
 | The directory under the home directory | crates/mu-cli/tests/world_config.rs: directory_under_home | covered | pass |
@@ -70,10 +77,12 @@ judge: 0 questions, 0.000 USD
 | A relative XDG_CONFIG_HOME | crates/mu-cli/tests/world_config.rs: relative_xdg_config_home | covered | pass |
 | No home directory | crates/mu-cli/tests/world_config.rs: no_home_directory | covered | pass |
 | A missing directory | crates/mu-cli/tests/world_config.rs: missing_directory | covered | pass |
+| A missing default directory | crates/mu-cli/tests/world_config.rs: missing_default_directory_is_quiet | covered | pass |
 | Worlds from character files | crates/mu-cli/tests/world_config.rs: worlds_from_character_files | covered | pass |
 | A character with no game | crates/mu-cli/tests/world_config.rs: character_with_no_game | covered | pass |
 | A file name outside the id rule | crates/mu-cli/tests/world_config.rs: file_name_outside_the_id_rule | covered | pass |
 | A stray file | crates/mu-cli/tests/world_config.rs: stray_file | covered | pass |
+| A link to nothing | crates/mu-cli/tests/world_config.rs: link_to_nothing_is_an_error | covered | pass |
 | The last layer wins | crates/mu-cli/tests/world_config.rs: last_layer_wins | covered | pass |
 | A global default reaches each world | crates/mu-cli/tests/world_config.rs: global_default_reaches_each_world | covered | pass |
 | A table merges field by field | crates/mu-cli/tests/world_config.rs: table_merges_field_by_field | covered | pass |
@@ -90,11 +99,11 @@ judge: 0 questions, 0.000 USD
 | A disable with no target | crates/mu-cli/tests/world_config.rs: disable_with_no_target | covered | pass |
 | An id twice in one layer | crates/mu-cli/tests/world_config.rs: id_twice_in_one_layer | covered | pass |
 | A rule and a script with one id | crates/mu-cli/tests/world_config.rs: rule_and_script_with_one_id | covered | pass |
-| Each built-in type reads as quirks | crates/mu-core/tests/world_config.rs: built_in_types_hold_only_quirks | covered | pass |
+| Each built-in type reads as quirks | crates/mu-core/tests/world_config.rs: built_in_types_hold_only_quirks, quirks_refuse_other_fields | covered | not-run |
 | A global preference is not hidden by a type | crates/mu-cli/tests/world_config.rs: global_preference_is_not_hidden_by_a_type | covered | pass |
 | A user type with a built-in name | crates/mu-cli/tests/world_config.rs: user_type_with_a_built_in_name | covered | pass |
 | An unknown field | crates/mu-cli/tests/world_config.rs: unknown_field | covered | pass |
-| A port out of range | crates/mu-cli/tests/world_config.rs: port_out_of_range | covered | pass |
+| A port out of range | crates/mu-cli/tests/world_config.rs: port_out_of_range, edges_of_each_range | covered | not-run |
 | A template with no password | crates/mu-cli/tests/world_config.rs: template_with_no_password | covered | pass |
 | The case of a character set | crates/mu-cli/tests/world_config.rs: charset_case | covered | pass |
 | A character set that the engine cannot read | crates/mu-cli/tests/world_config.rs: charset_the_engine_cannot_read | covered | pass |
@@ -116,10 +125,16 @@ judge: 0 questions, 0.000 USD
 | A bad configuration stops the start | crates/mu-cli/tests/worlds.rs: bad_configuration_stops_the_start | covered | pass |
 | A fake world with a configured id | crates/mu-cli/tests/worlds.rs: fake_world_with_a_configured_id | covered | pass |
 | The secret is not read at the start | crates/mu-cli/tests/worlds.rs: server_does_not_read_a_configured_secret | covered | pass |
+| Help lists the verbs | crates/mu-cli/tests/cli.rs: help_lists_verbs | covered | pass |
+| Help for one verb | crates/mu-cli/tests/cli.rs: help_for_one_verb | covered | pass |
+| Two worlds connect | crates/mu-cli/tests/worlds.rs: two_worlds_connect | covered | pass |
+| A configured world waits | crates/mu-cli/tests/worlds.rs: configured_world_waits | covered | pass |
+| A configured world cannot connect yet | crates/mu-cli/tests/worlds.rs: configured_world_cannot_connect_yet | covered | pass |
 
 ### Not run
 
-None.
+- Each built-in type reads as quirks: no verification run names this row
+- A port out of range: no verification run names this row
 
 ## Verification runs
 
@@ -147,13 +162,16 @@ None.
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=layer_disables_an_inherited_rule)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=layer_replaces_an_inherited_rule)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=line_break_in_a_line_field)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=link_to_nothing_is_an_error)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=login_name_with_no_secret)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=login_secret_with_no_name)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=loop_of_types)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=missing_default_directory_is_quiet)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=missing_directory)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=no_home_directory)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=password_in_a_file)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=port_out_of_range)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=edges_of_each_range)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=relative_xdg_config_home)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=rule_and_script_with_one_id)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=secret_that_is_not_a_reference)'`
@@ -179,6 +197,7 @@ None.
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=server_does_not_read_a_configured_secret)'`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=two_worlds_connect)'`
 - exit 0: `cargo nextest run -p mu-core --test world_config --locked -E 'test(=built_in_types_hold_only_quirks)'`
+- exit 0: `cargo nextest run -p mu-core --test world_config --locked -E 'test(=quirks_refuse_other_fields)'`
 - exit 0: `cargo nextest run -p mu-core --test world_config --locked -E 'test(=plugin_can_set_a_preference)'`
 - exit 0: `cargo nextest run -p mu-core --test world_config --locked -E 'test(=plugin_cannot_set_the_connection)'`
 
@@ -188,26 +207,27 @@ None.
 
 ## Lens notes
 
-- approach: Follow-up round since d1c4e17; diff-files.txt lists design.md and review.md. This lens does not read review.md, so the bound is the changed text of design.md.
-- approach: The new text under 'Layers are parsed alone, then merged' names the guard `table` in layer.rs. At head, layer.rs:232 defines it, and LayerFile (lines 166, 168) and Quirks (lines 203, 205) put it on login and keepalive, with deserialize_map. An array fails at path login or keepalive, which parse.rs:26 redacts under login. The decision holds against the code.
-- approach: R-82 (fixed) does not return: design.md now names the guard that the test rows of quirks_refuse_other_fields (mu-core tests/world_config.rs:170-171) and table_written_as_an_array exercise.
-- approach: The other cited facts under that heading hold at head: check_layer runs the value checks before the trust check (check.rs:16-28), for the sources (resolve.rs:50-52) and for each built-in type (builtin.rs:32); Cargo.lock pins toml 1.2.1 and serde_path_to_error 0.1.20.
-- approach: Wording only, not raised: the decision says 'The resolver reads each file with the toml crate', but the file parse runs in TomlDirSource (dir.rs:62), and the resolve function takes layers from a LayerSource.
-- fit: Follow-up round: diff-files.txt lists only design.md and review.md, so the bound is the changed text of design.md. review.md was not read.
-- fit: The changed text names the table guard `table` in crates/mu-core/src/world/layer.rs (decision 'Layers are parsed alone, then merged', and the Quirks sentence of 'Built-in types and the quirk schema'). The code matches: one generic function at layer.rs:232, applied to login and keepalive of both LayerFile and Quirks, so the guard has one copy.
-- fit: No other Visitor, MapAccessDeserializer or serde_with use exists in the workspace crates, and serde offers no attribute that refuses a sequence for a derived struct, so the guard re-implements no existing helper or library.
-- fit: No fixed row of prior.json in fit's domain (R-10, R-11, R-12, R-15, R-16, R-41, R-55, R-68, R-71, R-72, R-73, R-74, R-77) came back in the changed text. R-80 is accepted and was not raised again.
-- invariants: Follow-up round since d1c4e17: the only changed text in bound is one paragraph of design.md under 'Layers are parsed alone, then merged' (the table guard of login and keepalive). review.md also changed and was not read, as the role requires.
-- invariants: I1: The fields login and keepalive of a layer file accept only a table; an array is a bad type of that field \| enforced at crates/mu-core/src/world/layer.rs:166-169 (LayerFile) and :203-206 (Quirks) through fn table at :232 \| boundary test crates/mu-cli/tests/world_config.rs:400 table_written_as_an_array (login of 3 elements, keepalive of 2 and of 3) and crates/mu-core/tests/world_config.rs:165 quirks_refuse_other_fields (login of 1, keepalive of 2).
-- invariants: I2: An error under the path login never holds the serde message \| enforced at crates/mu-core/src/world/parse.rs:26 (login, login.*, login[*]) \| boundary test wrong_type_under_login and table_written_as_an_array; the guard fails at path login, before any element, so no element value reaches the message.
-- invariants: Probe: a copy of fn table with toml 1.2.1, serde 1.0.229 and serde_path_to_error 0.1.20, under probe-table/ in the handoff directory. With the guard, login = [] and login = ["t {password}"] fail at path login with 'invalid type: sequence, expected a table'. Without it, both parse as a LoginFields. So the guard also refuses the empty and the short array, which the existing tests do not pass but which take the same visitor path.
-- invariants: Probe: keepalive = 1979-05-27T07:32:00Z fails with and without the guard, at path keepalive.$__toml_private_datetime as an unknown field, because toml hands a datetime to visit_map. The error names the field keepalive; deny_unknown_fields on KeepaliveFields and LoginFields is what refuses it.
-- invariants: Probe: login = {} and an inline keepalive table pass the guard, as a [keepalive] header does, so the guard does not refuse a valid table.
-- invariants: Prior rows R-76, R-78 and R-82 (fixed) were checked at head: the guard, its tests in both crates and the design sentence are present. No defect returned.
-- test-coverage: No finding inside the bound: the changed text is design.md and every scenario still has a named test that asserts its THEN.
-- test-coverage: Test keepalive_of_a_built_in_type_resolves in crates/mu-core/tests/world_config.rs is named by no scenario and no task (outside the follow-up bound).
-- test-honesty: Follow-up round: diff-files.txt lists only design.md and review.md; no test or test-gate file changed since the base, so no test is in the bound.
-- test-coverage gap: Follow-up round: only design.md changed since the base; test files read for the matrix but not every helper or the property tests.
+- approach: The lens has no git access, so it could not see which lines changed since e93268c. It read each file of diff-files.txt whole. The merge decides whether app-1 is inside the bound.
+- approach: Each requirement of the three spec deltas has a decision that produces it, and the code at head follows each decision: the walk of the directory (dir.rs), the chain and the merge (resolve.rs), the value and trust checks (check.rs), the parse (parse.rs and the table guard in layer.rs), mu world list and show (world.rs), the configuration directory (config.rs, env_path.rs) and the configured worlds in the server (server.rs, portal.rs, session.rs, convert.rs).
+- approach: The change since the last round adds the missing-directory warning, the error for an unreadable entry, and the Result of render. design.md records each one under The configuration directory, The walk of the directory and mu world.
+- approach: The extends check by layer kind stays in TomlDirSource. R-80 accepted this, and design.md records it under Layers are parsed alone, then merged.
+- approach: render falls back to the comment unknown for a field with no recorded source. The resolver always records a source for each field it renders, so this is no deviation.
+- fit: The prompt gives no changed-line list and this lens has no git, so the bound is judged from the files of diff-files.txt and the commit subjects since the base.
+- fit: dir.rs maps an io error to ConfigError::new(place, error.to_string()) in five closures; too small to report as a copy, but a ConfigError constructor for an io error would hold it once.
+- fit: No row of prior.json with disposition fixed has come back in the files of this round: FIELD_PATHS is the one list of render (R-73), list_in uses mu_command (R-68), and the game-file check is in Index::chain only (R-72).
+- invariants: I1: A Login always has a template with {password}, and no CR or LF in the template or the name \| enforced at Login::new through check_login (crates/mu-core/src/world/mod.rs, check.rs); with_default_login builds it directly and relies on DEFAULT_LOGIN_TEMPLATE and is_part \| boundary test login_refuses_a_bad_template_or_name (no {password}, LF in template, CR in name) and the default-login test that asserts the line connect aria pw
+- invariants: I2: A Keepalive always has seconds from 1 to 86400 and a command with no CR or LF \| enforced at Keepalive::new through check_keepalive \| boundary test keepalive_refuses_a_bad_command_or_period (0, 86401, LF; 86400 accepted) and edges_of_each_range for 1 through the resolver
+- invariants: I3: A world with a login never connects or logs in with no password \| enforced at Command::Connect and Session::login in crates/mu-core/src/session.rs (NoPassword) \| boundary test login_with_no_password_is_refused in crates/mu-core/tests/portal.rs; the only no-password WorldSetup in support is bare_world, which has no login, so no existing test relied on the old empty password
+- invariants: I4: An entry of the configuration directory that cannot be read is an error that names it \| enforced at fs::metadata in walk, crates/mu-core/src/world/dir.rs \| boundary test link_to_nothing_is_an_error. Probe of target/debug/mu (built after the last code commit): a dangling non-.toml link at the root, an unreadable character file, an unreadable types directory and a --config that is a plain file each exit 1 and name the entry
+- invariants: I5: The walk terminates on a link cycle \| enforced by the OS symlink limit only (ELOOP) \| boundary test none. Probe: games/up -> .. exits 1 after 32 levels with a 355-character path; no hang, so no finding
+- invariants: I6: stderr names a missing directory only when --config or MU_CONFIG names it \| enforced at ConfigArgs::worlds with try_exists in crates/mu-cli/src/config.rs \| boundary tests missing_directory (named) and missing_default_directory_is_quiet (default), both sides of the predicate. MU_CONFIG reaches the same field through the clap env attribute and has no test of its own. Probe: a --config that is a dangling link warns and exits 0, as a missing directory
+- invariants: I7: Each rendered field carries a source of the three spec forms \| enforced by each_field_has_a_source on the resolver; render now writes unknown for a missing source \| boundary test each_field_has_a_source
+- invariants: I8: show_output_parses_back now generates name, template and command without CR or LF, and the template with {password}; Login::new and Keepalive::new refuse other values, so the narrowed domain is the domain a resolved world can hold
+- invariants: Prior rows R-41, R-56, R-70 and R-79 were checked against the changed text; their defects did not return.
+- test-coverage: Orphan tests already accepted in prior rounds (R-81, R-83): table_written_as_an_array, other_files_are_skipped.
+- test-coverage: keepalive_of_a_built_in_type_resolves in crates/mu-core/tests/world_config.rs has no scenario or task; low value note, not raised again.
+- test-honesty: Read in full: crates/mu-cli/tests/world_config.rs and crates/mu-core/tests/world_config.rs lines 55-187. No ignored tests, no assertion-free tests found by search.
+- test-honesty: Other files of the diff (portal.rs tests, docs) not read; follow-up changes were judged from the test files at head, not a diff.
 
 ## Ledger
 
@@ -296,9 +316,14 @@ None.
 | R-81 | 6 | 6 | note | in-change | ["path","crates/mu-cli/tests/world_config.rs",391] | accepted | ticket: none; reason: The wrong-type requirement of the spec already covers a table written as an array, and the test names the case; a scenario of its own adds no new behavior. |  | table_written_as_an_array has no scenario and no task; the spec states the wrong-type rule but gives no scenario for a table written as an array. |
 | R-82 | 7 | 7 | should-fix | in-change | ["path","crates/mu-core/tests/world_config.rs",170] | fixed | ddaa5afc330334edb7cb9968a167036b142bd4e1 |  | The new test rows refuse login and keepalive written as arrays, which only the table guard of layer.rs produces. design.md names no such guard and says the typed struct alone fails a bad type, which the derived Deserialize does not do for an array. |
 | R-83 | 7 | 7 | note | in-change | ["path","crates/mu-cli/tests/world_config.rs",253] | accepted | ticket: none; reason: The test covers the skip side of the file-name rule of the design; a scenario of its own adds no new behavior, as with R-81. |  | other_files_are_skipped has no scenario and no task that names it. |
-| R-84 | 7 | 7 | should-fix | in-change | ["artifact",["review","not-run"],"Each built-in type reads as quirks"] | refuted | The row names two tests, built_in_types_hold_only_quirks and quirks_refuse_other_fields; the controller ran each one alone at the head and both passed, so the row is verified though no one command holds both names. |  | covered row 'Each built-in type reads as quirks' has no verification run |
-| R-85 | 7 | 7 | should-fix | in-change | ["artifact",["review","not-run"],"A port out of range"] | refuted | The row names two tests, port_out_of_range and edges_of_each_range; the controller ran each one alone at the head and both passed, so the row is verified though no one command holds both names. |  | covered row 'A port out of range' has no verification run |
+| R-84 | 7 | 9 | should-fix | in-change | ["artifact",["review","not-run"],"Each built-in type reads as quirks"] | refuted | The row names two tests, built_in_types_hold_only_quirks and quirks_refuse_other_fields; the controller ran each one alone at the head and both passed, so the row is verified though no one command holds both names. |  | covered row 'Each built-in type reads as quirks' has no verification run |
+| R-85 | 7 | 9 | should-fix | in-change | ["artifact",["review","not-run"],"A port out of range"] | refuted | The row names two tests, port_out_of_range and edges_of_each_range; the controller ran each one alone at the head and both passed, so the row is verified though no one command holds both names. |  | covered row 'A port out of range' has no verification run |
 | R-86 | 7 | 7 | should-fix | in-change | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: none; reason: The lens had no diff tool. The only hunk it did not read is the switch of cli.rs to mu_command, which the fit and invariants lenses checked in this round. |  | lens test-honesty reported partial, gaps: 1 |
+| R-87 | 9 | 9 | should-fix | in-change | ["path","crates/mu-cli/src/config.rs",57] |  |  |  | The missing-directory warning writes its own stderr line with the prefix `mu:`, while every other line of mu-cli goes through crate::fail as `mu <verb>:`, and the design names no reason. |
+| R-88 | 9 | 9 | should-fix | in-change | ["path","crates/mu-cli/src/config.rs",52] |  |  |  | Two mechanisms decide that the configuration directory is missing: try_exists in ConfigArgs::worlds for the warning, and the NotFound branch of fs::metadata in TomlDirSource::layers for the empty result. |
+| R-89 | 9 | 9 | should-fix | in-change | ["path","README.md",7] |  |  |  | The change writes the same two status sentences about mu world and the configured worlds into both README.md and the docs index, so the status paragraph keeps two copies to edit at each step. |
+| R-90 | 9 | 9 | should-fix | in-change | ["path","crates/mu-cli/src/world.rs",63] |  |  |  | Two verbs write stdout under two policies: mu world fails on every write error but a broken pipe, while mu version drops every write error. A failed print has two meanings in one binary. |
+| R-91 | 9 | 9 | should-fix | in-change | ["path","crates/mu-core/src/world/error.rs",48] |  |  |  | The new public FieldError states that its text never holds the value, but check_ids builds a FieldError whose message holds the value of rules[N].id, as the spec requires. |
 
 ## Reviewed files
 
@@ -306,51 +331,55 @@ None.
 |---|---|
 | Cargo.lock | 85dea26426bf3179a36b7f0680d5b9e2f4b480da |
 | Cargo.toml | dbddeb394fcd583bec10dd4dea0887e09b0dc91c |
+| README.md | 0edc92ced3cd8ae55f6425d5875ed565214dcbd6 |
 | crates/mu-cli/Cargo.toml | 14c5317c20fd2a10e7d1bdacfcc727c1a0177f45 |
-| crates/mu-cli/src/config.rs | 4b44376fdb7e92058ad269ced48261fcc7421f7a |
+| crates/mu-cli/src/config.rs | 5556ff78419be054490e1e1cb2ff1737b6c7e393 |
 | crates/mu-cli/src/env_path.rs | ce12a6e2c9b2272d34c3583dedd0b64db74963cb |
 | crates/mu-cli/src/lib.rs | aa2f5288b45840306a81f2ff319c3d7fec81ed87 |
 | crates/mu-cli/src/server.rs | 78bc39593b5d0e3c028028f5d0657a0171f82ea2 |
 | crates/mu-cli/src/socket.rs | a47a169ecaddfc326fd182ec5f2d8e0ccf087a4d |
-| crates/mu-cli/src/world.rs | 77e3adf0cfe3e3b0805483f20cb38faff9529da4 |
+| crates/mu-cli/src/world.rs | 513339654eebe5cdbb56406d55ae2c47f91124fc |
 | crates/mu-cli/tests/cli.rs | 56f0e1ebea1a711bacb5d6692a49de9bf2166e5d |
 | crates/mu-cli/tests/support/mod.rs | 99c40b503b007706540b5798d95a764df7a53041 |
 | crates/mu-cli/tests/support/process.rs | 3f9aa433437518eed9a345c1449fd84c602ad6a0 |
 | crates/mu-cli/tests/workspace_boundary.rs | 1440c238a0611f6c7e676ef0bfaf6231f13458df |
-| crates/mu-cli/tests/world_config.rs | f45580b2cf41b9bdb10da7b602af9cb70ecaecbb |
+| crates/mu-cli/tests/world_config.rs | 2e5297486c55baec7e2458f0fd231cf64df2be9c |
 | crates/mu-cli/tests/worlds.rs | e5be3d173d2668cbcd5158b482138a1388214d51 |
 | crates/mu-core/Cargo.toml | 8f781dfd5083f9a5721fe2aec7171959e126a41d |
-| crates/mu-core/src/error.rs | 5f40b83ce29ec56afb03876c93b7b8a1e801e9ca |
+| crates/mu-core/src/error.rs | 7cb76b78df8ebf5e14ec0a7d28fd2deaa7c9dc2c |
 | crates/mu-core/src/framer.rs | 7fa4d779ba082dae3ce09b00da9585215c562036 |
 | crates/mu-core/src/id.rs | f1a855b11cc03efe28d5bf178e8aeb1b962d066b |
 | crates/mu-core/src/lib.rs | 0a356dc85058cef4ff11b4239a926a937b4bc17f |
-| crates/mu-core/src/portal.rs | a22b6de2357e9a41ae6a39d8069b0a2db1f49274 |
-| crates/mu-core/src/session.rs | 2c395f585f0144b9d03859aa88b60d3a81b03c63 |
+| crates/mu-core/src/portal.rs | dab323ae37f095b4fbb549cd2c5cb881566b19d6 |
+| crates/mu-core/src/session.rs | 0bbdfbe2e9a87ba5913cd11573da5b5ccc57b20e |
 | crates/mu-core/src/world.rs | absent |
-| crates/mu-core/src/world/builtin.rs | 2bb5629cafe12eb0959754327f23ff8d32f2ed2d |
-| crates/mu-core/src/world/check.rs | f2aa2b917f367fbdef1869b8b18682dcb489ce36 |
-| crates/mu-core/src/world/dir.rs | ecd9bdd4cb4b06c26adb4e6d3e722de19e44efe8 |
-| crates/mu-core/src/world/error.rs | e70996f81c6adab78e38f1c851f45056d0a2ca0d |
+| crates/mu-core/src/world/builtin.rs | 5cea16b4b29b3589840e1f9d9a0f1a11c2ed67ae |
+| crates/mu-core/src/world/check.rs | e462d0feab84c5d1b1e2877fa5948ce7e6adac91 |
+| crates/mu-core/src/world/dir.rs | 20287c6ee40525b36361ecd0b45cf55b4ab58556 |
+| crates/mu-core/src/world/error.rs | 42815690ecb075097570045f9c7dd5f1f202e732 |
 | crates/mu-core/src/world/layer.rs | 09bc4403435c121f6caa154412c809e72a0b7c8a |
-| crates/mu-core/src/world/mod.rs | db9274e7a1e964209bef04cea03571871eb204eb |
+| crates/mu-core/src/world/mod.rs | 99a3e35c84368ddece94398969325d1e66eb6584 |
 | crates/mu-core/src/world/parse.rs | 9d4adb82ff509e32b388b5dd0228e8dec189f58c |
-| crates/mu-core/src/world/resolve.rs | 2d24e7767077b1c2d3525bf94a6fae5a9c86490a |
+| crates/mu-core/src/world/resolve.rs | 0fe25c9407d995ef131ff0cf408b2c137a164351 |
 | crates/mu-core/src/world/types/aresmush.toml | 666a06fe695a675f55eb1ddcd3c4d1fb2ff894d7 |
 | crates/mu-core/src/world/types/evennia.toml | 9027f548149e9e29dae6ca340075d30a333ffce9 |
 | crates/mu-core/src/world/types/tinymux.toml | 666d779f084ff6b3fdc5d57daa1bb80353a4f8e9 |
+| crates/mu-core/tests/portal.rs | 5abc80d5c5be261a7b0659037dddee526d746e1f |
 | crates/mu-core/tests/support/mod.rs | 058e7142a316a29729ed95f3c72d767a39b5fd24 |
 | crates/mu-core/tests/telnet_framer.rs | f923c53e925f4630a98a3e3196459f3e6c20f8f6 |
-| crates/mu-core/tests/world_config.rs | 8474bbdbe23629096b2df3c4c75978c1d24f1ba8 |
-| crates/mu-server/src/convert.rs | 9f2601a66effc3c7dcb49874d3021b114b6d740e |
+| crates/mu-core/tests/world_config.rs | 6331d3d03813eba286f8342d6da0863f0eab05e5 |
+| crates/mu-server/src/convert.rs | eede0280e35635c3cec66cb24f2aae5a4be79049 |
 | docs/src/content/docs/decisions/world-type-profiles.md | 3ff4875d18199e9f48f62dd4f890237ccfc1b088 |
-| docs/src/content/docs/guides/configuration.md | 00c6c8c343664b8106b3e96de2ecceb2151c8ca9 |
+| docs/src/content/docs/guides/configuration.md | 20d43133f96d99877bd99d7faca91925560b8ad3 |
+| docs/src/content/docs/guides/first-run.md | 093ff92cc5251cbdedaa49094702e005f8ec4beb |
+| docs/src/content/docs/index.md | 1f193b4c1e37c4d37172956aa3252753cfc49029 |
 | openspec/changes/world-config/.openspec.yaml | 578c89ac91eda0589930783c384ddbe6201a0568 |
-| openspec/changes/world-config/design.md | ff7690175acdb2c9bbdccc0ddb2f62edc3003089 |
+| openspec/changes/world-config/design.md | 8a5374f224dabe051465252253d82dcfaa64da7a |
 | openspec/changes/world-config/proposal.md | 55326dcea67d9aa8b7159b77ec0735bb02b94c94 |
 | openspec/changes/world-config/specs/cli-entrypoint/spec.md | 04cc2235ead3806c9548bfec33afa5c9df5a8deb |
-| openspec/changes/world-config/specs/world-config/spec.md | 97c729f0cdd513c33292cfc49c2cab38955796e8 |
+| openspec/changes/world-config/specs/world-config/spec.md | 6db8a1f9101e6a234709cf61f98a9e04ab194629 |
 | openspec/changes/world-config/specs/world-sessions/spec.md | efc5afbb2c359e8e0a1c7257b15fc38bed9a7319 |
-| openspec/changes/world-config/tasks.md | sha256:7cd7320bb54f03b38233448b72c76de2c2a3386f499e85d1faf505c8da4ef913 |
+| openspec/changes/world-config/tasks.md | sha256:9aa20aaaffbbf71dfc6046b8c155b55ccf766a9c5db32e8291dc1f309dd2cd01 |
 
 ## Plan review (2026-11-17)
 
