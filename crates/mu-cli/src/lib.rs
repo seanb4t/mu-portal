@@ -21,6 +21,21 @@ pub(crate) fn fail(verb: &str, error: &dyn std::fmt::Display) -> ExitCode {
     let _ = std::io::stderr().write_all(format!("mu {verb}: {error}\n").as_bytes());
     ExitCode::from(1)
 }
+
+/// Writes `mu <verb>: warning: <message>` to stderr, in one write, as [`fail`] does.
+pub(crate) fn warn(verb: &str, message: &dyn std::fmt::Display) {
+    // A closed stderr leaves nothing to report to.
+    let _ = std::io::stderr().write_all(format!("mu {verb}: warning: {message}\n").as_bytes());
+}
+
+/// Writes `text` to stdout. A closed stdout is not an error of the verb, as it is not for
+/// `--version`, but any other failed write fails the verb.
+pub(crate) fn print(verb: &str, text: &str) -> ExitCode {
+    match std::io::stdout().write_all(text.as_bytes()) {
+        Err(error) if error.kind() != std::io::ErrorKind::BrokenPipe => fail(verb, &error),
+        _ => ExitCode::SUCCESS,
+    }
+}
 pub use server::ServerArgs;
 
 /// One server and many clients for MU* text games.
@@ -70,14 +85,6 @@ pub fn run(cli: Cli) -> ExitCode {
         Some(Verb::Client(args)) => client::run(&args),
         Some(Verb::Server(args)) => server::run(&args),
         Some(Verb::World(args)) => world::run(&args),
-        Some(Verb::Version) => {
-            // A closed stdout is not an error of the verb, as it is not for `--version`.
-            let _ = write!(
-                std::io::stdout(),
-                "{}",
-                Cli::command().render_long_version()
-            );
-            ExitCode::SUCCESS
-        }
+        Some(Verb::Version) => print("version", &Cli::command().render_long_version()),
     }
 }

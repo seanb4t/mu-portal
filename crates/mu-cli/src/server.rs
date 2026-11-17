@@ -59,7 +59,7 @@ pub fn run(args: &ServerArgs) -> ExitCode {
         .with_max_level(tracing::Level::WARN)
         .try_init();
     // The configuration resolves first, so a bad file stops the start before the socket opens.
-    let configured = match args.config.worlds() {
+    let configured = match args.config.worlds("server") {
         Ok(worlds) => worlds,
         Err(error) => return fail(&error),
     };

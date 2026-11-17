@@ -1,7 +1,6 @@
 //! The verb `mu world`: the configured worlds, read from the files with no server.
 
 use std::fmt::Write as _;
-use std::io::Write as _;
 use std::process::ExitCode;
 
 use clap::{Args, Subcommand};
@@ -41,7 +40,7 @@ pub fn run(args: &WorldArgs) -> ExitCode {
         WorldCommand::List(config) => (config, None),
         WorldCommand::Show { id, config } => (config, Some(id)),
     };
-    let worlds = match config.worlds() {
+    let worlds = match config.worlds("world") {
         Ok(worlds) => worlds,
         Err(error) => return fail(&error),
     };
@@ -58,11 +57,7 @@ pub fn run(args: &WorldArgs) -> ExitCode {
             None => return fail(&format!("{id}: no configured world has this id")),
         },
     };
-    match std::io::stdout().write_all(text.as_bytes()) {
-        // A closed stdout is not an error of the verb.
-        Err(error) if error.kind() != std::io::ErrorKind::BrokenPipe => fail(&error),
-        _ => ExitCode::SUCCESS,
-    }
+    crate::print("world", &text)
 }
 
 /// The world as TOML. Each field ends with a comment that names its source, and each rule

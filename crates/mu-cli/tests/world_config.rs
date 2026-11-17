@@ -193,7 +193,7 @@ fn missing_directory() {
     assert_eq!(succeeds(&output), "");
     let error = stderr(&output);
     assert!(
-        error.contains(none.to_str().unwrap()) && error.contains("does not exist"),
+        error.starts_with("mu world: warning: ") && error.contains(none.to_str().unwrap()),
         "{error}"
     );
 }
