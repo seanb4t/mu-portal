@@ -1,6 +1,6 @@
 //! Framers: bytes of the game in, lines and prompts out, and a line in, bytes out.
 
-use crate::telnet::{DO, IAC, WILL, WONT, opt};
+use crate::telnet::{self, DO, IAC, WILL, WONT, opt};
 
 /// What a framer gives for the bytes of the game.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -51,7 +51,7 @@ pub const MAX_LINE: usize = 64 * 1024;
 
 /// Which end of the connection a [`LineFramer`] reads for.
 #[derive(Clone, Copy, Debug, Default)]
-enum Side {
+enum Role {
     /// Reads the game, and sends marks to it.
     #[default]
     Client,
@@ -59,7 +59,7 @@ enum Side {
     Game,
 }
 
-impl Side {
+impl Role {
     /// Whether `IAC verb TIMING-MARK` is a mark for this side.
     fn reads_verb(self, verb: u8) -> bool {
         match self {
@@ -91,7 +91,7 @@ enum Held {
 #[derive(Debug, Default)]
 pub struct LineFramer {
     partial: Vec<u8>,
-    side: Side,
+    role: Role,
     held: Held,
 }
 
@@ -105,7 +105,7 @@ impl LineFramer {
     /// A framer for the game side: it answers the mark of a client.
     pub(crate) fn game() -> Self {
         Self {
-            side: Side::Game,
+            role: Role::Game,
             ..Self::default()
         }
     }
@@ -118,10 +118,10 @@ impl LineFramer {
                 self.held = Held::Nothing;
                 self.push(IAC, out);
             }
-            (Held::Iac, verb) if self.side.reads_verb(verb) => self.held = Held::Verb(verb),
+            (Held::Iac, verb) if self.role.reads_verb(verb) => self.held = Held::Verb(verb),
             (Held::Verb(_), opt::TIMING_MARK) => {
                 self.held = Held::Nothing;
-                out.push(self.side.on_mark());
+                out.push(self.role.on_mark());
             }
             (Held::Iac, byte) => {
                 self.held = Held::Nothing;
@@ -173,9 +173,9 @@ impl Framer for LineFramer {
     }
 
     fn mark(&self) -> Vec<u8> {
-        match self.side {
-            Side::Client => vec![IAC, DO, opt::TIMING_MARK],
-            Side::Game => Vec::new(),
+        match self.role {
+            Role::Client => telnet::MARK.to_vec(),
+            Role::Game => Vec::new(),
         }
     }
 }
@@ -326,8 +326,8 @@ mod tests {
     #[test]
     fn line_framer_keeps_other_iac_bytes() {
         let cases = [
-            (LineFramer::new(), [IAC, WILL, 5]),
-            (LineFramer::game(), [IAC, WILL, 5]),
+            (LineFramer::new(), [IAC, WILL, opt::STATUS]),
+            (LineFramer::game(), [IAC, WILL, opt::STATUS]),
             (LineFramer::new(), [IAC, DO, TM]),
             (LineFramer::game(), [IAC, WILL, TM]),
             (LineFramer::game(), [IAC, WONT, TM]),
@@ -400,10 +400,13 @@ mod tests {
     #[test]
     fn line_framer_near_miss_at_the_bound() {
         let data = vec![b'a'; MAX_LINE - 1];
-        let bytes = [data.as_slice(), &[IAC, WILL, 5], b"\n"].concat();
+        let bytes = [data.as_slice(), &[IAC, WILL, opt::STATUS], b"\n"].concat();
         let mut first = "a".repeat(MAX_LINE - 1);
         first.push('\u{FFFD}');
-        let expected = [Inbound::Line(first), Inbound::Line("\u{FFFD}\u{5}".into())];
+        let expected = [
+            Inbound::Line(first),
+            Inbound::Line(format!("\u{FFFD}{}", char::from(opt::STATUS))),
+        ];
         for points in [vec![], vec![MAX_LINE], vec![MAX_LINE + 1]] {
             assert_eq!(feed_split(LineFramer::new(), &bytes, &points), expected);
         }

@@ -13,7 +13,7 @@ pub mod portal;
 pub mod script;
 pub mod secret;
 mod session;
-mod telnet;
+pub mod telnet;
 pub mod transport;
 pub mod world;
 
