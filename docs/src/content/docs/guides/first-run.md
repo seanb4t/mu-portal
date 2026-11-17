@@ -34,7 +34,7 @@ The server writes one line to stderr when it serves. The line names the socket, 
 
 `--fake-world` is a test flag. It does not show in `mu server --help`.
 
-The server also holds the worlds of the [configuration directory](../configuration/). Those worlds cannot connect yet. A fake world cannot have the id of a configured world. If `alpha/aria` or `beta/bryn` is configured, the server stops.
+The server also holds the worlds of the [configuration directory](../configuration/). Those worlds cannot connect yet. A fake world cannot have the id of a configured world. If the configuration directory has the world `alpha/aria` or `beta/bryn`, the server stops.
 
 ## Attach the client
 
