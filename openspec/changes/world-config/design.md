@@ -2,7 +2,14 @@
 
 ## Context
 
-See proposal.md, section Why. These are the facts of the code that shape the design:
+See proposal.md, section Why. These are the facts of the code before this change, which shape the design. The change moves some of them:
+
+- `world.rs` becomes the module `world/`, and `is_part` becomes `pub(crate)`.
+- `SocketValue` and `parse_socket` become `PathValue` and `parse_path` in `env_path.rs`.
+- `mu-core` depends on `toml` and `figment2`.
+- `mu_with` points `MU_CONFIG` at an empty directory.
+
+The facts before the change:
 
 - `ResolvedWorld` in `crates/mu-core/src/world.rs` holds only the id and an optional `Login`. `mu server` builds it in `crates/mu-cli/src/server.rs` from each `--fake-world` flag, with `DEFAULT_LOGIN_TEMPLATE` and the character part of the id as the login name.
 - `WorldSetup` in `crates/mu-core/src/portal.rs` holds the world, the password, the transport, the framer, the hooks and the handlers. The portal connects every world at the start.
