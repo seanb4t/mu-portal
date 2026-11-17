@@ -1,5 +1,5 @@
 ---
-verdict: approve-with-notes
+verdict: approve
 phase: implementation
 reviewed_at: 2026-11-17T17:28:17+00:00
 head: af4d1ea2a4a947731cc121f571b85938060f3ecf
@@ -39,6 +39,7 @@ None.
 | R-86 | should-fix | accepted | The lens had no diff tool. The only hunk it did not read is the switch of cli.rs to mu_command, which the fit and invariants lenses checked in this round. |  |
 | R-88 | should-fix | accepted | TomlDirSource documents a missing root as an empty configuration, which the server needs; the CLI check only names a directory that the user chose, so the two checks answer different questions. |  |
 | R-95 | note | accepted | The test proves the stdout split that R-93 asked for; like R-81 and R-83, a scenario of its own adds no new behavior. |  |
+| R-96 | should-fix | accepted | The stderr write in mu-server serve.rs came with #65 and this change does not touch it; one writer for both crates needs a shared home outside the scope of world-config. | https://github.com/seanb4t/mu-portal/issues/89 |
 
 ## Rounds
 
@@ -315,7 +316,7 @@ None.
 | R-93 | 10 | 10 | should-fix | in-change | ["path","crates/mu-cli/src/lib.rs",35] | fixed | 4b8951437fd8ada4d7ece7171f05440ac56ba30a |  | The new print helper splits stdout write errors in two: BrokenPipe returns success, and any other kind fails the verb with status 1. No test passes either side, so a helper that swallows all errors or fails on BrokenPipe still passes every test. |
 | R-94 | 11 | 11 | should-fix | in-change | ["path","crates/mu-cli/src/lib.rs",18] | fixed | 5225ac6beabe2d9a66c619bdc39f257ca49872dd |  | report states that each stderr line goes out in one write, so lines in a shared log stay whole. The format-then-write_all body enforces it, but no test pins it. A rewrite to writeln! on Stderr, which is unbuffered and writes each format piece apart, splits the line and passes every test. |
 | R-95 | 11 | 11 | note | in-change | ["path","crates/mu-cli/src/lib.rs",120] | accepted | ticket: none; reason: The test proves the stdout split that R-93 asked for; like R-81 and R-83, a scenario of its own adds no new behavior. |  | print_ignores_only_a_broken_pipe has no scenario and no task that names it. |
-| R-96 | 12 | 12 | should-fix | in-change | ["path","crates/mu-cli/src/lib.rs",26] |  |  |  | The new seam report_to writes one stderr line in one write, but serve in mu-server keeps its own copy of that policy, with the same reason and the same closed-stderr comment, for its own `mu server:` line. The new test pins only the copy in mu-cli. |
+| R-96 | 12 | 12 | should-fix | in-change | ["path","crates/mu-cli/src/lib.rs",26] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/89; reason: The stderr write in mu-server serve.rs came with #65 and this change does not touch it; one writer for both crates needs a shared home outside the scope of world-config. |  | The new seam report_to writes one stderr line in one write, but serve in mu-server keeps its own copy of that policy, with the same reason and the same closed-stderr comment, for its own `mu server:` line. The new test pins only the copy in mu-cli. |
 
 ## Reviewed files
 
