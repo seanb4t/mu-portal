@@ -3,6 +3,7 @@
 //! never counts. A hit names the file and the line.
 //!
 //! - The codes of telnet live only in `src/telnet.rs`.
+//! - An option code after `WILL`, `WONT`, `DO`, `DONT` or `SB` is a constant of `telnet::opt`.
 //! - No file of `src` or `tests` sleeps.
 
 use std::fmt;
@@ -17,8 +18,13 @@ mod support;
 /// The one file that holds the codes of telnet.
 const TELNET_HOME: &str = "src/telnet.rs";
 
-/// The codes of telnet that a literal can hold: IAC, WONT, WILL, DO and DONT, and TIMING-MARK.
-const CODES: [u8; 6] = [251, 252, 253, 254, 255, 6];
+/// The codes of telnet that a literal can hold: the commands from EOR to IAC, and TIMING-MARK.
+const CODES: [u8; 18] = [
+    239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 6,
+];
+
+/// The names of the codes that an option code follows in a list of bytes.
+const OPTION_VERBS: [&str; 5] = ["WILL", "WONT", "DO", "DONT", "SB"];
 
 /// The names of a call that waits for time.
 const SLEEPS: [&str; 2] = ["sleep", "sleep_until"];
@@ -43,6 +49,7 @@ const ALLOWED_CODES: &[AllowedCode] = &[AllowedCode {
 #[derive(Debug, PartialEq, Eq)]
 enum Rule {
     TelnetCode,
+    OptionCode,
     Sleep,
 }
 
@@ -59,6 +66,7 @@ impl fmt::Display for Hit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let what = match self.rule {
             Rule::TelnetCode => "a code of telnet outside src/telnet.rs",
+            Rule::OptionCode => "an option code that is not a constant of telnet::opt",
             Rule::Sleep => "a sleep",
         };
         write!(f, "{}:{}: {what}: {}", self.file, self.line, self.text)
@@ -120,6 +128,9 @@ fn scan_tokens(file: &str, tokens: TokenStream, telnet_rule: bool, hits: &mut Ve
                     Some((Rule::TelnetCode, line, "u8::MAX".to_owned()))
                 } else if telnet_rule && name == "u8" && is_assigned_six(after) {
                     Some((Rule::TelnetCode, line, "u8 = 6".to_owned()))
+                } else if telnet_rule && OPTION_VERBS.contains(&name.as_str()) {
+                    option_literal(after)
+                        .map(|text| (Rule::OptionCode, line, format!("{name}, {text}")))
                 } else {
                     None
                 }
@@ -148,6 +159,19 @@ fn holds_code(literal: &Literal) -> bool {
         syn::Lit::Byte(byte) => is_code(u128::from(byte.value())),
         syn::Lit::ByteStr(bytes) => bytes.value().iter().any(|byte| is_code(u128::from(*byte))),
         _ => false,
+    }
+}
+
+/// The integer literal in `after` if it starts with `, <integer>`, an option code after a verb.
+fn option_literal(after: &[TokenTree]) -> Option<String> {
+    match after {
+        [TokenTree::Punct(comma), TokenTree::Literal(value), ..]
+            if comma.as_char() == ','
+                && matches!(syn::Lit::new(value.clone()), syn::Lit::Int(_)) =>
+        {
+            Some(value.to_string())
+        }
+        _ => None,
     }
 }
 
@@ -231,6 +255,8 @@ fn telnet_code_is_found_in_each_form() {
         "const DO: u8 = b'\\xfd';",
         r#"const MARK: &[u8] = b"\xff\xfd\x06";"#,
         "fn f() { g(&[1, 2, 0xfb]); }",
+        "const SB: u8 = 250;",
+        "const EOR: u8 = 239;",
         "const _: () = { let _ = u8::MAX; };",
     ];
     for form in forms {
@@ -257,7 +283,7 @@ fn bytes_that_are_not_codes_pass() {
         "const A: u8 = 5;",
         "const B: u8 = 0x66;",
         "const C: usize = 6;",
-        "let x = 250;",
+        "let x = 238;",
         "let y = 256;",
         "let z = [0, 1, 6];",
         "let w = 6u32;",
@@ -269,9 +295,19 @@ fn bytes_that_are_not_codes_pass() {
         "const MAX: u8 = 7; let m = u16::MAX;",
         r#"let b = b"abc";"#,
         "let c = b'a';",
+        "let g = [IAC, WILL, opt::GMCP];",
+        "let h = [IAC, SB, opt::TTYPE, 1, IAC, SE];",
     ];
     for form in forms {
         assert_eq!(probe(form), [], "{form}");
+    }
+}
+
+#[test]
+fn option_code_is_found_after_each_verb() {
+    for verb in OPTION_VERBS {
+        let form = format!("let x = [IAC, {verb}, 201];");
+        assert_eq!(rules_of(&form), [Rule::OptionCode], "{form}");
     }
 }
 

@@ -200,7 +200,7 @@ mod tests {
     use tokio::io::{AsyncBufReadExt as _, BufReader};
 
     use super::*;
-    use crate::telnet::{DO, IAC, WILL, opt};
+    use crate::telnet::{self, IAC, WILL, opt};
 
     async fn open() -> (FakeGame, tokio::io::Lines<BufReader<Box<dyn ByteStream>>>) {
         let (game, stream) = open_raw().await;
@@ -245,7 +245,7 @@ mod tests {
 
     const LOGIN: &[u8] = b"connect aria s3cret-pw\r\n";
     const WELCOME: &[u8] = b"Welcome, aria.\r\n";
-    const MARK: [u8; 3] = [IAC, DO, opt::TIMING_MARK];
+    const MARK: [u8; 3] = telnet::MARK;
     const MARK_ANSWER: [u8; 3] = [IAC, WILL, opt::TIMING_MARK];
 
     #[tokio::test]

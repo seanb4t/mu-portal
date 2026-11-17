@@ -241,3 +241,90 @@ pub async fn broken_world(setup: WorldSetup) -> (Portal, WorldId) {
     wait_state(&portal, &aria, WorldState::Connected).await;
     (portal, aria)
 }
+
+/// `bytes` split into reads that end at `points`. Points out of order or past the end are
+/// sorted and clamped.
+pub fn reads<'a>(bytes: &'a [u8], points: &[usize]) -> Vec<&'a [u8]> {
+    let mut points: Vec<usize> = points
+        .iter()
+        .map(|point| (*point).min(bytes.len()))
+        .collect();
+    points.sort_unstable();
+    let mut out = Vec::new();
+    let mut start = 0;
+    for point in points.into_iter().chain([bytes.len()]) {
+        out.push(&bytes[start..point]);
+        start = point;
+    }
+    out
+}
+
+/// The reads of the game in a transcript of the telnet spike, in order.
+///
+/// Each record is one line: `<` for a read of the game or `>` for a write to it, the seconds
+/// since the connect, and the hex of the bytes. A line that starts with `#` is a note.
+pub fn transcript_reads(text: &str) -> Vec<Vec<u8>> {
+    text.lines()
+        .map(str::trim_end)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(|line| {
+            let mut fields = line.splitn(3, ' ');
+            let direction = fields.next().unwrap();
+            assert!(matches!(direction, "<" | ">"), "bad record: {line}");
+            let _seconds: f64 = fields.next().unwrap().parse().unwrap();
+            let bytes = hex::decode(fields.next().unwrap_or_default()).unwrap();
+            (direction == "<").then_some(bytes)
+        })
+        .collect()
+}
+
+/// The text of each transcript under `tests/fixtures/telnet`, with its file name.
+pub fn transcripts() -> Vec<(String, String)> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/telnet");
+    let mut files: Vec<(String, String)> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|entry| {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            (name, std::fs::read_to_string(&path).unwrap())
+        })
+        .collect();
+    files.sort();
+    files
+}
+
+/// The telnet events of `events`, with each run of adjacent data events joined into one.
+pub fn join_data(
+    events: impl IntoIterator<Item = mu_core::telnet::Event>,
+) -> Vec<mu_core::telnet::Event> {
+    use mu_core::telnet::Event::Data;
+    let mut out = Vec::new();
+    for event in events {
+        match (out.last_mut(), event) {
+            (Some(Data(last)), Data(more)) => last.extend(more),
+            (_, event) => out.push(event),
+        }
+    }
+    out
+}
+
+/// The bytes of a subnegotiation: `IAC SB option`, the escaped payload, `IAC SE`.
+pub fn subnegotiation(option: u8, payload: &[u8]) -> Vec<u8> {
+    use mu_core::telnet::{IAC, SB, SE, escape};
+    [&[IAC, SB, option][..], &escape(payload), &[IAC, SE]].concat()
+}
+
+/// Gives each of `reads` to `parser` in order, and gives the joined events and the sent bytes.
+pub fn parse_reads(
+    parser: &mut mu_core::telnet::Parser,
+    reads: &[&[u8]],
+) -> (Vec<mu_core::telnet::Event>, Vec<u8>) {
+    let mut events = Vec::new();
+    let mut output = Vec::new();
+    for read in reads {
+        parser.receive(read);
+        events.extend(std::iter::from_fn(|| parser.poll_event()));
+        output.extend(parser.take_output());
+    }
+    (join_data(events), output)
+}

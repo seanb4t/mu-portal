@@ -10,3 +10,7 @@ import LikeC4View from '../../../components/LikeC4View.astro';
 Each client sends commands to the API and reads one event stream from it. The API is the only way into the server. Inside the server, a game session holds one telnet connection, and the journal records each event.
 
 <LikeC4View viewId="serverAndClients" />
+
+## How a game session reads telnet
+
+A game session gives the bytes of each read to a framer. The telnet framer passes them to the telnet parser, which does no I/O. The parser reads the telnet commands, answers the option requests of the game and unpacks MCCP2 compression. The framer then gives the session lines, prompts, replies to send, the answers to marks, GMCP messages and protocol errors. A prompt is text with no line end at the end of a read, or text before GA or EOR. The framer reads the text of a world in UTF-8 or ISO-8859-1. The [telnet engine decision](/decisions/telnet-engine/) explains the choice of this design.

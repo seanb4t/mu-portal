@@ -1,6 +1,8 @@
 //! Framers: bytes of the game in, lines and prompts out, and a line in, bytes out.
 
-use crate::telnet::{DO, IAC, WILL, WONT, opt};
+use crate::telnet::{
+    self, DO, EOR, Event, GA, IAC, Parser, Policy, Side, WILL, WONT, charset, opt, ttype,
+};
 
 /// What a framer gives for the bytes of the game.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,9 +51,41 @@ pub trait Framer: Send + 'static {
 /// lines of this length, so a game cannot grow the buffer without a bound.
 pub const MAX_LINE: usize = 64 * 1024;
 
+/// The partial line of a framer. It splits on LF, drops each CR and cuts a run of bytes with
+/// no LF at [`MAX_LINE`]. A full partial line followed by LF is one line.
+#[derive(Debug, Default)]
+pub(crate) struct LineBuffer {
+    partial: Vec<u8>,
+}
+
+impl LineBuffer {
+    /// Takes one data byte, and gives the bytes of the line that it ends or cuts.
+    pub(crate) fn push(&mut self, byte: u8) -> Option<Vec<u8>> {
+        match byte {
+            b'\n' => Some(self.take()),
+            b'\r' => None,
+            byte => {
+                let cut = (self.partial.len() == MAX_LINE).then(|| self.take());
+                self.partial.push(byte);
+                cut
+            }
+        }
+    }
+
+    /// The bytes of the partial line.
+    pub(crate) fn partial(&self) -> &[u8] {
+        &self.partial
+    }
+
+    /// The partial line, which this clears.
+    pub(crate) fn take(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.partial)
+    }
+}
+
 /// Which end of the connection a [`LineFramer`] reads for.
 #[derive(Clone, Copy, Debug, Default)]
-enum Side {
+enum Role {
     /// Reads the game, and sends marks to it.
     #[default]
     Client,
@@ -59,7 +93,7 @@ enum Side {
     Game,
 }
 
-impl Side {
+impl Role {
     /// Whether `IAC verb TIMING-MARK` is a mark for this side.
     fn reads_verb(self, verb: u8) -> bool {
         match self {
@@ -90,8 +124,8 @@ enum Held {
 /// other IAC sequence stays in the line.
 #[derive(Debug, Default)]
 pub struct LineFramer {
-    partial: Vec<u8>,
-    side: Side,
+    buffer: LineBuffer,
+    role: Role,
     held: Held,
 }
 
@@ -105,7 +139,7 @@ impl LineFramer {
     /// A framer for the game side: it answers the mark of a client.
     pub(crate) fn game() -> Self {
         Self {
-            side: Side::Game,
+            role: Role::Game,
             ..Self::default()
         }
     }
@@ -118,10 +152,10 @@ impl LineFramer {
                 self.held = Held::Nothing;
                 self.push(IAC, out);
             }
-            (Held::Iac, verb) if self.side.reads_verb(verb) => self.held = Held::Verb(verb),
+            (Held::Iac, verb) if self.role.reads_verb(verb) => self.held = Held::Verb(verb),
             (Held::Verb(_), opt::TIMING_MARK) => {
                 self.held = Held::Nothing;
-                out.push(self.side.on_mark());
+                out.push(self.role.on_mark());
             }
             (Held::Iac, byte) => {
                 self.held = Held::Nothing;
@@ -138,21 +172,9 @@ impl LineFramer {
     }
 
     fn push(&mut self, byte: u8, out: &mut Vec<Inbound>) {
-        match byte {
-            b'\n' => out.push(self.take_line()),
-            b'\r' => {}
-            byte => {
-                self.partial.push(byte);
-                if self.partial.len() == MAX_LINE {
-                    out.push(self.take_line());
-                }
-            }
+        if let Some(line) = self.buffer.push(byte) {
+            out.push(Inbound::Line(String::from_utf8_lossy(&line).into_owned()));
         }
-    }
-
-    fn take_line(&mut self) -> Inbound {
-        let line = std::mem::take(&mut self.partial);
-        Inbound::Line(String::from_utf8_lossy(&line).into_owned())
     }
 }
 
@@ -173,10 +195,250 @@ impl Framer for LineFramer {
     }
 
     fn mark(&self) -> Vec<u8> {
-        match self.side {
-            Side::Client => vec![IAC, DO, opt::TIMING_MARK],
-            Side::Game => Vec::new(),
+        match self.role {
+            Role::Client => telnet::MARK.to_vec(),
+            Role::Game => Vec::new(),
         }
+    }
+}
+
+/// The character set of the text of a world.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Charset {
+    /// UTF-8. Each invalid sequence becomes a replacement character.
+    #[default]
+    Utf8,
+    /// ISO-8859-1. Each byte is the character with the same number.
+    Latin1,
+}
+
+impl Charset {
+    /// The name that a CHARSET answer uses.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Utf8 => "UTF-8",
+            Self::Latin1 => "ISO-8859-1",
+        }
+    }
+
+    fn decode(self, bytes: &[u8]) -> String {
+        match self {
+            Self::Utf8 => String::from_utf8_lossy(bytes).into_owned(),
+            Self::Latin1 => bytes.iter().copied().map(char::from).collect(),
+        }
+    }
+
+    fn encode(self, text: &str) -> Vec<u8> {
+        match self {
+            Self::Utf8 => text.as_bytes().to_vec(),
+            Self::Latin1 => text
+                .chars()
+                .map(|c| u8::try_from(c).unwrap_or(b'?'))
+                .collect(),
+        }
+    }
+}
+
+/// The settings of a [`TelnetFramer`]: what the client answers, and the options it accepts.
+#[derive(Clone, Debug)]
+pub struct TelnetSettings {
+    /// The character set of the text, which a CHARSET answer offers.
+    pub charset: Charset,
+    /// The width of the window, which NAWS sends.
+    pub columns: u16,
+    /// The height of the window, which NAWS sends.
+    pub rows: u16,
+    /// The options that the client accepts on each side.
+    pub policy: Policy,
+}
+
+impl Default for TelnetSettings {
+    /// UTF-8, a window of 120 by 40, and the options of a MU client.
+    fn default() -> Self {
+        Self {
+            charset: Charset::Utf8,
+            columns: 120,
+            rows: 40,
+            policy: Policy::none()
+                .accept(Side::Local, &[opt::TTYPE, opt::NAWS, opt::CHARSET])
+                .accept(
+                    Side::Remote,
+                    &[
+                        opt::ECHO,
+                        opt::SGA,
+                        opt::EOR,
+                        opt::CHARSET,
+                        opt::MSSP,
+                        opt::MCCP2,
+                        opt::GMCP,
+                    ],
+                ),
+        }
+    }
+}
+
+/// The terminal types that the client gives, in order. It repeats the last one.
+const TERMINAL_TYPES: [&str; 3] = ["MU-PORTAL", "XTERM-256COLOR", "MTTS 269"];
+
+/// A framer for a telnet game. It reads the protocol with [`Parser`], answers the terminal
+/// type, the window size and the character set, and gives lines, prompts, marks, GMCP
+/// messages and protocol errors.
+#[derive(Debug)]
+pub struct TelnetFramer {
+    parser: Parser,
+    settings: TelnetSettings,
+    buffer: LineBuffer,
+    /// The last data byte was a CR, so a NUL right after it is dropped.
+    after_cr: bool,
+    /// The count of terminal types that the client gave.
+    terminal_types: usize,
+    /// TTYPE is on for the client at the event that the framer reads.
+    terminal_type_on: bool,
+}
+
+impl TelnetFramer {
+    /// A framer with every option off and no partial line.
+    #[must_use]
+    pub fn new(settings: TelnetSettings) -> Self {
+        Self {
+            parser: Parser::new(settings.policy.clone()),
+            settings,
+            buffer: LineBuffer::default(),
+            after_cr: false,
+            terminal_types: 0,
+            terminal_type_on: false,
+        }
+    }
+
+    /// Adds data bytes to the partial line, and gives each line that they end. Gives whether
+    /// a byte went into the partial line, which a CR or a dropped NUL does not.
+    fn data(&mut self, bytes: &[u8], out: &mut Vec<Inbound>) -> bool {
+        let mut added = false;
+        for &byte in bytes {
+            let after_cr = std::mem::replace(&mut self.after_cr, byte == b'\r');
+            if after_cr && byte == 0 {
+                continue;
+            }
+            let before = self.buffer.partial().len();
+            let line = self.buffer.push(byte);
+            added |= line.is_some() || self.buffer.partial().len() != before;
+            if let Some(line) = line {
+                out.push(Inbound::Line(self.settings.charset.decode(&line)));
+            }
+        }
+        added
+    }
+
+    /// Gives the partial line as a prompt, if it is not empty, and clears it.
+    fn prompt(&mut self, out: &mut Vec<Inbound>) {
+        let text = self.buffer.take();
+        if !text.is_empty() {
+            out.push(Inbound::Prompt(self.settings.charset.decode(&text)));
+        }
+    }
+
+    fn subnegotiation(&mut self, option: u8, payload: Vec<u8>, out: &mut Vec<Inbound>) {
+        match (option, payload.first()) {
+            (opt::GMCP, _) => out.push(Inbound::Message {
+                name: "GMCP".to_owned(),
+                body: payload,
+            }),
+            (opt::TTYPE, Some(&ttype::SEND)) if self.terminal_type_on => {
+                let name = TERMINAL_TYPES[self.terminal_types.min(TERMINAL_TYPES.len() - 1)];
+                self.terminal_types += 1;
+                let answer = [&[ttype::IS], name.as_bytes()].concat();
+                self.parser.send_subnegotiation(opt::TTYPE, &answer);
+            }
+            (opt::CHARSET, Some(&charset::REQUEST)) => {
+                let answer = self.charset_answer(&payload[1..]);
+                self.parser.send_subnegotiation(opt::CHARSET, &answer);
+            }
+            _ => {}
+        }
+    }
+
+    /// The answer to the list of a CHARSET request, with its optional `[TTABLE ]` prefix.
+    fn charset_answer(&self, request: &[u8]) -> Vec<u8> {
+        let list = match request.strip_prefix(charset::TTABLE) {
+            Some(rest) => rest.get(1..).unwrap_or_default(),
+            None => request,
+        };
+        let accepted = list.split_first().and_then(|(separator, names)| {
+            names
+                .split(|byte| byte == separator)
+                .find(|name| name.eq_ignore_ascii_case(self.settings.charset.name().as_bytes()))
+        });
+        match accepted {
+            Some(name) => [&[charset::ACCEPTED], name].concat(),
+            None => vec![charset::REJECTED],
+        }
+    }
+
+    fn window_size(&mut self) {
+        let [width_high, width_low] = self.settings.columns.to_be_bytes();
+        let [height_high, height_low] = self.settings.rows.to_be_bytes();
+        self.parser
+            .send_subnegotiation(opt::NAWS, &[width_high, width_low, height_high, height_low]);
+    }
+}
+
+impl Framer for TelnetFramer {
+    fn feed(&mut self, bytes: &[u8]) -> Vec<Inbound> {
+        self.parser.receive(bytes);
+        let mut out = Vec::new();
+        let mut added = false;
+        while let Some(event) = self.parser.poll_event() {
+            match event {
+                Event::Data(data) => added |= self.data(&data, &mut out),
+                Event::Command(GA | EOR) => {
+                    added = false;
+                    self.prompt(&mut out);
+                }
+                Event::Enabled(Side::Local, opt::NAWS) => self.window_size(),
+                Event::Enabled(Side::Local, opt::TTYPE) => self.terminal_type_on = true,
+                Event::Disabled(Side::Local, opt::TTYPE) => self.terminal_type_on = false,
+                Event::Subnegotiation(option, payload) => {
+                    self.subnegotiation(option, payload, &mut out);
+                }
+                Event::Mark => out.push(Inbound::Mark),
+                Event::Error(error) => out.push(Inbound::Message {
+                    name: "telnet".to_owned(),
+                    body: format!("{} {error}", error.code()).into_bytes(),
+                }),
+                Event::Command(_)
+                | Event::Enabled(..)
+                | Event::Disabled(..)
+                | Event::CompressionStarted
+                | Event::CompressionEnded => {}
+            }
+        }
+        let reply = self.parser.take_output();
+        if !reply.is_empty() {
+            out.push(Inbound::Reply(reply));
+        }
+        if added && !self.buffer.partial().is_empty() {
+            out.push(Inbound::Prompt(
+                self.settings.charset.decode(self.buffer.partial()),
+            ));
+        }
+        out
+    }
+
+    fn encode(&self, line: &str) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for byte in telnet::escape(&self.settings.charset.encode(line)) {
+            bytes.push(byte);
+            if byte == b'\r' {
+                bytes.push(0);
+            }
+        }
+        bytes.extend_from_slice(b"\r\n");
+        bytes
+    }
+
+    fn mark(&self) -> Vec<u8> {
+        telnet::MARK.to_vec()
     }
 }
 
@@ -231,6 +493,40 @@ mod tests {
         assert_eq!(cut.len(), 1);
         assert_eq!(cut[0].len(), MAX_LINE);
         assert_eq!(lines(framer.feed(b"\n")), ["aaa"]);
+    }
+
+    #[test]
+    fn line_framer_line_of_exactly_the_bound() {
+        for end in [b"\n".as_slice(), b"\r\n"] {
+            let bytes = [vec![b'a'; MAX_LINE], end.to_vec()].concat();
+            assert_eq!(
+                lines(LineFramer::new().feed(&bytes)),
+                ["a".repeat(MAX_LINE)]
+            );
+        }
+    }
+
+    #[test]
+    fn line_buffer_splits_on_lf_and_drops_cr() {
+        let mut buffer = LineBuffer::default();
+        let found: Vec<Vec<u8>> = b"a\rb\nc"
+            .iter()
+            .filter_map(|byte| buffer.push(*byte))
+            .collect();
+        assert_eq!(found, [b"ab".to_vec()]);
+        assert_eq!(buffer.partial(), b"c");
+    }
+
+    #[test]
+    fn line_buffer_cuts_on_the_byte_after_the_bound() {
+        let mut buffer = LineBuffer::default();
+        for _ in 0..MAX_LINE {
+            assert_eq!(buffer.push(b'a'), None);
+        }
+        assert_eq!(buffer.push(b'\r'), None);
+        assert_eq!(buffer.push(b'b'), Some(vec![b'a'; MAX_LINE]));
+        assert_eq!(buffer.take(), b"b");
+        assert_eq!(buffer.partial(), b"");
     }
 
     #[test]
@@ -326,8 +622,8 @@ mod tests {
     #[test]
     fn line_framer_keeps_other_iac_bytes() {
         let cases = [
-            (LineFramer::new(), [IAC, WILL, 5]),
-            (LineFramer::game(), [IAC, WILL, 5]),
+            (LineFramer::new(), [IAC, WILL, opt::STATUS]),
+            (LineFramer::game(), [IAC, WILL, opt::STATUS]),
             (LineFramer::new(), [IAC, DO, TM]),
             (LineFramer::game(), [IAC, WILL, TM]),
             (LineFramer::game(), [IAC, WONT, TM]),
@@ -400,10 +696,13 @@ mod tests {
     #[test]
     fn line_framer_near_miss_at_the_bound() {
         let data = vec![b'a'; MAX_LINE - 1];
-        let bytes = [data.as_slice(), &[IAC, WILL, 5], b"\n"].concat();
+        let bytes = [data.as_slice(), &[IAC, WILL, opt::STATUS], b"\n"].concat();
         let mut first = "a".repeat(MAX_LINE - 1);
         first.push('\u{FFFD}');
-        let expected = [Inbound::Line(first), Inbound::Line("\u{FFFD}\u{5}".into())];
+        let expected = [
+            Inbound::Line(first),
+            Inbound::Line(format!("\u{FFFD}{}", char::from(opt::STATUS))),
+        ];
         for points in [vec![], vec![MAX_LINE], vec![MAX_LINE + 1]] {
             assert_eq!(feed_split(LineFramer::new(), &bytes, &points), expected);
         }

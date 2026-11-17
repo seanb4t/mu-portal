@@ -35,6 +35,8 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
         &[
             "futures",
             "governor",
+            "hex",
+            "miniz_oxide",
             "proptest",
             "secrecy",
             "thiserror",
@@ -133,6 +135,9 @@ enum Violation {
         to: String,
     },
     SpikeInclude {
+        file: String,
+    },
+    SpikeLink {
         file: String,
     },
     Untokenized {
@@ -276,13 +281,56 @@ fn violations(root: &Path) -> Vec<Violation> {
             }
         }
     }
-    found.extend(include_violations(
+    found.extend(file_violations(
         metadata.workspace_root.as_std_path(),
-        member_directories
-            .iter()
-            .map(|directory| directory.as_std_path()),
+        spikes.as_std_path(),
+        &member_directories,
     ));
     found
+}
+
+/// The include rule and the link rule for the files of the member directories.
+fn file_violations(
+    root: &Path,
+    spikes: &Path,
+    member_directories: &[&cargo_metadata::camino::Utf8Path],
+) -> Vec<Violation> {
+    let directories = || {
+        member_directories
+            .iter()
+            .map(|directory| directory.as_std_path())
+    };
+    let mut found = include_violations(root, directories());
+    found.extend(link_violations(root, spikes, directories()));
+    found
+}
+
+/// The link rule for each file in the member directories: no symbolic link resolves into
+/// `spikes`. A path from `root` names each link.
+fn link_violations<'a>(
+    root: &Path,
+    spikes: &Path,
+    directories: impl Iterator<Item = &'a Path>,
+) -> Vec<Violation> {
+    let spikes = fs::canonicalize(spikes).unwrap_or_else(|_| spikes.to_path_buf());
+    directories
+        .flat_map(support::files_under)
+        .filter(|path| fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink()))
+        .filter(|path| {
+            let target = fs::canonicalize(path).unwrap_or_else(|_| {
+                let link = fs::read_link(path).expect("the link is readable");
+                path.parent().expect("a link has a parent").join(link)
+            });
+            target.starts_with(&spikes)
+        })
+        .map(|path| Violation::SpikeLink {
+            file: path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .display()
+                .to_string(),
+        })
+        .collect()
 }
 
 /// The include rule for each Rust file in the member directories, with paths from `root`.
@@ -638,6 +686,44 @@ fn proto_dependency_fails() {
 /// The fixture with `text` as the library of `mu-core`.
 fn with_core_source(text: &str) -> TreeCopy {
     fixture().append_file(Path::new("crates/mu-core/src/lib.rs"), text)
+}
+
+#[test]
+fn spike_link_fails() {
+    let cases = [
+        (
+            "spikes/telnet/data.txt",
+            "spikes/telnet/data.txt",
+            "crates/mu-core/data.txt",
+        ),
+        (
+            "spikes/telnet/transcripts/a.txt",
+            "spikes/telnet/transcripts",
+            "crates/mu-core/transcripts",
+        ),
+    ];
+    for (file, target, link) in cases {
+        let copy = fixture().append_file(Path::new(file), "x");
+        std::os::unix::fs::symlink(copy.root().join(target), copy.root().join(link)).unwrap();
+        assert_eq!(
+            violations(copy.root()),
+            vec![Violation::SpikeLink {
+                file: link.to_owned(),
+            }],
+            "{target}"
+        );
+    }
+}
+
+#[test]
+fn link_outside_spikes_passes() {
+    let copy = fixture().append_file(Path::new("data/x.txt"), "x");
+    std::os::unix::fs::symlink(
+        copy.root().join("data/x.txt"),
+        copy.root().join("crates/mu-core/x.txt"),
+    )
+    .unwrap();
+    assert_eq!(violations(copy.root()), vec![]);
 }
 
 #[test]
