@@ -690,36 +690,29 @@ fn with_core_source(text: &str) -> TreeCopy {
 
 #[test]
 fn spike_link_fails() {
-    let copy = fixture().append_file(Path::new("spikes/telnet/data.txt"), "x");
-    let link = Path::new("crates/mu-core/data.txt");
-    std::os::unix::fs::symlink(
-        copy.root().join("spikes/telnet/data.txt"),
-        copy.root().join(link),
-    )
-    .unwrap();
-    assert_eq!(
-        violations(copy.root()),
-        vec![Violation::SpikeLink {
-            file: link.display().to_string(),
-        }]
-    );
-}
-
-#[test]
-fn spike_directory_link_fails() {
-    let copy = fixture().append_file(Path::new("spikes/telnet/transcripts/a.txt"), "x");
-    let link = Path::new("crates/mu-core/transcripts");
-    std::os::unix::fs::symlink(
-        copy.root().join("spikes/telnet/transcripts"),
-        copy.root().join(link),
-    )
-    .unwrap();
-    assert_eq!(
-        violations(copy.root()),
-        vec![Violation::SpikeLink {
-            file: link.display().to_string(),
-        }]
-    );
+    let cases = [
+        (
+            "spikes/telnet/data.txt",
+            "spikes/telnet/data.txt",
+            "crates/mu-core/data.txt",
+        ),
+        (
+            "spikes/telnet/transcripts/a.txt",
+            "spikes/telnet/transcripts",
+            "crates/mu-core/transcripts",
+        ),
+    ];
+    for (file, target, link) in cases {
+        let copy = fixture().append_file(Path::new(file), "x");
+        std::os::unix::fs::symlink(copy.root().join(target), copy.root().join(link)).unwrap();
+        assert_eq!(
+            violations(copy.root()),
+            vec![Violation::SpikeLink {
+                file: link.to_owned(),
+            }],
+            "{target}"
+        );
+    }
 }
 
 #[test]
