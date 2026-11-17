@@ -25,7 +25,7 @@ The spike `spikes/telnet-engine` built a parser with the same goals. Its decisio
 - A change to the `Framer` trait or to `Inbound`. The framer reports protocol errors as messages, so the seam stays as it is.
 - A second NAWS message after a change of the client window. The framer sends the size of its settings.
 - The effect of an option on the client, for example ECHO on input. The framer accepts ECHO, as the spike client did, and does nothing more with it.
-- A disconnect after a bad MCCP2 stream. The parser goes quiet. World-sessions decides the time to close the connection.
+- A disconnect after a bad MCCP2 stream. The parser turns MCCP2 off and goes on. World-sessions decides whether to close the connection.
 - The issue #73 on the source test. This change adds codes to its list and changes nothing else in it.
 
 ## Decisions
@@ -159,9 +159,9 @@ Alternative: a new `Inbound::Error`. It changes the seam and the session for a c
 
 MCCP2 starts on `IAC SB MCCP2 IAC SE` while MCCP2 is on for the game. While it is off, that subnegotiation is an ordinary event. The parser inflates with the streaming API of `miniz_oxide`, which tells how many input bytes a call used. So the parser knows where a stream ends inside a read, and it reads the bytes after it as plain telnet.
 
-A stream that is not valid zlib gives one protocol error. After it, the parser drops each later byte and gives no event, because no byte after it can be read. So the error and the silence after it are the same for any split.
+A stream that is not valid zlib gives one protocol error. The parser then sends `IAC DONT MCCP2`, as the MCCP specification allows. The game can send more compressed bytes before it reads that request, and those bytes are garbage as plain text. So the parser drops each byte until `IAC WONT MCCP2`, the answer that the Q method asks of the game. It reads that answer as a negotiation, and the bytes after it as plain telnet. The search for the answer holds its state across reads, so the error and the events after it are the same for any split.
 
-The events before the error can differ by split. The inflated bytes go through the parser, so the data, commands and negotiations before a break in the middle of a stream can differ. Inflate gives out what it can decode from the bytes of each call. A stream that breaks in its middle can break at a byte that one split reaches first. To hold the data back until the stream ends needs a buffer with no bound. So the spec states this case as the one exception to the split rule. The split property test uses bad streams that fail in their header, where no data comes before the error. A unit test, `bad_stream_after_data`, checks a stream that breaks after some data: one error and silence for any split.
+The events before the error can differ by split. The inflated bytes go through the parser, so the data, commands and negotiations before a break in the middle of a stream can differ. Inflate gives out what it can decode from the bytes of each call. A stream that breaks in its middle can break at a byte that one split reaches first. To hold the data back until the stream ends needs a buffer with no bound. So the spec states this case as the one exception to the split rule. The split property test uses bad streams that fail in their header, where no data comes before the error. A unit test, `bad_stream_after_data`, checks a stream that breaks after some data: one error for any split. The test `plain_bytes_after_the_answer_to_dont` splits a recovery at each byte.
 
 The parser opens a stream only when none is open, and the end of a stream closes it. The spike guards the same case. An `IAC SB MCCP2 IAC SE` inside an open stream is an ordinary subnegotiation event.
 
@@ -204,7 +204,7 @@ This change follows "Using a spike" on `docs/src/content/docs/contributing/spike
 | No crate reads a spike file through a symbolic link | `Violation::SpikeLink` of the boundary test, and its probe test `spike_link_fails`. |
 | Each third-party crate of `mu-core` is allowed | `ALLOWED_CRATES` in the boundary test, and `cargo deny check` in `mise run check`. |
 | The parser gives the same events for any split | The property test `parser_ignores_read_splits`, with bad headers and malformed framing, and the transcript test `transcripts_in_other_reads`. |
-| A bad stream gives one error and silence for any split | The test `bad_stream_after_data`. |
+| A bad stream gives one error, `DONT MCCP2`, and plain bytes after `WONT MCCP2`, for any split | The tests `bad_stream_after_data` and `plain_bytes_after_the_answer_to_dont`, and the oracle. |
 | The bound counts an escaped byte once and holds across reads | The tests `payload_at_the_bound` and `payload_over_the_bound`. |
 | A stream opens only when none is open, and its end closes it | The tests `start_inside_a_stream` and `second_stream_after_end`. |
 | Malformed framing gives the events of its table | The unit tests `malformed_framing`, one case for each row, and the oracle. |
@@ -228,8 +228,8 @@ This change follows "Using a spike" on `docs/src/content/docs/contributing/spike
 - [A game sends a prompt, waits, and adds text to the line.] → The framer gives a second, longer prompt, then the line. No text is lost.
 - [The framer drops a subnegotiation other than GMCP.] → MSSP and the others have no reader yet. A later change can turn one into a message.
 - [The game ignores `IAC DO TIMING-MARK`.] → `Portal::wait_idle` stays a test helper. World-sessions decides the behavior with real games.
-- [The parser goes quiet after a bad MCCP2 stream, with the connection still open.] → The error message tells the player. World-sessions adds the disconnect.
-- [A bad stream that fails after its header can give a different amount of data for different splits.] → The spec states the exception. The error and the silence after it are the same for any split, and `bad_stream_after_data` tests that.
+- [A game does not answer `DONT MCCP2` with `WONT MCCP2`.] → The parser drops its bytes until the answer, and the error message tells the player. World-sessions can close the connection.
+- [A bad stream that fails after its header can give a different amount of data for different splits.] → The spec states the exception. The error and the events after it are the same for any split, and `bad_stream_after_data` tests that.
 
 ## Checked facts
 
@@ -249,9 +249,9 @@ Task 1.1 fills this table with each fact that the design uses, with its source. 
 | CHARSET is option 42. REQUEST is 1, ACCEPTED 2 and REJECTED 3. A request can start with `[TTABLE ]` and a version byte that is not zero, and then the separator and the list. Case of a name is not significant. | RFC 2066, sections 2 and 3. |
 | The MTTS bits are ANSI 1, VT100 2, UTF-8 4, 256 colors 8 and truecolor 256, so `MTTS 269` is ANSI, UTF-8, 256 colors and truecolor. The bit vector comes on the third TTYPE SEND. | MTTS specification, tintin.mudhalla.net/protocols/mtts. |
 | MCCP2 is option 86. The server sends `IAC SB MCCP2 IAC SE` and starts a zlib stream (RFC 1950) right after it. | MCCP specification, tintin.mudhalla.net/protocols/mccp. |
-| After a decompression error, the MCCP specification lets the client send `DONT MCCP2` and go on. This design goes quiet instead, and world-sessions closes the connection. | MCCP specification, section on MCCP2 errors. This is a difference that the design chooses. |
+| After a decompression error, the MCCP specification lets the client send `DONT MCCP2` and go on as plain telnet. This design does that. | MCCP specification, section on MCCP2 errors. |
 | `miniz_oxide::inflate::stream::inflate` takes an `InflateState`, the input, the output and `MZFlush::None`. Its `StreamResult` gives `bytes_consumed`, `bytes_written` and a status, which is `StreamEnd` at the end of the stream. | docs.rs, `miniz_oxide` 0.9.1, `inflate::stream::inflate` and `StreamResult`. |
 | `miniz_oxide::deflate::compress_to_vec_zlib` gives a whole zlib stream for the tests. | docs.rs, `miniz_oxide` 0.9.1, `deflate::compress_to_vec_zlib`. |
 | The spike reads `IAC SB IAC SE` as an error for an empty subnegotiation and then the command SE, and a verb after `IAC` in a payload as an unterminated subnegotiation and then the negotiation. | `spikes/telnet-engine/src/lib.rs`, `Engine::parse`. |
 | The spike drops an `IAC SB MCCP2 IAC SE` inside an open stream with no event. This design gives it as a subnegotiation event. | `spikes/telnet-engine/src/lib.rs`, `end_subnegotiation`. This is a difference that the design chooses. |
-| After an inflate error, the spike reads later bytes as plain telnet. This design drops them. | `spikes/telnet-engine/src/lib.rs`, `inflate`. This is a difference that the design chooses. |
+| After an inflate error, the spike reads later bytes as plain telnet at once. This design drops them until `WONT MCCP2`. | `spikes/telnet-engine/src/lib.rs`, `inflate`. This is a difference that the design chooses. |

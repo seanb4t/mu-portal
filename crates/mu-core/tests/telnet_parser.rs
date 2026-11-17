@@ -366,10 +366,36 @@ fn start_while_mccp2_is_off() {
 #[test]
 fn stream_that_is_not_zlib() {
     let first = [&START[..], &[0x00, 0x01, 0x02]].concat();
-    let (events, _) = run_reads(mccp2_parser(), &[&first, b"more\n"]);
+    let (events, output) = run_reads(mccp2_parser(), &[&first, b"more\n"]);
     assert_eq!(events.len(), 2, "{events:?}");
     assert_eq!(events[0], Event::CompressionStarted);
     assert!(is_bad_stream(&events[1]), "{events:?}");
+    assert_eq!(output, [IAC, DONT, opt::MCCP2]);
+}
+
+#[test]
+fn plain_bytes_after_the_answer_to_dont() {
+    let bytes = [
+        &START[..],
+        &[0x00, 0x01, 0x02],
+        b"junk",
+        &[IAC, WONT, opt::MCCP2],
+        b"plain",
+    ]
+    .concat();
+    for point in 0..=bytes.len() {
+        let (events, _) = run_reads(mccp2_parser(), &[&bytes[..point], &bytes[point..]]);
+        assert_eq!(
+            without_error_text(events),
+            [
+                Event::CompressionStarted,
+                Event::Error(ProtocolError::BadCompressedStream(String::new())),
+                Event::Disabled(Side::Remote, opt::MCCP2),
+                data(b"plain")
+            ],
+            "split at {point}"
+        );
+    }
 }
 
 #[test]
@@ -510,20 +536,31 @@ fn compressed_part() -> impl Strategy<Value = Part> {
     })
 }
 
-/// The last part of a stream: a bad zlib header and any bytes after it, or a lone IAC.
+/// The answer of the game to `DONT MCCP2`.
+const WONT_MCCP2: [u8; 3] = [IAC, WONT, opt::MCCP2];
+
+/// The last part of a stream: a bad zlib header, bytes that the parser drops, and maybe the
+/// answer to `DONT MCCP2` and data. Or a lone IAC.
 fn last_part() -> impl Strategy<Value = Option<Part>> {
+    let tail = prop::collection::vec(any::<u8>(), 0..20)
+        .prop_filter("the tail holds no answer", |tail| {
+            !tail.windows(3).any(|window| window == WONT_MCCP2)
+        });
     prop_oneof![
         2 => Just(None),
-        1 => prop::collection::vec(any::<u8>(), 0..20).prop_map(|tail| {
-            let bytes = [&START[..], &[0x00, 0x01, 0x02], &tail].concat();
-            Some(Part::new(
-                bytes,
-                vec![
-                    Event::CompressionStarted,
-                    Event::Error(ProtocolError::BadCompressedStream(String::new())),
-                ],
-                vec![],
-            ))
+        1 => (tail, prop::option::of(data_part())).prop_map(|(tail, after)| {
+            let mut bytes = [&START[..], &[0x00, 0x01, 0x02], &tail].concat();
+            let mut events = vec![
+                Event::CompressionStarted,
+                Event::Error(ProtocolError::BadCompressedStream(String::new())),
+            ];
+            if let Some(after) = after {
+                bytes.extend(WONT_MCCP2);
+                bytes.extend(after.bytes);
+                events.push(Event::Disabled(Side::Remote, opt::MCCP2));
+                events.extend(after.events);
+            }
+            Some(Part::new(bytes, events, vec![IAC, DONT, opt::MCCP2]))
         }),
         1 => Just(Some(Part::new(vec![IAC], vec![], vec![]))),
     ]

@@ -25,10 +25,10 @@ Load the `rust-best-practices` skill before this group.
   - `malformed_framing`, with one case for each row of the table "Malformed framing" of the design
 
   Make sure that `cargo nextest run -p mu-core --test telnet_parser --locked` passes.
-- [x] 2.3 Add MCCP2 to the parser with the streaming inflate of `miniz_oxide`. This task covers two requirements: "MCCP2 is inflated inside the parser" and "A bad compressed stream ends the reading". Add these tests:
+- [x] 2.3 Add MCCP2 to the parser with the streaming inflate of `miniz_oxide`. This task covers two requirements: "MCCP2 is inflated inside the parser" and "A bad compressed stream turns MCCP2 off". Add these tests:
   - `stream_starts_inside_a_read`, `plain_bytes_after_the_stream`, `start_inside_a_stream`, `second_stream_after_end` and `start_while_mccp2_is_off`, for the five scenarios of MCCP2
-  - `stream_that_is_not_zlib`, for the scenario "A stream that is not zlib"
-  - `bad_stream_after_data`: a stream that breaks after some data, split at every byte, gives one protocol error and no event after it each time
+  - `stream_that_is_not_zlib` and `plain_bytes_after_the_answer_to_dont`, for the scenarios "A stream that is not zlib" and "Plain bytes after the answer to DONT"
+  - `bad_stream_after_data`: a stream that breaks after some data, split at every byte, gives one protocol error each time, as the last event
 
   Make sure that `cargo nextest run -p mu-core --test telnet_parser --locked` passes.
 - [x] 2.4 Add the oracle to `crates/mu-core/tests/telnet_parser.rs`. It generates random streams from parts, with the events that each part must give. An optional last part is a stream with a bad zlib header. Malformed framing is a part too: `IAC SB IAC SE`, a negotiation verb inside a subnegotiation, and `IAC` as the last byte. Add the property tests `parser_matches_the_oracle` and `parser_ignores_read_splits`, for the scenario "Random streams in random reads". Add `parser_round_trip`, which sends data through `telnet::escape` and payloads through `send_subnegotiation`. Make sure that `cargo nextest run -p mu-core --test telnet_parser --locked` passes.

@@ -112,16 +112,21 @@ When MCCP2 is on for the game, `IAC SB MCCP2 IAC SE` SHALL start compression, an
 - **WHEN** it reads `IAC SB MCCP2 IAC SE` and then `plain`
 - **THEN** it gives a subnegotiation of MCCP2 with an empty payload and then the data `plain`, and no start of compression
 
-### Requirement: A bad compressed stream ends the reading
-A compressed stream that is not valid zlib SHALL give one protocol error. After that error, the parser SHALL give no event for any later byte of the connection.
+### Requirement: A bad compressed stream turns MCCP2 off
+A compressed stream that is not valid zlib SHALL give one protocol error. The parser SHALL then send `IAC DONT MCCP2`, as the MCCP specification allows. It SHALL drop each byte until the game answers `IAC WONT MCCP2`. It SHALL read the bytes after that answer as plain telnet.
 
 #### Scenario: A stream that is not zlib
 - **GIVEN** a parser where MCCP2 is on for the game
 - **WHEN** it reads `IAC SB MCCP2 IAC SE`, the bytes `00 01 02`, and in a later read `more\n`
-- **THEN** it gives the start of compression, one protocol error, and no data
+- **THEN** it gives the start of compression and one protocol error, sends `IAC DONT MCCP2`, and gives no data
+
+#### Scenario: Plain bytes after the answer to DONT
+- **GIVEN** a parser where MCCP2 is on for the game
+- **WHEN** it reads `IAC SB MCCP2 IAC SE`, the bytes `00 01 02`, the bytes `junk`, `IAC WONT MCCP2` and `plain`
+- **THEN** for any split it gives the start of compression, one protocol error, that MCCP2 is off and the data `plain`
 
 ### Requirement: The split of reads changes no event
-Join adjacent data events. Then the parser SHALL give the same events and send the same bytes for any split of the same input into reads. One exception holds: a compressed stream that fails after its first byte can give different events before its error. Its error and the silence after it SHALL be the same for any split.
+Join adjacent data events. Then the parser SHALL give the same events and send the same bytes for any split of the same input into reads. One exception holds: a compressed stream that fails after its first byte can give different events before its error. Its error and the events after it SHALL be the same for any split.
 
 #### Scenario: Random streams in random reads
 - **WHEN** a property test splits random telnet streams into random reads

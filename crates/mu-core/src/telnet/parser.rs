@@ -48,7 +48,8 @@ pub enum ProtocolError {
         /// The option.
         option: u8,
     },
-    /// The compressed stream is not valid zlib. The parser reads nothing more.
+    /// The compressed stream is not valid zlib. The parser sends `DONT MCCP2` and drops each
+    /// byte until the game answers `WONT MCCP2`.
     #[error("the compressed stream is not valid zlib: {0}")]
     BadCompressedStream(String),
 }
@@ -159,8 +160,9 @@ pub struct Parser {
     events: VecDeque<Event>,
     output: Vec<u8>,
     inflater: Option<Box<InflateState>>,
-    /// A bad compressed stream ended the reading.
-    dead: bool,
+    /// After a bad compressed stream: the count of bytes of `IAC WONT MCCP2` that the parser
+    /// found so far. `None` while the parser reads normally.
+    recovery: Option<usize>,
 }
 
 impl std::fmt::Debug for Parser {
@@ -168,7 +170,7 @@ impl std::fmt::Debug for Parser {
         f.debug_struct("Parser")
             .field("state", &self.state)
             .field("compressed", &self.inflater.is_some())
-            .field("dead", &self.dead)
+            .field("recovery", &self.recovery)
             .finish_non_exhaustive()
     }
 }
@@ -187,14 +189,16 @@ impl Parser {
             events: VecDeque::new(),
             output: Vec::new(),
             inflater: None,
-            dead: false,
+            recovery: None,
         }
     }
 
     /// Reads the bytes of one read. The data of the read ends as one event at the end.
     pub fn receive(&mut self, mut input: &[u8]) {
-        while !input.is_empty() && !self.dead {
-            if self.inflater.is_some() {
+        while !input.is_empty() {
+            if let Some(found) = self.recovery {
+                input = self.recover(found, input);
+            } else if self.inflater.is_some() {
                 input = self.inflate(input);
             } else {
                 let used = self.parse(input, true);
@@ -429,13 +433,34 @@ impl Parser {
                 Ok(_) | Err(MZError::Buf) => {}
                 Err(error) => {
                     self.inflater = None;
-                    self.dead = true;
+                    self.recovery = Some(0);
                     self.emit(Event::Error(ProtocolError::BadCompressedStream(format!(
                         "{error:?}"
                     ))));
-                    return &[];
+                    self.request(Side::Remote, opt::MCCP2, false);
+                    return rest;
                 }
             }
         }
+    }
+
+    /// Drops bytes after a bad compressed stream until `IAC WONT MCCP2`, which it reads as a
+    /// negotiation. Gives the input after it, which is plain again.
+    fn recover<'a>(&mut self, mut found: usize, input: &'a [u8]) -> &'a [u8] {
+        const ANSWER: [u8; 3] = [IAC, WONT, opt::MCCP2];
+        for (index, &byte) in input.iter().enumerate() {
+            found = if byte == ANSWER[found] {
+                found + 1
+            } else {
+                usize::from(byte == IAC)
+            };
+            if found == ANSWER.len() {
+                self.recovery = None;
+                self.negotiate(WONT, opt::MCCP2);
+                return &input[index + 1..];
+            }
+        }
+        self.recovery = Some(found);
+        &[]
     }
 }
