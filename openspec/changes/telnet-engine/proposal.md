@@ -6,8 +6,8 @@ The engine reads games through `LineFramer`, which splits on LF and knows only t
 
 ## What Changes
 
-- A telnet engine in `mu-core` that does no I/O. The caller gives it the bytes of each read, and it gives back events and the bytes to send. It reads data, with `IAC IAC` as the byte 255, and two-byte commands. It negotiates options with the Q method of RFC 1143 under an accept policy. It reads subnegotiations for any option up to 1 MiB, and MCCP2 compression that can start inside a read. It reports protocol errors. It gives the same events for any split of the same bytes into reads.
-- `TelnetFramer`, a framer behind the existing `Framer` seam that uses the engine. It gives lines, prompts, replies, marks and GMCP messages as `Inbound` items. The session does not change.
+- A telnet parser, `telnet::Parser`, in `mu-core` that does no I/O. The caller gives it the bytes of each read, and it gives back events and the bytes to send. It reads data, with `IAC IAC` as the byte 255, and two-byte commands. It negotiates options with the Q method of RFC 1143 under an accept policy. It reads subnegotiations for any option up to 1 MiB, and MCCP2 compression that can start inside a read. It reports protocol errors. It gives the same events for any split of the same bytes into reads.
+- `TelnetFramer`, a framer behind the existing `Framer` seam that uses the parser. It gives lines, prompts, replies, marks and GMCP messages as `Inbound` items. The session does not change.
 - A prompt is the text with no line end at the end of a read, or the text before GA or EOR. If a later read finishes that text with a line end, the framer gives the whole line. The lines are the same for any split of the bytes.
 - The answers of a MU client: the terminal type with MTTS, the window size (NAWS), and the character set (CHARSET, RFC 2066, with the `[TTABLE ]` prefix and its version byte). The character set to accept is a setting of the framer.
 - The text of a world in its character set: UTF-8 or ISO-8859-1. The framer decodes lines and prompts, and encodes input, in that character set. TinyMUX needs ISO-8859-1, because it takes no input after the client accepts UTF-8.
@@ -27,7 +27,7 @@ The engine reads games through `LineFramer`, which splits on LF and knows only t
 
 ### New Capabilities
 
-- `telnet-protocol`: how the engine reads and answers the telnet protocol of a game. It also covers how the telnet framer gives lines, prompts, replies, marks and messages.
+- `telnet-protocol`: how the telnet parser reads and answers the telnet protocol of a game. It also covers how the telnet framer gives lines, prompts, replies, marks and messages.
 
 ### Modified Capabilities
 
@@ -35,7 +35,7 @@ None. The `Framer` seam, the session and the world-sessions requirements stay as
 
 ## Impact
 
-- Code: `crates/mu-core/src/telnet.rs` grows from the codes into the engine, with submodules under `crates/mu-core/src/telnet/`. `framer.rs` gains `TelnetFramer`, and `lib.rs` exports it.
+- Code: `crates/mu-core/src/telnet.rs` grows from the codes into the parser, with submodules under `crates/mu-core/src/telnet/`. `framer.rs` gains `TelnetFramer`, and `lib.rs` exports it.
 - Test data: `crates/mu-core/tests/fixtures/telnet/` holds the six transcripts.
 - `LineFramer`: its line split moves into a buffer that both framers share. A line of exactly the line bound no longer gives an extra empty line.
 - Dependencies: one new crate for the inflate of MCCP2, through `[workspace.dependencies]`.
