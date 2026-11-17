@@ -706,6 +706,23 @@ fn spike_link_fails() {
 }
 
 #[test]
+fn spike_directory_link_fails() {
+    let copy = fixture().append_file(Path::new("spikes/telnet/transcripts/a.txt"), "x");
+    let link = Path::new("crates/mu-core/transcripts");
+    std::os::unix::fs::symlink(
+        copy.root().join("spikes/telnet/transcripts"),
+        copy.root().join(link),
+    )
+    .unwrap();
+    assert_eq!(
+        violations(copy.root()),
+        vec![Violation::SpikeLink {
+            file: link.display().to_string(),
+        }]
+    );
+}
+
+#[test]
 fn link_outside_spikes_passes() {
     let copy = fixture().append_file(Path::new("data/x.txt"), "x");
     std::os::unix::fs::symlink(
