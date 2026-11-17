@@ -6,7 +6,7 @@ use std::process::ExitCode;
 
 use clap::{Args, Subcommand};
 use mu_core::ResolvedWorld;
-use mu_core::world::{Entry, LayerOrigin};
+use mu_core::world::{Entry, FIELD_PATHS, LayerOrigin};
 
 use crate::config::ConfigArgs;
 
@@ -61,57 +61,26 @@ pub fn run(args: &WorldArgs) -> ExitCode {
 }
 
 /// The world as TOML. Each field ends with a comment that names its source, and each rule
-/// and each script has a comment line with its source above it.
+/// and each script has a comment line with its source above it. The fields come in the order
+/// of [`FIELD_PATHS`].
 #[must_use]
 pub fn render(world: &ResolvedWorld) -> String {
-    let source = |path: &str| {
-        world
-            .sources
-            .get(path)
-            .map_or_else(|| LayerOrigin::Default.to_string(), ToString::to_string)
-    };
     let mut text = String::new();
-    let field = |text: &mut String, key: &str, path: &str, value: toml::Value| {
-        let _ = writeln!(text, "{key} = {value} # {}", source(path));
-    };
-    field(&mut text, "host", "host", world.host.clone().into());
-    field(&mut text, "port", "port", i64::from(world.port).into());
-    field(&mut text, "tls", "tls", world.tls.into());
-    let charset = world.charset.name().to_ascii_lowercase();
-    field(&mut text, "charset", "charset", charset.into());
-    field(
-        &mut text,
-        "columns",
-        "columns",
-        i64::from(world.columns).into(),
-    );
-    field(&mut text, "rows", "rows", i64::from(world.rows).into());
-    if let Some(login) = &world.login {
-        text.push_str("\n[login]\n");
-        field(
-            &mut text,
-            "template",
-            "login.template",
-            login.template.clone().into(),
-        );
-        field(&mut text, "name", "login.name", login.name.clone().into());
-        field(
-            &mut text,
-            "secret",
-            "login.secret",
-            login.secret.to_string().into(),
-        );
-    }
-    if let Some(keepalive) = &world.keepalive {
-        text.push_str("\n[keepalive]\n");
-        field(
-            &mut text,
-            "command",
-            "keepalive.command",
-            keepalive.command.clone().into(),
-        );
-        let seconds = i64::try_from(keepalive.period.as_secs()).unwrap_or(i64::MAX);
-        field(&mut text, "seconds", "keepalive.seconds", seconds.into());
+    let mut table = "";
+    for path in FIELD_PATHS {
+        let Some(value) = value_of(world, path) else {
+            continue;
+        };
+        let (head, key) = path.split_once('.').unwrap_or(("", path));
+        if head != table {
+            let _ = write!(text, "\n[{head}]\n");
+            table = head;
+        }
+        let source = world
+            .sources
+            .get(*path)
+            .map_or_else(|| LayerOrigin::Default.to_string(), ToString::to_string);
+        let _ = writeln!(text, "{key} = {value} # {source}");
     }
     for (array, entries) in [("rules", &world.rules), ("scripts", &world.scripts)] {
         for entry in entries {
@@ -119,6 +88,28 @@ pub fn render(world: &ResolvedWorld) -> String {
         }
     }
     text
+}
+
+/// The value of the field at `path`, or `None` when the world does not have its table.
+fn value_of(world: &ResolvedWorld, path: &str) -> Option<toml::Value> {
+    let login = world.login.as_ref();
+    let keepalive = world.keepalive.as_ref();
+    Some(match path {
+        "host" => world.host.clone().into(),
+        "port" => i64::from(world.port).into(),
+        "tls" => world.tls.into(),
+        "charset" => world.charset.name().to_ascii_lowercase().into(),
+        "columns" => i64::from(world.columns).into(),
+        "rows" => i64::from(world.rows).into(),
+        "login.template" => login?.template.clone().into(),
+        "login.name" => login?.name.clone().into(),
+        "login.secret" => login?.secret.to_string().into(),
+        "keepalive.command" => keepalive?.command.clone().into(),
+        "keepalive.seconds" => i64::try_from(keepalive?.period.as_secs())
+            .unwrap_or(i64::MAX)
+            .into(),
+        _ => return None,
+    })
 }
 
 /// One entry as its own document, `{ <array> = [entry] }`, under a comment with its source.
@@ -130,4 +121,32 @@ fn render_entry(array: &str, entry: &Entry) -> String {
     );
     let body = toml::to_string(&document).unwrap_or_default();
     format!("\n# {}\n{body}", entry.origin)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use mu_core::{Keepalive, Login};
+
+    use super::*;
+
+    #[test]
+    fn each_field_path_has_a_value() {
+        let world = ResolvedWorld {
+            login: Some(Login {
+                template: "connect {login} {password}".to_owned(),
+                name: "Aria".to_owned(),
+                secret: "env:ARIA_PW".parse().unwrap(),
+            }),
+            keepalive: Some(Keepalive {
+                command: "idle".to_owned(),
+                period: Duration::from_secs(60),
+            }),
+            ..ResolvedWorld::new("alpha/aria".parse().unwrap())
+        };
+        for path in FIELD_PATHS {
+            assert!(value_of(&world, path).is_some(), "{path}");
+        }
+    }
 }
