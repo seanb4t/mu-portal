@@ -46,7 +46,6 @@ Alternative: widen `TELNET_HOME` to the directory `src/telnet/`. That makes the 
 
 In `mu-core`, "the engine" already names the server engine: the crate documentation, `Portal` and the texts of the session use it. So the telnet code is a parser, `telnet::Parser`, in `src/telnet/parser.rs`. The change keeps its name, telnet-engine, from issue #52 and the decision page.
 
-
 `Parser::new(policy)` makes a parser. `Parser::receive(bytes)` reads one read and queues events and output. `Parser::poll_event` gives the next event, and `Parser::take_output` gives the bytes to send. `Parser::request` asks to turn an option on or off. `Parser::send_subnegotiation` queues a subnegotiation and doubles each byte 255 of its payload with `telnet::escape`. The parser has no step that sends data. `Framer::encode` takes `&self`, so `TelnetFramer::encode` calls `telnet::escape` itself. So the escape of the byte 255 has one home, and each path to the game uses it.
 
 The parser names the two ends of an option with `telnet::Side`. `Local` is an option that the client performs, and `Remote` one that the game performs. The private enum `Side` of `framer.rs` becomes `Role`, with `Client` and `Game`, because it names the end that a `LineFramer` reads for.
@@ -73,7 +72,7 @@ The parser reads each malformed sequence in one way, as the spike does:
 
 | Input | Events |
 |---|---|
-| `IAC SB IAC SE` | A protocol error for an empty subnegotiation, and no subnegotiation event. |
+| `IAC SB IAC SE` | A protocol error for an empty subnegotiation, and no subnegotiation event. The `IAC SE` after it is the two-byte command SE. |
 | `IAC SB` and an option, then `IAC WILL`, `IAC WONT`, `IAC DO` or `IAC DONT` | The parser ends the payload with a protocol error for an unterminated subnegotiation of that option. It then reads the negotiation. |
 | `IAC` as the last byte of a read | No event. The parser holds the IAC and reads it with the first byte of the next read. |
 | `IAC` as the last byte of the whole input | No event. |
@@ -152,7 +151,7 @@ Alternative: `encoding_rs`. Its label `ISO-8859-1` maps to windows-1252, which g
 
 A GMCP subnegotiation from the game becomes `Inbound::Message` with the name `GMCP`. The framer drops each other subnegotiation that it does not answer, for example MSSP.
 
-A protocol error becomes `Inbound::Message` with the name `telnet`. The body starts with a stable code and a space, then the text that names the error. The codes are `subnegotiation-too-long`, `subnegotiation-empty`, `subnegotiation-unterminated` and `bad-compressed-stream`. So world-sessions can find the fatal error by its code. The session records it as a message event, so the player sees it.
+A protocol error becomes `Inbound::Message` with the name `telnet`. The body starts with a stable code and a space, then the text that names the error. The codes are `subnegotiation-too-long`, `subnegotiation-empty`, `subnegotiation-unterminated`, `unrequested-answer` and `bad-compressed-stream`. So world-sessions can find the fatal error by its code. The session records it as a message event, so the player sees it.
 
 Alternative: a new `Inbound::Error`. It changes the seam and the session for a case that world-sessions handles with a disconnect.
 
@@ -238,3 +237,21 @@ Task 1.1 fills this table with each fact that the design uses, with its source. 
 
 | Fact | Source |
 |---|---|
+| The commands are SE 240, NOP 241, DM 242, BRK 243, IP 244, AO 245, AYT 246, EC 247, EL 248, GA 249, SB 250, WILL 251, WONT 252, DO 253, DONT 254 and IAC 255. | RFC 854, page 14, "TELNET COMMAND STRUCTURE". |
+| EOR is the command 239, and the option END-OF-RECORD is 25. | RFC 885. |
+| A command code has its meaning only right after IAC, and IAC IAC is the data byte 255. | RFC 854, page 14. |
+| A bare CR goes as `CR NUL`, and a new line as `CR LF`, in both directions. | RFC 854, page 11. |
+| A subnegotiation is `IAC SB`, the option, the parameters and `IAC SE`, and a receiver can find its end by a search for `IAC SE`. | RFC 855, section "Subnegotiation". |
+| `IAC DO TIMING-MARK` asks for `WILL TIMING-MARK` in the stream, and a refusal with `WONT TIMING-MARK` still tells the asker that the peer read all earlier data. | RFC 860, sections 2 and 4. |
+| NAWS is option 31. Its payload is the width and the height, each two bytes in network order, and a byte 255 in it is doubled. | RFC 1073, sections 1 and 2. |
+| TTYPE is option 24. `SEND` is 1 and `IS` is 0. A client shows the end of its list when it repeats the last name. | RFC 1091, sections 1 and 4. |
+| On WILL in the state NO, the client sends DO if it agrees and DONT if not, and the state of a refused option stays NO. A WILL in the state WANTNO is an error. | RFC 1143, section 7, "Upon receipt of WILL". |
+| CHARSET is option 42. REQUEST is 1, ACCEPTED 2 and REJECTED 3. A request can start with `[TTABLE ]` and a version byte that is not zero, and then the separator and the list. Case of a name is not significant. | RFC 2066, sections 2 and 3. |
+| The MTTS bits are ANSI 1, VT100 2, UTF-8 4, 256 colors 8 and truecolor 256, so `MTTS 269` is ANSI, UTF-8, 256 colors and truecolor. The bit vector comes on the third TTYPE SEND. | MTTS specification, tintin.mudhalla.net/protocols/mtts. |
+| MCCP2 is option 86. The server sends `IAC SB MCCP2 IAC SE` and starts a zlib stream (RFC 1950) right after it. | MCCP specification, tintin.mudhalla.net/protocols/mccp. |
+| After a decompression error, the MCCP specification lets the client send `DONT MCCP2` and go on. This design goes quiet instead, and world-sessions closes the connection. | MCCP specification, section on MCCP2 errors. This is a difference that the design chooses. |
+| `miniz_oxide::inflate::stream::inflate` takes an `InflateState`, the input, the output and `MZFlush::None`. Its `StreamResult` gives `bytes_consumed`, `bytes_written` and a status, which is `StreamEnd` at the end of the stream. | docs.rs, `miniz_oxide` 0.9.1, `inflate::stream::inflate` and `StreamResult`. |
+| `miniz_oxide::deflate::compress_to_vec_zlib` gives a whole zlib stream for the tests. | docs.rs, `miniz_oxide` 0.9.1, `deflate::compress_to_vec_zlib`. |
+| The spike reads `IAC SB IAC SE` as an error for an empty subnegotiation and then the command SE, and a verb after `IAC` in a payload as an unterminated subnegotiation and then the negotiation. | `spikes/telnet-engine/src/lib.rs`, `Engine::parse`. |
+| The spike drops an `IAC SB MCCP2 IAC SE` inside an open stream with no event. This design gives it as a subnegotiation event. | `spikes/telnet-engine/src/lib.rs`, `end_subnegotiation`. This is a difference that the design chooses. |
+| After an inflate error, the spike reads later bytes as plain telnet. This design drops them. | `spikes/telnet-engine/src/lib.rs`, `inflate`. This is a difference that the design chooses. |

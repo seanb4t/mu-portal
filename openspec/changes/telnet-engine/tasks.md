@@ -2,14 +2,14 @@
 
 ## 1. Documentation and dependencies
 
-- [ ] 1.1 Read the sources of each fact that the design uses:
+- [x] 1.1 Read the sources of each fact that the design uses:
   - RFC 854 (the commands and `CR NUL`), RFC 855 (IAC in a subnegotiation) and RFC 860 (TIMING-MARK)
   - RFC 1073 (NAWS), RFC 1091 (TTYPE), RFC 1143 (section 7) and RFC 2066 (CHARSET and `[TTABLE ]`)
   - the MTTS and MCCP2 specifications
   - the current documentation of `miniz_oxide`, with Context7: `inflate::stream::inflate`, `InflateState`, the count of used input bytes, and the deflate side
 
   Fill the table "Checked facts" of the design with one row for each fact and its source section. Make sure that each difference from the sources is an edit of the design that its row names.
-- [ ] 1.2 Add `miniz_oxide` and `hex` to `[workspace.dependencies]` in `Cargo.toml`. Add `miniz_oxide` to the dependencies of `mu-core`, and `hex` to its dev-dependencies. Add both to the list of `mu-core` in `ALLOWED_CRATES` of `crates/mu-cli/tests/workspace_boundary.rs`. Make sure that `cargo deny check` and `cargo nextest run -p mu-cli --test workspace_boundary --locked` pass, and that Renovate reads both pins from `Cargo.toml`.
+- [x] 1.2 Add `miniz_oxide` and `hex` to `[workspace.dependencies]` in `Cargo.toml`. Add `miniz_oxide` to the dependencies of `mu-core`, and `hex` to its dev-dependencies. Add both to the list of `mu-core` in `ALLOWED_CRATES` of `crates/mu-cli/tests/workspace_boundary.rs`. Make sure that `cargo deny check` and `cargo nextest run -p mu-cli --test workspace_boundary --locked` pass, and that Renovate reads both pins from `Cargo.toml`.
 
 ## 2. The parser
 

@@ -35,6 +35,8 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
         &[
             "futures",
             "governor",
+            "hex",
+            "miniz_oxide",
             "proptest",
             "secrecy",
             "thiserror",

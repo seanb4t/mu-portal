@@ -36,7 +36,9 @@ connectrpc-build = "0.9.0"
 crossterm = { version = "0.29.0", features = ["event-stream"] }
 futures = "0.3.34"
 governor = { version = "0.10.4", default-features = false, features = ["std"] }
+hex = "0.4.3"
 http = "1.5.0"
+miniz_oxide = "0.9.1"
 portable-pty = "0.9.0"
 proc-macro2 = "1.0.107"
 proptest = "1.12.0"
