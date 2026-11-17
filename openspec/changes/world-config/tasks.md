@@ -66,7 +66,7 @@ Load the `rust-best-practices` skill before this group.
 
 ## 8. Review
 
-- [ ] 8.1 Run `/sb:openspec-review world-config implementation`. Make sure that the verdict in `review.md` is not changes-requested.
+- [x] 8.1 Run `/sb:openspec-review world-config implementation`. Make sure that the verdict in `review.md` is not changes-requested.
 
 ## Workflow follow-up
 
