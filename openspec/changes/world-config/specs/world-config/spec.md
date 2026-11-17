@@ -25,6 +25,17 @@ The flag `--config <dir>` of `mu server` and `mu world`, and the environment var
 - **WHEN** the user runs `mu world list`
 - **THEN** stdout is `alpha/aria` and a line end
 
+#### Scenario: An empty MU_CONFIG
+- **GIVEN** `MU_CONFIG` is empty, `XDG_CONFIG_HOME` is `<dir>`, and `<dir>/mu` holds the world `alpha/aria`
+- **WHEN** the user runs `mu world list`
+- **THEN** stdout is `alpha/aria` and a line end
+
+#### Scenario: A relative XDG_CONFIG_HOME
+- **GIVEN** the current directory is `<dir>`, `XDG_CONFIG_HOME` is `xdg`, and `<dir>/xdg/mu` holds the world `beta/bryn`
+- **AND** `HOME` is `<dir>/home`, and `<dir>/home/.config/mu` holds the world `alpha/aria`
+- **WHEN** the user runs `mu world list`
+- **THEN** stdout is `alpha/aria` and a line end
+
 #### Scenario: A missing directory
 - **WHEN** the user runs `mu world list --config <dir>/none`
 - **THEN** stdout is empty
@@ -70,9 +81,9 @@ The layers of a world SHALL merge in this order: the defaults, `global.toml`, th
 - **THEN** stdout shows `rows = 50`
 
 #### Scenario: A table merges field by field
-- **GIVEN** the game `alpha` sets `login.template`, and `characters/alpha/aria.toml` sets only `login.name` and `login.secret`
+- **GIVEN** the game `alpha` sets `login.template = "co {login} {password}"`, and `characters/alpha/aria.toml` sets only `login.name = "Aria"` and `login.secret = "env:ARIA_PW"`
 - **WHEN** the user runs `mu world show alpha/aria --config <dir>`
-- **THEN** stdout shows the template of the game, and the name and the secret of the character
+- **THEN** stdout has the lines `template = "co {login} {password}"`, `name = "Aria"` and `secret = "env:ARIA_PW"`, under the table `login`
 
 ### Requirement: A layer names its parent with extends
 A game file SHALL name its type with `extends`. A user type file can name another type with `extends`. The value SHALL be the name of a built-in type or of a user type. A type with no `extends` SHALL come right after `global.toml`. `global.toml` and a character file SHALL NOT hold `extends`. An unknown name, a game with no `extends` and a loop SHALL each be an error that names the files.
@@ -100,6 +111,12 @@ A game file SHALL name its type with `extends`. A user type file can name anothe
 - **THEN** stderr names `types/a.toml` and `types/b.toml`
 - **AND** the exit status is 1
 
+#### Scenario: A type that extends itself
+- **GIVEN** `types/a.toml` sets `extends = "a"`, and the game `alpha` sets `extends = "a"`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr names `types/a.toml`
+- **AND** the exit status is 1
+
 #### Scenario: A character that names a parent
 - **GIVEN** `characters/alpha/aria.toml` sets `extends = "beta"`
 - **WHEN** the user runs `mu world list --config <dir>`
@@ -107,7 +124,7 @@ A game file SHALL name its type with `extends`. A user type file can name anothe
 - **AND** the exit status is 1
 
 ### Requirement: Rules and scripts accumulate
-The arrays `rules` and `scripts` SHALL accumulate across the layers in merge order. Each entry SHALL have an `id`. The array `disable` of a layer SHALL remove each inherited entry with an id that it names. An entry with the id of an entry that is still inherited SHALL replace that entry in its place. A `disable` id that names no inherited entry SHALL be an error.
+The arrays `rules` and `scripts` SHALL accumulate across the layers in merge order. Each entry SHALL have an `id`. The array `disable` of a layer SHALL remove each inherited rule or script with an id that it names. An entry with the id of an entry that is still inherited SHALL replace that entry in its place. A `disable` id that names no inherited entry SHALL be an error.
 
 #### Scenario: Entries from each layer
 - **GIVEN** `global.toml` has the rule `hl-page`, the game `alpha` has the rule `hl-ooc`, and the character has the rule `hl-aria`
@@ -120,9 +137,10 @@ The arrays `rules` and `scripts` SHALL accumulate across the layers in merge ord
 - **THEN** stdout lists only the rule `hl-page`
 
 #### Scenario: A layer replaces an inherited rule
-- **GIVEN** `global.toml` has the rules `hl-page` and `hl-ooc`, and the game has a rule `hl-page` with another pattern
+- **GIVEN** `global.toml` has the rule `hl-page` with `pattern = "pages"` and the rule `hl-ooc`, and the game has the rule `hl-page` with `pattern = "pages you"`
 - **WHEN** the user runs `mu world show alpha/aria --config <dir>`
-- **THEN** stdout lists `hl-page` with the pattern of the game, then `hl-ooc`
+- **THEN** stdout lists `hl-page`, then `hl-ooc`
+- **AND** the table of `hl-page` has the line `pattern = "pages you"`, and stdout does not have the line `pattern = "pages"`
 
 #### Scenario: A disable with no target
 - **GIVEN** the character sets `disable = ["nosuch"]`
@@ -130,8 +148,23 @@ The arrays `rules` and `scripts` SHALL accumulate across the layers in merge ord
 - **THEN** stderr names `characters/alpha/aria.toml` and `nosuch`
 - **AND** the exit status is 1
 
+### Requirement: Rules and scripts have unique ids
+Rules and scripts SHALL share one space of ids in a world. An id twice in one array of one layer SHALL be an error that names the file and the id. So SHALL a rule and a script with the same id.
+
+#### Scenario: An id twice in one layer
+- **GIVEN** the game `alpha` has two rules with the id `hl-page`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr names `games/alpha.toml` and `hl-page`
+- **AND** the exit status is 1
+
+#### Scenario: A rule and a script with one id
+- **GIVEN** `global.toml` has the rule `greet`, and the game `alpha` has the script `greet`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr names `games/alpha.toml` and `greet`
+- **AND** the exit status is 1
+
 ### Requirement: Built-in types set only quirks
-The binary SHALL hold the built-in types `tinymux`, `aresmush` and `evennia`. A built-in type SHALL set only quirk fields: `charset`, `login.template` and `keepalive`. The built-in type `tinymux` SHALL set `charset = "iso-8859-1"`. A user type SHALL NOT have the name of a built-in type.
+The binary SHALL hold the built-in types `tinymux`, `aresmush` and `evennia`. A built-in type SHALL set only quirk fields: `charset`, `login.template` and `keepalive`. The built-in type `tinymux` SHALL set `charset = "iso-8859-1"`. A name of a character set SHALL match with no regard to case. A user type SHALL NOT have the name of a built-in type.
 
 #### Scenario: Each built-in type reads as quirks
 - **WHEN** a test reads each built-in type with the schema of the quirk fields, which refuses every other field
@@ -149,7 +182,7 @@ The binary SHALL hold the built-in types `tinymux`, `aresmush` and `evennia`. A 
 - **AND** the exit status is 1
 
 ### Requirement: Each field is known
-Each layer SHALL set only the fields of a world. The connection fields are `host`, `port` and `tls`. The text fields are `charset`, `columns` and `rows`. The tables are `login` (`template`, `name`, `secret`) and `keepalive` (`command`, `seconds`). The arrays are `rules`, `scripts` and `disable`. A layer that allows it also sets `extends`. An unknown field, or a value of the wrong type or out of range, SHALL be an error that names the file and the field.
+Each layer SHALL set only the fields of a world. The connection fields are `host`, `port` and `tls`. The display fields are `charset`, `columns` and `rows`. The tables are `login` (`template`, `name`, `secret`) and `keepalive` (`command`, `seconds`). The arrays are `rules`, `scripts` and `disable`. A layer that allows it also sets `extends`. An unknown field, or a value of the wrong type or out of range, SHALL be an error that names the file and the field.
 
 #### Scenario: An unknown field
 - **GIVEN** the game `alpha` sets `hots = "mux.example.org"`
@@ -163,10 +196,30 @@ Each layer SHALL set only the fields of a world. The connection fields are `host
 - **THEN** stderr names `games/alpha.toml` and `port`
 - **AND** the exit status is 1
 
+#### Scenario: The case of a character set
+- **GIVEN** the games `alpha`, `beta` and `gamma` set `charset` to `ISO-8859-1`, `iso-8859-1` and `utf-8`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** the exit status is 0
+
 #### Scenario: A character set that the engine cannot read
 - **GIVEN** the game `alpha` sets `charset = "koi8-r"`
 - **WHEN** the user runs `mu world list --config <dir>`
 - **THEN** stderr names `games/alpha.toml` and `charset`
+- **AND** the exit status is 1
+
+### Requirement: Each value is in its range
+The range of `port`, `columns` and `rows` SHALL be 1 to 65535. The range of `keepalive.seconds` SHALL be 1 to 86400. `login.name`, `login.template` and `keepalive.command` SHALL hold no CR and no LF. A value outside its range SHALL be an error that names the file and the field.
+
+#### Scenario: The edges of each range
+- **GIVEN** a field of `port`, `columns`, `rows` and `keepalive.seconds`, and for each field a value at its edges: 0, 1 and the top of its range, and one more than the top
+- **WHEN** the user runs `mu world list --config <dir>` with the game `alpha` that sets that field to that value
+- **THEN** the exit status is 0 for 1 and the top of the range
+- **AND** for 0 and one more than the top, stderr names `games/alpha.toml` and the field, and the exit status is 1
+
+#### Scenario: A line break in a line field
+- **GIVEN** the game `alpha` sets one of `login.name`, `login.template` and `keepalive.command` to a value with a CR or an LF
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr names `games/alpha.toml` and the field
 - **AND** the exit status is 1
 
 ### Requirement: A password is a secret reference
@@ -193,12 +246,12 @@ The field `login.secret` SHALL be a secret reference of the form `env:<NAME>`. N
 - **AND** the exit status is 0
 
 ### Requirement: A shared plugin layer cannot set the connection
-A layer from a shared plugin source SHALL NOT set `host`, `port`, `tls`, `login.name` or `login.secret`. Such a layer SHALL be an error that names the source and the field.
+A layer from a shared plugin source SHALL NOT set `host`, `port`, `tls`, `login.name`, `login.secret` or `login.template`. Such a layer SHALL be an error that names the source and the field.
 
-#### Scenario: A plugin sets the host
-- **GIVEN** a layer from a shared plugin source named `colors` that sets `host`
+#### Scenario: A plugin sets a field of the connection
+- **GIVEN** a layer from a shared plugin source named `colors` that sets one of `host`, `port`, `tls`, `login.name`, `login.secret` and `login.template`
 - **WHEN** the configuration resolves the world `alpha/aria` with that layer
-- **THEN** the resolution fails with an error that names `colors` and `host`
+- **THEN** the resolution fails with an error that names `colors` and the field
 
 #### Scenario: A plugin sets a preference
 - **GIVEN** a layer from a shared plugin source named `colors` that sets `columns = 72`
@@ -206,7 +259,7 @@ A layer from a shared plugin source SHALL NOT set `host`, `port`, `tls`, `login.
 - **THEN** the resolved world has `columns = 72`
 
 ### Requirement: A world has a place to connect
-After the merge, each world SHALL have `host` and `port`. A world with `login.name` or `login.secret` SHALL have both. A world with neither SHALL log in by hand. Without `login.name` and `login.secret`, a `login.template` SHALL NOT count. A missing field SHALL be an error that names the world and the field.
+After the merge, each world SHALL have `host` and `port`. A world with `login.name` or `login.secret` SHALL have both. A world with neither SHALL log in by hand. Without `login.name` and `login.secret`, a `login.template` SHALL NOT count. A world with `keepalive.command` or `keepalive.seconds` SHALL have both. A missing field SHALL be an error that names the world and the field.
 
 #### Scenario: A world with no port
 - **GIVEN** no layer of `alpha/aria` sets `port`
@@ -218,6 +271,18 @@ After the merge, each world SHALL have `host` and `port`. A world with `login.na
 - **GIVEN** the character sets `login.name = "Aria"` and no layer sets `login.secret`
 - **WHEN** the user runs `mu world list --config <dir>`
 - **THEN** stderr names `alpha/aria` and `login.secret`
+- **AND** the exit status is 1
+
+#### Scenario: A login secret with no name
+- **GIVEN** the character sets `login.secret = "env:ARIA_PW"` and no layer sets `login.name`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr names `alpha/aria` and `login.name`
+- **AND** the exit status is 1
+
+#### Scenario: Half a keepalive
+- **GIVEN** the game `alpha` sets `keepalive.command = "idle"` and no layer sets `keepalive.seconds`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr names `alpha/aria` and `keepalive.seconds`
 - **AND** the exit status is 1
 
 #### Scenario: A world that logs in by hand

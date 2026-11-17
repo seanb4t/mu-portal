@@ -11,7 +11,7 @@ Today a world exists only through the hidden `--fake-world` flag of `mu server`.
 - The merge: a field takes the value of the last layer that sets it. Rules and scripts accumulate in layer order, and `disable = ["<id>"]` removes an inherited entry by its id. Nothing runs rules or scripts in this change. They are data that #59 and #60 will use.
 - `ResolvedWorld` grows to hold the merged world: the host, the port, TLS, the login, the character set, the window size, the keepalive, the rules and the scripts. It records the source of each field: a file, a built-in type or the default.
 - Built-in types `tinymux`, `aresmush` and `evennia` ship inside the binary. A built-in type can set only quirk fields: the character set, the login template and the keepalive. A test reads each built-in type through the quirk schema.
-- A layer-source seam with a TOML implementation, so that a Lua source can come later. A source has a trust level. A layer of a shared plugin cannot set the host, the port, TLS, the login name or the secret.
+- A layer-source seam with a TOML implementation, so that a Lua source can come later. A source has a trust level. A layer of a shared plugin cannot set the host, the port, TLS, the login name, the secret or the login template.
 - A password is a secret reference `env:<NAME>`, never a value in a file.
 - A new verb, `mu world`, with `mu world list` and `mu world show <id>`. `show` prints the merged world and the source of each field. It reads the files directly and needs no server.
 - `mu server` reads the configuration directory at start. It refuses to start on a bad configuration and names the file. `ListWorlds` lists each configured world in the state `disconnected`. A call to `Connect` on a configured world fails, because no transport for a real game exists yet. The `--fake-world` flag stays, and an id that is both fake and configured is an error.
@@ -43,6 +43,6 @@ Today a world exists only through the hidden `--fake-world` flag of `mu server`.
 
 - Code: a new module `world` in `mu-core` for the layers, the merge and the built-in types, with the type files in `crates/mu-core/src/world/types/`. `ResolvedWorld` and `Login` grow. `mu-cli` gains the `world` verb and the `--config` flag. `mu-server` gains the configured worlds that have no transport.
 - API: no change to `portal.proto`. `ListWorlds` returns more worlds, and `Connect` returns `failed-precondition` for a configured world.
-- Dependencies: `figment2` with its TOML feature, through `[workspace.dependencies]`. `ALLOWED_CRATES` of `mu-core` in the boundary test gains it.
-- Tests: each test that starts `mu server` points `MU_CONFIG` at an empty directory, so that the configuration of the developer never leaks in.
+- Dependencies: `figment2` with no features, and `serde`, through `[workspace.dependencies]`. `mu-core` also takes `toml`, which is already in `[workspace.dependencies]`. `ALLOWED_CRATES` of `mu-core` in the boundary test gains all three.
+- Tests: one base launcher starts each `mu` of a test. It points `MU_CONFIG` at an empty directory, so that the configuration of the developer never leaks in.
 - Docs: the world-type-profiles decision page names `figment2`, and a new page in the user docs describes the files.
