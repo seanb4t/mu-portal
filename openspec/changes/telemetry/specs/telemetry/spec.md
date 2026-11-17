@@ -35,7 +35,7 @@ The table `[telemetry]` of `server.toml` SHALL accept the field `endpoint`, the 
 - **THEN** stderr holds the line that starts with `mu server: serving the API on`
 
 ### Requirement: Each field of server.toml is known
-`server.toml` SHALL hold only the table `telemetry`, and that table SHALL hold only `endpoint`. An unknown table or field SHALL stop the start. So SHALL a value of the wrong type, an endpoint that is not a URL, and a scheme other than `http`. The server SHALL write an error that names `server.toml` and the field, and exit with status 1.
+`server.toml` SHALL hold only the table `telemetry`, and that table SHALL hold only `endpoint`, `protocol` and `certificate`. An unknown table or field SHALL stop the start. So SHALL a value of the wrong type, an endpoint that is not a URL, and a scheme other than `http` and `https`. The server SHALL write an error that names `server.toml` and the field, and exit with status 1.
 
 #### Scenario: An unknown field
 - **GIVEN** `server.toml` sets `[telemetry] endpont = "http://127.0.0.1:4318"`
@@ -61,10 +61,10 @@ The table `[telemetry]` of `server.toml` SHALL accept the field `endpoint`, the 
 - **THEN** stderr names `server.toml` and `telemetry.endpoint`
 - **AND** the exit status is 1
 
-#### Scenario: An https endpoint
-- **GIVEN** `server.toml` sets `[telemetry] endpoint = "https://collector.example:4318"`
+#### Scenario: An endpoint with another scheme
+- **GIVEN** `server.toml` sets `[telemetry] endpoint = "ftp://collector.example:4318"`
 - **WHEN** the user runs `mu server`
-- **THEN** stderr names `server.toml`, `telemetry.endpoint` and `https`
+- **THEN** stderr names `server.toml`, `telemetry.endpoint` and `ftp`
 - **AND** the exit status is 1
 
 ### Requirement: The standard variables
@@ -94,16 +94,16 @@ The server SHALL read `OTEL_EXPORTER_OTLP_ENDPOINT` as a base URL, the same as t
 - **THEN** the collector got `POST /v1/traces`
 
 ### Requirement: Each endpoint variable is checked
-Each of the three endpoint variables SHALL pass the check of the field `endpoint`: a URL with the scheme `http` and a host. A bad value SHALL stop the start with an error that names the variable, and the exit status SHALL be 1.
+Each of the three endpoint variables SHALL pass the check of the field `endpoint`: a URL with the scheme `http` or `https`, and a host. A bad value SHALL stop the start with an error that names the variable, and the exit status SHALL be 1.
 
 #### Scenario: A bad variable
-- **GIVEN** `OTEL_EXPORTER_OTLP_ENDPOINT` is `https://collector.example:4318`
+- **GIVEN** `OTEL_EXPORTER_OTLP_ENDPOINT` is `ftp://collector.example:4318`
 - **WHEN** the user runs `mu server`
-- **THEN** stderr names `OTEL_EXPORTER_OTLP_ENDPOINT` and `https`
+- **THEN** stderr names `OTEL_EXPORTER_OTLP_ENDPOINT` and `ftp`
 - **AND** the exit status is 1
 
 #### Scenario: A bad variable of one signal
-- **GIVEN** one of `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` is `https://collector.example:4318/v1/x`, or is `not a url`
+- **GIVEN** one of `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` is `ftp://collector.example:4318/v1/x`, or is `not a url`
 - **WHEN** the user runs `mu server`
 - **THEN** stderr names that variable
 - **AND** the exit status is 1
@@ -132,20 +132,78 @@ Each of the three endpoint variables SHALL pass the check of the field `endpoint
 - **WHEN** a server starts and gets SIGTERM
 - **THEN** each export that the collector got has the resource attribute `service.name` with the value `mu-desk`
 
-### Requirement: Only OTLP over HTTP with protobuf
-The server SHALL refuse at the start an `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` or `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL` whose value is not `http/protobuf` while the export is on. It SHALL write an error that names the variable, and exit with status 1.
+### Requirement: The protocol of the export
+The protocol SHALL be `http/protobuf` or `grpc`, and `http/protobuf` by default. The field `protocol` of `[telemetry]` SHALL set it. `OTEL_EXPORTER_OTLP_PROTOCOL` SHALL win over the field, and `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` and `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL` SHALL each win for its signal. With `grpc`, the server SHALL call the OTLP gRPC services at the endpoint, with no path added.
 
-#### Scenario: The protocol grpc
-- **GIVEN** a fake collector that `server.toml` names, and `OTEL_EXPORTER_OTLP_PROTOCOL` is `grpc`
+#### Scenario: gRPC from the file
+- **GIVEN** a fake gRPC collector at `http://127.0.0.1:<port>`, and `server.toml` sets that endpoint and `protocol = "grpc"`
+- **WHEN** a server starts, serves one `Send`, and gets SIGTERM
+- **THEN** the collector got at least one call of `TraceService/Export` and one of `MetricsService/Export`
+
+#### Scenario: The variable wins over the protocol of the file
+- **GIVEN** a fake gRPC collector that `server.toml` names with `protocol = "http/protobuf"`, and `OTEL_EXPORTER_OTLP_PROTOCOL` is `grpc`
+- **WHEN** a server starts, serves one `Send`, and gets SIGTERM
+- **THEN** the collector got at least one call of `TraceService/Export`
+
+#### Scenario: The protocol of one signal
+- **GIVEN** a fake HTTP collector that `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` names, a fake gRPC collector that `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` names, and `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL` is `grpc`
+- **WHEN** a server starts, serves one `Send`, and gets SIGTERM
+- **THEN** the HTTP collector got a `POST` with traces at the path of its variable
+- **AND** the gRPC collector got a call of `MetricsService/Export`
+
+### Requirement: An unknown protocol is refused
+While a signal has an endpoint, a protocol other than `http/protobuf` and `grpc` SHALL stop the start. The error SHALL name its source, the field or the variable, and the exit status SHALL be 1. With the export off, the server SHALL NOT read the protocol.
+
+#### Scenario: The protocol http/json
+- **GIVEN** a fake collector that `server.toml` names, and `OTEL_EXPORTER_OTLP_PROTOCOL` is `http/json`
 - **WHEN** the user runs `mu server`
-- **THEN** stderr names `OTEL_EXPORTER_OTLP_PROTOCOL` and `grpc`
+- **THEN** stderr names `OTEL_EXPORTER_OTLP_PROTOCOL` and `http/json`
 - **AND** the exit status is 1
 
-#### Scenario: The protocol grpc with the export off
-- **GIVEN** an empty configuration directory, no endpoint variable, and `OTEL_EXPORTER_OTLP_PROTOCOL` is `grpc`
+#### Scenario: An unknown protocol in the file
+- **GIVEN** `server.toml` sets `endpoint = "http://127.0.0.1:4318"` and `protocol = "thrift"`
+- **WHEN** the user runs `mu server`
+- **THEN** stderr names `server.toml` and `telemetry.protocol`
+- **AND** the exit status is 1
+
+#### Scenario: An unknown protocol with the export off
+- **GIVEN** an empty configuration directory, no endpoint variable, and `OTEL_EXPORTER_OTLP_PROTOCOL` is `http/json`
 - **WHEN** a server starts and gets SIGTERM
 - **THEN** the exit status is 0
 
+### Requirement: TLS for an https endpoint
+An endpoint with the scheme `https` SHALL use TLS, for both protocols. The server SHALL trust the root certificates of the system. It SHALL also trust the PEM certificates of the file that the field `certificate` names. `OTEL_EXPORTER_OTLP_CERTIFICATE` SHALL win over the field. The server SHALL NOT export to a collector whose certificate it does not trust.
+
+#### Scenario: HTTPS with a certificate file
+- **GIVEN** a fake HTTPS collector with a certificate from a test authority
+- **AND** `server.toml` sets its `https://` endpoint, and `certificate` names the file of that authority
+- **WHEN** a server starts, serves one `Send`, and gets SIGTERM
+- **THEN** the collector got `POST /v1/traces` and `POST /v1/metrics`
+
+#### Scenario: gRPC with TLS
+- **GIVEN** a fake gRPC collector over TLS with a certificate from a test authority
+- **AND** `server.toml` sets its `https://` endpoint and `protocol = "grpc"`
+- **AND** `OTEL_EXPORTER_OTLP_CERTIFICATE` names the file of that authority
+- **WHEN** a server starts, serves one `Send`, and gets SIGTERM
+- **THEN** the collector got a call of `TraceService/Export`
+
+#### Scenario: A collector that the server does not trust
+- **GIVEN** a fake HTTPS collector with a certificate from a test authority, and `server.toml` sets its `https://` endpoint and no `certificate`
+- **WHEN** a server starts, serves one `Send`, and gets SIGTERM
+- **THEN** the collector got no complete request
+- **AND** the exit status is 0
+
+#### Scenario: A missing certificate file
+- **GIVEN** `server.toml` sets an endpoint and `certificate = "/nonexistent/ca.pem"`
+- **WHEN** the user runs `mu server`
+- **THEN** stderr names `server.toml`, `telemetry.certificate` and `/nonexistent/ca.pem`
+- **AND** the exit status is 1
+
+#### Scenario: A file that holds no certificate
+- **GIVEN** an endpoint in `server.toml`, and `OTEL_EXPORTER_OTLP_CERTIFICATE` names a file that holds no PEM certificate
+- **WHEN** the user runs `mu server`
+- **THEN** stderr names `OTEL_EXPORTER_OTLP_CERTIFICATE`
+- **AND** the exit status is 1
 ### Requirement: A span for each API call
 The server SHALL make one span for each call of the API, named `PortalService/<method>`, for example `PortalService/Send`. A call that names a world SHALL carry the attribute `mu.world` with the world id. A call that fails SHALL have the status `error`. The span of `Subscribe` SHALL cover the call up to the return of its stream. It SHALL NOT cover the life of the stream.
 
