@@ -255,6 +255,8 @@ impl Parser {
     /// Adds `bytes` to the output at the cursor, or at the end.
     fn write(&mut self, bytes: &[u8]) {
         let Some(at) = self.cursor else {
+            // Data read before this reply comes before it in the order of events.
+            self.flush_data();
             self.output.extend_from_slice(bytes);
             return;
         };

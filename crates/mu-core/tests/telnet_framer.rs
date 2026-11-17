@@ -263,7 +263,20 @@ fn ttype_answer_in_the_order_of_the_read() {
         &[IAC, WONT, opt::TTYPE],
     ]
     .concat();
-    assert_eq!(reply_to(&mut framer(), &bytes), expected);
+    for point in 0..=bytes.len() {
+        let mut framer = framer();
+        let replies = [
+            reply_to(&mut framer, &bytes[..point]),
+            reply_to(&mut framer, &bytes[point..]),
+        ]
+        .concat();
+        assert_eq!(replies, expected, "split at {point}");
+        assert_eq!(
+            reply_to(&mut framer, &request),
+            [],
+            "after DONT, split at {point}"
+        );
+    }
 }
 
 #[test]

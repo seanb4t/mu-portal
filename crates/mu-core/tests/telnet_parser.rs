@@ -18,8 +18,7 @@ fn policy() -> Policy {
 
 /// The events of `parser` with adjacent data joined, and the bytes that it sent.
 fn drain(parser: &mut Parser) -> (Vec<Event>, Vec<u8>) {
-    let events = join_data(std::iter::from_fn(|| parser.poll_event()));
-    (events, parser.take_output())
+    parse_reads(parser, &[&[]])
 }
 
 /// Reads each part of `parts` as one read, and gives the joined events and the sent bytes.
@@ -198,6 +197,40 @@ fn payload_over_the_bound() {
     assert_eq!(run(&bytes).0, expected);
     let parts: Vec<&[u8]> = bytes.chunks(4096).collect();
     assert_eq!(run_reads(Parser::new(policy()), &parts).0, expected);
+}
+
+#[test]
+fn reply_after_data_goes_before_a_later_reply() {
+    let mut parser = Parser::new(policy());
+    parser.receive(&[b'x', IAC, WILL, opt::GMCP]);
+    assert_eq!(parser.poll_event(), Some(data(b"x")));
+    parser.send_subnegotiation(opt::GMCP, b"a");
+    assert_eq!(
+        parser.poll_event(),
+        Some(Event::Enabled(Side::Remote, opt::GMCP))
+    );
+    let expected = [subnegotiation(opt::GMCP, b"a"), vec![IAC, DO, opt::GMCP]].concat();
+    assert_eq!(parser.take_output(), expected);
+}
+
+#[test]
+fn reply_after_output_taken_with_events_queued() {
+    let mut parser = Parser::new(policy());
+    parser.receive(&[IAC, WILL, opt::GMCP, IAC, WILL, opt::MCCP2]);
+    assert_eq!(
+        parser.take_output(),
+        [IAC, DO, opt::GMCP, IAC, DO, opt::MCCP2]
+    );
+    for payload in [b"a", b"b"] {
+        assert!(parser.poll_event().is_some());
+        parser.send_subnegotiation(opt::GMCP, payload);
+    }
+    let expected = [
+        subnegotiation(opt::GMCP, b"a"),
+        subnegotiation(opt::GMCP, b"b"),
+    ]
+    .concat();
+    assert_eq!(parser.take_output(), expected);
 }
 
 #[test]
