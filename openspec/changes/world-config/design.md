@@ -105,7 +105,7 @@ The chain starts at the character and the game. Next comes the type that the gam
 - `games/<game>.toml`
 - `characters/<game>/<character>.toml`
 
-It checks each name, game and character with `is_part`, which becomes `pub(crate)`. Thus a file name and a world id follow one rule. Any other file whose name ends in `.toml`, in any case, is an error that names its path. Thus `games/beta.TOML` and `games/.toml` are errors, and are not skipped. A character with no file `games/<game>.toml` is an error that names both paths. The resolver makes this check, so it holds for each source of layers. Files whose names do not end in `.toml` are not read.
+It checks each name, game and character with `is_part`, which becomes `pub(crate)`. Thus a file name and a world id follow one rule. Any other file whose name ends in `.toml`, in any case, is an error that names its path. Thus `games/beta.TOML` and `games/.toml` are errors, and are not skipped. A character with no file `games/<game>.toml` is an error that names both paths. The resolver makes this check, so it holds for each source of layers. Files whose names do not end in `.toml` are not read. The walk follows links, and an entry that it cannot read, such as a link to nothing, is an error that names the entry. It is not skipped, because a skipped link to a missing directory of games hides that directory.
 
 ### Built-in types and the quirk schema
 
@@ -140,7 +140,7 @@ After the merge, the resolver checks each world. Each error names the world id a
 
 ### The configuration directory
 
-A new module `crates/mu-cli/src/env_path.rs` holds two helpers. One parses a value and reads an empty value as none. The other looks up an XDG base and accepts only an absolute path. `SocketArgs` moves to them, and `ConfigArgs` uses them. `mu-cli` gets `ConfigArgs`, with `--config` and the order `--config`, `MU_CONFIG`, `XDG_CONFIG_HOME/mu`, then `HOME/.config/mu`, on Linux and macOS alike. An empty or relative `XDG_CONFIG_HOME` is ignored, as the XDG Base Directory specification asks. `HOME` goes through the same check. If `HOME` is unset, empty or relative, there is no default directory, and the configuration holds no worlds. macOS has no other convention that a terminal user expects for a CLI tool. A missing directory is an empty configuration, so `mu server` with no configuration still starts.
+A new module `crates/mu-cli/src/env_path.rs` holds two helpers. One parses a value and reads an empty value as none. The other looks up an XDG base and accepts only an absolute path. `SocketArgs` moves to them, and `ConfigArgs` uses them. `mu-cli` gets `ConfigArgs`, with `--config` and the order `--config`, `MU_CONFIG`, `XDG_CONFIG_HOME/mu`, then `HOME/.config/mu`, on Linux and macOS alike. An empty or relative `XDG_CONFIG_HOME` is ignored, as the XDG Base Directory specification asks. `HOME` goes through the same check. If `HOME` is unset, empty or relative, there is no default directory, and the configuration holds no worlds. macOS has no other convention that a terminal user expects for a CLI tool. A missing directory is an empty configuration, so `mu server` with no configuration still starts. If `--config` or `MU_CONFIG` names the missing directory, a warning on stderr names it. The user chose that path, so a typo there must not give no worlds and no message.
 
 ### `mu world`
 

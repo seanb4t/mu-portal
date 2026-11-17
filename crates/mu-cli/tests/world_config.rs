@@ -191,6 +191,26 @@ fn missing_directory() {
     let none = root.path().join("none");
     let output = mu_with(&["world", "list", "--config", none.to_str().unwrap()], &[]);
     assert_eq!(succeeds(&output), "");
+    let error = stderr(&output);
+    assert!(
+        error.contains(none.to_str().unwrap()) && error.contains("does not exist"),
+        "{error}"
+    );
+}
+
+#[test]
+fn missing_default_directory_is_quiet() {
+    let root = tempfile::tempdir().unwrap();
+    let output = list_in(
+        root.path(),
+        &[
+            ("MU_CONFIG", None),
+            ("XDG_CONFIG_HOME", root.path().to_str()),
+            ("HOME", None),
+        ],
+    );
+    assert_eq!(succeeds(&output), "");
+    assert_eq!(stderr(&output), "");
 }
 
 #[test]
@@ -247,6 +267,14 @@ fn stray_file() {
         let config = Config::base().file(path, "");
         fails_naming(&config.list(), &[path]);
     }
+}
+
+#[test]
+fn link_to_nothing_is_an_error() {
+    let config = Config::base();
+    std::os::unix::fs::symlink(config.path().join("none"), config.path().join("games/beta"))
+        .unwrap();
+    fails_naming(&config.list(), &["games/beta"]);
 }
 
 #[test]

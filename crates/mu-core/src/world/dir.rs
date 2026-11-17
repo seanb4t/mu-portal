@@ -14,7 +14,7 @@ use super::parse::parse;
 ///
 /// The directory holds `global.toml`, `types/<name>.toml`, `games/<game>.toml` and
 /// `characters/<game>/<character>.toml`. Any other file whose name ends in `.toml`, in any
-/// case, is an error.
+/// case, is an error. So is an entry that cannot be read, such as a link to nothing.
 /// A missing directory holds no layers.
 #[derive(Clone, Debug)]
 pub struct TomlDirSource {
@@ -107,7 +107,10 @@ fn walk(
         let path = entry.path();
         let toml = name.to_ascii_lowercase().ends_with(".toml");
         prefix.push(name);
-        if path.is_dir() {
+        // `metadata` follows a link, and its error names the entry instead of skipping it.
+        let metadata = fs::metadata(&path)
+            .map_err(|error| ConfigError::new(prefix.join("/"), error.to_string()))?;
+        if metadata.is_dir() {
             walk(&path, prefix, files)?;
         } else if toml {
             files.push(prefix.clone());

@@ -9,7 +9,7 @@ Each scenario starts from a base directory `<dir>`, and names only what it chang
 ## ADDED Requirements
 
 ### Requirement: The configuration directory
-The flag `--config <dir>` of `mu server` and `mu world` SHALL name the configuration directory, then `MU_CONFIG`. An empty `MU_CONFIG` SHALL count as unset. Next comes `mu` under `XDG_CONFIG_HOME`, then `.config/mu` under `HOME`. Each of these two SHALL count only with an absolute path. With none, there SHALL be no directory. A missing directory SHALL hold no worlds and SHALL NOT be an error.
+The flag `--config <dir>` of `mu server` and `mu world` SHALL name the configuration directory, then `MU_CONFIG`. An empty `MU_CONFIG` SHALL count as unset. Next comes `mu` under `XDG_CONFIG_HOME`, then `.config/mu` under `HOME`. Each of these two SHALL count only with an absolute path. With none, there SHALL be no directory. A missing directory SHALL hold no worlds and SHALL NOT be an error. If `--config` or `MU_CONFIG` names a missing directory, stderr SHALL name it.
 
 #### Scenario: The flag wins over the environment
 - **GIVEN** `MU_CONFIG` is `<dir>/env` with the world `alpha/aria`, and `<dir>/flag` holds the world `beta/bryn`
@@ -47,10 +47,17 @@ The flag `--config <dir>` of `mu server` and `mu world` SHALL name the configura
 #### Scenario: A missing directory
 - **WHEN** the user runs `mu world list --config <dir>/none`
 - **THEN** stdout is empty
+- **AND** stderr names `<dir>/none`
+- **AND** the exit status is 0
+
+#### Scenario: A missing default directory
+- **GIVEN** `XDG_CONFIG_HOME` is `<dir>`, `<dir>/mu` does not exist, and neither `MU_CONFIG` nor `--config` is given
+- **WHEN** the user runs `mu world list`
+- **THEN** stdout and stderr are empty
 - **AND** the exit status is 0
 
 ### Requirement: Each character file makes one world
-The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml` and `characters/<game>/<character>.toml`, and each file SHALL be optional. Each character file SHALL make the world `<game>/<character>`, and its game SHALL be `games/<game>.toml`. A file name that is not a part of a world id SHALL be an error that names the file. So SHALL a character with no game file, and any other file that ends in `.toml`.
+The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml` and `characters/<game>/<character>.toml`, and each file SHALL be optional. Each character file SHALL make the world `<game>/<character>`, and its game SHALL be `games/<game>.toml`. A file name that is not a part of a world id SHALL be an error that names the file. So SHALL a character with no game file, and any other file that ends in `.toml`. So SHALL an entry that cannot be read, such as a link to nothing.
 
 #### Scenario: Worlds from character files
 - **GIVEN** a directory with `games/alpha.toml`, `games/beta.toml`, `characters/alpha/aria.toml`, `characters/alpha/ann.toml` and `characters/beta/bryn.toml`
@@ -73,6 +80,12 @@ The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml`
 - **GIVEN** a directory with one of `worlds.toml`, `characters/alpha.toml`, `games/old/alpha.toml` and `characters/alpha/aria/x.toml`
 - **WHEN** the user runs `mu world list --config <dir>`
 - **THEN** stderr names that path
+- **AND** the exit status is 1
+
+#### Scenario: A link to nothing
+- **GIVEN** `games/beta` is a symbolic link to a path that does not exist
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr names `games/beta`
 - **AND** the exit status is 1
 
 ### Requirement: Layers merge from global to character

@@ -1,6 +1,7 @@
 //! The configuration directory of the worlds, and its resolution.
 
 use std::ffi::OsString;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use clap::Args;
@@ -36,7 +37,8 @@ impl ConfigArgs {
     }
 
     /// The resolved worlds of the directory, read from the environment of the process. With no
-    /// directory, or a missing one, there are no worlds.
+    /// directory, or a missing one, there are no worlds. If `--config` or `MU_CONFIG` names a
+    /// missing directory, a warning on stderr names it.
     ///
     /// # Errors
     ///
@@ -46,6 +48,19 @@ impl ConfigArgs {
             std::env::var_os("XDG_CONFIG_HOME"),
             std::env::var_os("HOME"),
         );
+        if let Some(named) = self.config.as_ref().and_then(PathValue::path)
+            && matches!(named.try_exists(), Ok(false))
+        {
+            // A closed stderr leaves nothing to report to.
+            let _ = std::io::stderr().write_all(
+                format!(
+                    "mu: {}: the configuration directory does not exist, so no worlds are \
+                     configured\n",
+                    named.display()
+                )
+                .as_bytes(),
+            );
+        }
         match dir {
             Some(dir) => resolve_dir(&dir),
             None => Ok(Vec::new()),
