@@ -60,7 +60,7 @@ Load the `rust-best-practices` skill before this group.
   - `subnegotiation_over_the_bound` and `bad_compressed_stream`, for the two error scenarios
 
   Make sure that `cargo nextest run -p mu-core --test telnet_framer --locked` passes.
-- [ ] 4.3 Add a paragraph to `docs/src/content/docs/architecture/server-and-clients.mdx` on how a game session reads telnet: the parser, the framer, and what the session gets from them. Follow the `simple-english` skill and link the telnet-engine decision page. Make sure that `mise run docs:check` passes.
+- [x] 4.3 Add a paragraph to `docs/src/content/docs/architecture/server-and-clients.mdx` on how a game session reads telnet: the parser, the framer, and what the session gets from them. Follow the `simple-english` skill and link the telnet-engine decision page. Make sure that `mise run docs:check` passes.
 
 ## 5. Checks
 
