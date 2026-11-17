@@ -7,7 +7,7 @@ mu-portal is a client for MU* text games: MUSH, MUX, AresMUSH and Evennia games.
 
 ## Status
 
-The project is at its skeleton. The repository builds one binary, `mu`, with three verbs. `mu server` holds the game connections, and `mu client` is a terminal client that attaches to it. The only worlds are fake worlds for tests. The [first-run guide](guides/first-run/) shows how to start both.
+The project is at its skeleton. The repository builds one binary, `mu`. `mu server` holds the game connections, and `mu client` is a terminal client that attaches to it. `mu world` reads the configured worlds from the [configuration directory](guides/configuration/). The server holds the configured worlds, but only the fake worlds for tests can connect. The [first-run guide](guides/first-run/) shows how to start the server and the client.
 
 ## Shape
 

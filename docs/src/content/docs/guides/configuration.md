@@ -78,7 +78,7 @@ A field takes its value from the last file that sets it. A table, such as `login
 
 ## Types and extends
 
-A game must name its type with `extends`. A type in `types/` names its parent with `extends` too. The chain ends at a built-in type: `tinymux`, `aresmush` or `evennia`. A built-in type sets only the quirks of its server, for example the encoding, the login template and the keepalive. It does not set a preference such as `columns`, so a value in `global.toml` reaches each world.
+A game must name its type with `extends`. A type in `types/` names its parent with `extends` too. The chain ends at a built-in type, `tinymux`, `aresmush` or `evennia`, or at a type in `types/` with no `extends`. A built-in type sets only the quirks of its server, for example the encoding, the login template and the keepalive. It does not set a preference such as `columns`, so a value in `global.toml` reaches each world.
 
 A file in `types/` cannot have the name of a built-in type. A loop in the chain is an error. The global file and the character files cannot use `extends`.
 

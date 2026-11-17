@@ -34,6 +34,8 @@ The server writes one line to stderr when it serves. The line names the socket, 
 
 `--fake-world` is a test flag. It does not show in `mu server --help`.
 
+The server also holds the worlds of the [configuration directory](../configuration/). Those worlds cannot connect yet. A fake world cannot have the id of a configured world. If `alpha/aria` or `beta/bryn` is configured, the server stops.
+
 ## Attach the client
 
 In the second terminal, start the client:
@@ -42,7 +44,7 @@ In the second terminal, start the client:
 target/debug/mu client
 ```
 
-`mu` with no verb also starts the client. The client finds the server on the same socket. If no server answers, the client starts one in the background with no world, and writes its output to `server.log` next to the socket.
+`mu` with no verb also starts the client. The client finds the server on the same socket. If no server answers, the client starts one in the background with only the configured worlds. That server writes its output to `server.log` next to the socket.
 
 The top row lists the worlds. The world in focus is in square brackets: `[alpha/aria] beta/bryn`. The rows below show the lines of the world in focus. The bottom row is the input line.
 
