@@ -1,29 +1,36 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-17T15:00:41+00:00
-head: b29e2c0b13402597119e0600af32f34c36db9acf
-round: 6
-next_id: 82
+reviewed_at: 2026-11-17T15:31:54+00:00
+head: d1c4e17fae9f518a8197a438d66ac6fc044c1248
+round: 7
+next_id: 87
 lenses:
   spec-lint: not-applicable
   approach: ok
   fit: ok
   test-coverage: ok
-  test-honesty: ok
+  test-honesty: partial
   invariants: ok
 ---
 # Review
+
+## Incomplete lenses
+
+- test-honesty: partial, gaps: 1
+  - The git diff was not available (no Bash), so changed hunks in crates/mu-cli/tests/cli.rs and the rest of crates/mu-cli/tests/world_config.rs were not read in full; only the follow-up tests (quirks_refuse_other_fields, stray_file, other_files_are_skipped, table_written_as_an_array, wrong_type_under_login) and support/process.rs were read.
+
+The verdict covers only what the lenses checked. An incomplete lens keeps it from `approve`: the verdict is `approve-with-notes` until the lens is rerun or the gaps are accepted.
 
 ## Findings
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge |
 |---|---|---|---|---|---|---|---|---|
-| R-77 | fit | should-fix | in-change | mu_command is now the base launcher of a std Command with the test environment, but mu_on_pty and non_utf8_verb_is_usage_error still build the same Command::new plus apply_test_env by hand instead of calling it. | crates/mu-cli/tests/support/mod.rs:54 — "let mut command = Command::new(env!("CARGO_BIN_EXE_mu"));" | Start mu_on_pty from super::mu_command(args, &[]) and add current_dir and the stdio; start non_utf8_verb_is_usage_error from support::mu_command(&[], &[]) and add the OsStr arg. |  |  |
-| R-78 | invariants | should-fix | in-change | The new table guard on the login and keepalive fields of Quirks has no test that passes an array, so removing it from Quirks passes every test. | crates/mu-core/src/world/layer.rs:203 — "#[serde(default, deserialize_with = "table")]" | Add to quirks_refuse_other_fields the cases login = ["connect {login} {password}"] and keepalive = ["IDLE", 60], each expecting parse_quirks to fail naming the field. |  |  |
-| R-79 | invariants | should-fix | in-change | The changed name predicate of the walk has no test for the other side: a near-miss name such as alpha.toml.bak or README.md beside the base is never shown to be skipped, so a predicate that reads every file passes. | crates/mu-core/src/world/dir.rs:108 — "let toml = name.to_ascii_lowercase().ends_with(".toml");" | Add a test that writes games/alpha.toml.bak with invalid TOML, games/beta.tom and README.md beside the base, and asserts that mu world list prints alpha/aria with exit 0. |  |  |
-| R-80 | fit | suggestion | deviates-design | The game-file check moved to the resolver so that it holds for each source, but the check of extends by layer kind stays in TomlDirSource. A Lua source, which the proposal names next, gets a game with no type, or extends on a character or plugin layer, ignored in silence. | design.md > The walk of the directory — "The resolver makes this check, so it holds for each source of layers."; scope basis: design.md > Layers are parsed alone, then merged — "The walk of the directory then checks `extends` for the kind of the file. A game requires it, and a type accepts it." | Move the match on (key, extends) from TomlDirSource::layer into the resolver beside check_layer, and refuse extends on a plugin layer there too; edit the sentence of the design to say so. |  | scope? in-change 0.91 |
-| R-81 | test-coverage | note | in-change | table_written_as_an_array has no scenario and no task; the spec states the wrong-type rule but gives no scenario for a table written as an array. | crates/mu-cli/tests/world_config.rs:391 — "fn table_written_as_an_array() {" | Optionally add a scenario 'A table written as an array' to the delta and name the test in task 2.3. |  | severity? suggestion 0.92 |
+| R-82 | approach | should-fix | in-change | The new test rows refuse login and keepalive written as arrays, which only the table guard of layer.rs produces. design.md names no such guard and says the typed struct alone fails a bad type, which the derived Deserialize does not do for an array. | crates/mu-core/tests/world_config.rs:170 — "("login", "login = [\\"connect {login} {password}\\"]\\n")," | In the decision 'Layers are parsed alone, then merged', state that `login` and `keepalive` of `LayerFile` and `Quirks` read through a guard that refuses any value but a table, because the derived Deserialize also reads an array; add that guard and its tests to the enforcement table. |  | severity? blocker 0.66 |
+| R-84 | test-coverage | should-fix | in-change | covered row 'Each built-in type reads as quirks' has no verification run | review > not-run — "Each built-in type reads as quirks" | run the covering test and record it in verification-runs.txt |  |  |
+| R-85 | test-coverage | should-fix | in-change | covered row 'A port out of range' has no verification run | review > not-run — "A port out of range" | run the covering test and record it in verification-runs.txt |  |  |
+| R-86 | test-honesty | should-fix | in-change | lens test-honesty reported partial, gaps: 1 | review > lens-status — "test-honesty partial" | rerun the lens or accept the gap in the review |  |  |
+| R-83 | test-coverage | note | in-change | other_files_are_skipped has no scenario and no task that names it. | crates/mu-cli/tests/world_config.rs:253 — "fn other_files_are_skipped() {" | Name the test in a task of group 2 or add a scenario that a file with another name is skipped. |  | severity? should-fix 0.76 |
 
 ## Repeats
 
@@ -33,7 +40,7 @@ None.
 
 | lens | severity | claim | evidence |
 |---|---|---|---|
-| approach | should-fix | The decision points MU_CONFIG at an empty directory of the test, but test_env now points every test of every run at one shared directory under CARGO_TARGET_TMPDIR that is never removed. A file left in it reaches each later test until cargo clean, and design.md records no deviation. | crates/mu-cli/tests/support/mod.rs:36 — "let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("empty-config");" |
+| test-coverage | note | keepalive_of_a_built_in_type_resolves has no scenario and no task that names it. | crates/mu-core/tests/world_config.rs:179 — "fn keepalive_of_a_built_in_type_resolves() {" |
 
 ## Accepted
 
@@ -41,6 +48,8 @@ None.
 |---|---|---|---|---|
 | R-80 | suggestion | accepted | Only TomlDirSource checks which layer kinds may set extends: a game must name a type, and global, character and plugin layers must not. The resolver does not check it, so a later layer source, such as the Lua source, can give a game with no type or a character with extends, and nothing refuses it. | https://github.com/seanb4t/mu-portal/issues/85 |
 | R-81 | note | accepted | The wrong-type requirement of the spec already covers a table written as an array, and the test names the case; a scenario of its own adds no new behavior. |  |
+| R-83 | note | accepted | The test covers the skip side of the file-name rule of the design; a scenario of its own adds no new behavior, as with R-81. |  |
+| R-86 | should-fix | accepted | The lens had no diff tool. The only hunk it did not read is the switch of cli.rs to mu_command, which the fit and invariants lenses checked in this round. |  |
 
 ## Rounds
 
@@ -52,10 +61,11 @@ None.
 | 4 | plan | follow-up | 370a2621585b22b9a902ca04813279ce01fe8c00 | 7044b6b91f696a97397d08c9e3eb4a5f67cb2f250036e146010936a74d956b8c | changes-requested | 7 | 0 | 2 | 3 | operator decision |
 | 5 | implementation | full | 53dd9579d67dea304ac7811dd0223d9c7d3ee53d | 36fec2cc349d5aa2f698a10a821107a64b23b8949455863ada08443502e777fb | changes-requested | 9 | 0 | 0 | 0 |  |
 | 6 | implementation | follow-up | b29e2c0b13402597119e0600af32f34c36db9acf | 1a73ecd38a0293386993af0f23199524ba176cb81b66f81db33e35cb8a34c73b | approve-with-notes | 5 | 0 | 0 | 1 |  |
+| 7 | implementation | follow-up | d1c4e17fae9f518a8197a438d66ac6fc044c1248 | 7c044470648832a32489633be15a56f3ffc25f0f128e54634db96580ea019807 | approve-with-notes | 5 | 0 | 0 | 1 |  |
 
 ## Judge
 
-judge: 10 questions, 0.000 USD
+judge: 4 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -88,11 +98,11 @@ judge: 10 questions, 0.000 USD
 | A disable with no target | crates/mu-cli/tests/world_config.rs: disable_with_no_target | covered | pass |
 | An id twice in one layer | crates/mu-cli/tests/world_config.rs: id_twice_in_one_layer | covered | pass |
 | A rule and a script with one id | crates/mu-cli/tests/world_config.rs: rule_and_script_with_one_id | covered | pass |
-| Each built-in type reads as quirks | crates/mu-core/tests/world_config.rs: built_in_types_hold_only_quirks | covered | pass |
+| Each built-in type reads as quirks | crates/mu-core/tests/world_config.rs: built_in_types_hold_only_quirks, quirks_refuse_other_fields | covered | not-run |
 | A global preference is not hidden by a type | crates/mu-cli/tests/world_config.rs: global_preference_is_not_hidden_by_a_type | covered | pass |
 | A user type with a built-in name | crates/mu-cli/tests/world_config.rs: user_type_with_a_built_in_name | covered | pass |
 | An unknown field | crates/mu-cli/tests/world_config.rs: unknown_field | covered | pass |
-| A port out of range | crates/mu-cli/tests/world_config.rs: port_out_of_range | covered | pass |
+| A port out of range | crates/mu-cli/tests/world_config.rs: port_out_of_range, edges_of_each_range | covered | not-run |
 | A template with no password | crates/mu-cli/tests/world_config.rs: template_with_no_password | covered | pass |
 | The case of a character set | crates/mu-cli/tests/world_config.rs: charset_case | covered | pass |
 | A character set that the engine cannot read | crates/mu-cli/tests/world_config.rs: charset_the_engine_cannot_read | covered | pass |
@@ -122,7 +132,8 @@ judge: 10 questions, 0.000 USD
 
 ### Not run
 
-None.
+- Each built-in type reads as quirks: no verification run names this row
+- A port out of range: no verification run names this row
 
 ## Verification runs
 
@@ -156,7 +167,6 @@ None.
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=missing_directory)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=no_home_directory)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=password_in_a_file)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=port_out_of_range)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=relative_xdg_config_home)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=rule_and_script_with_one_id)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=secret_that_is_not_a_reference)'`
@@ -181,9 +191,12 @@ None.
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=fake_world_with_a_configured_id)'`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=server_does_not_read_a_configured_secret)'`
 - exit 0: `cargo nextest run -p mu-cli --test worlds --locked -E 'test(=two_worlds_connect)'`
-- exit 0: `cargo nextest run -p mu-core --test world_config --locked -E 'test(=built_in_types_hold_only_quirks)'`
 - exit 0: `cargo nextest run -p mu-core --test world_config --locked -E 'test(=plugin_can_set_a_preference)'`
 - exit 0: `cargo nextest run -p mu-core --test world_config --locked -E 'test(=plugin_cannot_set_the_connection)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=port_out_of_range)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=edges_of_each_range)'`
+- exit 0: `cargo nextest run -p mu-core --test world_config --locked -E 'test(=built_in_types_hold_only_quirks)'`
+- exit 0: `cargo nextest run -p mu-core --test world_config --locked -E 'test(=quirks_refuse_other_fields)'`
 
 ## Dropped
 
@@ -191,29 +204,25 @@ None.
 
 ## Lens notes
 
-- approach: Follow-up bound: read every changed file of diff-files.txt except review.md (never read by rule). Re-checked the walk of the directory (dir.rs), the parse redaction (parse.rs), the table refusal (layer.rs), PART_RULE (id.rs), the render order (mu-cli world.rs against FIELD_PATHS) and the shared test env (support/mod.rs, process.rs) against their decisions; each matches except app-1.
-- approach: Fixed rows R-70, R-71, R-72, R-73, R-74, R-75 and R-76 hold at head: any-case .toml names and games/.toml fail through key_of, the part rule has one text, the game-file check lives only in Index::chain, render iterates FIELD_PATHS, login[ paths are redacted, and login and keepalive refuse a non-table value.
-- approach: The Context section still describes the code before the change (is_part private, mu_on_pty and mu_with passing the inherited environment, mu-core with no TOML crate). It is unchanged since the base, so it is outside the bound and not raised.
-- approach: Every test name in the Enforcement table exists at head; Cargo.lock holds toml 1.2.1, figment2 0.11.5, serde_path_to_error 0.1.20 and uncased 0.9.10, as the design cites.
-- fit: Follow-up round: read the nine changed code files and the changed design sections. The fixes of R-68, R-71, R-72, R-73, R-74 and R-76 hold at head: apply_env and mu_command share the env loop, PART_RULE feeds BadWorldId and the walk, the game-file check lives only in Index::chain, render walks FIELD_PATHS, ConfigDir sits in tests/support, and one table() deserializer serves LayerFile and Quirks.
-- fit: PtyClient keeps its own loop over test_env for the CommandBuilder of portable_pty. The Tests decision names the three command types as the reason, so it is not reported.
-- fit: The table() visitor in layer.rs has no counterpart in the repository or its dependencies (no serde_with), so it is not reported as bespoke.
-- invariants: I1: login and keepalive of a layer file are always tables, never arrays or scalars \| enforced at crates/mu-core/src/world/layer.rs:166-169 (table) \| boundary test table_written_as_an_array and wrong_type_under_login in crates/mu-cli/tests/world_config.rs
-- invariants: I2: login and keepalive of a built-in type are always tables \| enforced at crates/mu-core/src/world/layer.rs:203-206 \| boundary test none (inv-1)
-- invariants: I3: no parse error under login quotes a value \| enforced at crates/mu-core/src/world/parse.rs:26 and the table guard \| boundary test wrong_type_under_login
-- invariants: I4: every file whose name ends in .toml in any case is a known path or an error \| enforced at crates/mu-core/src/world/dir.rs:108 and key_of \| boundary test stray_file (games/.toml, games/beta.TOML)
-- invariants: I5: a file whose name does not end in .toml is never read \| enforced at crates/mu-core/src/world/dir.rs:112 \| boundary test none (inv-2)
-- invariants: I6: every character has its game file, for each LayerSource \| enforced at crates/mu-core/src/world/resolve.rs:150 (Index::chain, now the only check after check_games left dir.rs) \| boundary test character_with_no_game
-- invariants: I7: render writes each FIELD_PATHS entry once, top-level keys before any table, one header per table \| enforced at crates/mu-cli/src/world.rs:70-84 by the order of FIELD_PATHS \| boundary test show_output_parses_back (a misordered list yields [] or a repeated table and fails the parse) and each_field_path_has_a_value
-- invariants: I8: each path of FIELD_PATHS has a value arm in value_of \| enforced at crates/mu-cli/src/world.rs:94 \| boundary test each_field_path_has_a_value
-- invariants: I9: each mu of a test gets MU_CONFIG at an empty directory before its own changes \| enforced at crates/mu-cli/tests/support/mod.rs:55-57 and process.rs:175 \| boundary test helper_points_mu_config_at_an_empty_directory
-- invariants: Probes under inv-probe/ of the handoff directory ran target/debug/mu (built 14:55Z, after the last code commit) on edge files: a login array, [[login]], login.password, inline and empty login tables, keepalive = 60 and [], games/.toml, games/beta.TOML, a character with no game, dotted keys, and non-.toml files. Every result held the invariants above; no secret value reached stderr.
-- invariants: The branch path.starts_with("login[") in parse.rs:26 is now unreachable for both parsed structs, because the table guard refuses an array at the path login first; the array cases of wrong_type_under_login exercise the guard, not that branch.
-- invariants: A dangling Emacs lock link games/.#alpha.toml fails the whole configuration as a stray file; this follows the design rule and was so before this round.
-- test-coverage: two_worlds_connect was not re-read; graded covered as an existing test that task 6.1 says keeps passing.
-- test-coverage: The mu-core unit and property tests (empty_layer_gives_figment_no_keys, accumulation_matches_a_model, show_output_parses_back) back tasks, not scenarios.
-- test-honesty: Read the changed tests: support/mod.rs, world_config.rs (mu-cli), worlds.rs configured-world tests, parse.rs and id.rs unit tests. No ignored tests, no assertion-free tests, no mock echoes.
-- test-honesty: charset_case only asserts that list succeeds; it does not show the resolved charset. This is acceptable because every game file is parsed, so a case-sensitive check would fail it.
+- approach: Follow-up round since b29e2c0: the changed files are tests, tasks.md and review.md; design.md and the specs did not change, so design findings are bound to the changed test text.
+- approach: R-66 stays fixed: resolve() runs check_layer on each layer of each source, and parse_quirks runs it on each built-in type.
+- approach: R-77 stays fixed: mu_on_pty and non_utf8_verb_is_usage_error now start from support::mu_command, which applies test_env, as the decision on the test environment states.
+- approach: R-70 stays fixed: the walk matches .toml with no regard to case, and stray_file now covers games/.toml and games/beta.TOML; other_files_are_skipped matches the design sentence that other files are not read.
+- approach: R-53, R-54 and R-69 stay fixed: ALLOWED_CRATES holds figment2 and serde_path_to_error, and Cargo.lock holds uncased 0.9.10, atomic and version_check.
+- approach: R-61, R-62 and R-65 stay fixed: render writes [login] and [keepalive] headers in FIELD_PATHS order, the charset in lower case, and show takes the id as a String with exit 1 for an unknown id.
+- approach: No tool gave the line diff since b29e2c0; the changed lines were inferred from the commit subjects and the prior rows R-77, R-78 and R-79.
+- fit: Follow-up round since b29e2c0: read the four changed code files in full (crates/mu-cli/tests/cli.rs at the changed test, crates/mu-cli/tests/support/process.rs, crates/mu-cli/tests/world_config.rs, crates/mu-core/tests/world_config.rs) and tasks.md.
+- fit: R-77 holds as fixed: mu_on_pty (process.rs:372) and non_utf8_verb_is_usage_error (cli.rs:114) now start from support::mu_command. The only other launchers of the binary are the tokio Command of ServerBuilder and the CommandBuilder of PtyClient, the two other command types that design.md names.
+- fit: After the R-77 fix, apply_test_env in crates/mu-cli/tests/support/mod.rs has one caller, mu_command. mod.rs is outside the changed files, so this is no finding; inlining apply_env(&mut command, &test_env()) would remove one name.
+- fit: The new test other_files_are_skipped and the two array rows of quirks_refuse_other_fields follow the table-test shape and the ConfigDir helpers already in use; the Quirks array rows and table_written_as_an_array cover two separate structs, so they are not a copy.
+- invariants: Follow-up round since b29e2c0: the changed code is four test files (cli.rs, support/process.rs, mu-cli world_config.rs, mu-core world_config.rs). No production source changed, so no enforcement point moved.
+- invariants: I1: Each mu that a test starts runs with MU_SOCKET removed and MU_CONFIG at an empty directory \| enforced at support/mod.rs mu_command (test_env, then the caller's env), now also used by mu_on_pty and non_utf8_verb_is_usage_error; ServerBuilder applies self.env and PtyClient applies test_env() \| boundary test helper_points_mu_config_at_an_empty_directory. A search finds no other Command::new of the mu binary in crates/mu-cli/tests. R-77 holds as fixed.
+- invariants: I2: A built-in type sets login and keepalive only as tables \| enforced at layer.rs deserialize_with = "table" on Quirks.login and Quirks.keepalive \| boundary test quirks_refuse_other_fields, new rows login = [template] and keepalive = ["IDLE", 60]. Both arrays hold valid values that pass check_layer ({password} present, 60 within 1..86400), so with the guard removed parse_quirks returns Ok and unwrap_err panics: the rows reach the guard, not a later check. R-78 holds as fixed.
+- invariants: I3: The walk reads only files whose name ends in .toml, in any case \| enforced at dir.rs walk (to_ascii_lowercase().ends_with(".toml"), directories recursed first) \| boundary tests stray_file (games/.toml, games/beta.TOML, deeper paths) for the read side and the new other_files_are_skipped (alpha.toml.bak with invalid content, README.md at the root, characters/alpha/notes.txt) for the skip side. Each skipped file would fail as a stray path or a bad parse if read, so the test fails on a predicate that reads every file. R-79 holds as fixed.
+- invariants: No enforcement point in the bound is a script, so no probe ran; the Rust guards were checked by reading the derived Deserialize behaviour that R-76 probed in an earlier round.
+- test-coverage: Follow-up round: the three-write protocol was compressed into one final write.
+- test-coverage: table_written_as_an_array is the accepted prior R-81 and is not raised again.
+- test-honesty: quirks_refuse_other_fields, table_written_as_an_array, stray_file and other_files_are_skipped can fail for the reason they name: without the guard, the array parses and the error is missing, so unwrap_err or the exit-code assertion fails.
 
 ## Ledger
 
@@ -300,6 +309,11 @@ None.
 | R-79 | 6 | 6 | should-fix | in-change | ["path","crates/mu-core/src/world/dir.rs",108] | fixed | e99f0369e6f0280a2208b72739b85fec052bb725 |  | The changed name predicate of the walk has no test for the other side: a near-miss name such as alpha.toml.bak or README.md beside the base is never shown to be skipped, so a predicate that reads every file passes. |
 | R-80 | 6 | 6 | suggestion | deviates-design | ["artifact",["design.md","The walk of the directory"],"The resolver makes this check, so it holds for each source of layers."] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/85; reason: Only TomlDirSource checks which layer kinds may set extends: a game must name a type, and global, character and plugin layers must not. The resolver does not check it, so a later layer source, such as the Lua source, can give a game with no type or a character with extends, and nothing refuses it. |  | The game-file check moved to the resolver so that it holds for each source, but the check of extends by layer kind stays in TomlDirSource. A Lua source, which the proposal names next, gets a game with no type, or extends on a character or plugin layer, ignored in silence. |
 | R-81 | 6 | 6 | note | in-change | ["path","crates/mu-cli/tests/world_config.rs",391] | accepted | ticket: none; reason: The wrong-type requirement of the spec already covers a table written as an array, and the test names the case; a scenario of its own adds no new behavior. |  | table_written_as_an_array has no scenario and no task; the spec states the wrong-type rule but gives no scenario for a table written as an array. |
+| R-82 | 7 | 7 | should-fix | in-change | ["path","crates/mu-core/tests/world_config.rs",170] |  |  |  | The new test rows refuse login and keepalive written as arrays, which only the table guard of layer.rs produces. design.md names no such guard and says the typed struct alone fails a bad type, which the derived Deserialize does not do for an array. |
+| R-83 | 7 | 7 | note | in-change | ["path","crates/mu-cli/tests/world_config.rs",253] | accepted | ticket: none; reason: The test covers the skip side of the file-name rule of the design; a scenario of its own adds no new behavior, as with R-81. |  | other_files_are_skipped has no scenario and no task that names it. |
+| R-84 | 7 | 7 | should-fix | in-change | ["artifact",["review","not-run"],"Each built-in type reads as quirks"] | refuted | The row names two tests, built_in_types_hold_only_quirks and quirks_refuse_other_fields; the controller ran each one alone at the head and both passed, so the row is verified though no one command holds both names. |  | covered row 'Each built-in type reads as quirks' has no verification run |
+| R-85 | 7 | 7 | should-fix | in-change | ["artifact",["review","not-run"],"A port out of range"] | refuted | The row names two tests, port_out_of_range and edges_of_each_range; the controller ran each one alone at the head and both passed, so the row is verified though no one command holds both names. |  | covered row 'A port out of range' has no verification run |
+| R-86 | 7 | 7 | should-fix | in-change | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: none; reason: The lens had no diff tool. The only hunk it did not read is the switch of cli.rs to mu_command, which the fit and invariants lenses checked in this round. |  | lens test-honesty reported partial, gaps: 1 |
 
 ## Reviewed files
 
@@ -314,11 +328,11 @@ None.
 | crates/mu-cli/src/server.rs | 78bc39593b5d0e3c028028f5d0657a0171f82ea2 |
 | crates/mu-cli/src/socket.rs | a47a169ecaddfc326fd182ec5f2d8e0ccf087a4d |
 | crates/mu-cli/src/world.rs | 77e3adf0cfe3e3b0805483f20cb38faff9529da4 |
-| crates/mu-cli/tests/cli.rs | 08e997ec0660591cb0b40d7f19bdf67bcff68465 |
+| crates/mu-cli/tests/cli.rs | 56f0e1ebea1a711bacb5d6692a49de9bf2166e5d |
 | crates/mu-cli/tests/support/mod.rs | 99c40b503b007706540b5798d95a764df7a53041 |
-| crates/mu-cli/tests/support/process.rs | 4c2521406d89fab48d11df86c998cfc620ce90f0 |
+| crates/mu-cli/tests/support/process.rs | 3f9aa433437518eed9a345c1449fd84c602ad6a0 |
 | crates/mu-cli/tests/workspace_boundary.rs | 1440c238a0611f6c7e676ef0bfaf6231f13458df |
-| crates/mu-cli/tests/world_config.rs | 923546f5439ac99a371873ae2e9c99f773750aeb |
+| crates/mu-cli/tests/world_config.rs | f45580b2cf41b9bdb10da7b602af9cb70ecaecbb |
 | crates/mu-cli/tests/worlds.rs | e5be3d173d2668cbcd5158b482138a1388214d51 |
 | crates/mu-core/Cargo.toml | 8f781dfd5083f9a5721fe2aec7171959e126a41d |
 | crates/mu-core/src/error.rs | 5f40b83ce29ec56afb03876c93b7b8a1e801e9ca |
@@ -341,7 +355,7 @@ None.
 | crates/mu-core/src/world/types/tinymux.toml | 666d779f084ff6b3fdc5d57daa1bb80353a4f8e9 |
 | crates/mu-core/tests/support/mod.rs | 058e7142a316a29729ed95f3c72d767a39b5fd24 |
 | crates/mu-core/tests/telnet_framer.rs | f923c53e925f4630a98a3e3196459f3e6c20f8f6 |
-| crates/mu-core/tests/world_config.rs | e6b33237c8ea295a8475f26c909a4b346f778659 |
+| crates/mu-core/tests/world_config.rs | 8474bbdbe23629096b2df3c4c75978c1d24f1ba8 |
 | crates/mu-server/src/convert.rs | 9f2601a66effc3c7dcb49874d3021b114b6d740e |
 | docs/src/content/docs/decisions/world-type-profiles.md | 3ff4875d18199e9f48f62dd4f890237ccfc1b088 |
 | docs/src/content/docs/guides/configuration.md | 00c6c8c343664b8106b3e96de2ecceb2151c8ca9 |
