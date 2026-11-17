@@ -155,7 +155,7 @@ The telnet framer SHALL end a line at LF and SHALL drop each CR, so a bare LF en
 - **THEN** it gives the lines `one`, `two` and `three`
 
 #### Scenario: A bare CR in a line to the game
-- **WHEN** the session sends the line `a\rb`, or `a\r`, through the telnet framer
+- **WHEN** the telnet framer encodes the line `a\rb`, or `a\r`
 - **THEN** the bytes are `a\r\0b\r\n`, or `a\r\0\r\n`
 
 #### Scenario: Lines in a compressed stream

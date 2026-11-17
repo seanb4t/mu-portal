@@ -62,7 +62,7 @@ Load the `rust-best-practices` skill before this group.
   Make sure that `cargo nextest run -p mu-core --test telnet_framer --locked` passes.
 - [x] 4.4 Add a test for each clause of the table "Standards we claim" in the design that has no test yet. Fix the code where a test fails:
   - `bare_cr_in_a_line_to_the_game`, `prompt_with_eor`, `cr_or_nul_alone_gives_no_prompt`, `ttype_request_while_ttype_is_off`, `ttype_answer_in_the_order_of_the_read` and `empty_charset_list` in `telnet_framer.rs`, and the `WONT TIMING-MARK` case of `answer_to_a_mark`
-  - `bad_stream_that_breaks_inside_a_command`, and a policy that accepts TIMING-MARK in `mark_from_the_game`, in `telnet_parser.rs`
+  - `bad_stream_that_breaks_inside_a_command`, `reply_after_data_goes_before_a_later_reply`, `reply_after_output_taken_with_events_queued`, and a policy that accepts TIMING-MARK in `mark_from_the_game`, in `telnet_parser.rs`
   - a link to a directory in `spike_link_fails` of `workspace_boundary.rs`
 
   `unrequested_answer_is_an_error` and `compressed_lines` cover the scenarios "An answer that the client did not ask for" and "Lines in a compressed stream".

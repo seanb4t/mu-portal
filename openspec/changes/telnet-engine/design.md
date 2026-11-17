@@ -46,7 +46,7 @@ Alternative: widen `TELNET_HOME` to the directory `src/telnet/`. That makes the 
 
 In `mu-core`, "the engine" already names the server engine: the crate documentation, `Portal` and the texts of the session use it. So the telnet code is a parser, `telnet::Parser`, in `src/telnet/parser.rs`. The change keeps its name, telnet-engine, from issue #52 and the decision page.
 
-`Parser::new(policy)` makes a parser. `Parser::receive(bytes)` reads one read and queues events and output. `Parser::poll_event` gives the next event, and `Parser::take_output` gives the bytes to send. `Parser::request` asks to turn an option on or off. `Parser::send_subnegotiation` queues a subnegotiation and doubles each byte 255 of its payload with `telnet::escape`. A reply that the caller sends after `poll_event` goes into the output right after the bytes that the parser sent before that event. So the bytes to the game keep the order of the read, also when one read holds `DO TTYPE`, a TTYPE request and `DONT TTYPE`. The parser has no step that sends data. `Framer::encode` takes `&self`, so `TelnetFramer::encode` calls `telnet::escape` itself. So the escape of the byte 255 has one home, and each path to the game uses it.
+`Parser::new(policy)` makes a parser. `Parser::receive(bytes)` reads one read and queues events and output. `Parser::poll_event` gives the next event, and `Parser::take_output` gives the bytes to send. `Parser::request` asks to turn an option on or off. `Parser::send_subnegotiation` queues a subnegotiation and doubles each byte 255 of its payload with `telnet::escape`. A reply that the caller sends after `poll_event` goes into the output right after the bytes that the parser sent before that event. Before the parser writes a reply of its own, it ends the data that it read before that reply as an event. So the bytes to the game keep the order of the read, also when one read holds `DO TTYPE`, a TTYPE request and `DONT TTYPE`. The parser has no step that sends data. `Framer::encode` takes `&self`, so `TelnetFramer::encode` calls `telnet::escape` itself. So the escape of the byte 255 has one home, and each path to the game uses it.
 
 The parser names the two ends of an option with `telnet::Side`. `Local` is an option that the client performs, and `Remote` one that the game performs. The private enum `Side` of `framer.rs` becomes `Role`, with `Client` and `Game`, because it names the end that a `LineFramer` reads for.
 
@@ -135,7 +135,7 @@ The review of pull request #32 found that the spike stripped the prefix with no 
 
 `TelnetSettings` also holds the accept policy. `TelnetSettings::default()` accepts TTYPE, NAWS and CHARSET for the client, and ECHO, SGA, EOR, CHARSET, MSSP, MCCP2 and GMCP for the game. This is the policy that recorded the transcripts. A world-type profile can then change the policy as a quirk, as the world-type-profiles decision says.
 
-`TelnetFramer::encode` gives `telnet::escape` of the line in the character set of the framer, with each CR as CR NUL, then CR LF. A UTF-8 line never holds the byte 255, but a Latin-1 line can.
+`TelnetFramer::encode` gives `telnet::escape` of the line in the character set of the framer, with each CR as CR NUL, then CR LF. The session refuses a line with a CR or an LF with `PortalError::LineBreak`, so the CR NUL step serves a direct caller of `encode` only. It keeps `encode` within RFC 854 for any line. A UTF-8 line never holds the byte 255, but a Latin-1 line can.
 
 ### The character set of the text
 
@@ -212,7 +212,7 @@ This change follows "Using a spike" on `docs/src/content/docs/contributing/spike
 | The parser matches the oracle | The property test `parser_matches_the_oracle`. |
 | Data and payloads survive the escape | The property test `parser_round_trip`. |
 | The Q method follows RFC 1143 | The unit tests of `telnet::q`, one for each row of the table in section 7. |
-| The mark changes no option | The tests `answer_to_a_mark` and `mark_from_the_game`. |
+| The mark changes no option | The tests `answer_to_a_mark_changes_no_option` and `mark_from_the_game`. |
 | One copy of the mark bytes | `telnet::MARK`, used by both framers and the fake game tests. Review checks that no other copy appears. |
 | The two framers split lines the same way | The unit tests of `LineBuffer`, and the existing tests of `LineFramer`, which keep passing. |
 | A line of exactly the bound gives no empty line | The tests `line_of_exactly_the_bound` and `line_framer_line_of_exactly_the_bound`, each with LF and with CR LF. |
