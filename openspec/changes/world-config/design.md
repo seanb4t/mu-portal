@@ -32,6 +32,7 @@ See proposal.md, section Why. These are the facts of the code that shape the des
 - Kept comments or order in a file that the client edits. Nothing writes the files.
 - Plugin layers from disk, and the place of a plugin layer in a real chain. A test gives the resolver a plugin layer at a fixed place.
 - Environment variables that override single fields, such as `MU_COLUMNS`.
+- The system directories of `XDG_CONFIG_DIRS`, such as `/etc/xdg/mu`. The XDG Base Directory specification lists them after `XDG_CONFIG_HOME`, but a system directory needs its own layer and trust level. Issue #84 tracks this gap.
 
 ## Decisions
 
@@ -202,6 +203,6 @@ Task 1.1 fills this table with each fact that the design uses, with its source.
 |---|---|
 | `figment2` 0.11.5 has `Figment::merge`, `Figment::extract` and `Figment::find_metadata`, and `providers::Named::new` gives a provider a name. | The source of `figment2` 0.11.5: `src/figment.rs` lines 348, 605 and 940, and `src/providers/named.rs` line 39. The debate projects ran each of them. |
 | With no features, `figment2` 0.11.5 depends only on `serde` and `uncased`. `toml_edit` 0.25 comes only with its TOML feature. | `Cargo.toml` of `figment2` 0.11.5. `Cargo.lock` holds `serde`, but not `uncased`. |
-| A relative path in `XDG_CONFIG_HOME` is invalid and is ignored. | To check: XDG Base Directory specification. |
+| A relative path in `XDG_CONFIG_HOME` is invalid and is ignored. If the variable is unset or empty, the base is `$HOME/.config`. | XDG Base Directory specification, version 0.8, sections 2 and 3: https://specifications.freedesktop.org/basedir-spec/latest/ |
 | The login command and a no-op command of TinyMUX, AresMUSH and Evennia. | To check: the documentation or the source of each server, and the `>` lines of the transcripts. |
 | TinyMUX takes no input after the client accepts UTF-8 through CHARSET, so it needs ISO-8859-1. | `docs/src/content/docs/decisions/telnet-engine.md`. |
