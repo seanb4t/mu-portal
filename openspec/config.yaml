@@ -58,6 +58,7 @@ operations:
   apply:
     guidance:
       - Before the final task group, run /sb:openspec-review <change> implementation and treat changes-requested as a blocker
+      - After the implementation review passes and before you open a pull request, run /sb:suite-review on the branch, and fix or triage each blocker and major finding
   archive:
     guidance:
       - Archive only with an implementation-phase review.md whose verdict is not changes-requested; the sb plugin's gate refuses otherwise
