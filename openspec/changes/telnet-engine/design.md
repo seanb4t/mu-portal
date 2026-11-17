@@ -46,7 +46,7 @@ Alternative: widen `TELNET_HOME` to the directory `src/telnet/`. That makes the 
 
 In `mu-core`, "the engine" already names the server engine: the crate documentation, `Portal` and the texts of the session use it. So the telnet code is a parser, `telnet::Parser`, in `src/telnet/parser.rs`. The change keeps its name, telnet-engine, from issue #52 and the decision page.
 
-`Parser::new(policy)` makes a parser. `Parser::receive(bytes)` reads one read and queues events and output. `Parser::poll_event` gives the next event, and `Parser::take_output` gives the bytes to send. `Parser::request` asks to turn an option on or off. `Parser::send_subnegotiation` queues a subnegotiation and doubles each byte 255 of its payload with `telnet::escape`. The parser has no step that sends data. `Framer::encode` takes `&self`, so `TelnetFramer::encode` calls `telnet::escape` itself. So the escape of the byte 255 has one home, and each path to the game uses it.
+`Parser::new(policy)` makes a parser. `Parser::receive(bytes)` reads one read and queues events and output. `Parser::poll_event` gives the next event, and `Parser::take_output` gives the bytes to send. `Parser::request` asks to turn an option on or off. `Parser::send_subnegotiation` queues a subnegotiation and doubles each byte 255 of its payload with `telnet::escape`. A reply that the caller sends after `poll_event` goes into the output right after the bytes that the parser sent before that event. So the bytes to the game keep the order of the read, also when one read holds `DO TTYPE`, a TTYPE request and `DONT TTYPE`. The parser has no step that sends data. `Framer::encode` takes `&self`, so `TelnetFramer::encode` calls `telnet::escape` itself. So the escape of the byte 255 has one home, and each path to the game uses it.
 
 The parser names the two ends of an option with `telnet::Side`. `Local` is an option that the client performs, and `Remote` one that the game performs. The private enum `Side` of `framer.rs` becomes `Role`, with `Client` and `Game`, because it names the end that a `LineFramer` reads for.
 
@@ -93,7 +93,7 @@ A policy names the options that the client accepts on each side. Take an option 
 
 ### The mark is outside the option table
 
-RFC 860 asks for one answer to each `DO TIMING-MARK`. The Q method sends no second `DO` for an option that is already on. So the parser reads `IAC WILL TIMING-MARK` and `IAC WONT TIMING-MARK` as the end of a mark and changes no state. `IAC DO TIMING-MARK` from the game goes through the table like any other option that the policy refuses. So the parser answers `IAC WONT TIMING-MARK` each time.
+RFC 860 asks for one answer to each `DO TIMING-MARK`. The Q method sends no second `DO` for an option that is already on. So the parser reads `IAC WILL TIMING-MARK` and `IAC WONT TIMING-MARK` as the end of a mark and changes no state. The parser answers `IAC DO TIMING-MARK` from the game with `IAC WONT TIMING-MARK` before the table, whatever the policy, and ignores `IAC DONT TIMING-MARK`. So the parser answers each `DO TIMING-MARK`, and TIMING-MARK stays off on both sides.
 
 `TelnetFramer::mark` and `LineFramer::mark` both give `telnet::MARK`. The tests of the fake game use the same constant.
 
@@ -127,7 +127,7 @@ Alternative: prompts on GA and EOR alone. No family of the spike sent either. So
 
 The framer answers these, as the spike client did:
 
-- TTYPE SEND: `MU-PORTAL`, `XTERM-256COLOR`, then `MTTS 269` for each later request. The MTTS bits are ANSI (1), UTF-8 (4), 256 colors (8) and truecolor (256).
+- TTYPE SEND, while TTYPE is on for the client at that event: `MU-PORTAL`, `XTERM-256COLOR`, then `MTTS 269` for each later request. The MTTS bits are ANSI (1), UTF-8 (4), 256 colors (8) and truecolor (256).
 - NAWS on for the client: the window size, through `send_subnegotiation`, which doubles a byte 255.
 - CHARSET REQUEST: `ACCEPTED` with the name as the game wrote it, or `REJECTED`. The parse reads the prefix `[TTABLE ]` with its space, then skips the version byte. A prefix with no version byte and an empty list give `REJECTED`.
 
@@ -135,7 +135,7 @@ The review of pull request #32 found that the spike stripped the prefix with no 
 
 `TelnetSettings` also holds the accept policy. `TelnetSettings::default()` accepts TTYPE, NAWS and CHARSET for the client, and ECHO, SGA, EOR, CHARSET, MSSP, MCCP2 and GMCP for the game. This is the policy that recorded the transcripts. A world-type profile can then change the policy as a quirk, as the world-type-profiles decision says.
 
-`TelnetFramer::encode` gives `telnet::escape` of the line in the character set of the framer, then CR LF. A UTF-8 line never holds the byte 255, but a Latin-1 line can.
+`TelnetFramer::encode` gives `telnet::escape` of the line in the character set of the framer, with each CR as CR NUL, then CR LF. A UTF-8 line never holds the byte 255, but a Latin-1 line can.
 
 ### The character set of the text
 
@@ -241,10 +241,10 @@ Each behavior that this change takes from a standard has a test. A clause that t
 | RFC 854 | NOP, DM, BRK, IP, AO, AYT, EC, EL and GA are two bytes. A byte after IAC that is no command is not lost. | `each_two_byte_command`, `byte_that_is_no_command`, `ayt_before_data` |
 | RFC 854 | CR LF and CR NUL from the game. CR LF ends a line to the game, and a CR in that line goes as CR NUL. | `line_ends`, `cr_nul_across_reads`, `line_to_the_game`, `bare_cr_in_a_line_to_the_game` |
 | RFC 855 | A subnegotiation ends at `IAC SE`, and `IAC IAC` in it is one byte 255, in both directions. | `payload_with_escaped_byte`, `byte_255_in_a_subnegotiation`, `malformed_framing` |
-| RFC 860 | `WILL` and `WONT TIMING-MARK` both end a mark. The client refuses `DO TIMING-MARK` each time. | `answer_to_a_mark`, `mark_from_the_game`, `mark_refused_whatever_the_policy` |
+| RFC 860 | `WILL` and `WONT TIMING-MARK` both end a mark. The client refuses `DO TIMING-MARK` each time. | `answer_to_a_mark`, `mark_from_the_game`, with a policy that refuses TIMING-MARK and one that accepts it |
 | RFC 885 | EOR ends a prompt. | `prompt_with_eor`, `each_two_byte_command` |
 | RFC 1073 | NAWS sends the width and the height in network order, with each byte 255 doubled. | `naws_turns_on`, `size_with_byte_255` |
-| RFC 1091 | `SEND` gets `IS` and a name while TTYPE is on. The client repeats its last name. | `four_ttype_requests`, `ttype_request_while_ttype_is_off` |
+| RFC 1091 | `SEND` gets `IS` and a name while TTYPE is on. The client repeats its last name. | `four_ttype_requests`, `ttype_request_while_ttype_is_off`, `ttype_answer_in_the_order_of_the_read` |
 | MTTS | The third answer is `MTTS 269`. | `four_ttype_requests` |
 | RFC 1143 | Each row of the table in section 7 for WILL, WONT, DO and DONT, and each request of the client. | the unit tests of `telnet::q`, `accepted_option`, `refused_option_twice`, `repeated_request`, `crossing_requests`, `refusal_of_a_client_request`, `unrequested_answer_is_an_error` |
 | RFC 2066 | REQUEST gets ACCEPTED with the name, or REJECTED. The `[TTABLE ]` prefix and its version byte. Case of a name is not significant. | `charset_is_offered`, `charset_request_with_ttable`, `charset_is_not_offered`, `ttable_prefix_with_no_version`, `empty_charset_list` |
@@ -279,7 +279,7 @@ Task 1.1 fills this table with each fact that the design uses, with its source. 
 | CHARSET is option 42. REQUEST is 1, ACCEPTED 2 and REJECTED 3. A request can start with `[TTABLE ]` and a version byte that is not zero, and then the separator and the list. Case of a name is not significant. | RFC 2066, sections 2 and 3. |
 | The MTTS bits are ANSI 1, VT100 2, UTF-8 4, 256 colors 8 and truecolor 256, so `MTTS 269` is ANSI, UTF-8, 256 colors and truecolor. The bit vector comes on the third TTYPE SEND. | MTTS specification, tintin.mudhalla.net/protocols/mtts. |
 | MCCP2 is option 86. The server sends `IAC SB MCCP2 IAC SE` and starts a zlib stream (RFC 1950) right after it. | MCCP specification, tintin.mudhalla.net/protocols/mccp. |
-| After a decompression error, the MCCP specification lets the client send `DONT MCCP2` and go on as plain telnet. This design does that. | MCCP specification, section on MCCP2 errors. |
+| After a decompression error, the MCCP specification lets the client send `DONT MCCP2` and go on as plain telnet. This design sends `DONT MCCP2` and reads plain telnet after the answer `WONT MCCP2` of the game. | MCCP specification, section on MCCP2 errors. |
 | `miniz_oxide::inflate::stream::inflate` takes an `InflateState`, the input, the output and `MZFlush::None`. Its `StreamResult` gives `bytes_consumed`, `bytes_written` and a status, which is `StreamEnd` at the end of the stream. | docs.rs, `miniz_oxide` 0.9.1, `inflate::stream::inflate` and `StreamResult`. |
 | `miniz_oxide::deflate::compress_to_vec_zlib` gives a whole zlib stream for the tests. | docs.rs, `miniz_oxide` 0.9.1, `deflate::compress_to_vec_zlib`. |
 | The spike reads `IAC SB IAC SE` as an error for an empty subnegotiation and then the command SE, and a verb after `IAC` in a payload as an unterminated subnegotiation and then the negotiation. | `spikes/telnet-engine/src/lib.rs`, `Engine::parse`. |

@@ -155,8 +155,8 @@ The telnet framer SHALL end a line at LF and SHALL drop each CR, so a bare LF en
 - **THEN** it gives the lines `one`, `two` and `three`
 
 #### Scenario: A bare CR in a line to the game
-- **WHEN** the session sends the line `a\rb` through the telnet framer
-- **THEN** the bytes are `a\r\0b\r\n`
+- **WHEN** the session sends the line `a\rb`, or `a\r`, through the telnet framer
+- **THEN** the bytes are `a\r\0b\r\n`, or `a\r\0\r\n`
 
 #### Scenario: Lines in a compressed stream
 - **GIVEN** a telnet framer where MCCP2 is on for the game
@@ -257,8 +257,8 @@ The telnet framer SHALL send `IAC DO TIMING-MARK` as its mark each time, whateve
 
 #### Scenario: A mark from the game with a policy that accepts it
 - **GIVEN** a policy that accepts TIMING-MARK on the side of the client
-- **WHEN** the parser reads `IAC DO TIMING-MARK` two times
-- **THEN** it sends `IAC WONT TIMING-MARK` two times
+- **WHEN** the parser reads `IAC DO TIMING-MARK` two times, then `IAC DONT TIMING-MARK`
+- **THEN** it sends `IAC WONT TIMING-MARK` two times and nothing for `DONT`
 
 ### Requirement: GMCP from the game is a message
 The telnet framer SHALL give each GMCP subnegotiation from the game as a message with the name `GMCP` and the payload as its body.
@@ -269,7 +269,7 @@ The telnet framer SHALL give each GMCP subnegotiation from the game as a message
 - **THEN** it gives a message with the name `GMCP` and the body `Logged.In`
 
 ### Requirement: The telnet framer answers the terminal type
-While TTYPE is on for the client, the telnet framer SHALL answer each request of the game for the terminal type. It SHALL answer `MU-PORTAL`, then `XTERM-256COLOR`, then `MTTS 269`. It SHALL answer `MTTS 269` to each later request.
+While TTYPE is on for the client at the request, the telnet framer SHALL answer each request of the game for the terminal type. Each reply of the framer SHALL reach the game in the order of the events of the read. It SHALL answer `MU-PORTAL`, then `XTERM-256COLOR`, then `MTTS 269`. It SHALL answer `MTTS 269` to each later request.
 
 #### Scenario: Four requests
 - **GIVEN** a telnet framer where TTYPE is on for the client
@@ -277,8 +277,12 @@ While TTYPE is on for the client, the telnet framer SHALL answer each request of
 - **THEN** the framer replies `IS MU-PORTAL`, `IS XTERM-256COLOR`, `IS MTTS 269` and `IS MTTS 269`, in that order
 
 #### Scenario: A request while TTYPE is off
-- **WHEN** the game sends `IAC SB TTYPE SEND IAC SE` before `IAC DO TTYPE`
-- **THEN** the framer sends nothing
+- **WHEN** the game sends `IAC SB TTYPE SEND IAC SE` before `IAC DO TTYPE`, alone or in the same read
+- **THEN** the framer sends no `IS` answer
+
+#### Scenario: An answer in the order of the read
+- **WHEN** one read holds `IAC DO TTYPE`, `IAC SB TTYPE SEND IAC SE` and `IAC DONT TTYPE`
+- **THEN** the framer sends `IAC WILL TTYPE`, `IS MU-PORTAL` and `IAC WONT TTYPE`, in that order
 
 ### Requirement: The telnet framer sends the window size
 When NAWS turns on for the client, the telnet framer SHALL send its window size. The size is two 16-bit numbers in network order, with each byte 255 doubled.
