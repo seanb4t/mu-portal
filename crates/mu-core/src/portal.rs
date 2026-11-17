@@ -22,7 +22,7 @@ use crate::world::ResolvedWorld;
 pub struct WorldSetup {
     world: ResolvedWorld,
     password: Option<Secret>,
-    transport: Arc<dyn Transport>,
+    transport: Option<Arc<dyn Transport>>,
     framer: NewFramer,
     hooks: Vec<Arc<dyn Hook>>,
     handlers: Vec<Arc<dyn Handler>>,
@@ -36,6 +36,14 @@ impl WorldSetup {
         password: Option<Secret>,
         transport: Arc<dyn Transport>,
     ) -> Self {
+        Self::with(world, password, Some(transport))
+    }
+
+    fn with(
+        world: ResolvedWorld,
+        password: Option<Secret>,
+        transport: Option<Arc<dyn Transport>>,
+    ) -> Self {
         Self {
             world,
             password,
@@ -44,6 +52,13 @@ impl WorldSetup {
             hooks: Vec::new(),
             handlers: Vec::new(),
         }
+    }
+
+    /// A world with no transport and no password. It stays disconnected, and a connect of it
+    /// fails with [`PortalError::NoTransport`].
+    #[must_use]
+    pub fn without_transport(world: ResolvedWorld) -> Self {
+        Self::with(world, None, None)
     }
 
     /// Uses `framer` for each new connection instead of the [`LineFramer`].

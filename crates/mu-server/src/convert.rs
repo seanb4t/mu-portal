@@ -12,7 +12,9 @@ pub fn status(error: &PortalError) -> ConnectError {
     let message = error.to_string();
     match error {
         PortalError::UnknownWorld(_) => ConnectError::not_found(message),
-        PortalError::NotConnected(_) => ConnectError::failed_precondition(message),
+        PortalError::NotConnected(_) | PortalError::NoTransport(_) => {
+            ConnectError::failed_precondition(message)
+        }
         PortalError::LineBreak => ConnectError::invalid_argument(message),
         PortalError::PastEnd { .. } => ConnectError::out_of_range(message),
         PortalError::Stopped => ConnectError::unavailable(message),
@@ -87,7 +89,11 @@ mod tests {
                 ErrorCode::NotFound,
             ),
             (
-                PortalError::NotConnected(world),
+                PortalError::NotConnected(world.clone()),
+                ErrorCode::FailedPrecondition,
+            ),
+            (
+                PortalError::NoTransport(world),
                 ErrorCode::FailedPrecondition,
             ),
             (PortalError::LineBreak, ErrorCode::InvalidArgument),

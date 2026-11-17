@@ -8,6 +8,7 @@ use mu_core::{
     EnvSecretStore, FakeTransport, ResolvedWorld, SecretRef, WorldId, WorldSetup, load_password,
 };
 
+use crate::config::ConfigArgs;
 use crate::socket::SocketArgs;
 
 /// Arguments of `mu server`.
@@ -15,6 +16,9 @@ use crate::socket::SocketArgs;
 pub struct ServerArgs {
     #[command(flatten)]
     socket: SocketArgs,
+
+    #[command(flatten)]
+    config: ConfigArgs,
 
     /// A fake world for tests: `<id>=env:<NAME>`. The flag can repeat.
     #[arg(long = "fake-world", hide = true, value_name = "ID=env:NAME", value_parser = parse_fake_world)]
@@ -54,8 +58,26 @@ pub fn run(args: &ServerArgs) -> ExitCode {
         .with_writer(std::io::stderr)
         .with_max_level(tracing::Level::WARN)
         .try_init();
+    // The configuration resolves first, so a bad file stops the start before the socket opens.
+    let configured = match args.config.worlds() {
+        Ok(worlds) => worlds,
+        Err(error) => return fail(&error),
+    };
+    if let Some(fake) = args
+        .fake_worlds
+        .iter()
+        .find(|fake| configured.iter().any(|world| world.id == fake.id))
+    {
+        return fail(&format!(
+            "{}: the id is both a fake world and a configured world",
+            fake.id
+        ));
+    }
     let store = EnvSecretStore::new();
-    let mut worlds = Vec::new();
+    let mut worlds: Vec<WorldSetup> = configured
+        .into_iter()
+        .map(WorldSetup::without_transport)
+        .collect();
     for fake in &args.fake_worlds {
         let password = match load_password(&store, &fake.secret) {
             Ok(password) => password,

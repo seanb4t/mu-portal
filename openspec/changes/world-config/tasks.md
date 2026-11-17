@@ -53,7 +53,7 @@ Load the `rust-best-practices` skill before this group.
 
 ## 6. The server and the docs
 
-- [ ] 6.1 Make the transport of `WorldSetup` optional, add `PortalError::NoTransport` and map it to `FailedPrecondition` in `crates/mu-server/src/convert.rs`. Make `mu server` resolve the configuration before it opens the socket. Before the socket opens, refuse an id that is both fake and configured. Add each configured world with no transport and no password. Add these tests to `crates/mu-cli/tests/worlds.rs`:
+- [x] 6.1 Make the transport of `WorldSetup` optional, add `PortalError::NoTransport` and map it to `FailedPrecondition` in `crates/mu-server/src/convert.rs`. Make `mu server` resolve the configuration before it opens the socket. Before the socket opens, refuse an id that is both fake and configured. Add each configured world with no transport and no password. Add these tests to `crates/mu-cli/tests/worlds.rs`:
   - `configured_world_waits` and `configured_world_cannot_connect_yet`, for the two new scenarios of "Each world connects and logs in at the start". `two_worlds_connect` keeps passing.
   - `bad_configuration_stops_the_start`, `fake_world_with_a_configured_id` and `server_does_not_read_a_configured_secret`, for the three scenarios of "The server holds the configured worlds"
 

@@ -142,7 +142,7 @@ pub(crate) struct SessionParts {
     pub(crate) world: WorldId,
     pub(crate) login: Option<Login>,
     pub(crate) password: Option<Secret>,
-    pub(crate) transport: Arc<dyn Transport>,
+    pub(crate) transport: Option<Arc<dyn Transport>>,
     pub(crate) framer: NewFramer,
     pub(crate) hooks: Vec<Arc<dyn Hook>>,
     pub(crate) handlers: Vec<Arc<dyn Handler>>,
@@ -447,8 +447,11 @@ impl Session {
                 if self.parts.stopped.load(Ordering::Acquire) {
                     return Err(PortalError::Stopped);
                 }
+                let Some(transport) = &self.parts.transport else {
+                    return Err(PortalError::NoTransport(self.world().clone()));
+                };
                 if matches!(self.conn, Conn::Down) {
-                    let connect = self.parts.transport.connect(self.world());
+                    let connect = transport.connect(self.world());
                     self.conn = Conn::Connecting {
                         connect,
                         depth,
