@@ -292,3 +292,24 @@ pub fn transcripts() -> Vec<(String, String)> {
     files.sort();
     files
 }
+
+/// The telnet events of `events`, with each run of adjacent data events joined into one.
+pub fn join_data(
+    events: impl IntoIterator<Item = mu_core::telnet::Event>,
+) -> Vec<mu_core::telnet::Event> {
+    use mu_core::telnet::Event::Data;
+    let mut out = Vec::new();
+    for event in events {
+        match (out.last_mut(), event) {
+            (Some(Data(last)), Data(more)) => last.extend(more),
+            (_, event) => out.push(event),
+        }
+    }
+    out
+}
+
+/// The bytes of a subnegotiation: `IAC SB option`, the escaped payload, `IAC SE`.
+pub fn subnegotiation(option: u8, payload: &[u8]) -> Vec<u8> {
+    use mu_core::telnet::{IAC, SB, SE, escape};
+    [&[IAC, SB, option][..], &escape(payload), &[IAC, SE]].concat()
+}

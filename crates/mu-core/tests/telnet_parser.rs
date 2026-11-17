@@ -7,7 +7,7 @@ use mu_core::telnet::{
 };
 use proptest::prelude::*;
 
-use support::reads;
+use support::{join_data, reads, subnegotiation};
 
 mod support;
 
@@ -18,13 +18,7 @@ fn policy() -> Policy {
 
 /// The events of `parser` with adjacent data joined, and the bytes that it sent.
 fn drain(parser: &mut Parser) -> (Vec<Event>, Vec<u8>) {
-    let mut events: Vec<Event> = Vec::new();
-    while let Some(event) = parser.poll_event() {
-        match (events.last_mut(), event) {
-            (Some(Event::Data(last)), Event::Data(more)) => last.extend(more),
-            (_, event) => events.push(event),
-        }
-    }
+    let events = join_data(std::iter::from_fn(|| parser.poll_event()));
     (events, parser.take_output())
 }
 
@@ -38,22 +32,11 @@ fn run_reads(mut parser: Parser, parts: &[&[u8]]) -> (Vec<Event>, Vec<u8>) {
         events.extend(more);
         output.extend(sent);
     }
-    (join(events), output)
+    (join_data(events), output)
 }
 
 fn run(bytes: &[u8]) -> (Vec<Event>, Vec<u8>) {
     run_reads(Parser::new(policy()), &[bytes])
-}
-
-fn join(events: Vec<Event>) -> Vec<Event> {
-    let mut out: Vec<Event> = Vec::new();
-    for event in events {
-        match (out.last_mut(), event) {
-            (Some(Event::Data(last)), Event::Data(more)) => last.extend(more),
-            (_, event) => out.push(event),
-        }
-    }
-    out
 }
 
 fn data(bytes: &[u8]) -> Event {
@@ -198,15 +181,12 @@ fn payload_with_escaped_byte() {
 }
 
 /// The bytes of a GMCP subnegotiation of `payload`.
-fn subnegotiation(payload: &[u8]) -> Vec<u8> {
-    [&[IAC, SB, opt::GMCP][..], &escape(payload), &[IAC, SE]].concat()
-}
 
 #[test]
 fn payload_at_the_bound() {
     let mut payload = vec![b'a'; MAX_SUBNEGOTIATION - 1];
     payload.push(IAC);
-    let bytes = subnegotiation(&payload);
+    let bytes = subnegotiation(opt::GMCP, &payload);
     assert_eq!(bytes[bytes.len() - 4..bytes.len() - 2], [IAC, IAC]);
     assert_eq!(run(&bytes).0, [Event::Subnegotiation(opt::GMCP, payload)]);
 }
@@ -214,7 +194,7 @@ fn payload_at_the_bound() {
 #[test]
 fn payload_over_the_bound() {
     let payload = vec![b'a'; MAX_SUBNEGOTIATION + 1];
-    let bytes = [subnegotiation(&payload), b"ok".to_vec()].concat();
+    let bytes = [subnegotiation(opt::GMCP, &payload), b"ok".to_vec()].concat();
     let expected = vec![
         Event::Error(ProtocolError::SubnegotiationTooLong { option: opt::GMCP }),
         data(b"ok"),
@@ -398,6 +378,59 @@ fn plain_bytes_after_the_answer_to_dont() {
     }
 }
 
+/// A zlib stream that holds `inflated` in a stored block, then breaks on a block of a bad type.
+fn stream_that_breaks_after(inflated: &[u8]) -> Vec<u8> {
+    let length = u16::try_from(inflated.len()).unwrap();
+    [
+        &[0x78, 0x01, 0x00][..],
+        &length.to_le_bytes(),
+        &(!length).to_le_bytes(),
+        inflated,
+        &[0x07],
+    ]
+    .concat()
+}
+
+#[test]
+fn bad_stream_that_breaks_inside_a_command() {
+    for inflated in [&[b'a', IAC][..], &[b'a', IAC, SB, opt::GMCP, b'x']] {
+        let bytes = [
+            &START[..],
+            &stream_that_breaks_after(inflated),
+            &[IAC, WONT, opt::MCCP2],
+            b"plain",
+        ]
+        .concat();
+        for point in 0..=bytes.len() {
+            let (events, _) = run_reads(mccp2_parser(), &[&bytes[..point], &bytes[point..]]);
+            assert_eq!(
+                without_error_text(events),
+                [
+                    Event::CompressionStarted,
+                    data(b"a"),
+                    Event::Error(ProtocolError::BadCompressedStream(String::new())),
+                    Event::Disabled(Side::Remote, opt::MCCP2),
+                    data(b"plain")
+                ],
+                "{inflated:?} split at {point}"
+            );
+        }
+    }
+}
+
+#[test]
+fn mark_refused_whatever_the_policy() {
+    let mut parser = Parser::new(Policy::none().accept(Side::Local, &[opt::TIMING_MARK]));
+    parser.receive(&[IAC, DO, opt::TIMING_MARK, IAC, DO, opt::TIMING_MARK]);
+    assert_eq!(
+        drain(&mut parser),
+        (
+            vec![],
+            vec![IAC, WONT, opt::TIMING_MARK, IAC, WONT, opt::TIMING_MARK]
+        )
+    );
+}
+
 #[test]
 fn bad_stream_after_data() {
     let mut stream = compress_to_vec_zlib(&b"some data before the break ".repeat(8), 6);
@@ -481,7 +514,7 @@ fn subnegotiation_part() -> impl Strategy<Value = Part> {
         prop::collection::vec(any::<u8>(), 0..20),
     )
         .prop_map(|(option, payload)| {
-            let bytes = [&[IAC, SB, option][..], &escape(&payload), &[IAC, SE]].concat();
+            let bytes = subnegotiation(option, &payload);
             Part::new(bytes, vec![Event::Subnegotiation(option, payload)], vec![])
         })
 }
@@ -584,7 +617,7 @@ fn stream() -> impl Strategy<Value = (Vec<u8>, Vec<Event>, Vec<u8>)> {
                 events.extend(part.events);
                 output.extend(part.output);
             }
-            (bytes, join(events), output)
+            (bytes, join_data(events), output)
         })
 }
 

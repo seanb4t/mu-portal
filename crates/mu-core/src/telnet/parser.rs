@@ -377,8 +377,12 @@ impl Parser {
     }
 
     fn negotiate(&mut self, verb: u8, option: u8) {
-        if option == opt::TIMING_MARK && matches!(verb, WILL | WONT) {
-            self.emit(Event::Mark);
+        if option == opt::TIMING_MARK {
+            match verb {
+                WILL | WONT => self.emit(Event::Mark),
+                DO => self.send_negotiation(Side::Local, option, false),
+                _ => {}
+            }
             return;
         }
         let side = match verb {
@@ -433,6 +437,8 @@ impl Parser {
                 Ok(_) | Err(MZError::Buf) => {}
                 Err(error) => {
                     self.inflater = None;
+                    self.state = State::Data;
+                    self.payload = Payload::default();
                     self.recovery = Some(0);
                     self.emit(Event::Error(ProtocolError::BadCompressedStream(format!(
                         "{error:?}"

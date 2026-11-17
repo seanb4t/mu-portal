@@ -3,7 +3,7 @@
 use mu_core::TelnetSettings;
 use mu_core::telnet::{Event, Parser, Policy};
 
-use support::{reads, transcript_reads, transcripts};
+use support::{join_data, reads, transcript_reads, transcripts};
 
 mod support;
 
@@ -15,17 +15,12 @@ fn policy() -> Policy {
 /// The events of `parts` read in order, with adjacent data joined.
 fn events(parts: &[&[u8]]) -> Vec<Event> {
     let mut parser = Parser::new(policy());
-    let mut out: Vec<Event> = Vec::new();
+    let mut out = Vec::new();
     for part in parts {
         parser.receive(part);
-        while let Some(event) = parser.poll_event() {
-            match (out.last_mut(), event) {
-                (Some(Event::Data(last)), Event::Data(more)) => last.extend(more),
-                (_, event) => out.push(event),
-            }
-        }
+        out.extend(std::iter::from_fn(|| parser.poll_event()));
     }
-    out
+    join_data(out)
 }
 
 #[test]
