@@ -1,0 +1,269 @@
+# Spec Delta
+
+## Purpose
+
+The engine reads the telnet protocol of a game and answers it as a MU client. The telnet framer turns that protocol into lines, prompts, replies, marks and messages for the session.
+
+## ADDED Requirements
+
+### Requirement: The engine reads IAC IAC as one data byte
+The engine SHALL read `IAC IAC` in data as one data byte 255. When it sends data, it SHALL double each byte 255.
+
+#### Scenario: An escaped byte in data
+- **WHEN** the engine reads the bytes `a IAC IAC b`
+- **THEN** it gives the data bytes `a`, 255 and `b`, and no command
+
+#### Scenario: The byte 255 in data to the game
+- **WHEN** the engine sends the data bytes `a`, 255 and `b`
+- **THEN** the bytes to the game are `a IAC IAC b`
+
+#### Scenario: A line to the game
+- **WHEN** the telnet framer encodes the line `hi`
+- **THEN** the bytes to the game are `hi` and CR LF
+
+### Requirement: Two-byte commands are two bytes
+The engine SHALL read `IAC` and any byte other than IAC, SB, WILL, WONT, DO and DONT as a two-byte command. It SHALL give the command as an event, with the byte as its code. The byte after the command SHALL be data.
+
+#### Scenario: AYT before data
+- **WHEN** the engine reads `IAC AYT x`
+- **THEN** it gives the command AYT and then the data byte `x`
+
+#### Scenario: Each two-byte command
+- **WHEN** the engine reads `IAC` and each of NOP, DM, BRK, IP, AO, AYT, EC, EL, GA and EOR, each followed by `x`
+- **THEN** it gives that command and then the data byte `x`, for each one
+
+#### Scenario: SE outside a subnegotiation
+- **WHEN** the engine reads `IAC SE x` with no subnegotiation open
+- **THEN** it gives the command SE and then the data byte `x`
+
+#### Scenario: A byte that is no command
+- **WHEN** the engine reads `IAC`, the byte 100 and `x`
+- **THEN** it gives a command with the code 100 and then the data byte `x`
+
+### Requirement: Options are negotiated with the Q method
+The engine SHALL negotiate each option on each side with the Q method of RFC 1143, section 7. A policy SHALL name the options that the client accepts on each side. The engine SHALL refuse each other option each time the game asks for it. It SHALL NOT answer a request for an option that is already in the asked state.
+
+#### Scenario: An accepted option
+- **GIVEN** a policy that accepts GMCP on the side of the game
+- **WHEN** the engine reads `IAC WILL GMCP`
+- **THEN** it sends `IAC DO GMCP` and gives an event that GMCP is on for the game
+
+#### Scenario: A refused option, twice
+- **GIVEN** a policy that does not accept MXP
+- **WHEN** the engine reads `IAC WILL MXP` two times
+- **THEN** it sends `IAC DONT MXP` two times, gives no event, and MXP stays off
+
+#### Scenario: A repeated request
+- **GIVEN** an engine where GMCP is already on for the game
+- **WHEN** the engine reads `IAC WILL GMCP` again
+- **THEN** it sends nothing and gives no event
+
+#### Scenario: A request of the client that crosses a request of the game
+- **GIVEN** a policy that accepts GMCP on the side of the game, and an engine that asked for GMCP with `IAC DO GMCP`
+- **WHEN** the engine reads `IAC WILL GMCP`
+- **THEN** it sends nothing more, gives an event that GMCP is on for the game, and a second `IAC WILL GMCP` gives no reply
+
+#### Scenario: A refusal of a request of the client
+- **GIVEN** an engine that asked for GMCP with `IAC DO GMCP`
+- **WHEN** the engine reads `IAC WONT GMCP`
+- **THEN** it sends nothing, gives no event, and GMCP stays off
+
+### Requirement: A subnegotiation reaches the caller
+The engine SHALL give each subnegotiation as an event with its option and its payload, for any option. It SHALL read `IAC IAC` in the payload as one byte 255, and the bound SHALL count that byte once. It SHALL drop a payload longer than 1 MiB and give a protocol error.
+
+#### Scenario: A payload with an escaped byte
+- **WHEN** the engine reads `IAC SB GMCP a IAC IAC b IAC SE`
+- **THEN** it gives a subnegotiation of GMCP with the payload `a`, 255 and `b`
+
+#### Scenario: A payload at the bound
+- **WHEN** the engine reads a GMCP subnegotiation with a payload of exactly 1 MiB, in which the last byte is sent as `IAC IAC`
+- **THEN** it gives the subnegotiation with the whole payload, and no protocol error
+
+#### Scenario: A payload over the bound
+- **WHEN** the engine reads a subnegotiation with a payload of 1 MiB and one byte, followed by `ok`
+- **AND** the bytes come in one read, and again in reads of 4096 bytes
+- **THEN** each time it gives a protocol error that names the option, no subnegotiation, and then the data `ok`
+
+### Requirement: MCCP2 is inflated inside the engine
+When MCCP2 is on for the game, `IAC SB MCCP2 IAC SE` SHALL start compression, and the engine SHALL inflate the bytes that follow. A stream SHALL be able to start inside a read. The bytes after the end of the stream SHALL be plain. When MCCP2 is off, that subnegotiation SHALL start nothing.
+
+#### Scenario: A stream that starts inside a read
+- **GIVEN** an engine that accepts MCCP2 on the side of the game
+- **WHEN** one read holds `IAC WILL MCCP2`, `IAC SB MCCP2 IAC SE`, a zlib stream of `hello` and nothing more
+- **THEN** the engine sends `IAC DO MCCP2` and gives that MCCP2 is on, the start of compression and the data `hello`
+
+#### Scenario: Plain bytes after the stream
+- **GIVEN** an engine where MCCP2 is on for the game
+- **WHEN** one read holds `IAC SB MCCP2 IAC SE`, a complete zlib stream of `in` and the plain bytes `out`
+- **THEN** the engine gives the start of compression, the data `in`, the end of compression and the data `out`
+
+#### Scenario: A start while MCCP2 is off
+- **GIVEN** an engine where MCCP2 is off
+- **WHEN** it reads `IAC SB MCCP2 IAC SE` and then `plain`
+- **THEN** it gives a subnegotiation of MCCP2 with an empty payload and then the data `plain`, and no start of compression
+
+### Requirement: A bad compressed stream ends the reading
+A compressed stream that is not valid zlib SHALL give one protocol error. After that error, the engine SHALL give no event for any later byte of the connection.
+
+#### Scenario: A stream that is not zlib
+- **GIVEN** an engine where MCCP2 is on for the game
+- **WHEN** it reads `IAC SB MCCP2 IAC SE`, the bytes `00 01 02`, and in a later read `more\n`
+- **THEN** it gives the start of compression, one protocol error, and no data
+
+### Requirement: The split of reads changes no event
+Join adjacent data events. Then the engine SHALL give the same events and send the same bytes for any split of the same input into reads.
+
+#### Scenario: Random streams in random reads
+- **WHEN** a property test splits random telnet streams into random reads, with compression that starts inside a read and streams that are not zlib
+- **THEN** the joined events and the sent bytes match those of the whole stream in one read
+
+#### Scenario: The recorded transcripts in other reads
+- **WHEN** each of the six transcripts of the telnet spike runs as recorded and in reads of 1, 2, 3, 7, 64 and 1500 bytes
+- **THEN** each run gives no protocol error and the same joined events as the recorded reads
+
+### Requirement: The telnet framer gives lines
+The telnet framer SHALL end a line at LF and SHALL drop each CR, so a bare LF ends a line. It SHALL drop a NUL right after a CR, in the same read or the next one. It SHALL decode a line in its character set. It SHALL cut a run of bytes with no LF at the line bound.
+
+#### Scenario: Line ends
+- **WHEN** the telnet framer reads `one\r\ntwo\nthree\n`
+- **THEN** it gives the lines `one`, `two` and `three`
+
+#### Scenario: CR NUL across reads
+- **WHEN** one read ends with `a\r` and the next read starts with the byte 0 and `b\n`
+- **THEN** the telnet framer gives the line `ab`
+
+#### Scenario: A long run with no line end
+- **WHEN** the telnet framer reads the line bound plus three bytes of `a` and then LF
+- **THEN** it gives one line at the bound and then the line `aaa`
+
+#### Scenario: A line of exactly the bound
+- **WHEN** the telnet framer or the line framer reads the line bound in bytes of `a` and then LF
+- **THEN** it gives one line at the bound and no empty line
+
+### Requirement: The telnet framer uses its character set
+The telnet framer SHALL have one character set, UTF-8 or ISO-8859-1. It SHALL decode lines and prompts in that set, and encode each line to the game in it. In UTF-8, each invalid sequence SHALL become a replacement character. In ISO-8859-1, each character with no byte in the set SHALL become `?`. A CHARSET answer SHALL NOT change the set.
+
+#### Scenario: A Latin-1 line from the game
+- **GIVEN** a telnet framer with the character set ISO-8859-1
+- **WHEN** it reads the bytes `caf`, 233 and LF
+- **THEN** it gives the line `café`
+
+#### Scenario: A UTF-8 line from the game
+- **GIVEN** a telnet framer with the character set UTF-8
+- **WHEN** it reads the bytes `caf`, 195, 169, LF, then the byte 233 and LF
+- **THEN** it gives the line `café` and then a line with one replacement character
+
+#### Scenario: A Latin-1 line to the game
+- **GIVEN** a telnet framer with the character set ISO-8859-1
+- **WHEN** it encodes the line `café ÿ ✓`
+- **THEN** the bytes to the game are `caf`, 233, a space, `IAC IAC`, a space, `?`, CR and LF
+
+### Requirement: The telnet framer gives prompts
+A read can add a data byte to an unfinished line. At the end of such a read, the telnet framer SHALL give the unfinished text as a prompt. GA and EOR SHALL also end a prompt and clear it. If a later read ends the text with LF, the framer SHALL give the whole text as one line. The lines SHALL be the same for any split of the bytes into reads.
+
+#### Scenario: A prompt with no GA
+- **WHEN** one read ends with `Name: ` and no line end
+- **THEN** the telnet framer gives the prompt `Name: `
+
+#### Scenario: A prompt with GA
+- **WHEN** one read holds `HP 10> IAC GA more`
+- **THEN** the telnet framer gives the prompt `HP 10> ` and then, at the end of the read, the prompt `more`
+
+#### Scenario: A line split across reads
+- **WHEN** one read ends with `hel` and the next read starts with `lo\n`
+- **THEN** the telnet framer gives the prompt `hel` and then the line `hello`
+
+#### Scenario: Negotiation alone
+- **WHEN** one read ends with `Name: `, and the next read holds only `IAC WILL GMCP`
+- **THEN** the telnet framer gives the prompt `Name: ` once
+
+#### Scenario: The same prompt after a line
+- **WHEN** one read holds `> `, the next read holds `ok\n> `
+- **THEN** the telnet framer gives the prompt `> `, the line `> ok` and the prompt `> `
+
+#### Scenario: Lines in any split
+- **WHEN** a property test splits random streams into random reads
+- **THEN** the telnet framer gives the same lines, in the same order, as for the whole stream in one read
+
+### Requirement: The telnet framer reads the mark apart from the options
+The telnet framer SHALL send `IAC DO TIMING-MARK` as its mark each time, whatever the state of the options. It SHALL give `IAC WILL TIMING-MARK` and `IAC WONT TIMING-MARK` as the end of a mark. A mark SHALL NOT change the state of any option. The engine SHALL refuse `IAC DO TIMING-MARK` from the game each time.
+
+#### Scenario: Two marks in a row
+- **WHEN** the session asks the telnet framer for a mark twice
+- **THEN** both times the bytes are `IAC DO TIMING-MARK`
+
+#### Scenario: The answer to a mark
+- **WHEN** the telnet framer reads `one\n`, `IAC WILL TIMING-MARK` and `two\n`
+- **THEN** it gives the line `one`, the end of a mark and the line `two`, and no reply
+
+#### Scenario: A mark from the game
+- **WHEN** the engine reads `IAC DO TIMING-MARK` two times
+- **THEN** it sends `IAC WONT TIMING-MARK` two times, and TIMING-MARK stays off on both sides
+
+### Requirement: GMCP from the game is a message
+The telnet framer SHALL give each GMCP subnegotiation from the game as a message with the name `GMCP` and the payload as its body.
+
+#### Scenario: A GMCP message
+- **GIVEN** a telnet framer where GMCP is on for the game
+- **WHEN** it reads `IAC SB GMCP Logged.In IAC SE`
+- **THEN** it gives a message with the name `GMCP` and the body `Logged.In`
+
+### Requirement: The telnet framer answers the terminal type
+When the game asks for the terminal type, the telnet framer SHALL answer `MU-PORTAL`, then `XTERM-256COLOR`, then `MTTS 269`. It SHALL answer `MTTS 269` to each later request.
+
+#### Scenario: Four requests
+- **GIVEN** a telnet framer where TTYPE is on for the client
+- **WHEN** the game sends `IAC SB TTYPE SEND IAC SE` four times
+- **THEN** the framer replies `IS MU-PORTAL`, `IS XTERM-256COLOR`, `IS MTTS 269` and `IS MTTS 269`, in that order
+
+### Requirement: The telnet framer sends the window size
+When NAWS turns on for the client, the telnet framer SHALL send its window size. The size is two 16-bit numbers in network order, with each byte 255 doubled.
+
+#### Scenario: NAWS turns on
+- **GIVEN** a telnet framer with a window of 120 columns and 40 rows
+- **WHEN** it reads `IAC DO NAWS`
+- **THEN** it replies `IAC WILL NAWS` and `IAC SB NAWS 0 120 0 40 IAC SE`
+
+#### Scenario: A size with the byte 255
+- **GIVEN** a telnet framer with a window of 255 columns and 40 rows
+- **WHEN** it reads `IAC DO NAWS`
+- **THEN** it replies `IAC WILL NAWS` and `IAC SB NAWS 0 IAC IAC 0 40 IAC SE`
+
+### Requirement: The telnet framer answers a CHARSET request
+If a request offers the character set of the telnet framer, the framer SHALL accept it, with no regard to case. Otherwise it SHALL reject the request. It SHALL read an optional `[TTABLE ]` prefix and its version byte before the separator. No payload SHALL make the framer fail.
+
+#### Scenario: The character set is offered
+- **GIVEN** a telnet framer with the character set `UTF-8`
+- **WHEN** it reads a CHARSET request with the list `;ISO-8859-1;utf-8`
+- **THEN** it replies `ACCEPTED utf-8`
+
+#### Scenario: A request with the TTABLE prefix
+- **GIVEN** a telnet framer with the character set `UTF-8`
+- **WHEN** it reads a CHARSET request that starts with `[TTABLE ]`, the version byte 1 and the list `;UTF-8`
+- **THEN** it replies `ACCEPTED UTF-8`
+
+#### Scenario: The character set is not offered
+- **GIVEN** a telnet framer with the character set `UTF-8`
+- **WHEN** it reads a CHARSET request with the list `;ISO-8859-1`
+- **THEN** it replies `REJECTED`
+
+#### Scenario: A TTABLE prefix with no version
+- **GIVEN** a telnet framer with the character set `UTF-8`
+- **WHEN** it reads a CHARSET request that holds only `[TTABLE ]`
+- **THEN** it replies `REJECTED`
+
+#### Scenario: Any payload
+- **WHEN** a property test gives the telnet framer CHARSET, TTYPE and GMCP subnegotiations with random payloads
+- **THEN** the framer returns from each read
+
+### Requirement: The telnet framer reports a protocol error
+The telnet framer SHALL give each protocol error of the engine as a message with the name `telnet` and a text that names the error.
+
+#### Scenario: A subnegotiation over the bound
+- **WHEN** the telnet framer reads a GMCP subnegotiation longer than 1 MiB
+- **THEN** it gives a message with the name `telnet` that names the option, and no GMCP message
+
+#### Scenario: A bad compressed stream
+- **GIVEN** a telnet framer where MCCP2 is on for the game
+- **WHEN** it reads `IAC SB MCCP2 IAC SE`, the bytes `00 01 02`, and in a later read `more\n`
+- **THEN** it gives one message with the name `telnet`, and no line or prompt
