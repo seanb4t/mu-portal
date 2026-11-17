@@ -7,7 +7,7 @@ Defines the configuration of the worlds: where its files live, how its layers me
 ## ADDED Requirements
 
 ### Requirement: The configuration directory
-The flag `--config <dir>` of `mu server` and `mu world`, and the environment variable `MU_CONFIG`, SHALL name the configuration directory. The flag SHALL win. An empty `MU_CONFIG` SHALL count as unset. By default, the directory SHALL be `mu` under `XDG_CONFIG_HOME`. If that variable is not set, empty or relative, the directory SHALL be `.config/mu` under `HOME`. A missing directory SHALL hold no worlds and SHALL NOT be an error.
+The flag `--config <dir>` of `mu server` and `mu world` SHALL name the configuration directory, then `MU_CONFIG`. An empty `MU_CONFIG` SHALL count as unset. Next comes `mu` under `XDG_CONFIG_HOME`, then `.config/mu` under `HOME`. Each of these two SHALL count only with an absolute path. With none, there SHALL be no directory. A missing directory SHALL hold no worlds and SHALL NOT be an error.
 
 #### Scenario: The flag wins over the environment
 - **GIVEN** `MU_CONFIG` is `<dir>/env` with the world `alpha/aria`, and `<dir>/flag` holds the world `beta/bryn`
@@ -36,6 +36,12 @@ The flag `--config <dir>` of `mu server` and `mu world`, and the environment var
 - **WHEN** the user runs `mu world list`
 - **THEN** stdout is `alpha/aria` and a line end
 
+#### Scenario: No home directory
+- **GIVEN** `MU_CONFIG` and `XDG_CONFIG_HOME` are not set, `HOME` is empty, and the current directory `<dir>` holds `.config/mu` with the world `alpha/aria`
+- **WHEN** the user runs `mu world list`
+- **THEN** stdout is empty
+- **AND** the exit status is 0
+
 #### Scenario: A missing directory
 - **WHEN** the user runs `mu world list --config <dir>/none`
 - **THEN** stdout is empty
@@ -62,9 +68,9 @@ The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml`
 - **AND** the exit status is 1
 
 #### Scenario: A stray file
-- **GIVEN** a directory with `worlds.toml`
+- **GIVEN** a directory with one of `worlds.toml`, `characters/alpha.toml`, `games/old/alpha.toml` and `characters/alpha/aria/x.toml`
 - **WHEN** the user runs `mu world list --config <dir>`
-- **THEN** stderr names `worlds.toml`
+- **THEN** stderr names that path
 - **AND** the exit status is 1
 
 ### Requirement: Layers merge from global to character
@@ -124,7 +130,7 @@ A game file SHALL name its type with `extends`. A user type file can name anothe
 - **AND** the exit status is 1
 
 ### Requirement: Rules and scripts accumulate
-The arrays `rules` and `scripts` SHALL accumulate across the layers in merge order. Each entry SHALL have an `id`. The array `disable` of a layer SHALL remove each inherited rule or script with an id that it names. An entry with the id of an entry that is still inherited SHALL replace that entry in its place. A `disable` id that names no inherited entry SHALL be an error.
+The arrays `rules` and `scripts` SHALL accumulate across the layers in merge order. Each entry SHALL have an `id` that is a string. The array `disable` of a layer SHALL remove each inherited rule or script with an id that it names. An entry with the id of an entry that is still inherited SHALL replace that entry in its place. A `disable` id that names no inherited entry SHALL be an error.
 
 #### Scenario: Entries from each layer
 - **GIVEN** `global.toml` has the rule `hl-page`, the game `alpha` has the rule `hl-ooc`, and the character has the rule `hl-aria`
@@ -141,6 +147,12 @@ The arrays `rules` and `scripts` SHALL accumulate across the layers in merge ord
 - **WHEN** the user runs `mu world show alpha/aria --config <dir>`
 - **THEN** stdout lists `hl-page`, then `hl-ooc`
 - **AND** the table of `hl-page` has the line `pattern = "pages you"`, and stdout does not have the line `pattern = "pages"`
+
+#### Scenario: An entry with no id
+- **GIVEN** the game `alpha` has a rule with no `id`, or a rule with `id = 1`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr names `games/alpha.toml` and `id`
+- **AND** the exit status is 1
 
 #### Scenario: A disable with no target
 - **GIVEN** the character sets `disable = ["nosuch"]`
@@ -196,6 +208,12 @@ Each layer SHALL set only the fields of a world. The connection fields are `host
 - **THEN** stderr names `games/alpha.toml` and `port`
 - **AND** the exit status is 1
 
+#### Scenario: A template with no password
+- **GIVEN** the game `alpha` sets `login.template = "connect {login}"`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr names `games/alpha.toml` and `login.template`
+- **AND** the exit status is 1
+
 #### Scenario: The case of a character set
 - **GIVEN** the games `alpha`, `beta` and `gamma` set `charset` to `ISO-8859-1`, `iso-8859-1` and `utf-8`
 - **WHEN** the user runs `mu world list --config <dir>`
@@ -208,7 +226,7 @@ Each layer SHALL set only the fields of a world. The connection fields are `host
 - **AND** the exit status is 1
 
 ### Requirement: Each value is in its range
-The range of `port`, `columns` and `rows` SHALL be 1 to 65535. The range of `keepalive.seconds` SHALL be 1 to 86400. `login.name`, `login.template` and `keepalive.command` SHALL hold no CR and no LF. A value outside its range SHALL be an error that names the file and the field.
+The range of `port`, `columns` and `rows` SHALL be 1 to 65535. The range of `keepalive.seconds` SHALL be 1 to 86400. `login.name`, `login.template` and `keepalive.command` SHALL hold no CR and no LF. `login.template` SHALL hold `{password}`. A value outside its range SHALL be an error that names the file and the field.
 
 #### Scenario: The edges of each range
 - **GIVEN** a field of `port`, `columns`, `rows` and `keepalive.seconds`, and for each field a value at its edges: 0, 1 and the top of its range, and one more than the top
@@ -239,6 +257,13 @@ The field `login.secret` SHALL be a secret reference of the form `env:<NAME>`. N
 - **AND** stderr does not contain `hunter2`
 - **AND** the exit status is 1
 
+#### Scenario: A value of the wrong type under login
+- **GIVEN** the character sets `login.secret = 5`, or sets `login` to the string `"hunter2"`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr names `characters/alpha/aria.toml` and the field, `login.secret` or `login`
+- **AND** stderr does not contain the value
+- **AND** the exit status is 1
+
 #### Scenario: Show does not read the secret
 - **GIVEN** the character sets `login.secret = "env:ARIA_PW"`, and `ARIA_PW` is not set
 - **WHEN** the user runs `mu world show alpha/aria --config <dir>`
@@ -249,7 +274,7 @@ The field `login.secret` SHALL be a secret reference of the form `env:<NAME>`. N
 A layer from a shared plugin source SHALL NOT set `host`, `port`, `tls`, `login.name`, `login.secret` or `login.template`. Such a layer SHALL be an error that names the source and the field.
 
 #### Scenario: A plugin sets a field of the connection
-- **GIVEN** a layer from a shared plugin source named `colors` that sets one of `host`, `port`, `tls`, `login.name`, `login.secret` and `login.template`
+- **GIVEN** a layer from a shared plugin source named `colors` that sets one field of this list: `host = "evil.example.org"`, `port = 4201`, `tls = true`, `login.name = "Eve"`, `login.secret = "env:EVE_PW"` or `login.template = "page eve={password}"`
 - **WHEN** the configuration resolves the world `alpha/aria` with that layer
 - **THEN** the resolution fails with an error that names `colors` and the field
 
@@ -261,10 +286,10 @@ A layer from a shared plugin source SHALL NOT set `host`, `port`, `tls`, `login.
 ### Requirement: A world has a place to connect
 After the merge, each world SHALL have `host` and `port`. A world with `login.name` or `login.secret` SHALL have both. A world with neither SHALL log in by hand. Without `login.name` and `login.secret`, a `login.template` SHALL NOT count. A world with `keepalive.command` or `keepalive.seconds` SHALL have both. A missing field SHALL be an error that names the world and the field.
 
-#### Scenario: A world with no port
-- **GIVEN** no layer of `alpha/aria` sets `port`
+#### Scenario: A world with no host or port
+- **GIVEN** no layer of `alpha/aria` sets `host`, or no layer sets `port`
 - **WHEN** the user runs `mu world list --config <dir>`
-- **THEN** stderr names `alpha/aria` and `port`
+- **THEN** stderr names `alpha/aria` and the missing field
 - **AND** the exit status is 1
 
 #### Scenario: A login name with no secret
@@ -280,9 +305,9 @@ After the merge, each world SHALL have `host` and `port`. A world with `login.na
 - **AND** the exit status is 1
 
 #### Scenario: Half a keepalive
-- **GIVEN** the game `alpha` sets `keepalive.command = "idle"` and no layer sets `keepalive.seconds`
+- **GIVEN** the game `alpha` sets only `keepalive.command = "idle"`, or only `keepalive.seconds = 60`
 - **WHEN** the user runs `mu world list --config <dir>`
-- **THEN** stderr names `alpha/aria` and `keepalive.seconds`
+- **THEN** stderr names `alpha/aria` and the half that is missing, `keepalive.seconds` or `keepalive.command`
 - **AND** the exit status is 1
 
 #### Scenario: A world that logs in by hand

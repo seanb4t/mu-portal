@@ -43,6 +43,6 @@ Today a world exists only through the hidden `--fake-world` flag of `mu server`.
 
 - Code: a new module `world` in `mu-core` for the layers, the merge and the built-in types, with the type files in `crates/mu-core/src/world/types/`. `ResolvedWorld` and `Login` grow. `mu-cli` gains the `world` verb and the `--config` flag. `mu-server` gains the configured worlds that have no transport.
 - API: no change to `portal.proto`. `ListWorlds` returns more worlds, and `Connect` returns `failed-precondition` for a configured world.
-- Dependencies: `figment2` with no features, and `serde`, through `[workspace.dependencies]`. `mu-core` also takes `toml`, which is already in `[workspace.dependencies]`. `ALLOWED_CRATES` of `mu-core` in the boundary test gains all three.
-- Tests: one base launcher starts each `mu` of a test. It points `MU_CONFIG` at an empty directory, so that the configuration of the developer never leaks in.
+- Dependencies: `figment2` with no features, `serde` and `serde_path_to_error`, through `[workspace.dependencies]`. `mu-core` also takes `toml`, which is already in `[workspace.dependencies]`. `ALLOWED_CRATES` of `mu-core` in the boundary test gains all four. `mu-cli` moves `toml` from its dev-dependencies to its dependencies.
+- Tests: one shared list of changes to the environment applies to each `mu` of a test. It points `MU_CONFIG` at an empty directory, so that the configuration of the developer never leaks in.
 - Docs: the world-type-profiles decision page names `figment2`, and a new page in the user docs describes the files.

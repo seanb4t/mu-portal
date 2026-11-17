@@ -13,7 +13,9 @@ See proposal.md, section Why. These are the facts of the code that shape the des
 - `is_part` in `crates/mu-core/src/id.rs` checks one part of a world id. It is private.
 - `SocketValue` and `parse_socket` in `crates/mu-cli/src/socket.rs` read an empty value as none.
 - The crate root of `mu-core` exports `Source`, the source of an event.
-- `mu-cli` already depends on `toml`. `mu-core` depends on no TOML crate.
+- `mu-cli` has `toml` only as a dev-dependency. `mu-core` depends on no TOML crate.
+- The crate root of `mu-core` also exports `Origin`, the maker of a command.
+- `has_line_break` in `crates/mu-core/src/framer.rs` is the check for CR and LF that `secret.rs` and `session.rs` share.
 - The decision page `world-type-profiles.md` names `figment`. The page `telnet-engine.md` records the quirks that the spike of issue 7 found (pull request #32).
 
 ## Goals / Non-Goals
@@ -37,17 +39,21 @@ See proposal.md, section Why. These are the facts of the code that shape the des
 
 The resolver reads each file with the `toml` crate into a typed struct with `deny_unknown_fields`, before any merge. A bad field fails in its own file, and so does a bad type or a value out of range. Thus the error names that file and that field.
 
-Each kind of file has its own struct, so `extends` has one rule for each kind. `GameFile` requires `extends`. `TypeFile` accepts it. `GlobalFile` and `CharacterFile` do not have the field, so `deny_unknown_fields` refuses it. All four share `LayerFields`.
+Each file parses into one struct, `LayerFile`, which holds the fields of `LayerFields` and an optional `extends`. The struct does not use `#[serde(flatten)]`, because `deny_unknown_fields` does not work with it. The walk of the directory then checks `extends` for the kind of the file. A game requires it, and a type accepts it. `global.toml` and a character file refuse it, with an error that names the file and `extends`.
 
 The parse checks these values:
 
 - `login.secret` with `SecretRef::from_str`. The parse maps a `BadSecretRef` to a `ConfigError` that names the file and `login.secret`. The error never holds the text of `BadSecretRef` or its `Display`, because that text is the rejected value.
 - `charset` against `Charset::name`, with no regard to case. Thus `iso-8859-1` and `ISO-8859-1` are the same name.
 - `port`, `columns` and `rows` from 1 to 65535, and `keepalive.seconds` from 1 to 86400.
-- `login.name`, `login.template` and `keepalive.command` hold no CR and no LF, because the session writes each one as a line.
+- `login.name`, `login.template` and `keepalive.command` hold no CR and no LF, because the session writes each one as a line. The check uses `has_line_break` of `framer.rs`, which `secret.rs` and `session.rs` already share.
+- `login.template` holds `{password}`. Without it, the login sends no password.
+- Each entry of `rules` and `scripts` has an `id` that is a string.
 - No id repeats in one array of one layer.
 
-A `ConfigError` of a parse keeps the file, the key path, the line and the column of the `toml` error. It drops the snippet of the source line, because that line can hold a password. Under `login`, it also drops the message of `toml`, because a message of `serde` can quote the value. In its place, it says that the value is not valid.
+The parse runs the deserializer of `toml` through `serde_path_to_error`. That crate gives the path of the field that failed, such as `login.password` or `port`, for every error of `serde`. The `toml` error keeps its own path private, so the project needs this crate to name the field. A probe on 2026-11-17 used `toml` 1.2.1. It gave the path, the span and the message for three errors. They were an unknown field, a value out of range, and a value of the wrong type under `login`.
+
+A `ConfigError` of a parse holds the file, the path, and the line and the column that the span gives. It never holds the `Display` of the `toml` error, because that text quotes the source line, and the line can hold a password. For a path outside `login`, it keeps the message of `toml`. For a path under `login`, it says only that the value is not valid, because a message of `serde` can quote the value.
 
 Alternative: merge first and check the merged result. The error then names the field but not always the file that broke it, and a value that a later layer hides goes unchecked.
 
@@ -102,7 +108,7 @@ It checks each name, game and character with `is_part`, which becomes `pub(crate
 
 ### Built-in types and the quirk schema
 
-The built-in types live in `crates/mu-core/src/world/types/<name>.toml`, and `include_str!` puts them in the binary. The resolver reads them through a separate `Quirks` struct with `deny_unknown_fields`, which holds only `charset`, `login.template` and `keepalive`. Thus a built-in type that sets `columns` fails each start and each test. The test `built_in_types_hold_only_quirks` reads each file through `Quirks`.
+The built-in types live in `crates/mu-core/src/world/types/<name>.toml`, and `include_str!` puts them in the binary. The resolver reads them through a separate `Quirks` struct, which holds only `charset`, `login.template` and `keepalive`. `Quirks` and its nested table of `login` both have `deny_unknown_fields`, so `[login] name` fails too. Thus a built-in type that sets `columns` fails each start and each test. The test `built_in_types_hold_only_quirks` reads each file through `Quirks`.
 
 Task 1.1 fills the values from sources. TinyMUX gets `charset = "iso-8859-1"`, from the decision page of the telnet engine. The login template and the keepalive of each type come from the documentation or the source of each server. If a source names a command that the server accepts with no effect, the type sets a keepalive. Otherwise it sets none.
 
@@ -111,17 +117,17 @@ Task 1.1 fills the values from sources. TinyMUX gets `charset = "iso-8859-1"`, f
 ```rust
 pub enum LayerKey { Global, Type(String), Game(String), Character(WorldId), Plugin(String) }
 pub enum Trust { Owner, SharedPlugin }
-pub struct Layer { pub key: LayerKey, pub origin: Origin, pub trust: Trust, pub fields: LayerFields }
+pub struct Layer { pub key: LayerKey, pub origin: LayerOrigin, pub trust: Trust, pub fields: LayerFields }
 pub trait LayerSource { fn layers(&self) -> Result<Vec<Layer>, ConfigError>; }
 ```
 
-`Origin` is the source of a layer or a field: a file, a built-in type, a plugin or the default. It has its own name, so `Source` keeps one meaning in the crate root.
+`LayerOrigin` is the source of a layer or a field: a file, a built-in type, a plugin or the default. The crate root already exports `Source` and `Origin`, so the new type takes a name that neither has.
 
 The resolver takes the layers of each source, builds the chain of each world, and checks trust before the merge. A layer with `Trust::SharedPlugin` that sets `host`, `port`, `tls`, `login.name`, `login.secret` or `login.template` fails with the plugin name and the field. The template decides where the password goes, so a plugin cannot set it. In this change, only tests build a plugin layer, and the resolver puts it between the game and the character. A Lua source later returns `Layer` values of its own.
 
 ### The resolved world
 
-`ResolvedWorld` gains the connection fields `host`, `port` and `tls`. It gains `charset`, `columns`, `rows`, and `keepalive`, an `Option` of a command and a period. It also gains `rules`, `scripts` and `sources`, a map from a field path to its `Origin`. `Login.template` comes from the merge, and `Login.name` comes from `login.name`. The fake world keeps `with_default_login`, which fills the new fields from `WorldDefaults`.
+`ResolvedWorld` gains the connection fields `host`, `port` and `tls`. It gains `charset`, `columns`, `rows`, and `keepalive`, an `Option` of a command and a period. It also gains `rules`, `scripts` and `sources`, a map from a field path to its `LayerOrigin`. `Login.template` comes from the merge, and `Login.name` comes from `login.name`. The fake world keeps `with_default_login`, which fills the new fields from `WorldDefaults`.
 
 ### The check after the merge
 
@@ -133,13 +139,13 @@ After the merge, the resolver checks each world. Each error names the world id a
 
 ### The configuration directory
 
-A new module `crates/mu-cli/src/env_path.rs` holds two helpers. One parses a value and reads an empty value as none. The other looks up an XDG base and accepts only an absolute path. `SocketArgs` moves to them, and `ConfigArgs` uses them. `mu-cli` gets `ConfigArgs`, with `--config` and the order `--config`, `MU_CONFIG`, `XDG_CONFIG_HOME/mu`, then `HOME/.config/mu`, on Linux and macOS alike. An empty or relative `XDG_CONFIG_HOME` is ignored, as the XDG Base Directory specification asks. macOS has no other convention that a terminal user expects for a CLI tool. A missing directory is an empty configuration, so `mu server` with no configuration still starts.
+A new module `crates/mu-cli/src/env_path.rs` holds two helpers. One parses a value and reads an empty value as none. The other looks up an XDG base and accepts only an absolute path. `SocketArgs` moves to them, and `ConfigArgs` uses them. `mu-cli` gets `ConfigArgs`, with `--config` and the order `--config`, `MU_CONFIG`, `XDG_CONFIG_HOME/mu`, then `HOME/.config/mu`, on Linux and macOS alike. An empty or relative `XDG_CONFIG_HOME` is ignored, as the XDG Base Directory specification asks. `HOME` goes through the same check. If `HOME` is unset, empty or relative, there is no default directory, and the configuration holds no worlds. macOS has no other convention that a terminal user expects for a CLI tool. A missing directory is an empty configuration, so `mu server` with no configuration still starts.
 
 ### `mu world`
 
 `mu world list` prints the ids in the order of `WorldId`, one on each line. `mu world show <id>` prints the resolved world as TOML. Each field ends with a comment `# <source>`, and each `[[rules]]` and `[[scripts]]` table has a comment line with its source above it. `show` resolves all worlds first, so a bad file fails `show` as it fails the server. The verb reads files only, and needs no server and no secret.
 
-`show` writes each line as `<key> = <value> # <source>`. The `Display` of `toml::Value` writes each value, so the `toml` crate quotes and escapes each string. The project writes no quoting of its own.
+`show` writes each field of the world as `<key> = <value> # <source>`. The keys of these fields are fixed names, and the `Display` of `toml::Value` writes each value. Each entry of `rules` and `scripts` is a `toml::Table`, and `toml::to_string` writes it under its comment line. Thus the `toml` crate quotes and escapes each key and each value of an entry. The project writes no quoting of its own. `mu-cli` takes `toml` as a normal dependency for this.
 
 ### Configured worlds in the server
 
@@ -147,7 +153,7 @@ A new module `crates/mu-cli/src/env_path.rs` holds two helpers. One parses a val
 
 ### Tests do not read the configuration of the developer
 
-One base launcher in `crates/mu-cli/tests/support/` builds the `Command` of each `mu` that a test starts. It removes `MU_SOCKET` and sets `MU_CONFIG` to an empty directory of the test. `ServerBuilder`, `PtyClient`, `mu_on_pty` and `mu_with` all start from it. A `mu client` that starts a server passes this environment to it. A test that needs a configuration writes one to its temporary directory and passes `--config` or `MU_CONFIG`.
+The launchers use three types of command: the one of `std`, the one of `tokio`, and `CommandBuilder` of `portable_pty`. Thus the shared part is one list of changes to the environment, in the shape `(name, Option<value>)` that `ServerBuilder` and `mu_with` already take. The list removes `MU_SOCKET` and sets `MU_CONFIG` to an empty directory of the test. `ServerBuilder`, `PtyClient`, `mu_on_pty`, `mu_with` and the `Command` of `non_utf8_verb_is_usage_error` in `cli.rs` each apply it to their own command. A `mu client` that starts a server passes this environment to it. A test that needs a configuration writes one to its temporary directory and passes `--config` or `MU_CONFIG`.
 
 ### Using the spike
 
@@ -163,18 +169,18 @@ This change uses one fact of the spike of issue 7, so it follows "Using a spike"
 
 | Rule | Enforced by |
 |---|---|
-| A built-in type sets only quirks | The `Quirks` struct with `deny_unknown_fields`, and the test `built_in_types_hold_only_quirks`. |
+| A built-in type sets only quirks | The `Quirks` struct with `deny_unknown_fields`, the test `built_in_types_hold_only_quirks`, and the test `quirks_refuse_other_fields`. |
 | A shared plugin cannot set the connection | The trust check in the resolver, the table test `plugin_cannot_set_the_connection` over the six fields, and `plugin_can_set_a_preference`. |
 | No file holds a password | `deny_unknown_fields` and the `SecretRef` parse, and the tests `password_in_a_file` and `secret_that_is_not_a_reference`, which also check that stderr does not hold the value. |
-| No error prints a secret value | `ConfigError` drops the source snippet, the message under `login`, and the text of `BadSecretRef`. The two tests above check stderr. |
+| No error prints a secret value | `ConfigError` holds no `Display` of a `toml` error, no message under `login`, and no text of `BadSecretRef`. The tests `password_in_a_file`, `secret_that_is_not_a_reference` and `wrong_type_under_login` check stderr. |
 | No line field holds CR or LF | The parse of each layer, and the test `line_break_in_a_line_field`. |
 | Rules and scripts keep unique ids in the order of their first layer | The parse and the resolver, and the property test `accumulation_matches_a_model`. |
-| `mu world show` prints TOML that parses | The `Display` of `toml::Value`, and the property test `show_output_parses_back`. |
+| `mu world show` prints TOML that parses | The `toml` crate writes each value and each key of an entry, and the property test `show_output_parses_back` generates keys and values from any string. |
 | No resolution reads a secret | The resolver takes no `SecretStore`, and the tests `show_does_not_read_the_secret` and `server_does_not_read_a_configured_secret`. |
-| A layer that does not set a field keeps the value of an earlier layer | `skip_serializing_if = "Option::is_none"` on each optional field of `LayerFields`, `Login` and `Keepalive`. If one field lacks it, `empty_layer_gives_figment_no_keys`, `login_name_only_gives_one_key` or `keepalive_command_only_gives_one_key` fails. |
+| A layer that does not set a field keeps the value of an earlier layer | `skip_serializing_if = "Option::is_none"` on each optional field of `LayerFields`, `Login` and `Keepalive`. If one field lacks it, `empty_layer_gives_figment_no_keys` or `each_nested_field_alone_gives_one_key` fails. The second is a table test over each field of `login` and `keepalive`. |
 | A loop in `extends` fails | The tests `loop_of_types` and `type_that_extends_itself`. |
 | `mu-core` takes only allowed crates | `ALLOWED_CRATES` in the boundary test, with `figment2`, `serde` and `toml`, and `cargo deny check`. |
-| A test never reads the configuration of the developer | The base launcher, and the test `helper_points_mu_config_at_an_empty_directory`. Review covers a test that builds a `Command` of its own. |
+| A test never reads the configuration of the developer | The shared list of changes to the environment, and the test `helper_points_mu_config_at_an_empty_directory`. Review covers a test that builds a `Command` of its own. |
 | Each fact about `figment2`, XDG and the servers holds | Task 1.1 reads the sources and fills the table of checked facts. |
 
 ## Risks / Trade-offs
