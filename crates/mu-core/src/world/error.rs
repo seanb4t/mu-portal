@@ -32,9 +32,39 @@ impl ConfigError {
         Self::new(place, format!("{field}: {message}"))
     }
 
+    /// An error in the field of `error` at `place`.
+    pub(crate) fn of_field(place: impl fmt::Display, error: &FieldError) -> Self {
+        Self::field(place, &error.field, &error.message)
+    }
+
     /// The place of the error, such as `games/alpha.toml:3:1` or `alpha/aria`.
     #[must_use]
     pub fn place(&self) -> &str {
         &self.place
+    }
+}
+
+/// A value that breaks a rule of its field: the path of the field, such as `login.template`,
+/// and what is wrong. The text never holds the value.
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+#[error("{field}: {message}")]
+pub struct FieldError {
+    field: String,
+    message: String,
+}
+
+impl FieldError {
+    /// An error in the field `field`.
+    pub(crate) fn new(field: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            field: field.into(),
+            message: message.into(),
+        }
+    }
+
+    /// The path of the field.
+    #[must_use]
+    pub fn field(&self) -> &str {
+        &self.field
     }
 }

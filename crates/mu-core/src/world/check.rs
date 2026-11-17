@@ -1,12 +1,13 @@
-//! The checks of the values of one layer, which the resolver runs on each layer before the
-//! trust check and the merge.
+//! The checks of one layer: its values, then its trust. Each layer passes them before the merge.
+//! [`Login::new`](super::Login::new) and [`Keepalive::new`](super::Keepalive::new) run the same
+//! checks of their values.
 
 use std::collections::BTreeSet;
 
 use crate::framer::{Charset, has_line_break};
 use crate::secret::SecretRef;
 
-use super::error::ConfigError;
+use super::error::{ConfigError, FieldError};
 use super::layer::{Layer, LayerFields, Trust};
 
 /// The highest value of `keepalive.seconds`: one day.
@@ -14,8 +15,7 @@ pub(crate) const MAX_KEEPALIVE_SECONDS: u32 = 86_400;
 
 /// Checks the values of `layer`, then its trust.
 pub(crate) fn check_layer(layer: &Layer) -> Result<(), ConfigError> {
-    check_fields(&layer.fields)
-        .map_err(|(field, message)| ConfigError::field(&layer.origin, field, message))?;
+    check_fields(&layer.fields).map_err(|error| ConfigError::of_field(&layer.origin, &error))?;
     if layer.trust == Trust::SharedPlugin
         && let Some(field) = connection_field(&layer.fields)
     {
@@ -43,9 +43,48 @@ fn connection_field(fields: &LayerFields) -> Option<&'static str> {
     .find_map(|(field, set)| set.then_some(field))
 }
 
-/// Checks each value of `fields`, and returns the field and the message of the first error.
-fn check_fields(fields: &LayerFields) -> Result<(), (String, String)> {
-    let fail = |field: &str, message: &str| Err((field.to_owned(), message.to_owned()));
+/// Checks the name and the template of a login.
+pub(crate) fn check_login(name: Option<&str>, template: Option<&str>) -> Result<(), FieldError> {
+    if name.is_some_and(has_line_break) {
+        return Err(FieldError::new("login.name", "must hold no CR and no LF"));
+    }
+    if let Some(template) = template {
+        if has_line_break(template) {
+            return Err(FieldError::new(
+                "login.template",
+                "must hold no CR and no LF",
+            ));
+        }
+        if !template.contains("{password}") {
+            return Err(FieldError::new("login.template", "must hold {password}"));
+        }
+    }
+    Ok(())
+}
+
+/// Checks the command and the seconds of a keepalive.
+pub(crate) fn check_keepalive(
+    command: Option<&str>,
+    seconds: Option<u32>,
+) -> Result<(), FieldError> {
+    if command.is_some_and(has_line_break) {
+        return Err(FieldError::new(
+            "keepalive.command",
+            "must hold no CR and no LF",
+        ));
+    }
+    if seconds.is_some_and(|seconds| !(1..=MAX_KEEPALIVE_SECONDS).contains(&seconds)) {
+        return Err(FieldError::new(
+            "keepalive.seconds",
+            "must be from 1 to 86400",
+        ));
+    }
+    Ok(())
+}
+
+/// Checks each value of `fields`, and returns the error of the first one that fails.
+fn check_fields(fields: &LayerFields) -> Result<(), FieldError> {
+    let fail = |field: &str, message: &str| Err(FieldError::new(field, message));
     for (field, value) in [
         ("port", fields.port),
         ("columns", fields.columns),
@@ -61,17 +100,7 @@ fn check_fields(fields: &LayerFields) -> Result<(), (String, String)> {
         return fail("charset", "must be UTF-8 or ISO-8859-1");
     }
     if let Some(login) = &fields.login {
-        if login.name.as_deref().is_some_and(has_line_break) {
-            return fail("login.name", "must hold no CR and no LF");
-        }
-        if let Some(template) = &login.template {
-            if has_line_break(template) {
-                return fail("login.template", "must hold no CR and no LF");
-            }
-            if !template.contains("{password}") {
-                return fail("login.template", "must hold {password}");
-            }
-        }
+        check_login(login.name.as_deref(), login.template.as_deref())?;
         if let Some(secret) = &login.secret
             && secret.parse::<SecretRef>().is_err()
         {
@@ -82,34 +111,29 @@ fn check_fields(fields: &LayerFields) -> Result<(), (String, String)> {
         }
     }
     if let Some(keepalive) = &fields.keepalive {
-        if keepalive.command.as_deref().is_some_and(has_line_break) {
-            return fail("keepalive.command", "must hold no CR and no LF");
-        }
-        if keepalive
-            .seconds
-            .is_some_and(|seconds| !(1..=MAX_KEEPALIVE_SECONDS).contains(&seconds))
-        {
-            return fail("keepalive.seconds", "must be from 1 to 86400");
-        }
+        check_keepalive(keepalive.command.as_deref(), keepalive.seconds)?;
     }
     check_ids(fields)
 }
 
 /// Checks that each entry has a string id, and that no id repeats among the rules and the
 /// scripts of the layer.
-fn check_ids(fields: &LayerFields) -> Result<(), (String, String)> {
+fn check_ids(fields: &LayerFields) -> Result<(), FieldError> {
     let mut seen = BTreeSet::new();
     for (array, entries) in [("rules", &fields.rules), ("scripts", &fields.scripts)] {
         for (index, entry) in entries.iter().enumerate() {
             let field = format!("{array}[{index}].id");
             let Some(id) = entry.get("id") else {
-                return Err((field, "an entry must have an id".to_owned()));
+                return Err(FieldError::new(field, "an entry must have an id"));
             };
             let Some(id) = id.as_str() else {
-                return Err((field, "must be a string".to_owned()));
+                return Err(FieldError::new(field, "must be a string"));
             };
             if !seen.insert(id) {
-                return Err((field, format!("the id {id} repeats in this file")));
+                return Err(FieldError::new(
+                    field,
+                    format!("the id {id} repeats in this file"),
+                ));
             }
         }
     }

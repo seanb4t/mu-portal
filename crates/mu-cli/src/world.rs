@@ -101,13 +101,11 @@ fn value_of(world: &ResolvedWorld, path: &str) -> Option<toml::Value> {
         "charset" => world.charset.name().to_ascii_lowercase().into(),
         "columns" => i64::from(world.columns).into(),
         "rows" => i64::from(world.rows).into(),
-        "login.template" => login?.template.clone().into(),
-        "login.name" => login?.name.clone().into(),
-        "login.secret" => login?.secret.to_string().into(),
-        "keepalive.command" => keepalive?.command.clone().into(),
-        "keepalive.seconds" => i64::try_from(keepalive?.period.as_secs())
-            .unwrap_or(i64::MAX)
-            .into(),
+        "login.template" => login?.template().into(),
+        "login.name" => login?.name().into(),
+        "login.secret" => login?.secret().to_string().into(),
+        "keepalive.command" => keepalive?.command().into(),
+        "keepalive.seconds" => i64::from(keepalive?.seconds()).into(),
         _ => return None,
     })
 }
@@ -125,8 +123,6 @@ fn render_entry(array: &str, entry: &Entry) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use mu_core::{Keepalive, Login};
 
     use super::*;
@@ -134,15 +130,15 @@ mod tests {
     #[test]
     fn each_field_path_has_a_value() {
         let world = ResolvedWorld {
-            login: Some(Login {
-                template: "connect {login} {password}".to_owned(),
-                name: "Aria".to_owned(),
-                secret: "env:ARIA_PW".parse().unwrap(),
-            }),
-            keepalive: Some(Keepalive {
-                command: "idle".to_owned(),
-                period: Duration::from_secs(60),
-            }),
+            login: Some(
+                Login::new(
+                    "connect {login} {password}",
+                    "Aria",
+                    "env:ARIA_PW".parse().unwrap(),
+                )
+                .unwrap(),
+            ),
+            keepalive: Some(Keepalive::new("idle", 60).unwrap()),
             ..ResolvedWorld::new("alpha/aria".parse().unwrap())
         };
         for path in FIELD_PATHS {

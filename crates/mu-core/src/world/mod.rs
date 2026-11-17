@@ -18,7 +18,7 @@ mod resolve;
 
 pub use builtin::{BUILT_IN_TYPES, built_in_layers, parse_quirks};
 pub use dir::TomlDirSource;
-pub use error::ConfigError;
+pub use error::{ConfigError, FieldError};
 pub use layer::{
     KeepaliveFields, Layer, LayerFields, LayerKey, LayerOrigin, LayerSource, LoginFields, Trust,
 };
@@ -56,18 +56,55 @@ impl Default for WorldDefaults {
     }
 }
 
-/// How a world logs in.
+/// How a world logs in. Its template holds `{password}`, and neither the template nor the name
+/// holds a CR or an LF, so the login is one line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Login {
-    /// The line to send, with `{login}` and `{password}` in it.
-    pub template: String,
-    /// The login name.
-    pub name: String,
-    /// Where the password comes from.
-    pub secret: SecretRef,
+    template: String,
+    name: String,
+    secret: SecretRef,
 }
 
 impl Login {
+    /// A login that sends `template`, with `{login}` and `{password}` in it, as `name`, with
+    /// the password from `secret`.
+    ///
+    /// # Errors
+    ///
+    /// A [`FieldError`] when `template` holds no `{password}`, or `template` or `name` holds a
+    /// CR or an LF.
+    pub fn new(
+        template: impl Into<String>,
+        name: impl Into<String>,
+        secret: SecretRef,
+    ) -> Result<Self, FieldError> {
+        let (template, name) = (template.into(), name.into());
+        check::check_login(Some(&name), Some(&template))?;
+        Ok(Self {
+            template,
+            name,
+            secret,
+        })
+    }
+
+    /// The line to send, with `{login}` and `{password}` in it.
+    #[must_use]
+    pub fn template(&self) -> &str {
+        &self.template
+    }
+
+    /// The login name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Where the password comes from.
+    #[must_use]
+    pub fn secret(&self) -> &SecretRef {
+        &self.secret
+    }
+
     /// The login line for `password`.
     #[must_use]
     pub fn line(&self, password: &str) -> String {
@@ -77,13 +114,43 @@ impl Login {
     }
 }
 
-/// A command that the session sends at a fixed period, so the connection stays open.
+/// The keepalive of a world: a line to send, and the seconds between two sends, from 1 to
+/// 86400. The line holds no CR and no LF.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Keepalive {
+    command: String,
+    seconds: u32,
+}
+
+impl Keepalive {
+    /// A keepalive that sends `command` every `seconds`.
+    ///
+    /// # Errors
+    ///
+    /// A [`FieldError`] when `command` holds a CR or an LF, or `seconds` is not from 1 to 86400.
+    pub fn new(command: impl Into<String>, seconds: u32) -> Result<Self, FieldError> {
+        let command = command.into();
+        check::check_keepalive(Some(&command), Some(seconds))?;
+        Ok(Self { command, seconds })
+    }
+
     /// The line to send.
-    pub command: String,
+    #[must_use]
+    pub fn command(&self) -> &str {
+        &self.command
+    }
+
+    /// The seconds between two sends.
+    #[must_use]
+    pub fn seconds(&self) -> u32 {
+        self.seconds
+    }
+
     /// The time between two sends.
-    pub period: Duration,
+    #[must_use]
+    pub fn period(&self) -> Duration {
+        Duration::from_secs(u64::from(self.seconds))
+    }
 }
 
 /// Whether an entry is a rule or a script.
@@ -111,9 +178,10 @@ pub struct Entry {
 pub struct ResolvedWorld {
     /// The id of the world.
     pub id: WorldId,
-    /// The host of the game. A fake world has an empty host.
+    /// The host of the game. The resolver never gives an empty host, but
+    /// [`ResolvedWorld::new`] does.
     pub host: String,
-    /// The port of the game. A fake world has port 0.
+    /// The port of the game. The resolver never gives port 0, but [`ResolvedWorld::new`] does.
     pub port: u16,
     /// Whether the connection uses TLS.
     pub tls: bool,
@@ -127,9 +195,10 @@ pub struct ResolvedWorld {
     pub login: Option<Login>,
     /// The keepalive, or none.
     pub keepalive: Option<Keepalive>,
-    /// The rules, in the order of their first layer.
+    /// The rules, in the order that their ids were added. An override keeps its place, and an
+    /// id that is disabled and added again moves to the end.
     pub rules: Vec<Entry>,
-    /// The scripts, in the order of their first layer.
+    /// The scripts, in the same order as the rules.
     pub scripts: Vec<Entry>,
     /// The source of each field that the world has, by its path such as `login.name`.
     pub sources: BTreeMap<String, LayerOrigin>,
@@ -159,6 +228,7 @@ impl ResolvedWorld {
     /// A world that logs in with the default template and its character part as the name.
     #[must_use]
     pub fn with_default_login(id: WorldId, secret: SecretRef) -> Self {
+        // The default template and the id rule pass the checks of `Login::new`.
         let login = Login {
             template: WorldDefaults::default().login_template.to_owned(),
             name: id.character().to_owned(),
@@ -182,5 +252,31 @@ mod tests {
             "env:ALPHA_PW".parse().unwrap(),
         );
         assert_eq!(world.login.unwrap().line("pw"), "connect aria pw");
+    }
+
+    #[test]
+    fn login_refuses_a_bad_template_or_name() {
+        let secret = || "env:PW".parse::<SecretRef>().unwrap();
+        for (template, name, field) in [
+            ("connect {login}", "aria", "login.template"),
+            ("connect {login} {password}\nlook", "aria", "login.template"),
+            ("connect {login} {password}", "aria\r", "login.name"),
+        ] {
+            let error = Login::new(template, name, secret()).unwrap_err();
+            assert_eq!(error.field(), field, "{template:?} {name:?}");
+        }
+        assert!(Login::new("connect {login} {password}", "aria", secret()).is_ok());
+    }
+
+    #[test]
+    fn keepalive_refuses_a_bad_command_or_period() {
+        for (command, seconds) in [("idle", 0), ("idle", 86_401), ("idle\n", 60)] {
+            assert!(
+                Keepalive::new(command, seconds).is_err(),
+                "{command:?} {seconds}"
+            );
+        }
+        let keepalive = Keepalive::new("idle", 86_400).unwrap();
+        assert_eq!(keepalive.period(), Duration::from_secs(86_400));
     }
 }

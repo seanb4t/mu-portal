@@ -180,7 +180,7 @@ fn keepalive_of_a_built_in_type_resolves() {
     let worlds = resolve(&[&Layers(base(LayerFields::default()))]).unwrap();
     let keepalive = worlds[0].keepalive.clone().unwrap();
     assert_eq!(
-        (keepalive.command.as_str(), keepalive.period.as_secs()),
+        (keepalive.command(), keepalive.period().as_secs()),
         ("IDLE", 60)
     );
 }

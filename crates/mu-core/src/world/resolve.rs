@@ -2,7 +2,6 @@
 //! accumulates the rules and the scripts, and checks the result.
 
 use std::collections::BTreeMap;
-use std::time::Duration;
 
 use figment2::Figment;
 use figment2::providers::{Named, Serialized};
@@ -19,7 +18,8 @@ use super::layer::{
 };
 use super::{Entry, EntryKind, Keepalive, Login, ResolvedWorld, WorldDefaults};
 
-/// The paths of the fields that a resolved world can have, in the order of `mu world show`.
+/// The paths of the fields that a resolved world can have, in the order of `mu world show`. A
+/// field of [`LayerFields`] that is not here gets no source.
 pub const FIELD_PATHS: &[&str] = &[
     "host",
     "port",
@@ -280,13 +280,16 @@ fn finish(
         .ok_or_else(|| missing("charset"))?;
     let login = merged.login.unwrap_or_default();
     let login = match (login.name, login.secret) {
-        (Some(name), Some(secret)) => Some(Login {
-            template: login.template.ok_or_else(|| missing("login.template"))?,
-            name,
-            secret: secret.parse::<SecretRef>().map_err(|_| {
+        (Some(name), Some(secret)) => {
+            let template = login.template.ok_or_else(|| missing("login.template"))?;
+            let secret = secret.parse::<SecretRef>().map_err(|_| {
                 ConfigError::field(&id, "login.secret", "is not a secret reference")
-            })?,
-        }),
+            })?;
+            Some(
+                Login::new(template, name, secret)
+                    .map_err(|error| ConfigError::of_field(&id, &error))?,
+            )
+        }
         (Some(_), None) => return Err(missing("login.secret")),
         (None, Some(_)) => return Err(missing("login.name")),
         (None, None) => None,
@@ -296,10 +299,9 @@ fn finish(
         KeepaliveFields {
             command: Some(command),
             seconds: Some(seconds),
-        } => Some(Keepalive {
-            command,
-            period: Duration::from_secs(u64::from(seconds)),
-        }),
+        } => Some(
+            Keepalive::new(command, seconds).map_err(|error| ConfigError::of_field(&id, &error))?,
+        ),
         KeepaliveFields {
             command: Some(_),
             seconds: None,

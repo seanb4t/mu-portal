@@ -720,7 +720,6 @@ fn user_type_with_a_built_in_name() {
 
 mod parses_back {
     use std::collections::BTreeMap;
-    use std::time::Duration;
 
     use mu_core::world::{Entry, LayerOrigin};
     use mu_core::{Keepalive, Login, ResolvedWorld};
@@ -768,21 +767,17 @@ mod parses_back {
         #[test]
         fn show_output_parses_back(
             host in any::<String>(),
-            name in any::<String>(),
-            template in any::<String>(),
-            command in any::<String>(),
+            name in "[^\r\n]*",
+            template in "[^\r\n]*\\{password\\}[^\r\n]*",
+            command in "[^\r\n]*",
             rules in prop::collection::vec(entry(), 0..3),
             scripts in prop::collection::vec(entry(), 0..3),
         ) {
             let world = ResolvedWorld {
                 host: host.clone(),
                 port: 4201,
-                login: Some(Login {
-                    template: template.clone(),
-                    name: name.clone(),
-                    secret: "env:ARIA_PW".parse().unwrap(),
-                }),
-                keepalive: Some(Keepalive { command: command.clone(), period: Duration::from_secs(60) }),
+                login: Some(Login::new(&template, &name, "env:ARIA_PW".parse().unwrap()).unwrap()),
+                keepalive: Some(Keepalive::new(&command, 60).unwrap()),
                 rules: entries(rules.clone()),
                 scripts: entries(scripts.clone()),
                 sources: BTreeMap::new(),
