@@ -18,9 +18,7 @@ pub struct WorldId {
 
 /// The error for a text that is not a world id.
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
-#[error(
-    "{text:?} is not a world id of the form <game>/<character>: each part holds only a-z, 0-9 and '-', and starts with a letter"
-)]
+#[error("{text:?} is not a world id of the form <game>/<character>: each part {PART_RULE}")]
 pub struct BadWorldId {
     text: String,
 }
@@ -45,7 +43,11 @@ impl WorldId {
     }
 }
 
-fn is_part(part: &str) -> bool {
+/// The rule of one part of a world id, as the end of a sentence.
+pub(crate) const PART_RULE: &str = "holds only a-z, 0-9 and '-', and starts with a letter";
+
+/// Whether `part` is one part of a world id. [`PART_RULE`] states the rule.
+pub(crate) fn is_part(part: &str) -> bool {
     let mut chars = part.chars();
     chars.next().is_some_and(|first| first.is_ascii_lowercase())
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')

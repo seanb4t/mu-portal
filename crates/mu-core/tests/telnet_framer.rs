@@ -333,6 +333,14 @@ fn charset_request_with_ttable() {
 }
 
 #[test]
+fn charset_name_that_is_not_utf8_is_skipped() {
+    assert_eq!(
+        charset_reply(b";\xc3\x28;UTF-8"),
+        charset_answer(&[&[charset::ACCEPTED][..], b"UTF-8"].concat())
+    );
+}
+
+#[test]
 fn charset_is_not_offered() {
     assert_eq!(
         charset_reply(b";ISO-8859-1"),

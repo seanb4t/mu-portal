@@ -3,7 +3,7 @@
 use mu_proto::{EventKind, Source, WorldState};
 
 use support::process::{PW, ServerBuilder, Session, TWO_WORLDS};
-use support::{mu, stderr, stdout};
+use support::{BASE_GAME, ConfigDir, mu, stderr, stdout};
 
 mod support;
 
@@ -222,4 +222,80 @@ async fn world_connects_again() {
         .await;
     let worlds = session.client.list_worlds().await.unwrap();
     assert_eq!(worlds[0].state, WorldState::WORLD_STATE_CONNECTED);
+}
+
+#[tokio::test]
+async fn configured_world_waits() {
+    let conf = ConfigDir::base();
+    let builder = ServerBuilder::new()
+        .fake_world("beta/bryn", "PW", PW)
+        .arg("--config")
+        .arg(conf.path());
+    let mut session = Session::start(builder).await;
+    session
+        .kind("beta/bryn", EventKind::EVENT_KIND_CONNECTED, 0)
+        .await;
+    let worlds = session.client.list_worlds().await.unwrap();
+    let states: Vec<(&str, bool, bool)> = worlds
+        .iter()
+        .map(|world| {
+            (
+                world.id.as_str(),
+                world.state == WorldState::WORLD_STATE_DISCONNECTED,
+                world.state == WorldState::WORLD_STATE_CONNECTED,
+            )
+        })
+        .collect();
+    assert_eq!(
+        states,
+        [("alpha/aria", true, false), ("beta/bryn", false, true)]
+    );
+}
+
+#[tokio::test]
+async fn configured_world_cannot_connect_yet() {
+    let conf = ConfigDir::base();
+    let session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
+    let error = session.client.connect("alpha/aria").await.unwrap_err();
+    assert_eq!(error.code, "failed_precondition");
+    assert!(error.message.contains("alpha/aria"), "{}", error.message);
+}
+
+#[tokio::test]
+async fn bad_configuration_stops_the_start() {
+    let conf = ConfigDir::base().file("games/alpha.toml", &BASE_GAME.replace("4201", "70000"));
+    let builder = ServerBuilder::new().arg("--config").arg(conf.path());
+    let socket = builder.dir().join("s.sock");
+    let output = builder.output().await;
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr(&output).contains("games/alpha.toml"));
+    assert!(!socket.exists());
+}
+
+#[tokio::test]
+async fn fake_world_with_a_configured_id() {
+    let conf = ConfigDir::base();
+    let output = ServerBuilder::new()
+        .fake_world("alpha/aria", "PW", PW)
+        .arg("--config")
+        .arg(conf.path())
+        .output()
+        .await;
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr(&output).contains("alpha/aria"));
+}
+
+#[tokio::test]
+async fn server_does_not_read_a_configured_secret() {
+    let conf = ConfigDir::base().file(
+        "characters/alpha/aria.toml",
+        "[login]\nname = \"Aria\"\nsecret = \"env:ARIA_PW\"\n",
+    );
+    let builder = ServerBuilder::new()
+        .arg("--config")
+        .arg(conf.path())
+        .env("ARIA_PW", None::<&str>);
+    let session = Session::start(builder).await;
+    let worlds = session.client.list_worlds().await.unwrap();
+    assert_eq!(worlds.len(), 1);
 }

@@ -1,7 +1,7 @@
 //! The scenarios of the `cli-entrypoint` capability, run on the built binary.
 
 use std::collections::BTreeMap;
-use std::process::{Command, Output};
+use std::process::Output;
 
 use proptest::prelude::*;
 
@@ -44,7 +44,7 @@ fn help_lists_verbs() {
 
     let listed = listed_verbs(&help);
     let names: Vec<&str> = listed.keys().map(String::as_str).collect();
-    assert_eq!(names, ["client", "server", "version"]);
+    assert_eq!(names, ["client", "server", "version", "world"]);
     for (verb, description) in &listed {
         assert!(!description.is_empty(), "{verb} has a description");
     }
@@ -52,15 +52,17 @@ fn help_lists_verbs() {
 
 #[test]
 fn help_for_one_verb() {
-    let description = listed_verbs(&stdout(&mu(&["--help"])))
-        .remove("server")
-        .expect("the help lists the server verb");
+    for verb in ["server", "world"] {
+        let description = listed_verbs(&stdout(&mu(&["--help"])))
+            .remove(verb)
+            .expect("the help lists the verb");
 
-    let output = mu(&["server", "--help"]);
-    let help = stdout(&output);
-    assert_eq!(output.status.code(), Some(0));
-    assert!(help.contains("Usage: mu server"));
-    assert!(help.contains(&description));
+        let output = mu(&[verb, "--help"]);
+        let help = stdout(&output);
+        assert_eq!(output.status.code(), Some(0), "{verb}");
+        assert!(help.contains(&format!("Usage: mu {verb}")), "{verb}");
+        assert!(help.contains(&description), "{verb}");
+    }
 }
 
 #[test]
@@ -109,7 +111,7 @@ fn non_utf8_verb_is_usage_error() {
     use std::ffi::OsStr;
     use std::os::unix::ffi::OsStrExt;
 
-    let output = Command::new(env!("CARGO_BIN_EXE_mu"))
+    let output = support::mu_command(&[], &[])
         .arg(OsStr::from_bytes(b"serv\xff"))
         .output()
         .expect("the mu binary runs");

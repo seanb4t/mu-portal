@@ -1,0 +1,8 @@
+charset = "iso-8859-1"
+
+[login]
+template = "connect {login} {password}"
+
+[keepalive]
+command = "IDLE"
+seconds = 60
