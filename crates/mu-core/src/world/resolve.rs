@@ -333,3 +333,161 @@ fn finish(
         sources,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use figment2::Figment;
+    use figment2::providers::Serialized;
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::world::layer::{LayerKey, Trust};
+
+    /// The paths of `fields` that a figment of it holds.
+    fn keys(fields: &LayerFields) -> Vec<&'static str> {
+        let figment = Figment::from(Serialized::defaults(fields));
+        FIELD_PATHS
+            .iter()
+            .copied()
+            .filter(|path| figment.find_value(path).is_ok())
+            .collect()
+    }
+
+    #[test]
+    fn empty_layer_gives_figment_no_keys() {
+        assert_eq!(keys(&LayerFields::default()), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn each_nested_field_alone_gives_one_key() {
+        let text = || Some("x".to_owned());
+        let login = |login: LoginFields| LayerFields {
+            login: Some(login),
+            ..LayerFields::default()
+        };
+        let keepalive = |keepalive: KeepaliveFields| LayerFields {
+            keepalive: Some(keepalive),
+            ..LayerFields::default()
+        };
+        let cases = [
+            (
+                "login.template",
+                login(LoginFields {
+                    template: text(),
+                    ..LoginFields::default()
+                }),
+            ),
+            (
+                "login.name",
+                login(LoginFields {
+                    name: text(),
+                    ..LoginFields::default()
+                }),
+            ),
+            (
+                "login.secret",
+                login(LoginFields {
+                    secret: text(),
+                    ..LoginFields::default()
+                }),
+            ),
+            (
+                "keepalive.command",
+                keepalive(KeepaliveFields {
+                    command: text(),
+                    ..KeepaliveFields::default()
+                }),
+            ),
+            (
+                "keepalive.seconds",
+                keepalive(KeepaliveFields {
+                    seconds: Some(60),
+                    ..KeepaliveFields::default()
+                }),
+            ),
+        ];
+        for (path, fields) in cases {
+            assert_eq!(keys(&fields), [path], "{path}");
+        }
+    }
+
+    /// One layer of the model: the ids that it disables, and the ids of the rules it adds.
+    #[derive(Clone, Debug)]
+    struct Step {
+        disable: Vec<String>,
+        rules: Vec<String>,
+    }
+
+    fn step() -> impl Strategy<Value = Step> {
+        let id = prop::sample::select(vec!["a", "b", "c", "d"]).prop_map(str::to_owned);
+        (
+            prop::collection::btree_set(id.clone(), 0..3),
+            prop::collection::btree_set(id, 0..3),
+        )
+            .prop_map(|(disable, rules)| Step {
+                disable: disable.into_iter().collect(),
+                rules: rules.into_iter().collect(),
+            })
+    }
+
+    fn layer(index: usize, step: &Step) -> Layer {
+        let rules = step
+            .rules
+            .iter()
+            .map(|id| {
+                let mut table = toml::Table::new();
+                table.insert("id".to_owned(), id.clone().into());
+                table
+            })
+            .collect();
+        Layer {
+            key: LayerKey::Global,
+            origin: LayerOrigin::File(format!("{index}.toml")),
+            trust: Trust::Owner,
+            extends: None,
+            fields: LayerFields {
+                rules,
+                disable: step.disable.clone(),
+                ..LayerFields::default()
+            },
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn accumulation_matches_a_model(steps in prop::collection::vec(step(), 1..6)) {
+            // The model: a list of (id, layer) in the order of first appearance. A disable
+            // of an id that is not in the list is an error.
+            let mut model: Vec<(String, usize)> = Vec::new();
+            let mut model_ok = true;
+            for (index, step) in steps.iter().enumerate() {
+                for id in &step.disable {
+                    match model.iter().position(|(old, _)| old == id) {
+                        Some(position) => { model.remove(position); }
+                        None => model_ok = false,
+                    }
+                }
+                for id in &step.rules {
+                    match model.iter_mut().find(|(old, _)| old == id) {
+                        Some(entry) => entry.1 = index,
+                        None => model.push((id.clone(), index)),
+                    }
+                }
+            }
+            let layers: Vec<Layer> = steps.iter().enumerate().map(|(i, s)| layer(i, s)).collect();
+            let chain: Vec<&Layer> = layers.iter().collect();
+            let result = accumulate(&chain);
+            if !model_ok {
+                prop_assert!(result.is_err());
+                return Ok(());
+            }
+            let (rules, scripts) = result.unwrap();
+            prop_assert!(scripts.is_empty());
+            let got: Vec<(String, String)> =
+                rules.into_iter().map(|entry| (entry.id, entry.origin.to_string())).collect();
+            let want: Vec<(String, String)> =
+                model.into_iter().map(|(id, index)| (id, format!("{index}.toml"))).collect();
+            prop_assert_eq!(got, want);
+        }
+    }
+}

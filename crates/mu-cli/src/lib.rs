@@ -1,9 +1,11 @@
 //! Command grammar of the `mu` binary.
 
 pub mod client;
+pub mod config;
 pub mod env_path;
 pub mod server;
 pub mod socket;
+pub mod world;
 
 use std::io::Write;
 use std::process::ExitCode;
@@ -48,6 +50,8 @@ pub enum Verb {
     Server(ServerArgs),
     /// Print the name and the version
     Version,
+    /// List and show the configured worlds
+    World(world::WorldArgs),
 }
 
 /// Names of the verbs, read from the command definition.
@@ -65,6 +69,7 @@ pub fn run(cli: Cli) -> ExitCode {
         None => client::run(&cli.client),
         Some(Verb::Client(args)) => client::run(&args),
         Some(Verb::Server(args)) => server::run(&args),
+        Some(Verb::World(args)) => world::run(&args),
         Some(Verb::Version) => {
             // A closed stdout is not an error of the verb, as it is not for `--version`.
             let _ = write!(

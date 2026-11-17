@@ -64,9 +64,9 @@ The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml`
 - **AND** the exit status is 1
 
 #### Scenario: A file name outside the id rule
-- **GIVEN** a directory with `games/Alpha.toml`
+- **GIVEN** a directory with `games/Beta.toml`
 - **WHEN** the user runs `mu world list --config <dir>`
-- **THEN** stderr names `games/Alpha.toml`
+- **THEN** stderr names `games/Beta.toml`
 - **AND** the exit status is 1
 
 #### Scenario: A stray file
@@ -309,7 +309,8 @@ After the merge, each world SHALL have `host` and `port`, and `host` SHALL NOT b
 - **AND** the exit status is 1
 
 #### Scenario: Half a keepalive
-- **GIVEN** the game `alpha` sets only `keepalive.command = "idle"`, or only `keepalive.seconds = 60`
+- **GIVEN** the game `alpha` sets `extends = "aresmush"`, which sets no keepalive
+- **AND** the game sets only `keepalive.command = "idle"`, or only `keepalive.seconds = 60`
 - **WHEN** the user runs `mu world list --config <dir>`
 - **THEN** stderr names `alpha/aria` and the half that is missing, `keepalive.seconds` or `keepalive.command`
 - **AND** the exit status is 1

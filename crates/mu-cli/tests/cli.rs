@@ -44,7 +44,7 @@ fn help_lists_verbs() {
 
     let listed = listed_verbs(&help);
     let names: Vec<&str> = listed.keys().map(String::as_str).collect();
-    assert_eq!(names, ["client", "server", "version"]);
+    assert_eq!(names, ["client", "server", "version", "world"]);
     for (verb, description) in &listed {
         assert!(!description.is_empty(), "{verb} has a description");
     }
@@ -52,15 +52,17 @@ fn help_lists_verbs() {
 
 #[test]
 fn help_for_one_verb() {
-    let description = listed_verbs(&stdout(&mu(&["--help"])))
-        .remove("server")
-        .expect("the help lists the server verb");
+    for verb in ["server", "world"] {
+        let description = listed_verbs(&stdout(&mu(&["--help"])))
+            .remove(verb)
+            .expect("the help lists the verb");
 
-    let output = mu(&["server", "--help"]);
-    let help = stdout(&output);
-    assert_eq!(output.status.code(), Some(0));
-    assert!(help.contains("Usage: mu server"));
-    assert!(help.contains(&description));
+        let output = mu(&[verb, "--help"]);
+        let help = stdout(&output);
+        assert_eq!(output.status.code(), Some(0), "{verb}");
+        assert!(help.contains(&format!("Usage: mu {verb}")), "{verb}");
+        assert!(help.contains(&description), "{verb}");
+    }
 }
 
 #[test]
