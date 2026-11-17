@@ -47,12 +47,23 @@ The hidden flag `--fake-world <id>=env:<NAME>` of `mu server` SHALL add a fake w
 - **AND** the exit status is 1
 
 ### Requirement: Each world connects and logs in at the start
-At the start of the server, each world SHALL connect. Each world with a login SHALL send it as soon as it connects. The API call `ListWorlds` SHALL return each world with its id and its state, one of `connecting`, `connected` and `disconnected`.
+At the start of the server, each fake world SHALL connect. Each world with a login SHALL send it as soon as it connects. A world from the configuration SHALL start in the state `disconnected`, and `Connect` on it SHALL fail with `failed-precondition` and a message that names the world. The API call `ListWorlds` SHALL return each world with its id and its state, one of `connecting`, `connected` and `disconnected`.
 
 #### Scenario: Two worlds connect
 - **GIVEN** a server with the fake worlds `alpha/aria` and `beta/bryn`
 - **WHEN** a client calls `ListWorlds` after both connect events
 - **THEN** the reply holds `alpha/aria` and `beta/bryn`, each in the state `connected`
+
+#### Scenario: A configured world waits
+- **GIVEN** a server with the fake world `beta/bryn` and a configuration that holds the world `alpha/aria`
+- **WHEN** a client calls `ListWorlds` after the connect event of `beta/bryn`
+- **THEN** the reply holds `alpha/aria` in the state `disconnected` and `beta/bryn` in the state `connected`
+
+#### Scenario: A configured world cannot connect yet
+- **GIVEN** a server with a configuration that holds the world `alpha/aria`
+- **WHEN** a client calls `Connect` for `alpha/aria`
+- **THEN** the call fails with `failed-precondition`
+- **AND** the message names `alpha/aria`
 
 ### Requirement: A command reaches only its world
 The API call `Send` SHALL send one line to the world it names, and no other world. The reply SHALL hold the sequence number of the player event. If a hook gagged the line, the reply SHALL hold no number. An unknown world SHALL fail with `not_found`. A world in the state `connecting` or `disconnected` SHALL fail with `failed_precondition`. A text with CR or LF SHALL fail with `invalid_argument`. A call that the server refuses SHALL record no event. If the write of the line to the game fails, the call SHALL fail with `failed_precondition`, and the server SHALL record the disconnect of the world and no player event.
