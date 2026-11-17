@@ -45,7 +45,7 @@ impl ConfigError {
 }
 
 /// A value that breaks a rule of its field: the path of the field, such as `login.template`,
-/// and what is wrong. The text never holds the value.
+/// and what is wrong. The text never holds a value under `login`.
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 #[error("{field}: {message}")]
 pub struct FieldError {
