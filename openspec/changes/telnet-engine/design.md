@@ -26,7 +26,7 @@ The spike `spikes/telnet-engine` built a parser with the same goals. Its decisio
 - A second NAWS message after a change of the client window. The framer sends the size of its settings.
 - The effect of an option on the client, for example ECHO on input. The framer accepts ECHO, as the spike client did, and does nothing more with it.
 - A disconnect after a bad MCCP2 stream. The parser turns MCCP2 off and goes on. World-sessions decides whether to close the connection.
-- The issue #73 on the source test. This change adds codes to its list and changes nothing else in it.
+- The issue #73 on the source test. This change adds codes and the rule for option codes to the source test, and leaves the matters of issue #73 alone.
 
 ## Decisions
 
@@ -159,7 +159,7 @@ Alternative: a new `Inbound::Error`. It changes the seam and the session for a c
 
 MCCP2 starts on `IAC SB MCCP2 IAC SE` while MCCP2 is on for the game. While it is off, that subnegotiation is an ordinary event. The parser inflates with the streaming API of `miniz_oxide`, which tells how many input bytes a call used. So the parser knows where a stream ends inside a read, and it reads the bytes after it as plain telnet.
 
-A stream that is not valid zlib gives one protocol error. The parser then sends `IAC DONT MCCP2`, as the MCCP specification allows. The game can send more compressed bytes before it reads that request, and those bytes are garbage as plain text. So the parser drops each byte until `IAC WONT MCCP2`, the answer that the Q method asks of the game. It reads that answer as a negotiation, and the bytes after it as plain telnet. The search for the answer holds its state across reads, so the error and the events after it are the same for any split.
+A stream that is not valid zlib gives one protocol error. The parser drops the command or the subnegotiation that the inflated bytes left open, and starts again in data. The parser then sends `IAC DONT MCCP2`, as the MCCP specification allows. The game can send more compressed bytes before it reads that request, and those bytes are garbage as plain text. So the parser drops each byte until `IAC WONT MCCP2`, the answer that the Q method asks of the game. It reads that answer as a negotiation, and the bytes after it as plain telnet. The search for the answer holds its state across reads, so the error and the events after it are the same for any split.
 
 The events before the error can differ by split. The inflated bytes go through the parser, so the data, commands and negotiations before a break in the middle of a stream can differ. Inflate gives out what it can decode from the bytes of each call. A stream that breaks in its middle can break at a byte that one split reaches first. To hold the data back until the stream ends needs a buffer with no bound. So the spec states this case as the one exception to the split rule. The split property test uses bad streams that fail in their header, where no data comes before the error. A unit test, `bad_stream_after_data`, checks a stream that breaks after some data: one error for any split. The test `plain_bytes_after_the_answer_to_dont` splits a recovery at each byte.
 
@@ -231,6 +231,36 @@ This change follows "Using a spike" on `docs/src/content/docs/contributing/spike
 - [A game does not answer `DONT MCCP2` with `WONT MCCP2`.] → The parser drops its bytes until the answer, and the error message tells the player. World-sessions can close the connection.
 - [A bad stream that fails after its header can give a different amount of data for different splits.] → The spec states the exception. The error and the events after it are the same for any split, and `bad_stream_after_data` tests that.
 
+## Standards we claim
+
+Each behavior that this change takes from a standard has a test. A clause that the change does not implement is in the list under the table, and the change makes no claim for it.
+
+| Standard | Clause | Test |
+|---|---|---|
+| RFC 854 | `IAC IAC` is the data byte 255, in both directions. | `escaped_byte_in_data`, `latin1_line_to_the_game` |
+| RFC 854 | NOP, DM, BRK, IP, AO, AYT, EC, EL and GA are two bytes. A byte after IAC that is no command is not lost. | `each_two_byte_command`, `byte_that_is_no_command`, `ayt_before_data` |
+| RFC 854 | CR LF and CR NUL from the game. CR LF ends a line to the game, and a CR in that line goes as CR NUL. | `line_ends`, `cr_nul_across_reads`, `line_to_the_game`, `bare_cr_in_a_line_to_the_game` |
+| RFC 855 | A subnegotiation ends at `IAC SE`, and `IAC IAC` in it is one byte 255, in both directions. | `payload_with_escaped_byte`, `byte_255_in_a_subnegotiation`, `malformed_framing` |
+| RFC 860 | `WILL` and `WONT TIMING-MARK` both end a mark. The client refuses `DO TIMING-MARK` each time. | `answer_to_a_mark`, `mark_from_the_game`, `mark_refused_whatever_the_policy` |
+| RFC 885 | EOR ends a prompt. | `prompt_with_eor`, `each_two_byte_command` |
+| RFC 1073 | NAWS sends the width and the height in network order, with each byte 255 doubled. | `naws_turns_on`, `size_with_byte_255` |
+| RFC 1091 | `SEND` gets `IS` and a name while TTYPE is on. The client repeats its last name. | `four_ttype_requests`, `ttype_request_while_ttype_is_off` |
+| MTTS | The third answer is `MTTS 269`. | `four_ttype_requests` |
+| RFC 1143 | Each row of the table in section 7 for WILL, WONT, DO and DONT, and each request of the client. | the unit tests of `telnet::q`, `accepted_option`, `refused_option_twice`, `repeated_request`, `crossing_requests`, `refusal_of_a_client_request`, `unrequested_answer_is_an_error` |
+| RFC 2066 | REQUEST gets ACCEPTED with the name, or REJECTED. The `[TTABLE ]` prefix and its version byte. Case of a name is not significant. | `charset_is_offered`, `charset_request_with_ttable`, `charset_is_not_offered`, `ttable_prefix_with_no_version`, `empty_charset_list` |
+| MCCP2 | Compression starts right after `IAC SB MCCP2 IAC SE`, also inside a read, and plain bytes follow the end of the stream. | `stream_starts_inside_a_read`, `plain_bytes_after_the_stream`, `second_stream_after_end`, `start_while_mccp2_is_off`, `compressed_lines` |
+| MCCP2 | After a bad stream, the client sends `DONT MCCP2` and reads plain telnet after `WONT MCCP2`. | `stream_that_is_not_zlib`, `plain_bytes_after_the_answer_to_dont`, `bad_stream_that_breaks_inside_a_command`, `bad_stream_after_data` |
+| GMCP | A GMCP subnegotiation from the game reaches the session as a message. | `gmcp_message` |
+
+The oracle and split property tests of the parser, and the six transcripts, cover the same clauses on random and recorded streams.
+
+The change makes no claim for these clauses:
+
+- The Synch of RFC 854: DM after urgent data. The parser reads DM as a two-byte command only.
+- NAWS after a change of the window size. The framer sends the size once, when NAWS turns on.
+- A CHARSET request from the client, and the translation tables of RFC 2066.
+- GMCP, MSDP, MSSP and MXP payloads, MCCP3, LINEMODE and NEW-ENVIRON.
+
 ## Checked facts
 
 Task 1.1 fills this table with each fact that the design uses, with its source. The sources are RFC 854, 855, 860, 1073, 1091, 1143 and 2066, MTTS, MCCP2 and `miniz_oxide`.
@@ -254,4 +284,4 @@ Task 1.1 fills this table with each fact that the design uses, with its source. 
 | `miniz_oxide::deflate::compress_to_vec_zlib` gives a whole zlib stream for the tests. | docs.rs, `miniz_oxide` 0.9.1, `deflate::compress_to_vec_zlib`. |
 | The spike reads `IAC SB IAC SE` as an error for an empty subnegotiation and then the command SE, and a verb after `IAC` in a payload as an unterminated subnegotiation and then the negotiation. | `spikes/telnet-engine/src/lib.rs`, `Engine::parse`. |
 | The spike drops an `IAC SB MCCP2 IAC SE` inside an open stream with no event. This design gives it as a subnegotiation event. | `spikes/telnet-engine/src/lib.rs`, `end_subnegotiation`. This is a difference that the design chooses. |
-| After an inflate error, the spike reads later bytes as plain telnet at once. This design drops them until `WONT MCCP2`. | `spikes/telnet-engine/src/lib.rs`, `inflate`. This is a difference that the design chooses. |
+| After an inflate error, the spike drops the rest of the failing read and reads the later reads as plain telnet. This design drops each byte until `WONT MCCP2`. | `spikes/telnet-engine/src/lib.rs`, `inflate`. This is a difference that the design chooses. |

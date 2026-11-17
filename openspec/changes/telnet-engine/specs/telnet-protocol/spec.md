@@ -68,6 +68,11 @@ The parser SHALL negotiate each option on each side with the Q method of RFC 114
 - **WHEN** the parser reads `IAC WONT GMCP`
 - **THEN** it sends nothing, gives no event, and GMCP stays off
 
+#### Scenario: An answer that the client did not ask for
+- **GIVEN** a parser where GMCP is on for the game, and that asked to turn it off with `IAC DONT GMCP`
+- **WHEN** the parser reads `IAC WILL GMCP`
+- **THEN** it gives an `unrequested-answer` protocol error, as RFC 1143 names a WILL in the state WANTNO
+
 ### Requirement: A subnegotiation reaches the caller
 The parser SHALL give each subnegotiation as an event with its option and its payload, for any option. It SHALL read `IAC IAC` in the payload as one byte 255, and the bound SHALL count that byte once. It SHALL drop a payload longer than 1 MiB and give a protocol error.
 
@@ -125,6 +130,11 @@ A compressed stream that is not valid zlib SHALL give one protocol error. The pa
 - **WHEN** it reads `IAC SB MCCP2 IAC SE`, the bytes `00 01 02`, the bytes `junk`, `IAC WONT MCCP2` and `plain`
 - **THEN** for any split it gives the start of compression, one protocol error, that MCCP2 is off and the data `plain`
 
+#### Scenario: A stream that breaks inside a command
+- **GIVEN** a parser where MCCP2 is on for the game
+- **WHEN** the inflated bytes before the break are `a IAC`, or `a IAC SB GMCP x`, and `IAC WONT MCCP2` and `plain` follow
+- **THEN** for any split it gives the start of compression, the data `a`, one protocol error, that MCCP2 is off and the data `plain`
+
 ### Requirement: The split of reads changes no event
 Join adjacent data events. Then the parser SHALL give the same events and send the same bytes for any split of the same input into reads. One exception holds: a compressed stream that fails after its first byte can give different events before its error. Its error and the events after it SHALL be the same for any split.
 
@@ -138,11 +148,20 @@ Join adjacent data events. Then the parser SHALL give the same events and send t
 - **THEN** each run gives no protocol error and the same joined events as the recorded reads
 
 ### Requirement: The telnet framer gives lines
-The telnet framer SHALL end a line at LF and SHALL drop each CR, so a bare LF ends a line. It SHALL drop a NUL right after a CR, in the same read or the next one. It SHALL decode a line in its character set. It SHALL cut a run of bytes with no LF at the line bound. A CR or a dropped NUL SHALL NOT start a cut.
+The telnet framer SHALL end a line at LF and SHALL drop each CR, so a bare LF ends a line. It SHALL drop a NUL right after a CR, in the same read or the next one. It SHALL end each line to the game with CR LF, and SHALL send each CR in that line as CR NUL, as RFC 854 asks. It SHALL decode a line in its character set. It SHALL cut a run of bytes with no LF at the line bound. A CR or a dropped NUL SHALL NOT start a cut.
 
 #### Scenario: Line ends
 - **WHEN** the telnet framer reads `one\r\ntwo\nthree\n`
 - **THEN** it gives the lines `one`, `two` and `three`
+
+#### Scenario: A bare CR in a line to the game
+- **WHEN** the session sends the line `a\rb` through the telnet framer
+- **THEN** the bytes are `a\r\0b\r\n`
+
+#### Scenario: Lines in a compressed stream
+- **GIVEN** a telnet framer where MCCP2 is on for the game
+- **WHEN** it reads `IAC SB MCCP2 IAC SE` and a zlib stream of `one\ntwo\n`
+- **THEN** it gives the lines `one` and `two`
 
 #### Scenario: CR NUL across reads
 - **WHEN** one read ends with `a\r` and the next read starts with the byte 0 and `b\n`
@@ -189,6 +208,14 @@ A read can add a data byte to an unfinished line. At the end of such a read, the
 - **WHEN** one read holds `HP 10> IAC GA more`
 - **THEN** the telnet framer gives the prompt `HP 10> ` and then, at the end of the read, the prompt `more`
 
+#### Scenario: A prompt with EOR
+- **WHEN** one read holds `HP 10> IAC EOR`
+- **THEN** the telnet framer gives the prompt `HP 10> ` once
+
+#### Scenario: A CR or a NUL alone
+- **WHEN** one read ends with `Name: `, the next read holds only CR, and the read after it only NUL
+- **THEN** the telnet framer gives the prompt `Name: ` once
+
 #### Scenario: A line split across reads
 - **WHEN** one read ends with `hel` and the next read starts with `lo\n`
 - **THEN** the telnet framer gives the prompt `hel` and then the line `hello`
@@ -214,19 +241,24 @@ A read can add a data byte to an unfinished line. At the end of such a read, the
 - **THEN** the telnet framer gives the same lines, in the same order, as for the whole stream in one read
 
 ### Requirement: The telnet framer reads the mark apart from the options
-The telnet framer SHALL send `IAC DO TIMING-MARK` as its mark each time, whatever the state of the options. It SHALL give `IAC WILL TIMING-MARK` and `IAC WONT TIMING-MARK` as the end of a mark. A mark SHALL NOT change the state of any option. The parser SHALL refuse `IAC DO TIMING-MARK` from the game each time.
+The telnet framer SHALL send `IAC DO TIMING-MARK` as its mark each time, whatever the state of the options. It SHALL give `IAC WILL TIMING-MARK` and `IAC WONT TIMING-MARK` as the end of a mark. A mark SHALL NOT change the state of any option. The parser SHALL refuse `IAC DO TIMING-MARK` from the game each time, whatever its policy.
 
 #### Scenario: Two marks in a row
 - **WHEN** the session asks the telnet framer for a mark twice
 - **THEN** both times the bytes are `IAC DO TIMING-MARK`
 
 #### Scenario: The answer to a mark
-- **WHEN** the telnet framer reads `one\n`, `IAC WILL TIMING-MARK` and `two\n`
+- **WHEN** the telnet framer reads `one\n`, `IAC WILL TIMING-MARK` or `IAC WONT TIMING-MARK`, and `two\n`
 - **THEN** it gives the line `one`, the end of a mark and the line `two`, and no reply
 
 #### Scenario: A mark from the game
 - **WHEN** the parser reads `IAC DO TIMING-MARK` two times
 - **THEN** it sends `IAC WONT TIMING-MARK` two times, and TIMING-MARK stays off on both sides
+
+#### Scenario: A mark from the game with a policy that accepts it
+- **GIVEN** a policy that accepts TIMING-MARK on the side of the client
+- **WHEN** the parser reads `IAC DO TIMING-MARK` two times
+- **THEN** it sends `IAC WONT TIMING-MARK` two times
 
 ### Requirement: GMCP from the game is a message
 The telnet framer SHALL give each GMCP subnegotiation from the game as a message with the name `GMCP` and the payload as its body.
@@ -237,12 +269,16 @@ The telnet framer SHALL give each GMCP subnegotiation from the game as a message
 - **THEN** it gives a message with the name `GMCP` and the body `Logged.In`
 
 ### Requirement: The telnet framer answers the terminal type
-When the game asks for the terminal type, the telnet framer SHALL answer `MU-PORTAL`, then `XTERM-256COLOR`, then `MTTS 269`. It SHALL answer `MTTS 269` to each later request.
+While TTYPE is on for the client, the telnet framer SHALL answer each request of the game for the terminal type. It SHALL answer `MU-PORTAL`, then `XTERM-256COLOR`, then `MTTS 269`. It SHALL answer `MTTS 269` to each later request.
 
 #### Scenario: Four requests
 - **GIVEN** a telnet framer where TTYPE is on for the client
 - **WHEN** the game sends `IAC SB TTYPE SEND IAC SE` four times
 - **THEN** the framer replies `IS MU-PORTAL`, `IS XTERM-256COLOR`, `IS MTTS 269` and `IS MTTS 269`, in that order
+
+#### Scenario: A request while TTYPE is off
+- **WHEN** the game sends `IAC SB TTYPE SEND IAC SE` before `IAC DO TTYPE`
+- **THEN** the framer sends nothing
 
 ### Requirement: The telnet framer sends the window size
 When NAWS turns on for the client, the telnet framer SHALL send its window size. The size is two 16-bit numbers in network order, with each byte 255 doubled.
@@ -278,6 +314,11 @@ If a request offers the character set of the telnet framer, the framer SHALL acc
 #### Scenario: A TTABLE prefix with no version
 - **GIVEN** a telnet framer with the character set `UTF-8`
 - **WHEN** it reads a CHARSET request that holds only `[TTABLE ]`
+- **THEN** it replies `REJECTED`
+
+#### Scenario: An empty list
+- **GIVEN** a telnet framer with the character set `UTF-8`
+- **WHEN** it reads a CHARSET request with no list, or with `[TTABLE ]`, the version byte 1 and no list
 - **THEN** it replies `REJECTED`
 
 #### Scenario: Any payload

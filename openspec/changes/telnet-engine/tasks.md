@@ -60,6 +60,12 @@ Load the `rust-best-practices` skill before this group.
   - `subnegotiation_over_the_bound` and `bad_compressed_stream`, for the two error scenarios
 
   Make sure that `cargo nextest run -p mu-core --test telnet_framer --locked` passes.
+- [x] 4.4 Add a test for each clause of the table "Standards we claim" in the design that has no test yet. Fix the code where a test fails:
+  - `bare_cr_in_a_line_to_the_game`, `prompt_with_eor`, `cr_or_nul_alone_gives_no_prompt`, `ttype_request_while_ttype_is_off` and `empty_charset_list` in `telnet_framer.rs`, and the `WONT TIMING-MARK` case of `answer_to_a_mark`
+  - `bad_stream_that_breaks_inside_a_command` and `mark_refused_whatever_the_policy` in `telnet_parser.rs`
+  - `spike_directory_link_fails` in `workspace_boundary.rs`
+
+  `unrequested_answer_is_an_error` and `compressed_lines` cover the scenarios "An answer that the client did not ask for" and "Lines in a compressed stream".
 - [x] 4.3 Add a paragraph to `docs/src/content/docs/architecture/server-and-clients.mdx` on how a game session reads telnet: the parser, the framer, and what the session gets from them. Follow the `simple-english` skill and link the telnet-engine decision page. Make sure that `mise run docs:check` passes.
 
 ## 5. Checks
