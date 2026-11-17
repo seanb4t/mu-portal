@@ -159,6 +159,19 @@ fn built_in_types_hold_only_quirks() {
         ["built-in aresmush", "built-in evennia", "built-in tinymux"]
     );
     assert_eq!(BUILT_IN_TYPES.len(), names.len());
+    for layer in built_in_layers().unwrap() {
+        let mut rest = layer.fields.clone();
+        rest.charset = None;
+        rest.keepalive = None;
+        if let Some(login) = &mut rest.login {
+            login.template = None;
+        }
+        if rest.login == Some(LoginFields::default()) {
+            rest.login = None;
+        }
+        assert_eq!(rest, LayerFields::default(), "{}", layer.origin);
+        assert!(layer.fields != LayerFields::default(), "{}", layer.origin);
+    }
 }
 
 #[test]
