@@ -6,7 +6,7 @@ use std::process::ExitCode;
 
 use clap::{Args, Subcommand};
 use mu_core::ResolvedWorld;
-use mu_core::world::{Entry, FIELD_PATHS, LayerOrigin};
+use mu_core::world::{Entry, FIELD_PATHS};
 
 use crate::config::ConfigArgs;
 
@@ -51,20 +51,28 @@ pub fn run(args: &WorldArgs) -> ExitCode {
             text
         }),
         Some(id) => match worlds.iter().find(|world| world.id.as_str() == id) {
-            Some(world) => render(world),
+            Some(world) => match render(world) {
+                Ok(text) => text,
+                Err(error) => return fail(&error),
+            },
             None => return fail(&format!("{id}: no configured world has this id")),
         },
     };
-    // A closed stdout is not an error of the verb.
-    let _ = std::io::stdout().write_all(text.as_bytes());
-    ExitCode::SUCCESS
+    match std::io::stdout().write_all(text.as_bytes()) {
+        // A closed stdout is not an error of the verb.
+        Err(error) if error.kind() != std::io::ErrorKind::BrokenPipe => fail(&error),
+        _ => ExitCode::SUCCESS,
+    }
 }
 
 /// The world as TOML. Each field ends with a comment that names its source, and each rule
 /// and each script has a comment line with its source above it. The fields come in the order
-/// of [`FIELD_PATHS`].
-#[must_use]
-pub fn render(world: &ResolvedWorld) -> String {
+/// of [`FIELD_PATHS`]. A field with no recorded source has the comment `unknown`.
+///
+/// # Errors
+///
+/// The id of a rule or a script that does not serialize as TOML, and why.
+pub fn render(world: &ResolvedWorld) -> Result<String, String> {
     let mut text = String::new();
     let mut table = "";
     for path in FIELD_PATHS {
@@ -79,15 +87,15 @@ pub fn render(world: &ResolvedWorld) -> String {
         let source = world
             .sources
             .get(*path)
-            .map_or_else(|| LayerOrigin::Default.to_string(), ToString::to_string);
+            .map_or_else(|| "unknown".to_owned(), ToString::to_string);
         let _ = writeln!(text, "{key} = {value} # {source}");
     }
     for (array, entries) in [("rules", &world.rules), ("scripts", &world.scripts)] {
         for entry in entries {
-            text.push_str(&render_entry(array, entry));
+            text.push_str(&render_entry(array, entry)?);
         }
     }
-    text
+    Ok(text)
 }
 
 /// The value of the field at `path`, or `None` when the world does not have its table.
@@ -111,14 +119,15 @@ fn value_of(world: &ResolvedWorld, path: &str) -> Option<toml::Value> {
 }
 
 /// One entry as its own document, `{ <array> = [entry] }`, under a comment with its source.
-fn render_entry(array: &str, entry: &Entry) -> String {
+fn render_entry(array: &str, entry: &Entry) -> Result<String, String> {
     let mut document = toml::Table::new();
     document.insert(
         array.to_owned(),
         toml::Value::Array(vec![toml::Value::Table(entry.table.clone())]),
     );
-    let body = toml::to_string(&document).unwrap_or_default();
-    format!("\n# {}\n{body}", entry.origin)
+    let body =
+        toml::to_string(&document).map_err(|error| format!("{array} {}: {error}", entry.id))?;
+    Ok(format!("\n# {}\n{body}", entry.origin))
 }
 
 #[cfg(test)]

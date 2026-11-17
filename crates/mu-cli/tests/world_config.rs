@@ -54,7 +54,7 @@ fn succeeds(output: &Output) -> String {
     stdout(output)
 }
 
-/// Asserts that a line of `text` starts with `start` and a space.
+/// Asserts that a line of `text` is `start`, or starts with `start` and a space.
 #[track_caller]
 fn has_line(text: &str, start: &str) {
     assert!(
@@ -783,7 +783,7 @@ mod parses_back {
                 sources: BTreeMap::new(),
                 ..ResolvedWorld::new("alpha/aria".parse().unwrap())
             };
-            let text = mu_cli::world::render(&world);
+            let text = mu_cli::world::render(&world).unwrap();
             let parsed: toml::Table = text.parse().map_err(|error| {
                 TestCaseError::fail(format!("{error}\n{text}"))
             })?;
