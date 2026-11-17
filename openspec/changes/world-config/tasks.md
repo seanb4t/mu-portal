@@ -62,7 +62,7 @@ Load the `rust-best-practices` skill before this group.
 
 ## 7. Checks
 
-- [ ] 7.1 Run `mise run check` and `uv run ~/.agents/plugins/sb/skills/review-lint/scripts/review_lint.py --base origin/main`. Make sure that both pass.
+- [x] 7.1 Run `mise run check` and `uv run ~/.agents/plugins/sb/skills/review-lint/scripts/review_lint.py --base origin/main`. Make sure that both pass.
 
 ## 8. Review
 
