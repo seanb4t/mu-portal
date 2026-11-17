@@ -293,6 +293,8 @@ pub struct TelnetFramer {
     after_cr: bool,
     /// The count of terminal types that the client gave.
     terminal_types: usize,
+    /// TTYPE is on for the client at the event that the framer reads.
+    terminal_type_on: bool,
 }
 
 impl TelnetFramer {
@@ -305,6 +307,7 @@ impl TelnetFramer {
             buffer: LineBuffer::default(),
             after_cr: false,
             terminal_types: 0,
+            terminal_type_on: false,
         }
     }
 
@@ -314,11 +317,13 @@ impl TelnetFramer {
         let mut added = false;
         for &byte in bytes {
             let after_cr = std::mem::replace(&mut self.after_cr, byte == b'\r');
-            if byte == b'\r' || (after_cr && byte == 0) {
+            if after_cr && byte == 0 {
                 continue;
             }
-            added = true;
-            if let Some(line) = self.buffer.push(byte) {
+            let before = self.buffer.partial().len();
+            let line = self.buffer.push(byte);
+            added |= line.is_some() || self.buffer.partial().len() != before;
+            if let Some(line) = line {
                 out.push(Inbound::Line(self.settings.charset.decode(&line)));
             }
         }
@@ -339,7 +344,7 @@ impl TelnetFramer {
                 name: "GMCP".to_owned(),
                 body: payload,
             }),
-            (opt::TTYPE, Some(&ttype::SEND)) if self.parser.is_enabled(Side::Local, opt::TTYPE) => {
+            (opt::TTYPE, Some(&ttype::SEND)) if self.terminal_type_on => {
                 let name = TERMINAL_TYPES[self.terminal_types.min(TERMINAL_TYPES.len() - 1)];
                 self.terminal_types += 1;
                 let answer = [&[ttype::IS], name.as_bytes()].concat();
@@ -391,6 +396,8 @@ impl Framer for TelnetFramer {
                     self.prompt(&mut out);
                 }
                 Event::Enabled(Side::Local, opt::NAWS) => self.window_size(),
+                Event::Enabled(Side::Local, opt::TTYPE) => self.terminal_type_on = true,
+                Event::Disabled(Side::Local, opt::TTYPE) => self.terminal_type_on = false,
                 Event::Subnegotiation(option, payload) => {
                     self.subnegotiation(option, payload, &mut out);
                 }

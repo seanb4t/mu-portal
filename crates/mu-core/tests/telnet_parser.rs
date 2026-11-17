@@ -7,7 +7,7 @@ use mu_core::telnet::{
 };
 use proptest::prelude::*;
 
-use support::{join_data, reads, subnegotiation};
+use support::{join_data, parse_reads, reads, subnegotiation};
 
 mod support;
 
@@ -24,15 +24,7 @@ fn drain(parser: &mut Parser) -> (Vec<Event>, Vec<u8>) {
 
 /// Reads each part of `parts` as one read, and gives the joined events and the sent bytes.
 fn run_reads(mut parser: Parser, parts: &[&[u8]]) -> (Vec<Event>, Vec<u8>) {
-    let mut events = Vec::new();
-    let mut output = Vec::new();
-    for part in parts {
-        parser.receive(part);
-        let (more, sent) = drain(&mut parser);
-        events.extend(more);
-        output.extend(sent);
-    }
-    (join_data(events), output)
+    parse_reads(&mut parser, parts)
 }
 
 fn run(bytes: &[u8]) -> (Vec<Event>, Vec<u8>) {
@@ -51,7 +43,13 @@ fn mccp2_parser() -> Parser {
     parser
 }
 
-const START: [u8; 5] = [IAC, SB, opt::MCCP2, IAC, SE];
+/// The bytes that start MCCP2: `IAC SB MCCP2 IAC SE`.
+fn start() -> Vec<u8> {
+    subnegotiation(opt::MCCP2, &[])
+}
+
+/// The answer of the game to `DONT MCCP2`.
+const WONT_MCCP2: [u8; 3] = [IAC, WONT, opt::MCCP2];
 
 fn is_bad_stream(event: &Event) -> bool {
     matches!(event, Event::Error(ProtocolError::BadCompressedStream(_)))
@@ -180,8 +178,6 @@ fn payload_with_escaped_byte() {
     );
 }
 
-/// The bytes of a GMCP subnegotiation of `payload`.
-
 #[test]
 fn payload_at_the_bound() {
     let mut payload = vec![b'a'; MAX_SUBNEGOTIATION - 1];
@@ -206,17 +202,22 @@ fn payload_over_the_bound() {
 
 #[test]
 fn mark_from_the_game() {
-    let mut parser = Parser::new(policy());
-    parser.receive(&[IAC, DO, opt::TIMING_MARK, IAC, DO, opt::TIMING_MARK]);
-    assert_eq!(
-        drain(&mut parser),
-        (
-            vec![],
-            vec![IAC, WONT, opt::TIMING_MARK, IAC, WONT, opt::TIMING_MARK]
-        )
-    );
-    assert!(!parser.is_enabled(Side::Local, opt::TIMING_MARK));
-    assert!(!parser.is_enabled(Side::Remote, opt::TIMING_MARK));
+    let accepts_marks = Policy::none().accept(Side::Local, &[opt::TIMING_MARK]);
+    for policy in [policy(), accepts_marks] {
+        let mut parser = Parser::new(policy);
+        parser.receive(&[IAC, DO, opt::TIMING_MARK, IAC, DO, opt::TIMING_MARK]);
+        assert_eq!(
+            drain(&mut parser),
+            (
+                vec![],
+                vec![IAC, WONT, opt::TIMING_MARK, IAC, WONT, opt::TIMING_MARK]
+            )
+        );
+        parser.receive(&[IAC, DONT, opt::TIMING_MARK]);
+        assert_eq!(drain(&mut parser), (vec![], vec![]));
+        assert!(!parser.is_enabled(Side::Local, opt::TIMING_MARK));
+        assert!(!parser.is_enabled(Side::Remote, opt::TIMING_MARK));
+    }
 }
 
 #[test]
@@ -266,7 +267,7 @@ fn malformed_framing() {
 fn stream_starts_inside_a_read() {
     let bytes = [
         &[IAC, WILL, opt::MCCP2][..],
-        &START,
+        &start(),
         &compress_to_vec_zlib(b"hello", 6),
     ]
     .concat();
@@ -285,7 +286,7 @@ fn stream_starts_inside_a_read() {
 
 #[test]
 fn plain_bytes_after_the_stream() {
-    let bytes = [&START[..], &compress_to_vec_zlib(b"in", 6), b"out"].concat();
+    let bytes = [&start()[..], &compress_to_vec_zlib(b"in", 6), b"out"].concat();
     assert_eq!(
         run_reads(mccp2_parser(), &[&bytes]).0,
         [
@@ -299,8 +300,8 @@ fn plain_bytes_after_the_stream() {
 
 #[test]
 fn start_inside_a_stream() {
-    let inner = [&START[..], b"x"].concat();
-    let bytes = [&START[..], &compress_to_vec_zlib(&inner, 6)].concat();
+    let inner = [&start()[..], b"x"].concat();
+    let bytes = [&start()[..], &compress_to_vec_zlib(&inner, 6)].concat();
     assert_eq!(
         run_reads(mccp2_parser(), &[&bytes]).0,
         [
@@ -315,9 +316,9 @@ fn start_inside_a_stream() {
 #[test]
 fn second_stream_after_end() {
     let bytes = [
-        &START[..],
+        &start()[..],
         &compress_to_vec_zlib(b"a", 6),
-        &START,
+        &start(),
         &compress_to_vec_zlib(b"b", 6),
     ]
     .concat();
@@ -336,7 +337,7 @@ fn second_stream_after_end() {
 
 #[test]
 fn start_while_mccp2_is_off() {
-    let bytes = [&START[..], b"plain"].concat();
+    let bytes = [&start()[..], b"plain"].concat();
     assert_eq!(
         run(&bytes).0,
         [Event::Subnegotiation(opt::MCCP2, vec![]), data(b"plain")]
@@ -345,7 +346,7 @@ fn start_while_mccp2_is_off() {
 
 #[test]
 fn stream_that_is_not_zlib() {
-    let first = [&START[..], &[0x00, 0x01, 0x02]].concat();
+    let first = [&start()[..], &[0x00, 0x01, 0x02]].concat();
     let (events, output) = run_reads(mccp2_parser(), &[&first, b"more\n"]);
     assert_eq!(events.len(), 2, "{events:?}");
     assert_eq!(events[0], Event::CompressionStarted);
@@ -356,17 +357,16 @@ fn stream_that_is_not_zlib() {
 #[test]
 fn plain_bytes_after_the_answer_to_dont() {
     let bytes = [
-        &START[..],
+        &start()[..],
         &[0x00, 0x01, 0x02],
         b"junk",
-        &[IAC, WONT, opt::MCCP2],
+        &WONT_MCCP2,
         b"plain",
     ]
     .concat();
-    for point in 0..=bytes.len() {
-        let (events, _) = run_reads(mccp2_parser(), &[&bytes[..point], &bytes[point..]]);
+    for (point, events) in every_split(&bytes, b"") {
         assert_eq!(
-            without_error_text(events),
+            events,
             [
                 Event::CompressionStarted,
                 Event::Error(ProtocolError::BadCompressedStream(String::new())),
@@ -376,6 +376,18 @@ fn plain_bytes_after_the_answer_to_dont() {
             "split at {point}"
         );
     }
+}
+
+/// The events of an MCCP2 parser, with no error text, for each split of `bytes` into two
+/// reads, and `after` as a third read.
+fn every_split<'a>(
+    bytes: &'a [u8],
+    after: &'a [u8],
+) -> impl Iterator<Item = (usize, Vec<Event>)> + 'a {
+    (0..=bytes.len()).map(move |point| {
+        let (events, _) = run_reads(mccp2_parser(), &[&bytes[..point], &bytes[point..], after]);
+        (point, without_error_text(events))
+    })
 }
 
 /// A zlib stream that holds `inflated` in a stored block, then breaks on a block of a bad type.
@@ -395,16 +407,15 @@ fn stream_that_breaks_after(inflated: &[u8]) -> Vec<u8> {
 fn bad_stream_that_breaks_inside_a_command() {
     for inflated in [&[b'a', IAC][..], &[b'a', IAC, SB, opt::GMCP, b'x']] {
         let bytes = [
-            &START[..],
+            &start()[..],
             &stream_that_breaks_after(inflated),
-            &[IAC, WONT, opt::MCCP2],
+            &WONT_MCCP2,
             b"plain",
         ]
         .concat();
-        for point in 0..=bytes.len() {
-            let (events, _) = run_reads(mccp2_parser(), &[&bytes[..point], &bytes[point..]]);
+        for (point, events) in every_split(&bytes, b"") {
             assert_eq!(
-                without_error_text(events),
+                events,
                 [
                     Event::CompressionStarted,
                     data(b"a"),
@@ -419,29 +430,12 @@ fn bad_stream_that_breaks_inside_a_command() {
 }
 
 #[test]
-fn mark_refused_whatever_the_policy() {
-    let mut parser = Parser::new(Policy::none().accept(Side::Local, &[opt::TIMING_MARK]));
-    parser.receive(&[IAC, DO, opt::TIMING_MARK, IAC, DO, opt::TIMING_MARK]);
-    assert_eq!(
-        drain(&mut parser),
-        (
-            vec![],
-            vec![IAC, WONT, opt::TIMING_MARK, IAC, WONT, opt::TIMING_MARK]
-        )
-    );
-}
-
-#[test]
 fn bad_stream_after_data() {
     let mut stream = compress_to_vec_zlib(&b"some data before the break ".repeat(8), 6);
     let last = stream.len() - 1;
     stream[last] ^= 1;
-    let bytes = [&START[..], &stream].concat();
-    for point in 0..=bytes.len() {
-        let (events, _) = run_reads(
-            mccp2_parser(),
-            &[&bytes[..point], &bytes[point..], b"more\n"],
-        );
+    let bytes = [&start()[..], &stream].concat();
+    for (point, events) in every_split(&bytes, b"more\n") {
         let errors = events.iter().filter(|event| is_bad_stream(event)).count();
         assert_eq!(errors, 1, "split at {point}: {events:?}");
         assert!(
@@ -562,15 +556,12 @@ fn compressed_part() -> impl Strategy<Value = Part> {
         events.push(Event::CompressionEnded);
         let output = parts.iter().flat_map(|part| part.output.clone()).collect();
         Part::new(
-            [&START[..], &compress_to_vec_zlib(&inner, 6)].concat(),
+            [&start()[..], &compress_to_vec_zlib(&inner, 6)].concat(),
             events,
             output,
         )
     })
 }
-
-/// The answer of the game to `DONT MCCP2`.
-const WONT_MCCP2: [u8; 3] = [IAC, WONT, opt::MCCP2];
 
 /// The last part of a stream: a bad zlib header, bytes that the parser drops, and maybe the
 /// answer to `DONT MCCP2` and data. Or a lone IAC.
@@ -582,7 +573,7 @@ fn last_part() -> impl Strategy<Value = Option<Part>> {
     prop_oneof![
         2 => Just(None),
         1 => (tail, prop::option::of(data_part())).prop_map(|(tail, after)| {
-            let mut bytes = [&START[..], &[0x00, 0x01, 0x02], &tail].concat();
+            let mut bytes = [&start()[..], &[0x00, 0x01, 0x02], &tail].concat();
             let mut events = vec![
                 Event::CompressionStarted,
                 Event::Error(ProtocolError::BadCompressedStream(String::new())),

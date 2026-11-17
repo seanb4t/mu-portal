@@ -157,8 +157,12 @@ pub struct Parser {
     state: State,
     payload: Payload,
     data: Vec<u8>,
-    events: VecDeque<Event>,
+    /// Each event, with the length of the output when the parser read it.
+    events: VecDeque<(Event, usize)>,
     output: Vec<u8>,
+    /// Where a reply goes in the output: right after the bytes that the parser sent before
+    /// the last polled event. `None` puts a reply at the end.
+    cursor: Option<usize>,
     inflater: Option<Box<InflateState>>,
     /// After a bad compressed stream: the count of bytes of `IAC WONT MCCP2` that the parser
     /// found so far. `None` while the parser reads normally.
@@ -188,6 +192,7 @@ impl Parser {
             data: Vec::new(),
             events: VecDeque::new(),
             output: Vec::new(),
+            cursor: None,
             inflater: None,
             recovery: None,
         }
@@ -195,6 +200,7 @@ impl Parser {
 
     /// Reads the bytes of one read. The data of the read ends as one event at the end.
     pub fn receive(&mut self, mut input: &[u8]) {
+        self.cursor = None;
         while !input.is_empty() {
             if let Some(found) = self.recovery {
                 input = self.recover(found, input);
@@ -208,14 +214,22 @@ impl Parser {
         self.flush_data();
     }
 
-    /// The next event, in the order that the parser read it.
+    /// The next event, in the order that the parser read it. A reply that the caller sends
+    /// before the next poll goes after the bytes that the parser sent before this event.
     pub fn poll_event(&mut self) -> Option<Event> {
-        self.events.pop_front()
+        let (event, position) = self.events.pop_front()?;
+        self.cursor = Some(position);
+        Some(event)
     }
 
     /// The bytes to send to the game, and clears them.
     pub fn take_output(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.output)
+        let taken = std::mem::take(&mut self.output);
+        for (_, position) in &mut self.events {
+            *position = position.saturating_sub(taken.len());
+        }
+        self.cursor = None;
+        taken
     }
 
     /// Whether `option` is on for `side`.
@@ -235,9 +249,20 @@ impl Parser {
 
     /// Queues a subnegotiation, with each byte 255 of `payload` doubled.
     pub fn send_subnegotiation(&mut self, option: u8, payload: &[u8]) {
-        self.output.extend_from_slice(&[IAC, SB, option]);
-        self.output.extend(escape(payload));
-        self.output.extend_from_slice(&[IAC, SE]);
+        self.write(&[&[IAC, SB, option][..], &escape(payload), &[IAC, SE]].concat());
+    }
+
+    /// Adds `bytes` to the output at the cursor, or at the end.
+    fn write(&mut self, bytes: &[u8]) {
+        let Some(at) = self.cursor else {
+            self.output.extend_from_slice(bytes);
+            return;
+        };
+        self.output.splice(at..at, bytes.iter().copied());
+        self.cursor = Some(at + bytes.len());
+        for (_, position) in &mut self.events {
+            *position += bytes.len();
+        }
     }
 
     fn q(&self, side: Side, option: u8) -> Q {
@@ -261,18 +286,19 @@ impl Parser {
             (Side::Remote, true) => DO,
             (Side::Remote, false) => DONT,
         };
-        self.output.extend_from_slice(&[IAC, verb, option]);
+        self.write(&[IAC, verb, option]);
     }
 
     fn emit(&mut self, event: Event) {
         self.flush_data();
-        self.events.push_back(event);
+        self.events.push_back((event, self.output.len()));
     }
 
     fn flush_data(&mut self) {
         if !self.data.is_empty() {
             let data = std::mem::take(&mut self.data);
-            self.events.push_back(Event::Data(data));
+            self.events
+                .push_back((Event::Data(data), self.output.len()));
         }
     }
 

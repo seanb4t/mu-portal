@@ -2,7 +2,7 @@
 
 use miniz_oxide::deflate::compress_to_vec_zlib;
 use mu_core::telnet::{
-    DO, EOR, GA, IAC, MAX_SUBNEGOTIATION, SB, SE, WILL, WONT, charset, escape, opt, ttype,
+    DO, DONT, EOR, GA, IAC, MAX_SUBNEGOTIATION, SB, SE, WILL, WONT, charset, escape, opt, ttype,
 };
 use mu_core::{Charset, Framer, Inbound, TelnetFramer, TelnetSettings};
 use proptest::prelude::*;
@@ -148,6 +148,7 @@ fn cr_or_nul_alone_gives_no_prompt() {
 #[test]
 fn bare_cr_in_a_line_to_the_game() {
     assert_eq!(framer().encode("a\rb"), b"a\r\0b\r\n");
+    assert_eq!(framer().encode("a\r"), b"a\r\0\r\n");
 }
 
 #[test]
@@ -243,6 +244,26 @@ fn four_ttype_requests() {
 fn ttype_request_while_ttype_is_off() {
     let request = subnegotiation(opt::TTYPE, &[ttype::SEND]);
     assert_eq!(reply_to(&mut framer(), &request), []);
+    let before_do = [&request[..], &[IAC, DO, opt::TTYPE]].concat();
+    assert_eq!(reply_to(&mut framer(), &before_do), [IAC, WILL, opt::TTYPE]);
+}
+
+#[test]
+fn ttype_answer_in_the_order_of_the_read() {
+    let request = subnegotiation(opt::TTYPE, &[ttype::SEND]);
+    let bytes = [
+        &[IAC, DO, opt::TTYPE][..],
+        &request,
+        &[IAC, DONT, opt::TTYPE],
+    ]
+    .concat();
+    let expected = [
+        &[IAC, WILL, opt::TTYPE][..],
+        &subnegotiation(opt::TTYPE, &[&[ttype::IS][..], b"MU-PORTAL"].concat()),
+        &[IAC, WONT, opt::TTYPE],
+    ]
+    .concat();
+    assert_eq!(reply_to(&mut framer(), &bytes), expected);
 }
 
 #[test]
@@ -360,7 +381,7 @@ fn subnegotiation_over_the_bound() {
 fn bad_compressed_stream() {
     let mut framer = framer();
     framer.feed(&[IAC, WILL, opt::MCCP2]);
-    let first = [&[IAC, SB, opt::MCCP2, IAC, SE][..], &[0x00, 0x01, 0x02]].concat();
+    let first = [&subnegotiation(opt::MCCP2, &[])[..], &[0x00, 0x01, 0x02]].concat();
     let items = feed_all(&mut framer, &[&first, b"more\n"]);
     let messages: Vec<String> = items.iter().filter_map(telnet_message).collect();
     assert_eq!(messages.len(), 1, "{items:?}");
@@ -380,7 +401,7 @@ fn compressed_lines() {
     let mut framer = framer();
     framer.feed(&[IAC, WILL, opt::MCCP2]);
     let bytes = [
-        &[IAC, SB, opt::MCCP2, IAC, SE][..],
+        &subnegotiation(opt::MCCP2, &[])[..],
         &compress_to_vec_zlib(b"one\ntwo\n", 6),
     ]
     .concat();

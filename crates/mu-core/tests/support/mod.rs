@@ -313,3 +313,18 @@ pub fn subnegotiation(option: u8, payload: &[u8]) -> Vec<u8> {
     use mu_core::telnet::{IAC, SB, SE, escape};
     [&[IAC, SB, option][..], &escape(payload), &[IAC, SE]].concat()
 }
+
+/// Gives each of `reads` to `parser` in order, and gives the joined events and the sent bytes.
+pub fn parse_reads(
+    parser: &mut mu_core::telnet::Parser,
+    reads: &[&[u8]],
+) -> (Vec<mu_core::telnet::Event>, Vec<u8>) {
+    let mut events = Vec::new();
+    let mut output = Vec::new();
+    for read in reads {
+        parser.receive(read);
+        events.extend(std::iter::from_fn(|| parser.poll_event()));
+        output.extend(parser.take_output());
+    }
+    (join_data(events), output)
+}
