@@ -3,7 +3,7 @@
 use mu_proto::{EventKind, Source, WorldState};
 
 use support::process::{PW, ServerBuilder, Session, TWO_WORLDS};
-use support::{mu, stderr, stdout};
+use support::{BASE_GAME, ConfigDir, mu, stderr, stdout};
 
 mod support;
 
@@ -224,29 +224,13 @@ async fn world_connects_again() {
     assert_eq!(worlds[0].state, WorldState::WORLD_STATE_CONNECTED);
 }
 
-/// A configuration directory under `dir` with the world `alpha/aria`, and `character` as the
-/// text of its character file. Returns the path of the directory.
-fn configuration(dir: &std::path::Path, game_extra: &str, character: &str) -> std::path::PathBuf {
-    let conf = dir.join("conf");
-    std::fs::create_dir_all(conf.join("games")).unwrap();
-    std::fs::create_dir_all(conf.join("characters/alpha")).unwrap();
-    std::fs::write(
-        conf.join("games/alpha.toml"),
-        format!("extends = \"tinymux\"\nhost = \"mux.example.org\"\n{game_extra}"),
-    )
-    .unwrap();
-    std::fs::write(conf.join("characters/alpha/aria.toml"), character).unwrap();
-    conf
-}
-
 #[tokio::test]
 async fn configured_world_waits() {
-    let dir = tempfile::tempdir().unwrap();
-    let conf = configuration(dir.path(), "port = 4201\n", "");
+    let conf = ConfigDir::base();
     let builder = ServerBuilder::new()
         .fake_world("beta/bryn", "PW", PW)
         .arg("--config")
-        .arg(&conf);
+        .arg(conf.path());
     let mut session = Session::start(builder).await;
     session
         .kind("beta/bryn", EventKind::EVENT_KIND_CONNECTED, 0)
@@ -270,9 +254,8 @@ async fn configured_world_waits() {
 
 #[tokio::test]
 async fn configured_world_cannot_connect_yet() {
-    let dir = tempfile::tempdir().unwrap();
-    let conf = configuration(dir.path(), "port = 4201\n", "");
-    let session = Session::start(ServerBuilder::new().arg("--config").arg(&conf)).await;
+    let conf = ConfigDir::base();
+    let session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
     let error = session.client.connect("alpha/aria").await.unwrap_err();
     assert_eq!(error.code, "failed_precondition");
     assert!(error.message.contains("alpha/aria"), "{}", error.message);
@@ -280,9 +263,8 @@ async fn configured_world_cannot_connect_yet() {
 
 #[tokio::test]
 async fn bad_configuration_stops_the_start() {
-    let dir = tempfile::tempdir().unwrap();
-    let conf = configuration(dir.path(), "port = 70000\n", "");
-    let builder = ServerBuilder::new().arg("--config").arg(&conf);
+    let conf = ConfigDir::base().file("games/alpha.toml", &BASE_GAME.replace("4201", "70000"));
+    let builder = ServerBuilder::new().arg("--config").arg(conf.path());
     let socket = builder.dir().join("s.sock");
     let output = builder.output().await;
     assert_eq!(output.status.code(), Some(1));
@@ -292,12 +274,11 @@ async fn bad_configuration_stops_the_start() {
 
 #[tokio::test]
 async fn fake_world_with_a_configured_id() {
-    let dir = tempfile::tempdir().unwrap();
-    let conf = configuration(dir.path(), "port = 4201\n", "");
+    let conf = ConfigDir::base();
     let output = ServerBuilder::new()
         .fake_world("alpha/aria", "PW", PW)
         .arg("--config")
-        .arg(&conf)
+        .arg(conf.path())
         .output()
         .await;
     assert_eq!(output.status.code(), Some(1));
@@ -306,15 +287,13 @@ async fn fake_world_with_a_configured_id() {
 
 #[tokio::test]
 async fn server_does_not_read_a_configured_secret() {
-    let dir = tempfile::tempdir().unwrap();
-    let conf = configuration(
-        dir.path(),
-        "port = 4201\n",
+    let conf = ConfigDir::base().file(
+        "characters/alpha/aria.toml",
         "[login]\nname = \"Aria\"\nsecret = \"env:ARIA_PW\"\n",
     );
     let builder = ServerBuilder::new()
         .arg("--config")
-        .arg(&conf)
+        .arg(conf.path())
         .env("ARIA_PW", None::<&str>);
     let session = Session::start(builder).await;
     let worlds = session.client.list_worlds().await.unwrap();

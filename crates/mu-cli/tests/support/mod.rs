@@ -2,7 +2,7 @@
 
 #![allow(dead_code, reason = "each test binary uses a part of this module")]
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
@@ -43,28 +43,89 @@ pub fn mu(args: &[&str]) -> Output {
     mu_with(args, &[])
 }
 
-/// Runs the built binary with `args` to its exit, with [`test_env`]. Then each
-/// `(name, Some(value))` sets a variable and each `(name, None)` removes one.
+/// Runs the built binary with `args` to its exit, with [`test_env`], then `env`.
 pub fn mu_with(args: &[&str], env: &[(&str, Option<&str>)]) -> Output {
+    mu_command(args, env).output().expect("the mu binary runs")
+}
+
+/// The built binary with `args`, with [`test_env`], then `env`. Each `(name, Some(value))`
+/// sets a variable and each `(name, None)` removes one.
+pub fn mu_command(args: &[&str], env: &[(&str, Option<&str>)]) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_mu"));
     command.args(args);
     apply_test_env(&mut command);
-    for (name, value) in env {
+    apply_env(&mut command, env);
+    command
+}
+
+/// Applies [`test_env`] to `command`.
+pub fn apply_test_env(command: &mut Command) {
+    apply_env(command, &test_env());
+}
+
+/// Applies `changes` to the environment of `command`: `(name, Some(value))` sets a variable
+/// and `(name, None)` removes one.
+pub fn apply_env<K: AsRef<OsStr>, V: AsRef<OsStr>>(
+    command: &mut Command,
+    changes: &[(K, Option<V>)],
+) {
+    for (name, value) in changes {
         match value {
             Some(value) => command.env(name, value),
             None => command.env_remove(name),
         };
     }
-    command.output().expect("the mu binary runs")
 }
 
-/// Applies [`test_env`] to `command`.
-pub fn apply_test_env(command: &mut Command) {
-    for (name, value) in test_env() {
-        match value {
-            Some(value) => command.env(name, value),
-            None => command.env_remove(name),
-        };
+/// The game file of the base directory of the world-config spec.
+pub const BASE_GAME: &str = "extends = \"tinymux\"\nhost = \"mux.example.org\"\nport = 4201\n";
+
+/// A configuration directory of worlds that a test writes.
+pub struct ConfigDir {
+    path: PathBuf,
+    _temp: Option<TempDir>,
+}
+
+impl ConfigDir {
+    /// An empty directory in a new temporary directory.
+    pub fn empty() -> Self {
+        let temp = tempfile::tempdir().unwrap();
+        Self {
+            path: temp.path().to_path_buf(),
+            _temp: Some(temp),
+        }
+    }
+
+    /// The base directory of the spec in a new temporary directory.
+    pub fn base() -> Self {
+        Self::empty().with_base()
+    }
+
+    /// The directory `relative` under `root`, which the caller keeps.
+    pub fn at(root: &Path, relative: &str) -> Self {
+        let path = root.join(relative);
+        fs::create_dir_all(&path).unwrap();
+        Self { path, _temp: None }
+    }
+
+    /// Adds the base files: `games/alpha.toml` with [`BASE_GAME`], and an empty
+    /// `characters/alpha/aria.toml`.
+    pub fn with_base(self) -> Self {
+        self.file("games/alpha.toml", BASE_GAME)
+            .file("characters/alpha/aria.toml", "")
+    }
+
+    /// Writes `text` to the file at `path`, relative to the directory.
+    pub fn file(self, path: &str, text: &str) -> Self {
+        let path = self.path.join(path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+        self
+    }
+
+    /// The path of the directory.
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 }
 

@@ -172,12 +172,7 @@ impl ServerBuilder {
         if let Some(dir) = &self.current_dir {
             command.current_dir(dir);
         }
-        for (name, value) in &self.env {
-            match value {
-                Some(value) => command.env(name, value),
-                None => command.env_remove(name),
-            };
-        }
+        super::apply_env(command.as_std_mut(), &self.env);
         command
             .stdin(Stdio::null())
             .stdout(Stdio::null())

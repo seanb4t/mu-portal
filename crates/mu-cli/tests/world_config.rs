@@ -2,50 +2,13 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Output;
 
-use tempfile::TempDir;
-
-use support::{mu_with, stderr, stdout};
+use support::{BASE_GAME, ConfigDir as Config, mu_command, mu_with, stderr, stdout};
 
 mod support;
 
-/// The game file of the base directory.
-const BASE_GAME: &str = "extends = \"tinymux\"\nhost = \"mux.example.org\"\nport = 4201\n";
-
-/// A configuration directory in a temporary directory.
-struct Config {
-    dir: TempDir,
-}
-
 impl Config {
-    /// The base directory of the spec: `games/alpha.toml` with [`BASE_GAME`], and an empty
-    /// `characters/alpha/aria.toml`.
-    fn base() -> Self {
-        Self::empty()
-            .file("games/alpha.toml", BASE_GAME)
-            .file("characters/alpha/aria.toml", "")
-    }
-
-    /// An empty directory.
-    fn empty() -> Self {
-        Self {
-            dir: tempfile::tempdir().unwrap(),
-        }
-    }
-
-    /// Writes `text` to the file at `path`, relative to the directory.
-    fn file(self, path: &str, text: &str) -> Self {
-        let path = self.dir.path().join(path);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(path, text).unwrap();
-        self
-    }
-
-    fn path(&self) -> &Path {
-        self.dir.path()
-    }
-
     /// `mu world list --config <dir>`.
     fn list(&self) -> Output {
         mu_with(&["world", "list", "--config", self.arg()], &[])
@@ -117,36 +80,20 @@ fn ids(text: &str, array: &str) -> Vec<String> {
 
 /// Runs `mu world list` in `cwd` with the test environment, then `env`.
 fn list_in(cwd: &Path, env: &[(&str, Option<&str>)]) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_mu"));
-    command.args(["world", "list"]).current_dir(cwd);
-    support::apply_test_env(&mut command);
-    for (name, value) in env {
-        match value {
-            Some(value) => command.env(name, value),
-            None => command.env_remove(name),
-        };
-    }
-    command.output().unwrap()
+    let mut command = mu_command(&["world", "list"], env);
+    command.current_dir(cwd).output().unwrap()
 }
 
-/// Writes the base directory under `root` at `relative`.
-fn base_at(root: &Path, relative: &str) -> PathBuf {
-    let dir = root.join(relative);
-    fs::create_dir_all(dir.join("games")).unwrap();
-    fs::create_dir_all(dir.join("characters/alpha")).unwrap();
-    fs::write(dir.join("games/alpha.toml"), BASE_GAME).unwrap();
-    fs::write(dir.join("characters/alpha/aria.toml"), "").unwrap();
-    dir
+/// The base directory under `root` at `relative`.
+fn base_at(root: &Path, relative: &str) -> Config {
+    Config::at(root, relative).with_base()
 }
 
-/// Writes a directory under `root` at `relative` with the world `beta/bryn` only.
-fn beta_at(root: &Path, relative: &str) -> PathBuf {
-    let dir = root.join(relative);
-    fs::create_dir_all(dir.join("characters/beta")).unwrap();
-    fs::create_dir_all(dir.join("games")).unwrap();
-    fs::write(dir.join("games/beta.toml"), BASE_GAME).unwrap();
-    fs::write(dir.join("characters/beta/bryn.toml"), "").unwrap();
-    dir
+/// A directory under `root` at `relative` with the world `beta/bryn` only.
+fn beta_at(root: &Path, relative: &str) -> Config {
+    Config::at(root, relative)
+        .file("games/beta.toml", BASE_GAME)
+        .file("characters/beta/bryn.toml", "")
 }
 
 // The configuration directory.
@@ -157,8 +104,8 @@ fn flag_wins_over_the_environment() {
     let env = base_at(root.path(), "env");
     let flag = beta_at(root.path(), "flag");
     let output = mu_with(
-        &["world", "list", "--config", flag.to_str().unwrap()],
-        &[("MU_CONFIG", Some(env.to_str().unwrap()))],
+        &["world", "list", "--config", flag.arg()],
+        &[("MU_CONFIG", Some(env.arg()))],
     );
     assert_eq!(succeeds(&output), "beta/bryn\n");
 }
