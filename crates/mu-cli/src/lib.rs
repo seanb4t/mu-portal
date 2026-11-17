@@ -19,7 +19,11 @@ pub use server::ServerArgs;
 /// lines.
 fn report(line: &std::fmt::Arguments<'_>) {
     // A closed stderr leaves nothing to report to.
-    let _ = std::io::stderr().write_all(format!("{line}\n").as_bytes());
+    let _ = report_to(&mut std::io::stderr(), line);
+}
+
+fn report_to(out: &mut impl Write, line: &std::fmt::Arguments<'_>) -> std::io::Result<()> {
+    out.write_all(format!("{line}\n").as_bytes())
 }
 
 /// Writes `mu <verb>: <error>` to stderr and returns the status 1.
@@ -114,6 +118,29 @@ mod tests {
         fn flush(&mut self) -> io::Result<()> {
             Ok(())
         }
+    }
+
+    /// A writer that keeps each buffer that one call of `write` gets.
+    #[derive(Default)]
+    struct Writes(Vec<Vec<u8>>);
+
+    impl Write for Writes {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.push(buf.to_vec());
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn report_writes_the_line_in_one_write() {
+        let mut out = Writes::default();
+        let (verb, error) = ("server", "no such file");
+        report_to(&mut out, &format_args!("mu {verb}: {error}")).unwrap();
+        assert_eq!(out.0, [b"mu server: no such file\n".to_vec()]);
     }
 
     #[test]
