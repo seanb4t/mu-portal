@@ -167,6 +167,8 @@ fn quirks_refuse_other_fields() {
         ("columns", "columns = 80\n"),
         ("login.name", "[login]\nname = \"Aria\"\n"),
         ("host", "host = \"mux.example.org\"\n"),
+        ("login", "login = [\"connect {login} {password}\"]\n"),
+        ("keepalive", "keepalive = [\"IDLE\", 60]\n"),
     ] {
         let error = parse_quirks("tinymux", text).unwrap_err().to_string();
         assert!(error.contains(field), "{field}: {error}");

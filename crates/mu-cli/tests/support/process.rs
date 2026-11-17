@@ -369,9 +369,8 @@ pub fn mu_on_pty(args: &[&str], on: PtyOn, cwd: &Path) -> Output {
         .write(true)
         .open(name.to_str().unwrap())
         .unwrap();
-    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_mu"));
-    command.args(args).current_dir(cwd).stderr(Stdio::piped());
-    super::apply_test_env(&mut command);
+    let mut command = super::mu_command(args, &[]);
+    command.current_dir(cwd).stderr(Stdio::piped());
     match on {
         PtyOn::Stdin => command.stdin(terminal).stdout(Stdio::piped()),
         PtyOn::Stdout => command.stdout(terminal).stdin(Stdio::piped()),

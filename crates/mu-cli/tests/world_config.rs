@@ -249,6 +249,15 @@ fn stray_file() {
     }
 }
 
+#[test]
+fn other_files_are_skipped() {
+    let config = Config::base()
+        .file("games/alpha.toml.bak", "not toml")
+        .file("README.md", "")
+        .file("characters/alpha/notes.txt", "");
+    assert_eq!(succeeds(&config.list()), "alpha/aria\n");
+}
+
 // Each field is known.
 
 #[test]

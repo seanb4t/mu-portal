@@ -1,7 +1,7 @@
 //! The scenarios of the `cli-entrypoint` capability, run on the built binary.
 
 use std::collections::BTreeMap;
-use std::process::{Command, Output};
+use std::process::Output;
 
 use proptest::prelude::*;
 
@@ -111,9 +111,7 @@ fn non_utf8_verb_is_usage_error() {
     use std::ffi::OsStr;
     use std::os::unix::ffi::OsStrExt;
 
-    let mut command = Command::new(env!("CARGO_BIN_EXE_mu"));
-    support::apply_test_env(&mut command);
-    let output = command
+    let output = support::mu_command(&[], &[])
         .arg(OsStr::from_bytes(b"serv\xff"))
         .output()
         .expect("the mu binary runs");
