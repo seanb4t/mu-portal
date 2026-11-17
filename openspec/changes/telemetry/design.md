@@ -137,9 +137,13 @@ Alternative: the root store that the crates embed, `tls-webpki-roots`. It cannot
 
 The default `BatchSpanProcessor` and the `PeriodicReader` each run on a dedicated thread. A full queue drops the span, and `on_end` never waits. So a slow collector does not touch a task of tokio.
 
-The blocking HTTP client is built before the runtime. The build of the gRPC exporter needs a tokio runtime. Thus `server::run` builds it inside `Runtime::enter`. Its calls run on the runtime of the engine as I/O tasks, and the batch thread waits for them, not a task of the engine.
+The blocking HTTP client is built before the runtime of the engine. The build of the gRPC exporter needs a tokio runtime, and its channel runs its tasks on that runtime. The telemetry therefore gets a runtime of its own. `telemetry.rs` starts one thread, `mu-telemetry`, with a current-thread tokio runtime. It builds the gRPC exporters inside the `enter` of that runtime. Thus no telemetry task runs on a worker of the engine, for both protocols.
 
-The stop comes after `serve` returns and before the runtime drops. Then `server::run` calls `shutdown` of both providers on a helper thread, and waits at most five seconds for it. Then the process exits, whether the flush finished or not. The shutdown flushes each span and collects the metrics one last time. The tests read the collector after the exit, so no test waits for an export interval.
+The engine keeps the multi-thread runtime of `Runtime::new` in `server::run`. The sessions are I/O tasks, and that runtime is the usual one for them. The rule "a slow collector does not slow a world" depends only on the telemetry staying off it.
+
+Alternative: the gRPC exporter on the runtime of the engine. Its calls are I/O, so a silent collector holds no worker. But the export then shares the queue of the scheduler with each world, and the stop must flush before the runtime of the engine drops.
+
+The stop comes after `serve` returns. Then `server::run` calls `shutdown` of both providers on a helper thread, and waits at most five seconds for it. After the shutdown, or after the wait, the runtime of `mu-telemetry` stops. The runtime of the engine drops independently of it. Then the process exits, whether the flush finished or not. The shutdown flushes each span and collects the metrics one last time. The tests read the collector after the exit, so no test waits for an export interval.
 
 Alternative: the async exporters with `rt-tokio`. They share the runtime of the engine, and the SDK documents the threaded processor as the default.
 
@@ -166,7 +170,7 @@ The engine tests of the metrics, in `crates/mu-cli/tests/telemetry_engine.rs`, i
 
 - [A blocking reqwest client that is built inside a tokio runtime can panic.] → `server::run` builds the exporters before it builds the runtime. Task 1.1 reads the current documentation of this point.
 - [`deny.toml` can refuse the TLS stack of `reqwest`, `tonic` and `rustls`.] → The change turns off the default features where it can. Task 1.2 runs `cargo deny check`.
-- [The gRPC exporter shares the runtime of the engine.] → Its calls are I/O tasks. The silent-collector test runs with each protocol.
+- [A later change can build a gRPC client on the runtime of the engine by mistake.] → The decision page names the `mu-telemetry` runtime. The silent-collector test runs with each protocol.
 - [A dead collector can write warning lines on stderr.] → The SDK logs through `tracing`. The `fmt` layer keeps its lines at `WARN`. The SDK logs the first drop only once. A warning about a dead collector is useful to the owner. The OpenTelemetry layers filter out the targets of the SDK, so its logs do not loop back into the export.
 - [A later change can add a field with a text.] → The scanning tests run on each change. The decision page states the rule.
 - [The full-queue test depends on the default queue size of the SDK.] → Task 1.1 records the size. The test sends 2100 calls, which make two spans each, about twice the default size of 2048.
