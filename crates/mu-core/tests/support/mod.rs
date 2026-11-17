@@ -226,10 +226,7 @@ impl AsyncWrite for BrokenStream {
 
 /// The world `alpha/aria` on `transport`, with no login and no password.
 pub fn bare_world(transport: impl Transport) -> WorldSetup {
-    let world = ResolvedWorld {
-        id: id("alpha/aria"),
-        login: None,
-    };
+    let world = ResolvedWorld::new(id("alpha/aria"));
     WorldSetup::new(world, None, Arc::new(transport))
 }
 

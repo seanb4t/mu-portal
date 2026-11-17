@@ -97,8 +97,8 @@ pub struct ServerBuilder {
 }
 
 impl ServerBuilder {
-    /// A server with `--socket <dir>/s.sock` in a new temporary directory, with no
-    /// `MU_SOCKET`.
+    /// A server with `--socket <dir>/s.sock` in a new temporary directory, with
+    /// [`super::test_env`].
     pub fn new() -> Self {
         let dir = Arc::new(private_tempdir());
         let socket_flag = Some(dir.path().join("s.sock"));
@@ -107,7 +107,7 @@ impl ServerBuilder {
             socket_flag,
             current_dir: None,
             args: Vec::new(),
-            env: vec![("MU_SOCKET".into(), None)],
+            env: super::test_env(),
         }
     }
 
@@ -376,6 +376,7 @@ pub fn mu_on_pty(args: &[&str], on: PtyOn, cwd: &Path) -> Output {
         .unwrap();
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_mu"));
     command.args(args).current_dir(cwd).stderr(Stdio::piped());
+    super::apply_test_env(&mut command);
     match on {
         PtyOn::Stdin => command.stdin(terminal).stdout(Stdio::piped()),
         PtyOn::Stdout => command.stdout(terminal).stdin(Stdio::piped()),
@@ -486,7 +487,7 @@ pub struct PtyClient {
 }
 
 impl PtyClient {
-    /// Starts `mu client` with `--socket <socket>` in `cwd`, with no `MU_SOCKET`.
+    /// Starts `mu client` with `--socket <socket>` in `cwd`, with [`super::test_env`].
     pub fn start(socket: &Path, cwd: &Path) -> Self {
         use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
@@ -502,7 +503,12 @@ impl PtyClient {
         command.args(["client", "--socket"]);
         command.arg(socket);
         command.cwd(cwd);
-        command.env_remove("MU_SOCKET");
+        for (name, value) in super::test_env() {
+            match value {
+                Some(value) => command.env(name, value),
+                None => command.env_remove(name),
+            }
+        }
         command.env("TERM", "xterm-256color");
         let mut child = pair.slave.spawn_command(command).unwrap();
         drop(pair.slave);

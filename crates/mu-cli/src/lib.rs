@@ -1,6 +1,7 @@
 //! Command grammar of the `mu` binary.
 
 pub mod client;
+pub mod env_path;
 pub mod server;
 pub mod socket;
 

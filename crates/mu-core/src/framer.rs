@@ -222,6 +222,14 @@ impl Charset {
         }
     }
 
+    /// The character set with the name `name`, with no regard to case.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        [Self::Utf8, Self::Latin1]
+            .into_iter()
+            .find(|charset| charset.name().eq_ignore_ascii_case(name))
+    }
+
     fn decode(self, bytes: &[u8]) -> String {
         match self {
             Self::Utf8 => String::from_utf8_lossy(bytes).into_owned(),
@@ -365,9 +373,10 @@ impl TelnetFramer {
             None => request,
         };
         let accepted = list.split_first().and_then(|(separator, names)| {
-            names
-                .split(|byte| byte == separator)
-                .find(|name| name.eq_ignore_ascii_case(self.settings.charset.name().as_bytes()))
+            names.split(|byte| byte == separator).find(|name| {
+                std::str::from_utf8(name).ok().and_then(Charset::from_name)
+                    == Some(self.settings.charset)
+            })
         });
         match accepted {
             Some(name) => [&[charset::ACCEPTED], name].concat(),

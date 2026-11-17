@@ -14,13 +14,13 @@
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 2.1 Make `world.rs` the module `world/` of `mu-core`. Add the types of the design:
+- [x] 2.1 Make `world.rs` the module `world/` of `mu-core`. Add the types of the design:
   - `Layer`, `LayerKey`, `Trust`, `LayerOrigin` and `LayerSource`
   - `LayerFields` and `LayerFile`
   - `Quirks`, `WorldDefaults` and `ConfigError`
 
   Do the checks of the decision "Layers are parsed alone, then merged". Run the parse through `serde_path_to_error`, and build `ConfigError` from the file, the path and the line and column of the span. Never keep the `Display` of a `toml` error, and drop the message under `login`. Map `BadSecretRef` to a `ConfigError` that drops its text. Add `Charset::from_name` to `framer.rs`, and make `charset_answer` use it. Add a framer test with a server list that holds a name that is not UTF-8 before `UTF-8`, and expect the answer `ACCEPTED UTF-8`. Make `is_part` `pub(crate)`, and add `TomlDirSource`, which walks the directory as the design describes. Make sure that `cargo nextest run -p mu-core --locked` passes.
-- [ ] 2.2 Move the empty-value parser and the XDG lookup of `crates/mu-cli/src/socket.rs` to `crates/mu-cli/src/env_path.rs`, and make `SocketArgs` use them. Add the shared list of changes to the environment to `crates/mu-cli/tests/support/`. Make `ServerBuilder`, `PtyClient`, `mu_on_pty`, `mu_with` and `non_utf8_verb_is_usage_error` apply it. Make sure that `cargo nextest run -p mu-cli --locked` passes with no change to a test.
+- [x] 2.2 Move the empty-value parser and the XDG lookup of `crates/mu-cli/src/socket.rs` to `crates/mu-cli/src/env_path.rs`, and make `SocketArgs` use them. Add the shared list of changes to the environment to `crates/mu-cli/tests/support/`. Make `ServerBuilder`, `PtyClient`, `mu_on_pty`, `mu_with` and `non_utf8_verb_is_usage_error` apply it. Make sure that `cargo nextest run -p mu-cli --locked` passes with no change to a test.
 - [ ] 2.3 Add `ConfigArgs` to `mu-cli` on the helpers of `env_path.rs`, as the requirement "The configuration directory" states. Add the verb `world` with `mu world list`. Make the shared list set `MU_CONFIG` to an empty directory of the test, and add the test `helper_points_mu_config_at_an_empty_directory`. Add `crates/mu-cli/tests/world_config.rs` with a helper that writes the base directory of the spec, and with these tests:
   - `flag_wins_over_the_environment`, `default_directory`, `directory_under_home`, `empty_mu_config`, `relative_xdg_config_home`, `no_home_directory` and `missing_directory`, for the seven scenarios of the configuration directory
   - `worlds_from_character_files`, `character_with_no_game`, `file_name_outside_the_id_rule` and `stray_file`, for the four scenarios of the character files. Make `stray_file` a table test over the four paths of its scenario

@@ -45,7 +45,8 @@ impl WorldId {
     }
 }
 
-fn is_part(part: &str) -> bool {
+/// Whether `part` is one part of a world id.
+pub(crate) fn is_part(part: &str) -> bool {
     let mut chars = part.chars();
     chars.next().is_some_and(|first| first.is_ascii_lowercase())
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')

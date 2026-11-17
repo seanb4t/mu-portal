@@ -1,0 +1,2 @@
+[login]
+template = "connect {login} {password}"

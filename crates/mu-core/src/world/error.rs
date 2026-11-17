@@ -1,0 +1,40 @@
+//! The error of the configuration.
+
+use std::fmt;
+
+use thiserror::Error;
+
+/// An error in the configuration: the place, such as a file or a world, and what is wrong.
+///
+/// The text never holds the value of a field under `login`, or a line of a file.
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+#[error("{place}: {message}")]
+pub struct ConfigError {
+    place: String,
+    message: String,
+}
+
+impl ConfigError {
+    /// An error at `place`.
+    pub(crate) fn new(place: impl fmt::Display, message: impl Into<String>) -> Self {
+        Self {
+            place: place.to_string(),
+            message: message.into(),
+        }
+    }
+
+    /// An error in the field `field` at `place`.
+    pub(crate) fn field(
+        place: impl fmt::Display,
+        field: impl fmt::Display,
+        message: impl fmt::Display,
+    ) -> Self {
+        Self::new(place, format!("{field}: {message}"))
+    }
+
+    /// The place of the error, such as `games/alpha.toml:3:1` or `alpha/aria`.
+    #[must_use]
+    pub fn place(&self) -> &str {
+        &self.place
+    }
+}

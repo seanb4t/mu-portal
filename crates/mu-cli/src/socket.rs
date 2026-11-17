@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 use clap::Args;
 use thiserror::Error;
 
+use crate::env_path::{PathValue, parse_path, xdg_base};
+
 /// The variable that names the socket.
 pub const SOCKET_ENV: &str = "MU_SOCKET";
 
@@ -16,23 +18,8 @@ pub const SOCKET_ENV: &str = "MU_SOCKET";
 #[derive(Clone, Debug, Default, Args)]
 pub struct SocketArgs {
     /// The Unix socket of the server
-    #[arg(long, env = SOCKET_ENV, value_name = "PATH", value_parser = parse_socket)]
-    socket: Option<SocketValue>,
-}
-
-/// A value of `--socket` or `MU_SOCKET`. An empty value is none.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SocketValue(Option<PathBuf>);
-
-/// Turns an empty value into none, so that `clap` does not refuse it.
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "clap takes a value parser that returns a Result"
-)]
-fn parse_socket(value: &str) -> Result<SocketValue, std::convert::Infallible> {
-    Ok(SocketValue(
-        (!value.is_empty()).then(|| PathBuf::from(value)),
-    ))
+    #[arg(long, env = SOCKET_ENV, value_name = "PATH", value_parser = parse_path)]
+    socket: Option<PathValue>,
 }
 
 impl SocketArgs {
@@ -41,8 +28,8 @@ impl SocketArgs {
     pub fn path(&self, runtime_dir: Option<OsString>, uid: u32) -> PathBuf {
         self.socket
             .as_ref()
-            .and_then(|value| value.0.clone())
-            .unwrap_or_else(|| default_socket(runtime_dir, uid))
+            .and_then(PathValue::path)
+            .map_or_else(|| default_socket(runtime_dir, uid), Path::to_path_buf)
     }
 
     /// The socket path from the environment of the process.
@@ -84,10 +71,7 @@ pub fn current_uid() -> u32 {
 /// counts as unset, and then the directory is `mu-<uid>` under the temporary directory.
 #[must_use]
 pub fn default_socket(runtime_dir: Option<OsString>, uid: u32) -> PathBuf {
-    let runtime = runtime_dir
-        .map(PathBuf::from)
-        .filter(|dir| dir.is_absolute());
-    let dir = match runtime {
+    let dir = match xdg_base(runtime_dir) {
         Some(runtime) => runtime.join("mu"),
         None => std::env::temp_dir().join(format!("mu-{uid}")),
     };
@@ -207,7 +191,7 @@ mod tests {
     #[test]
     fn empty_socket_env_counts_as_unset() {
         let args = SocketArgs {
-            socket: Some(parse_socket("").unwrap()),
+            socket: Some(parse_path("").unwrap()),
         };
         let path = args.path(Some("/run/user/501".into()), UID);
         assert_eq!(path, Path::new("/run/user/501/mu/server.sock"));

@@ -109,7 +109,9 @@ fn non_utf8_verb_is_usage_error() {
     use std::ffi::OsStr;
     use std::os::unix::ffi::OsStrExt;
 
-    let output = Command::new(env!("CARGO_BIN_EXE_mu"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_mu"));
+    support::apply_test_env(&mut command);
+    let output = command
         .arg(OsStr::from_bytes(b"serv\xff"))
         .output()
         .expect("the mu binary runs");

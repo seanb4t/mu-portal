@@ -1,0 +1,6 @@
+[login]
+template = "connect {login} {password}"
+
+[keepalive]
+command = "idle"
+seconds = 60

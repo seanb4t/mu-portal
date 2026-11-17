@@ -118,7 +118,7 @@ Task 1.1 fills the values from sources. TinyMUX gets `charset = "iso-8859-1"`, f
 ```rust
 pub enum LayerKey { Global, Type(String), Game(String), Character(WorldId), Plugin(String) }
 pub enum Trust { Owner, SharedPlugin }
-pub struct Layer { pub key: LayerKey, pub origin: LayerOrigin, pub trust: Trust, pub fields: LayerFields }
+pub struct Layer { pub key: LayerKey, pub origin: LayerOrigin, pub trust: Trust, pub extends: Option<String>, pub fields: LayerFields }
 pub trait LayerSource { fn layers(&self) -> Result<Vec<Layer>, ConfigError>; }
 ```
 
