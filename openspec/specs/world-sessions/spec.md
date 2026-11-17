@@ -192,7 +192,7 @@ An input from a handler SHALL have the source script. A connect or a disconnect 
 - **THEN** the journal holds a connect event with the source system after the disconnect
 
 ### Requirement: A control frame comes after the work before it
-The engine SHALL have a control frame. A frame SHALL go on the queue of one world. It SHALL NOT be a command, and the journal SHALL NOT record it. The session SHALL answer a frame only after it handles each request before the frame. During a connect, the session SHALL answer it only after the connect ends. If the world is up, the session SHALL send `IAC DO TIMING-MARK` to the game. It SHALL then answer the frame only after the framer reads the answer of the game.
+The engine SHALL have a control frame. A frame SHALL go on the queue of one world. It SHALL NOT be a command, and the journal SHALL NOT record it. The session SHALL answer a frame only after it handles each request before the frame. During a connect, the session SHALL answer it only after the connect ends. If the world is up, the session SHALL send the mark of the framer and answer after the framer reads the answer. A framer with no mark gets an answer at once.
 
 #### Scenario: A wait covers the echo of the game
 - **GIVEN** an engine with the fake world `alpha/aria`, connected
