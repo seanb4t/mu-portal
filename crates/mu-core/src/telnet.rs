@@ -110,3 +110,64 @@ pub fn escape(bytes: &[u8]) -> Vec<u8> {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Each code against its value in the standard that defines it. The other files of the
+    /// crate read the codes by name, so only this test can find a wrong value.
+    #[test]
+    fn codes_have_the_values_of_their_standards() {
+        // RFC 854, page 14, and RFC 885 for EOR.
+        let commands = [
+            (EOR, 239),
+            (SE, 240),
+            (NOP, 241),
+            (DM, 242),
+            (BRK, 243),
+            (IP, 244),
+            (AO, 245),
+            (AYT, 246),
+            (EC, 247),
+            (EL, 248),
+            (GA, 249),
+            (SB, 250),
+            (WILL, 251),
+            (WONT, 252),
+            (DO, 253),
+            (DONT, 254),
+            (IAC, 255),
+        ];
+        // RFC 857, 858, 859, 860, 1091, 885, 1073 and 2066; MSDP, MSSP, MCCP2, MXP and
+        // GMCP from tintin.mudhalla.net/protocols.
+        let options = [
+            (opt::ECHO, 1),
+            (opt::SGA, 3),
+            (opt::STATUS, 5),
+            (opt::TIMING_MARK, 6),
+            (opt::TTYPE, 24),
+            (opt::EOR, 25),
+            (opt::NAWS, 31),
+            (opt::CHARSET, 42),
+            (opt::MSDP, 69),
+            (opt::MSSP, 70),
+            (opt::MCCP2, 86),
+            (opt::MXP, 91),
+            (opt::GMCP, 201),
+        ];
+        // RFC 1091, section 4, and RFC 2066, section 2.
+        let subcommands = [
+            (ttype::IS, 0),
+            (ttype::SEND, 1),
+            (charset::REQUEST, 1),
+            (charset::ACCEPTED, 2),
+            (charset::REJECTED, 3),
+        ];
+        for (code, value) in commands.into_iter().chain(options).chain(subcommands) {
+            assert_eq!(code, value, "the code that the standard gives as {value}");
+        }
+        assert_eq!(charset::TTABLE, b"[TTABLE ]");
+        assert_eq!(MARK, [255, 253, 6]);
+    }
+}
