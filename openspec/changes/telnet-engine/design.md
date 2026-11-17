@@ -34,9 +34,9 @@ The spike `spikes/telnet-engine` built an engine with the same goals. Its decisi
 
 `src/telnet.rs` becomes a public module. It keeps every code of telnet: the commands from EOR (239) to IAC (255), and the option codes in `telnet::opt`. It also keeps two small functions on the codes. `telnet::escape` doubles each byte 255 of a byte slice. `telnet::MARK` is the bytes `IAC DO TIMING-MARK`. Its submodules hold the logic: `src/telnet/q.rs` for the Q method and `src/telnet/engine.rs` for the engine. Each submodule names a code by its constant.
 
-The source test adds the commands from 239 to 250 to its list `CODES`. No file of `mu-core` holds such a literal today. The tests in `crates/mu-core/tests/` use the constants, because the module is public. A test that writes `255` or `250` fails the source test.
+The source test adds the commands from 239 to 250 to its list `CODES`. No file of `mu-core` holds such a literal today. Its test `bytes_that_are_not_codes_pass` holds the case `let x = 250;`, which becomes a code. That case moves to 238, the first number below the range. `telnet_code_is_found_in_each_form` gains a case for 239, the lowest code. The tests in `crates/mu-core/tests/` use the constants, because the module is public. A test that writes `255` or `250` fails the source test.
 
-The source test cannot find an option code such as GMCP (201) or NAWS (31). These numbers are common in other code, so a scan of them gives false hits. Review alone enforces that an option code is a constant of `telnet::opt`.
+An option code such as GMCP (201) or NAWS (31) is a common number in other code. So a scan of every such number gives false hits. The source test finds an option code by its place instead. A literal right after the name `WILL`, `WONT`, `DO`, `DONT` or `SB` in a token list is an option code, as in `[IAC, WILL, 201]`. A case for each of the five names proves the rule, and `[IAC, WILL, opt::GMCP]` passes it. An option code in any other place passes the test, and review covers it.
 
 Alternative: one file `telnet.rs` with all the logic. It holds the codes and the engine in more than 1000 lines.
 
@@ -44,7 +44,9 @@ Alternative: widen `TELNET_HOME` to the directory `src/telnet/`. That makes the 
 
 ### The engine API
 
-`Engine::new(policy)` makes an engine. `Engine::receive(bytes)` reads one read and queues events and output. `Engine::poll_event` gives the next event, and `Engine::take_output` gives the bytes to send. `Engine::request` asks to turn an option on or off. `Engine::send_data` queues data, and `Engine::send_subnegotiation` queues a subnegotiation. Both double each byte 255 with `telnet::escape`.
+`Engine::new(policy)` makes an engine. `Engine::receive(bytes)` reads one read and queues events and output. `Engine::poll_event` gives the next event, and `Engine::take_output` gives the bytes to send. `Engine::request` asks to turn an option on or off. `Engine::send_subnegotiation` queues a subnegotiation and doubles each byte 255 of its payload with `telnet::escape`. The engine has no step that sends data. `Framer::encode` takes `&self`, so `TelnetFramer::encode` calls `telnet::escape` itself. So the escape of the byte 255 has one home, and each path to the game uses it.
+
+The engine names the two ends of an option with `telnet::Side`. `Local` is an option that the client performs, and `Remote` one that the game performs. The private enum `Side` of `framer.rs` becomes `Role`, with `Client` and `Game`, because it names the end that a `LineFramer` reads for.
 
 These are the events:
 
@@ -57,6 +59,12 @@ These are the events:
 - a protocol error
 
 `IAC` and any byte other than IAC, SB, WILL, WONT, DO and DONT give a two-byte command. So `IAC SE` outside a subnegotiation and `IAC` before an unknown byte are commands with that code, and the next byte is data.
+
+### The bound of a subnegotiation
+
+`telnet::MAX_SUBNEGOTIATION` is 1 MiB. The engine counts the bytes of a payload after it reads `IAC IAC` as one byte, so an escaped byte counts once. When a payload reaches the bound, the engine keeps no more bytes and marks the payload as too long. It reads on to `IAC SE` in every case, so the framing stays in step. At `IAC SE`, a payload over the bound gives `ProtocolError::SubnegotiationTooLong` with the option and no subnegotiation event, and the bytes after it are data again. This is the rule of the spike, and the state of the bound holds across reads.
+
+### The source of the engine
 
 This is the shape of the spike, which the decision page measured. The code is new and written under the tests of this change.
 
@@ -84,7 +92,7 @@ So the two parsers stay. They share the codes, `telnet::MARK` and the line buffe
 
 `LineFramer` and `TelnetFramer` split lines the same way. The partial line, the LF split, the drop of CR and the cut at `MAX_LINE` move into one crate-private type, `LineBuffer`, in `framer.rs`. Each framer feeds it data bytes.
 
-The cut moves to the byte after the bound. Today the partial line is cut as soon as it holds `MAX_LINE` bytes. So a line of exactly `MAX_LINE` bytes and then LF gives that line and an extra empty line. In `LineBuffer`, a full partial line followed by LF is one line. A full partial line followed by any other byte is cut. The existing tests of `LineFramer` keep their results.
+The cut moves to the byte after the bound. Today the partial line is cut as soon as it holds `MAX_LINE` bytes. So a line of exactly `MAX_LINE` bytes and then LF gives that line and an extra empty line. In `LineBuffer`, a full partial line followed by LF is one line. A CR and a NUL after a CR are dropped before the check, so they never start a cut. A full partial line followed by any other byte is cut. So a line of exactly `MAX_LINE` bytes that ends with CR LF is one line too. The existing tests of `LineFramer` keep their results.
 
 `TelnetFramer` also drops a NUL right after a CR, because RFC 854 sends a bare CR as `CR NUL`. The buffer remembers a CR at the end of a read, so the rule holds across reads.
 
@@ -92,7 +100,7 @@ Alternative: a second copy of the split in `TelnetFramer`. Two copies can disagr
 
 ### Prompts
 
-Take a read that added a data byte to the partial line. At the end of its `feed`, `TelnetFramer` gives the partial line as a prompt. A read of negotiation alone adds no data byte, so it gives no prompt. A prompt such as `> ` after a line is new data, so it shows each time. GA and EOR give the partial line as a prompt and clear it. A later LF ends the line, and the framer gives the whole line, with the text of the prompt in it.
+Take a read that added a data byte to the partial line. At the end of its `feed`, `TelnetFramer` gives the partial line as a prompt, if it is not empty. A read that ends at LF leaves an empty partial line, so it gives no prompt. A read of negotiation alone adds no data byte, so it gives no prompt. A prompt such as `> ` after a line is new data, so it shows each time. GA and EOR give the partial line as a prompt and clear it. A later LF ends the line, and the framer gives the whole line, with the text of the prompt in it.
 
 The lines do not depend on the split, because only GA, EOR, LF and the cut clear the partial line. The prompts depend on the split, as the spec says.
 
@@ -100,7 +108,7 @@ Alternative: prompts on GA and EOR alone. No family of the spike sent either. So
 
 ### The answers of a MU client
 
-`TelnetFramer::new` takes a `TelnetSettings` value: the character set to accept and the window size. `TelnetSettings::default()` gives `UTF-8` and 120 by 40. World-sessions adds the quirks of each world type to this struct, so the signature of `new` does not change.
+`TelnetFramer::new` takes a `TelnetSettings` value: the character set to accept and the window size. `TelnetSettings::default()` gives `UTF-8` and 120 by 40. World-sessions adds the quirks of each world type to this struct, so the signature of `new` does not change. `ResolvedWorld` stays the resolved configuration of a world. World-config (#53) adds the character set to it, and world-sessions builds `TelnetSettings` from it for each connection. So `TelnetSettings` is the input of the framer, not a second home of the configuration.
 
 The framer answers these, as the spike client did:
 
@@ -120,6 +128,8 @@ The policy accepts TTYPE, NAWS and CHARSET for the client, and ECHO, SGA, EOR, C
 
 The character set is a setting, not a result of the CHARSET answer. TinyMUX reads Latin-1 when the client gives no answer, so world-sessions sets ISO-8859-1 for TinyMUX either way.
 
+The property test `latin1_round_trip` encodes each character below 256 and decodes the bytes again, 128 to 159 included.
+
 Alternative: `encoding_rs`. Its label `ISO-8859-1` maps to windows-1252, which gives other characters for the bytes 128 to 159. The standard library gives the true ISO-8859-1 map, so no crate is needed.
 
 ### Messages and errors
@@ -134,7 +144,11 @@ Alternative: a new `Inbound::Error`. It changes the seam and the session for a c
 
 MCCP2 starts on `IAC SB MCCP2 IAC SE` while MCCP2 is on for the game. While it is off, that subnegotiation is an ordinary event. The engine inflates with the streaming API of `miniz_oxide`, which tells how many input bytes a call used. So the engine knows where a stream ends inside a read, and it reads the bytes after it as plain telnet.
 
-A stream that is not valid zlib gives one protocol error. After it, the engine drops each later byte and gives no event, because no byte after it can be read. So the events after the error are the same for any split. The tests use bad streams that fail in their header, so the error comes at the same byte for every split.
+A stream that is not valid zlib gives one protocol error. After it, the engine drops each later byte and gives no event, because no byte after it can be read. So the error and the silence after it are the same for any split.
+
+The data before the error can differ by split. Inflate gives out what it can decode from the bytes of each call. A stream that breaks in its middle can break at a byte that one split reaches first. To hold the data back until the stream ends needs a buffer with no bound. So the spec states this case as the one exception to the split rule. The split property test uses bad streams that fail in their header, where no data comes before the error. A unit test, `bad_stream_after_data`, checks a stream that breaks after some data: one error and silence for any split.
+
+The engine opens a stream only when none is open. The spike guards the same case. An `IAC SB MCCP2 IAC SE` inside an open stream is an ordinary subnegotiation event.
 
 The crate is pure Rust under MIT, Zlib or Apache-2.0, and `deny.toml` allows all three. The spike used it, and `Cargo.lock` does not hold it yet. The boundary test lists the third-party crates of each member in `ALLOWED_CRATES`. This change adds `miniz_oxide` and `hex` to the list of `mu-core`.
 
@@ -144,11 +158,11 @@ Alternative: `flate2`. It wraps `miniz_oxide` by default and adds a layer that t
 
 The six transcripts go to `crates/mu-core/tests/fixtures/telnet/`, beside the use of `tests/fixtures` in `mu-cli`. A parser of the transcript format goes into `crates/mu-core/tests/support/mod.rs`. It decodes the hex of each record with the `hex` crate, a dev-dependency. `Cargo.lock` already holds `hex` 0.4.3.
 
-The transcript test reads its files at run time, from a path under `CARGO_MANIFEST_DIR`. The test `transcript_files_live_in_the_crate` makes sure that the canonical path of each file is under `crates/mu-core/tests/fixtures/`. So a symbolic link into `spikes/` fails it.
+The transcript test reads its files at run time, from a path under `CARGO_MANIFEST_DIR`. The boundary test of `crates/mu-cli/tests/workspace_boundary.rs` holds every rule that keeps the crates away from `spikes/`. So it gains one more: a new `Violation::SpikeLink` for any symbolic link under `crates/` whose target resolves into `spikes/`. A probe case makes a link in a `TreeCopy` of the fixture and makes sure that the boundary test reports it. This covers the transcripts and each other file of each crate.
 
 `tests/support/mod.rs` also gets `reads(bytes, points)`, which splits a byte slice at the given points. The engine, transcript and framer tests use it. The unit tests in `framer.rs` keep their own `feed_split`, because a unit test cannot reach `tests/support`.
 
-The property test of the engine builds random streams from parts: data, two-byte commands, negotiations, subnegotiations, marks, compressed runs and, as the last part, a bad stream. Each part also gives the events that a correct parser must report. So the test compares the engine with this oracle, not with another parser. The compressed runs use the deflate side of `miniz_oxide`. A second property test, `engine_round_trip`, sends random data and payloads through `send_data` and `send_subnegotiation` of one engine and reads them with a second engine.
+The property test of the engine builds random streams from parts: data, two-byte commands, negotiations, subnegotiations, marks, compressed runs and, as the last part, a bad stream. Malformed framing is a part too: `IAC SB IAC SE`, a negotiation verb inside a subnegotiation, and an `IAC` as the last byte of the stream. Each of these gives the events that the engine rules state. Each part also gives the events that a correct parser must report. So the test compares the engine with this oracle, not with another parser. The compressed runs use the deflate side of `miniz_oxide`. A second property test, `engine_round_trip`, sends random data through `telnet::escape` and random payloads through `send_subnegotiation` of one engine. A second engine reads them back.
 
 ### Using the spike
 
@@ -170,31 +184,35 @@ This change follows "Using a spike" on `docs/src/content/docs/contributing/spike
 | Rule | Enforced by |
 |---|---|
 | The commands of telnet live only in `src/telnet.rs` | The test `source_of_mu_core_keeps_its_rules`, with 239 to 255 and 6 in its list `CODES`. |
-| The option codes live only in `telnet::opt` | Review alone. A scan of small numbers gives false hits. |
+| The option codes live only in `telnet::opt` | The source test, for a literal after `WILL`, `WONT`, `DO`, `DONT` or `SB`. Review covers each other place. |
 | No crate file includes a spike file | The boundary test in `crates/mu-cli/tests/workspace_boundary.rs`. |
-| The transcript test reads no spike file at run time | The test `transcript_files_live_in_the_crate`. |
+| No crate reads a spike file through a symbolic link | `Violation::SpikeLink` of the boundary test, and its probe case `spike_link_is_found`. |
 | Each third-party crate of `mu-core` is allowed | `ALLOWED_CRATES` in the boundary test, and `cargo deny check` in `mise run check`. |
-| The engine gives the same events for any split | The property test `engine_ignores_read_splits`, with bad streams, and the transcript test `transcripts_in_other_reads`. |
+| The engine gives the same events for any split | The property test `engine_ignores_read_splits`, with bad headers and malformed framing, and the transcript test `transcripts_in_other_reads`. |
+| A bad stream gives one error and silence for any split | The test `bad_stream_after_data`. |
+| The bound counts an escaped byte once and holds across reads | The tests `payload_at_the_bound` and `payload_over_the_bound`. |
+| A stream opens only when none is open | The test `start_inside_a_stream`. |
 | The engine matches the oracle | The property test `engine_matches_the_oracle`. |
 | Data and payloads survive the escape | The property test `engine_round_trip`. |
 | The Q method follows RFC 1143 | The unit tests of `telnet::q`, one for each row of the table in section 7. |
 | The mark changes no option | The tests `answer_to_a_mark` and `mark_from_the_game`. |
 | One copy of the mark bytes | `telnet::MARK`, used by both framers and the fake game tests. Review checks that no other copy appears. |
 | The two framers split lines the same way | The unit tests of `LineBuffer`, and the existing tests of `LineFramer`, which keep passing. |
-| A line of exactly the bound gives no empty line | The tests `line_of_exactly_the_bound` and `line_framer_line_of_exactly_the_bound`. |
+| A line of exactly the bound gives no empty line | The tests `line_of_exactly_the_bound` and `line_framer_line_of_exactly_the_bound`, each with LF and with CR LF. |
+| No empty prompt | The test `read_that_ends_at_a_line_end`. |
 | The lines of the telnet framer do not depend on the split | The property test `telnet_framer_lines_ignore_read_splits`. |
-| The framer decodes and encodes in its character set | The tests `latin1_line_from_the_game`, `utf8_line_from_the_game` and `latin1_line_to_the_game`. |
+| The framer decodes and encodes in its character set | The tests `latin1_line_from_the_game`, `utf8_line_from_the_game` and `latin1_line_to_the_game`, and the property test `latin1_round_trip`. |
 | No payload makes the framer fail | The property test `framer_survives_any_payload`. |
 | Each fact about RFCs and `miniz_oxide` holds | Task 1.1 reads the sources and fills the table of checked facts. |
 
 ## Risks / Trade-offs
 
-- [A line split across reads shows a false prompt.] → At the end of the line, the framer gives the whole line. The output pane decides how to show a prompt that a line replaced.
+- [A line split across reads shows a false prompt.] → At the end of the line, the framer gives the whole line. Output-pane (#55) decides how to show a prompt that a line replaced. Until then, the plain view of the client shows both.
 - [A game sends a prompt, waits, and adds text to the line.] → The framer gives a second, longer prompt, then the line. No text is lost.
 - [The framer drops a subnegotiation other than GMCP.] → MSSP and the others have no reader yet. A later change can turn one into a message.
 - [The game ignores `IAC DO TIMING-MARK`.] → `Portal::wait_idle` stays a test helper. World-sessions decides the behavior with real games.
 - [The engine goes quiet after a bad MCCP2 stream, with the connection still open.] → The error message tells the player. World-sessions adds the disconnect.
-- [A bad stream that fails after its header can give a different amount of data for different splits.] → The split test uses bad headers. The engine drops everything after the error in every case.
+- [A bad stream that fails after its header can give a different amount of data for different splits.] → The spec states the exception. The error and the silence after it are the same for any split, and `bad_stream_after_data` tests that.
 
 ## Checked facts
 

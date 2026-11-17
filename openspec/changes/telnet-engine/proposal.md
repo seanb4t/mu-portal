@@ -40,4 +40,5 @@ None. The `Framer` seam, the session and the world-sessions requirements stay as
 - `LineFramer`: its line split moves into a buffer that both framers share. A line of exactly the line bound no longer gives an extra empty line.
 - Dependencies: one new crate for the inflate of MCCP2, through `[workspace.dependencies]`.
 - Rules: the codes of telnet still live only in `src/telnet.rs`. The test `source_of_mu_core_keeps_its_rules` adds the commands from 239 to 250 to the codes that it finds.
-- Boundary test: `ALLOWED_CRATES` of `mu-core` gains `miniz_oxide` and `hex`.
+- Boundary test: `ALLOWED_CRATES` of `mu-core` gains `miniz_oxide` and `hex`. A new rule fails a symbolic link from a crate into `spikes/`.
+- Source test: it also finds an option code written as a literal after `WILL`, `WONT`, `DO`, `DONT` or `SB`.

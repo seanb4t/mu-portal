@@ -7,15 +7,15 @@ The engine reads the telnet protocol of a game and answers it as a MU client. Th
 ## ADDED Requirements
 
 ### Requirement: The engine reads IAC IAC as one data byte
-The engine SHALL read `IAC IAC` in data as one data byte 255. When it sends data, it SHALL double each byte 255.
+The engine SHALL read `IAC IAC` in data as one data byte 255. The client SHALL double each byte 255 that it sends in data or in a subnegotiation.
 
 #### Scenario: An escaped byte in data
 - **WHEN** the engine reads the bytes `a IAC IAC b`
 - **THEN** it gives the data bytes `a`, 255 and `b`, and no command
 
-#### Scenario: The byte 255 in data to the game
-- **WHEN** the engine sends the data bytes `a`, 255 and `b`
-- **THEN** the bytes to the game are `a IAC IAC b`
+#### Scenario: The byte 255 in a subnegotiation to the game
+- **WHEN** the engine sends a GMCP subnegotiation with the payload `a`, 255 and `b`
+- **THEN** the bytes to the game are `IAC SB GMCP a IAC IAC b IAC SE`
 
 #### Scenario: A line to the game
 - **WHEN** the telnet framer encodes the line `hi`
@@ -85,7 +85,7 @@ The engine SHALL give each subnegotiation as an event with its option and its pa
 - **THEN** each time it gives a protocol error that names the option, no subnegotiation, and then the data `ok`
 
 ### Requirement: MCCP2 is inflated inside the engine
-When MCCP2 is on for the game, `IAC SB MCCP2 IAC SE` SHALL start compression, and the engine SHALL inflate the bytes that follow. A stream SHALL be able to start inside a read. The bytes after the end of the stream SHALL be plain. When MCCP2 is off, that subnegotiation SHALL start nothing.
+When MCCP2 is on for the game, `IAC SB MCCP2 IAC SE` SHALL start compression, and the engine SHALL inflate the bytes that follow. A stream SHALL be able to start inside a read. The bytes after the end of the stream SHALL be plain. When MCCP2 is off, or a stream is already open, that subnegotiation SHALL start nothing.
 
 #### Scenario: A stream that starts inside a read
 - **GIVEN** an engine that accepts MCCP2 on the side of the game
@@ -96,6 +96,11 @@ When MCCP2 is on for the game, `IAC SB MCCP2 IAC SE` SHALL start compression, an
 - **GIVEN** an engine where MCCP2 is on for the game
 - **WHEN** one read holds `IAC SB MCCP2 IAC SE`, a complete zlib stream of `in` and the plain bytes `out`
 - **THEN** the engine gives the start of compression, the data `in`, the end of compression and the data `out`
+
+#### Scenario: A start inside a stream
+- **GIVEN** an engine with an open compressed stream
+- **WHEN** the inflated bytes hold `IAC SB MCCP2 IAC SE` and then `x`
+- **THEN** it gives a subnegotiation of MCCP2 with an empty payload and then the data `x`, and no second start of compression
 
 #### Scenario: A start while MCCP2 is off
 - **GIVEN** an engine where MCCP2 is off
@@ -111,10 +116,11 @@ A compressed stream that is not valid zlib SHALL give one protocol error. After 
 - **THEN** it gives the start of compression, one protocol error, and no data
 
 ### Requirement: The split of reads changes no event
-Join adjacent data events. Then the engine SHALL give the same events and send the same bytes for any split of the same input into reads.
+Join adjacent data events. Then the engine SHALL give the same events and send the same bytes for any split of the same input into reads. One exception holds: a compressed stream that fails after its first byte can give a different amount of data before its error. Its error and the silence after it SHALL be the same for any split.
 
 #### Scenario: Random streams in random reads
-- **WHEN** a property test splits random telnet streams into random reads, with compression that starts inside a read and streams that are not zlib
+- **WHEN** a property test splits random telnet streams into random reads
+- **AND** the streams hold compression that starts inside a read, streams with a bad zlib header, and malformed framing
 - **THEN** the joined events and the sent bytes match those of the whole stream in one read
 
 #### Scenario: The recorded transcripts in other reads
@@ -122,7 +128,7 @@ Join adjacent data events. Then the engine SHALL give the same events and send t
 - **THEN** each run gives no protocol error and the same joined events as the recorded reads
 
 ### Requirement: The telnet framer gives lines
-The telnet framer SHALL end a line at LF and SHALL drop each CR, so a bare LF ends a line. It SHALL drop a NUL right after a CR, in the same read or the next one. It SHALL decode a line in its character set. It SHALL cut a run of bytes with no LF at the line bound.
+The telnet framer SHALL end a line at LF and SHALL drop each CR, so a bare LF ends a line. It SHALL drop a NUL right after a CR, in the same read or the next one. It SHALL decode a line in its character set. It SHALL cut a run of bytes with no LF at the line bound. A CR or a dropped NUL SHALL NOT start a cut.
 
 #### Scenario: Line ends
 - **WHEN** the telnet framer reads `one\r\ntwo\nthree\n`
@@ -137,8 +143,8 @@ The telnet framer SHALL end a line at LF and SHALL drop each CR, so a bare LF en
 - **THEN** it gives one line at the bound and then the line `aaa`
 
 #### Scenario: A line of exactly the bound
-- **WHEN** the telnet framer or the line framer reads the line bound in bytes of `a` and then LF
-- **THEN** it gives one line at the bound and no empty line
+- **WHEN** the telnet framer or the line framer reads the line bound in bytes of `a` and then LF, or then CR LF
+- **THEN** each time it gives one line at the bound and no empty line
 
 ### Requirement: The telnet framer uses its character set
 The telnet framer SHALL have one character set, UTF-8 or ISO-8859-1. It SHALL decode lines and prompts in that set, and encode each line to the game in it. In UTF-8, each invalid sequence SHALL become a replacement character. In ISO-8859-1, each character with no byte in the set SHALL become `?`. A CHARSET answer SHALL NOT change the set.
@@ -153,13 +159,17 @@ The telnet framer SHALL have one character set, UTF-8 or ISO-8859-1. It SHALL de
 - **WHEN** it reads the bytes `caf`, 195, 169, LF, then the byte 233 and LF
 - **THEN** it gives the line `café` and then a line with one replacement character
 
+#### Scenario: Every Latin-1 byte
+- **WHEN** a property test encodes the 256 characters below 256 as Latin-1 lines, and the framer decodes the bytes again
+- **THEN** each character other than CR and LF comes back unchanged, 128 to 159 included
+
 #### Scenario: A Latin-1 line to the game
 - **GIVEN** a telnet framer with the character set ISO-8859-1
 - **WHEN** it encodes the line `café ÿ ✓`
 - **THEN** the bytes to the game are `caf`, 233, a space, `IAC IAC`, a space, `?`, CR and LF
 
 ### Requirement: The telnet framer gives prompts
-A read can add a data byte to an unfinished line. At the end of such a read, the telnet framer SHALL give the unfinished text as a prompt. GA and EOR SHALL also end a prompt and clear it. If a later read ends the text with LF, the framer SHALL give the whole text as one line. The lines SHALL be the same for any split of the bytes into reads.
+A read can add a data byte to an unfinished line. At the end of such a read, the telnet framer SHALL give the unfinished text as a prompt, if that text is not empty. GA and EOR SHALL also end a prompt and clear it. If a later read ends the text with LF, the framer SHALL give the whole text as one line. The lines SHALL be the same for any split of the bytes into reads.
 
 #### Scenario: A prompt with no GA
 - **WHEN** one read ends with `Name: ` and no line end
@@ -172,6 +182,10 @@ A read can add a data byte to an unfinished line. At the end of such a read, the
 #### Scenario: A line split across reads
 - **WHEN** one read ends with `hel` and the next read starts with `lo\n`
 - **THEN** the telnet framer gives the prompt `hel` and then the line `hello`
+
+#### Scenario: A read that ends at a line end
+- **WHEN** one read holds `hel`, and the next read holds `lo\n`
+- **THEN** the telnet framer gives the prompt `hel` and the line `hello`, and no empty prompt
 
 #### Scenario: Negotiation alone
 - **WHEN** one read ends with `Name: `, and the next read holds only `IAC WILL GMCP`
