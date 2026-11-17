@@ -12,12 +12,16 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+figment2 = { workspace = true }
 futures = { workspace = true }
 governor = { workspace = true }
 miniz_oxide = { workspace = true }
 secrecy = { workspace = true }
+serde = { workspace = true }
+serde_path_to_error = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+toml = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

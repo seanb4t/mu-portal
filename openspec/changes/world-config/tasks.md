@@ -2,13 +2,13 @@
 
 ## 1. Sources and dependencies
 
-- [ ] 1.1 Read the sources of each fact that the design uses:
+- [x] 1.1 Read the sources of each fact that the design uses:
   - the XDG Base Directory specification, on a relative `XDG_CONFIG_HOME`
   - the documentation or the source of TinyMUX, AresMUSH and Evennia: the login command, and a command that the server accepts with no effect
   - the `>` lines of the transcripts in `crates/mu-core/tests/fixtures/telnet/`
 
   Fill the table "Checked facts" of the design with one row for each fact and its source. Make sure that each difference from the sources is an edit of the design that its row names.
-- [ ] 1.2 Add `figment2` with `default-features = false`, and `serde`, to `[workspace.dependencies]` in `Cargo.toml`. Add `serde_path_to_error` to `[workspace.dependencies]` too. Add the three, and `toml`, to the dependencies of `mu-core`. Add all four to the list of `mu-core` in `ALLOWED_CRATES` of `crates/mu-cli/tests/workspace_boundary.rs`. Make sure that `cargo deny check` and `cargo nextest run -p mu-cli --test workspace_boundary --locked` pass, and that Renovate reads both new pins from `Cargo.toml`. Make sure that `Cargo.lock` gains only `figment2`, `uncased` and `serde_path_to_error`.
+- [x] 1.2 Add `figment2` with `default-features = false`, and `serde`, to `[workspace.dependencies]` in `Cargo.toml`. Add `serde_path_to_error` to `[workspace.dependencies]` too. Add the three, and `toml`, to the dependencies of `mu-core`. Add all four to the list of `mu-core` in `ALLOWED_CRATES` of `crates/mu-cli/tests/workspace_boundary.rs`. Make sure that `cargo deny check` and `cargo nextest run -p mu-cli --test workspace_boundary --locked` pass, and that Renovate reads both new pins from `Cargo.toml`. Make sure that `Cargo.lock` gains only `figment2`, `uncased` and `serde_path_to_error`.
 
 ## 2. The directory and the layers
 

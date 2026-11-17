@@ -33,14 +33,18 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
     (
         "mu-core",
         &[
+            "figment2",
             "futures",
             "governor",
             "hex",
             "miniz_oxide",
             "proptest",
             "secrecy",
+            "serde",
+            "serde_path_to_error",
             "thiserror",
             "tokio",
+            "toml",
             "tracing",
         ],
     ),
