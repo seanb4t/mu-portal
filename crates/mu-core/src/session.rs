@@ -330,12 +330,10 @@ impl Session {
         let Some(login) = self.parts.login.clone() else {
             return Ok(None);
         };
-        let password = self
-            .parts
-            .password
-            .as_ref()
-            .map_or("", |password| password.expose())
-            .to_owned();
+        let Some(password) = &self.parts.password else {
+            return Err(PortalError::NoPassword(self.world().clone()));
+        };
+        let password = password.expose().to_owned();
         self.write_line(&login.line(&password), depth).await?;
         // The event gets the line of the template for the mask, so it never holds the password.
         let event = self.record(EventKind::Login, Origin::System, &login.line(MASK), depth);
@@ -450,6 +448,9 @@ impl Session {
                 let Some(transport) = &self.parts.transport else {
                     return Err(PortalError::NoTransport(self.world().clone()));
                 };
+                if self.parts.login.is_some() && self.parts.password.is_none() {
+                    return Err(PortalError::NoPassword(self.world().clone()));
+                }
                 if matches!(self.conn, Conn::Down) {
                     let connect = transport.connect(self.world());
                     self.conn = Conn::Connecting {

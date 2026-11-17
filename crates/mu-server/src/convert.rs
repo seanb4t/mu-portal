@@ -12,7 +12,7 @@ pub fn status(error: &PortalError) -> ConnectError {
     let message = error.to_string();
     match error {
         PortalError::UnknownWorld(_) => ConnectError::not_found(message),
-        PortalError::NotConnected(_) | PortalError::NoTransport(_) => {
+        PortalError::NotConnected(_) | PortalError::NoTransport(_) | PortalError::NoPassword(_) => {
             ConnectError::failed_precondition(message)
         }
         PortalError::LineBreak => ConnectError::invalid_argument(message),
@@ -93,7 +93,11 @@ mod tests {
                 ErrorCode::FailedPrecondition,
             ),
             (
-                PortalError::NoTransport(world),
+                PortalError::NoTransport(world.clone()),
+                ErrorCode::FailedPrecondition,
+            ),
+            (
+                PortalError::NoPassword(world),
                 ErrorCode::FailedPrecondition,
             ),
             (PortalError::LineBreak, ErrorCode::InvalidArgument),

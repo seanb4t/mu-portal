@@ -14,9 +14,12 @@ pub enum PortalError {
     /// The world is connecting or disconnected.
     #[error("{0} is not connected")]
     NotConnected(WorldId),
-    /// The world has no transport yet, so it cannot connect.
-    #[error("{0} has no transport, so it cannot connect yet")]
+    /// The world has no transport, so a connect of it fails.
+    #[error("{0} has no transport: only fake worlds can connect in this version")]
     NoTransport(WorldId),
+    /// The world has a login but no password, so it cannot log in.
+    #[error("{0} has a login but no password")]
+    NoPassword(WorldId),
     /// The text holds a CR or an LF.
     #[error("the text holds a line break")]
     LineBreak,

@@ -201,7 +201,8 @@ impl Portal {
     /// # Errors
     ///
     /// [`PortalError::UnknownWorld`], [`PortalError::NotConnected`],
-    /// [`PortalError::LineBreak`], or [`PortalError::Stopped`].
+    /// [`PortalError::NoTransport`], [`PortalError::NoPassword`], [`PortalError::LineBreak`], or
+    /// [`PortalError::Stopped`].
     pub async fn submit(&self, envelope: Envelope) -> Result<Option<Seq>, PortalError> {
         let world = envelope.command.world().clone();
         self.ask(&world, |reply| Request::Command {

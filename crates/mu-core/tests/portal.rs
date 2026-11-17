@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use mu_core::{
     ConnectGate, EventKind, FakeTransport, Journal, MemoryJournal, NewEvent, Portal, PortalError,
-    Source, WorldId, WorldState,
+    ResolvedWorld, Source, WorldId, WorldSetup, WorldState,
 };
 
 use support::*;
@@ -295,6 +295,28 @@ async fn stop_disconnects_every_world_and_refuses_connect() {
         portal.worlds()[0],
         (id("alpha/aria"), WorldState::Disconnected)
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn login_with_no_password_is_refused() {
+    let transport = FakeTransport::new("aria", PW);
+    let game = transport.game();
+    let resolved = ResolvedWorld::with_default_login(id("alpha/aria"), "env:PW".parse().unwrap());
+    let portal = portal(
+        vec![WorldSetup::new(resolved, None, Arc::new(transport))],
+        Vec::new(),
+    );
+    let refused = portal.connect(&id("alpha/aria")).await;
+    assert!(
+        matches!(&refused, Err(PortalError::NoPassword(world)) if *world == id("alpha/aria")),
+        "{refused:?}"
+    );
+    idle(&portal).await;
+    assert_eq!(
+        portal.worlds()[0],
+        (id("alpha/aria"), WorldState::Disconnected)
+    );
+    assert!(game.lines().is_empty(), "{:?}", game.lines());
 }
 
 /// Returns after the session of `world` handled each request sent before it. While the connect
