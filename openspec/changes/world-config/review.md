@@ -1,10 +1,10 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-17T17:11:14+00:00
-head: e5fbdd2e95883c85858489541fa11679ccf392af
-round: 11
-next_id: 96
+reviewed_at: 2026-11-17T17:28:17+00:00
+head: af4d1ea2a4a947731cc121f571b85938060f3ecf
+round: 12
+next_id: 97
 lenses:
   spec-lint: not-applicable
   approach: ok
@@ -19,8 +19,7 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge |
 |---|---|---|---|---|---|---|---|---|
-| R-94 | invariants | should-fix | in-change | report states that each stderr line goes out in one write, so lines in a shared log stay whole. The format-then-write_all body enforces it, but no test pins it. A rewrite to writeln! on Stderr, which is unbuffered and writes each format piece apart, splits the line and passes every test. | crates/mu-cli/src/lib.rs:18 — "/// Writes `line` and a newline to stderr in one write, so servers that share a log append whole" | Split report into report_to(&mut impl Write, line), as print_to splits print. Add a unit test with a writer that counts its write calls, and assert that fail and warn each give one call that holds the whole line and its newline. |  |  |
-| R-95 | test-coverage | note | in-change | print_ignores_only_a_broken_pipe has no scenario and no task that names it. | crates/mu-cli/src/lib.rs:120 — "fn print_ignores_only_a_broken_pipe() {" | No action needed; it proves the stdout split that R-93 asked for. Optionally name it in a task. |  |  |
+| R-96 | fit | should-fix | in-change | The new seam report_to writes one stderr line in one write, but serve in mu-server keeps its own copy of that policy, with the same reason and the same closed-stderr comment, for its own `mu server:` line. The new test pins only the copy in mu-cli. | crates/mu-cli/src/lib.rs:26 — "out.write_all(format!("{line}\\n").as_bytes())" | Move report and report_to to mu-server, which mu-cli already depends on, and make serve write its SERVING line through report. Then fail, warn and serve share one writer, and report_writes_the_line_in_one_write covers all three. |  |  |
 
 ## Repeats
 
@@ -56,20 +55,16 @@ None.
 | 9 | implementation | follow-up | 9e9821d94110bd81d0680322241d02e47a5d55d7 | dd280ce143c9e8e44f06b96d5ca1cd1a1febdce25c2eb0712c376e9507a56c82 | approve-with-notes | 5 | 2 | 0 | 2 | operator decision |
 | 10 | implementation | follow-up | edc00b3e1bc9459a93fafafe81c76ace52c2a6e2 | 24b95a47109fda1f02ee2b69b93ca580129193043b7e2f082937c0e39ebd3d58 | approve-with-notes | 2 | 0 | 0 | 1 | operator decision |
 | 11 | implementation | follow-up | e5fbdd2e95883c85858489541fa11679ccf392af | 24b95a47109fda1f02ee2b69b93ca580129193043b7e2f082937c0e39ebd3d58 | approve-with-notes | 2 | 0 | 0 | 0 | operator decision |
+| 12 | implementation | follow-up | af4d1ea2a4a947731cc121f571b85938060f3ecf | 24b95a47109fda1f02ee2b69b93ca580129193043b7e2f082937c0e39ebd3d58 | approve-with-notes | 1 | 0 | 0 | 0 | operator decision |
 
 ## Judge
 
-judge: 4 questions, 0.000 USD
+judge: 2 questions, 0.000 USD
 
 ## Coverage matrix
 
 | scenario | covered by | status | verified |
 |---|---|---|---|
-| Help lists the verbs | crates/mu-cli/tests/cli.rs: help_lists_verbs | covered | pass |
-| Help for one verb | crates/mu-cli/tests/cli.rs: help_for_one_verb | covered | pass |
-| Two worlds connect | crates/mu-cli/tests/worlds.rs: two_worlds_connect | covered | pass |
-| A configured world waits | crates/mu-cli/tests/worlds.rs: configured_world_waits | covered | pass |
-| A configured world cannot connect yet | crates/mu-cli/tests/worlds.rs: configured_world_cannot_connect_yet | covered | pass |
 | The flag wins over the environment | crates/mu-cli/tests/world_config.rs: flag_wins_over_the_environment | covered | pass |
 | The default directory | crates/mu-cli/tests/world_config.rs: default_directory | covered | pass |
 | The directory under the home directory | crates/mu-cli/tests/world_config.rs: directory_under_home | covered | pass |
@@ -125,6 +120,11 @@ judge: 4 questions, 0.000 USD
 | A bad configuration stops the start | crates/mu-cli/tests/worlds.rs: bad_configuration_stops_the_start | covered | pass |
 | A fake world with a configured id | crates/mu-cli/tests/worlds.rs: fake_world_with_a_configured_id | covered | pass |
 | The secret is not read at the start | crates/mu-cli/tests/worlds.rs: server_does_not_read_a_configured_secret | covered | pass |
+| Help lists the verbs | crates/mu-cli/tests/cli.rs: help_lists_verbs | covered | pass |
+| Help for one verb | crates/mu-cli/tests/cli.rs: help_for_one_verb | covered | pass |
+| Two worlds connect | crates/mu-cli/tests/worlds.rs: two_worlds_connect | covered | pass |
+| A configured world waits | crates/mu-cli/tests/worlds.rs: configured_world_waits | covered | pass |
+| A configured world cannot connect yet | crates/mu-cli/tests/worlds.rs: configured_world_cannot_connect_yet | covered | pass |
 
 ### Not run
 
@@ -199,25 +199,22 @@ None.
 
 ## Lens notes
 
-- approach: Follow-up round since edc00b3: diff-files.txt lists crates/mu-cli/src/lib.rs and review.md. No artifact of the change changed, so no design citation is inside the bound; review.md was not read.
-- approach: lib.rs at head: fail and warn share one stderr writer, report; print delegates to print_to, which returns success on BrokenPipe and status 1 on any other write error. No decision of design.md states a stdout write policy, so no decision is departed from.
-- approach: The warning of a missing chosen directory (decision 'The configuration directory') still goes to stderr through warn as 'mu <verb>: warning: <message>'; config.rs:53 is its only caller.
-- approach: The doc comment of print says a closed stdout is not an error, as for --version. clap_builder 4.6.7 Error::exit does 'let _ = self.print();', so --version swallows every write error, not only BrokenPipe. The comment holds for a closed stdout; on another write error, mu version exits 1 while mu --version exits 0. The spec 'Version output' fixes only the line, not the status on a failed write.
-- fit: Follow-up round since edc00b3: the only changed code file is crates/mu-cli/src/lib.rs; review.md was not read.
-- fit: R-92 stays fixed: fail and warn now share one private report function, and no other stderr write remains in crates/mu-cli/src.
-- fit: R-90 stays fixed: mu version and mu world both write stdout through crate::print, and no println or other stdout write remains in crates/mu-cli/src.
-- fit: The test writer Failing in lib.rs has no existing counterpart in crates/mu-cli/tests/support or crates/mu-core/tests/support, so it is not a copy.
-- fit: The one-line per-verb fail wrappers in client.rs, server.rs and world.rs are outside the bound of this round and were not judged.
-- invariants: Follow-up round since edc00b3: the only code file that changed is crates/mu-cli/src/lib.rs (commit 4b89514). review.md was not read. Findings are bounded to lib.rs.
-- invariants: I1: print returns success on a BrokenPipe and on a full write, and status 1 on any other write error \| enforced at print_to, crates/mu-cli/src/lib.rs:42-46 \| boundary test print_ignores_only_a_broken_pipe (BrokenPipe, StorageFull, PermissionDenied, and Ok through a Vec), so both sides of the kind check are passed.
-- invariants: I2: each stderr line of mu-cli (fail, warn) is one write of the whole line and its newline \| enforced at report, crates/mu-cli/src/lib.rs:20-23 \| boundary test none (inv-1).
-- invariants: I3: fail and warn keep their output text, mu <verb>: <error> and mu <verb>: warning: <message> \| enforced at lib.rs:27 and lib.rs:33 \| the refactor keeps the same format strings, so no check is weakened.
-- invariants: I4: a failed stdout write surfaces at write_all only when the printed text ends in a newline, because stdout is a LineWriter that keeps a tail with no newline until exit \| enforced by the callers: the text of mu world list and show ends each line with a newline, and clap_builder 4.6.7 _render_version ends with a newline \| boundary test none. Not raised as a finding because no artifact states it and every caller holds it today.
-- invariants: R-92 (warn copies fail) and R-93 (no test of the stdout split) are fixed at head: report is the one stderr writer, and print_ignores_only_a_broken_pipe passes both sides of the split.
-- invariants: No enforcement point in the bound is a script, so no edge probe was run.
-- test-coverage: The new print_to test in lib.rs closes R-93.
-- test-honesty: Follow-up round: only crates/mu-cli/src/lib.rs changed in code. Its one test, print_ignores_only_a_broken_pipe, drives print_to with a failing writer for three error kinds and a working writer, and asserts the status of each. It can fail for the reason stated.
-- test-coverage gap: Follow-up round: only lib.rs changed. Matrix rows outside it were checked by test name and existence only, not by reading each assertion.
+- approach: Follow-up round since e5fbdd2: the only changed code file is crates/mu-cli/src/lib.rs (report and report_to split, and the test report_writes_the_line_in_one_write). review.md was not read.
+- approach: No decision of design.md governs the stderr write shape or the stdout policy of print, and the cli-entrypoint spec has no rule on a failed stdout write, so the change in lib.rs departs from no decision and needs no recorded deviation.
+- approach: The change artifacts did not change since the base, so no requirement or decision text is inside the bound of this round.
+- approach: Spot check of fixed approach rows R-61, R-62 and R-65 in crates/mu-cli/src/world.rs: show writes the charset in lower case, writes [login] and [keepalive] table headers, and takes the id as text with exit 1 for an unknown id. None of these defects came back.
+- fit: Follow-up round since e5fbdd2: only crates/mu-cli/src/lib.rs changed in code. The test writers Failing and Writes have no counterpart elsewhere in crates/, so they copy nothing.
+- fit: report_to follows the same writer-seam shape as print_to beside it.
+- invariants: Follow-up round since e5fbdd2: the only code change is crates/mu-cli/src/lib.rs (report split into report and report_to, and the unit test report_writes_the_line_in_one_write). review.md also changed and is not read as review input.
+- invariants: I1: each stderr line of mu-cli (fail, warn) goes out as one write of the whole line and its newline \| enforced at report_to, crates/mu-cli/src/lib.rs:25-27 (format, then one write_all), reached from report at lib.rs:20-23 \| boundary test report_writes_the_line_in_one_write, crates/mu-cli/src/lib.rs:139, with interpolated format_args (several format pieces), the edge that splits a writeln!.
+- invariants: Probe of I1 (probe/p.rs under the handoff directory, built with rustc): format then write_all gave 1 write on a recording writer; writeln! of the same format_args gave 5 writes; writeln! with no arguments gave 2 writes; an empty line gave one write of a lone newline. So the test fails for a writeln! body of report_to, and R-94 is closed by it.
+- invariants: I1 residual, not a finding: the test calls report_to directly with a format string that mirrors fail; it does not call fail or warn, so a body of report or fail that bypasses report_to would pass it. That is a wiring of one line, not an edge value; the action of R-94 asked for fail and warn, which other lenses may weigh.
+- invariants: I2: print returns success on BrokenPipe and status 1 on any other stdout write error \| enforced at print_to, crates/mu-cli/src/lib.rs:46-51 \| boundary test print_ignores_only_a_broken_pipe, lib.rs:147, both sides plus a writer that succeeds. Unchanged since the base.
+- invariants: rg finds no other stderr writer in crates/mu-cli/src: lib.rs:22 is the only call of std::io::stderr(), and no eprint! remains.
+- invariants: No finding falls inside the bound of this round. The invariants of the unchanged files were reviewed in earlier rounds and their rows in prior.json are closed or fixed with no changed text.
+- test-coverage: Follow-up round: only crates/mu-cli/src/lib.rs changed in bound; its tests report_writes_the_line_in_one_write and print_ignores_only_a_broken_pipe pin the one-write and broken-pipe rules (R-93, R-94 stay fixed).
+- test-coverage: Matrix rows were graded from test names and the task list; assertions of unchanged tests were not re-read this round (confidence 0.6 for those rows).
+- test-honesty: Follow-up round: only crates/mu-cli/src/lib.rs changed. report_writes_the_line_in_one_write records each write call and expects one buffer, so it fails if report_to splits the line. print_ignores_only_a_broken_pipe asserts both sides with a failing writer. No honesty defect found.
 
 ## Ledger
 
@@ -318,6 +315,7 @@ None.
 | R-93 | 10 | 10 | should-fix | in-change | ["path","crates/mu-cli/src/lib.rs",35] | fixed | 4b8951437fd8ada4d7ece7171f05440ac56ba30a |  | The new print helper splits stdout write errors in two: BrokenPipe returns success, and any other kind fails the verb with status 1. No test passes either side, so a helper that swallows all errors or fails on BrokenPipe still passes every test. |
 | R-94 | 11 | 11 | should-fix | in-change | ["path","crates/mu-cli/src/lib.rs",18] | fixed | 5225ac6beabe2d9a66c619bdc39f257ca49872dd |  | report states that each stderr line goes out in one write, so lines in a shared log stay whole. The format-then-write_all body enforces it, but no test pins it. A rewrite to writeln! on Stderr, which is unbuffered and writes each format piece apart, splits the line and passes every test. |
 | R-95 | 11 | 11 | note | in-change | ["path","crates/mu-cli/src/lib.rs",120] | accepted | ticket: none; reason: The test proves the stdout split that R-93 asked for; like R-81 and R-83, a scenario of its own adds no new behavior. |  | print_ignores_only_a_broken_pipe has no scenario and no task that names it. |
+| R-96 | 12 | 12 | should-fix | in-change | ["path","crates/mu-cli/src/lib.rs",26] |  |  |  | The new seam report_to writes one stderr line in one write, but serve in mu-server keeps its own copy of that policy, with the same reason and the same closed-stderr comment, for its own `mu server:` line. The new test pins only the copy in mu-cli. |
 
 ## Reviewed files
 
@@ -329,7 +327,7 @@ None.
 | crates/mu-cli/Cargo.toml | 14c5317c20fd2a10e7d1bdacfcc727c1a0177f45 |
 | crates/mu-cli/src/config.rs | 3bcdbe020f1c11b0e2c55a08b0e3754fb7fc2b03 |
 | crates/mu-cli/src/env_path.rs | ce12a6e2c9b2272d34c3583dedd0b64db74963cb |
-| crates/mu-cli/src/lib.rs | cae17548c1ff338e5d2fcd08597968a1d603c2cb |
+| crates/mu-cli/src/lib.rs | 56fadcac36f372c451ac43a94456778bad17bbf4 |
 | crates/mu-cli/src/server.rs | a90fbe9da0341bc0ecb8efe97646a20e69259317 |
 | crates/mu-cli/src/socket.rs | a47a169ecaddfc326fd182ec5f2d8e0ccf087a4d |
 | crates/mu-cli/src/world.rs | 936e3e584ced8f94f33f88afd79c1723eb6a4797 |
