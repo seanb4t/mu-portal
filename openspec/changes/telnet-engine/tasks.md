@@ -16,7 +16,7 @@
 Load the `rust-best-practices` skill before this group.
 
 - [x] 2.1 Make `telnet` a public module of `mu-core`. Add each command code from 239 to 255 and each option code of the design to `src/telnet.rs`. Add `telnet::escape` and `telnet::MARK` there, and no other logic. In `crates/mu-cli/tests/source_rules.rs`, add the commands from 239 to 250 to `CODES`. Move the case `let x = 250;` of `bytes_that_are_not_codes_pass` to 238, and add a case for 239 to `telnet_code_is_found_in_each_form`. Add the rule for an option code after `WILL`, `WONT`, `DO`, `DONT` or `SB`, with a case for each name and the passing case `[IAC, WILL, opt::GMCP]`. Rename the private `Side` of `framer.rs` to `Role`. Add `opt::STATUS`, and change the `[IAC, WILL, 5]` cases of the `LineFramer` tests to it. Make `LineFramer::mark` and the tests of `fake.rs` use `telnet::MARK`. Add `src/telnet/q.rs` with the states and steps of RFC 1143, section 7, and a unit test for each row of its table. Make sure that `cargo nextest run -p mu-core --locked` and `cargo nextest run -p mu-cli --test source_rules --locked` pass.
-- [ ] 2.2 Add `src/telnet/parser.rs` with `Parser`, `Policy`, `Side`, `Event` and `ProtocolError`, as the design describes, with no MCCP2 yet. Add `reads(bytes, points)` to `crates/mu-core/tests/support/mod.rs`. Add `crates/mu-core/tests/telnet_parser.rs` with these tests:
+- [x] 2.2 Add `src/telnet/parser.rs` with `Parser`, `Policy`, `Side`, `Event` and `ProtocolError`, as the design describes, with no MCCP2 yet. Add `reads(bytes, points)` to `crates/mu-core/tests/support/mod.rs`. Add `crates/mu-core/tests/telnet_parser.rs` with these tests:
   - `escaped_byte_in_data` and `byte_255_in_a_subnegotiation`, for the scenarios "An escaped byte in data" and "The byte 255 in a subnegotiation to the game"
   - `ayt_before_data`, `each_two_byte_command`, `se_outside_a_subnegotiation` and `byte_that_is_no_command`, for the scenarios of the requirement "Two-byte commands are two bytes"
   - `accepted_option`, `refused_option_twice`, `repeated_request`, `crossing_requests` and `refusal_of_a_client_request`, for the five scenarios of the Q method
@@ -25,13 +25,13 @@ Load the `rust-best-practices` skill before this group.
   - `malformed_framing`, with one case for each row of the table "Malformed framing" of the design
 
   Make sure that `cargo nextest run -p mu-core --test telnet_parser --locked` passes.
-- [ ] 2.3 Add MCCP2 to the parser with the streaming inflate of `miniz_oxide`. This task covers two requirements: "MCCP2 is inflated inside the parser" and "A bad compressed stream ends the reading". Add these tests:
+- [x] 2.3 Add MCCP2 to the parser with the streaming inflate of `miniz_oxide`. This task covers two requirements: "MCCP2 is inflated inside the parser" and "A bad compressed stream ends the reading". Add these tests:
   - `stream_starts_inside_a_read`, `plain_bytes_after_the_stream`, `start_inside_a_stream`, `second_stream_after_end` and `start_while_mccp2_is_off`, for the five scenarios of MCCP2
   - `stream_that_is_not_zlib`, for the scenario "A stream that is not zlib"
   - `bad_stream_after_data`: a stream that breaks after some data, split at every byte, gives one protocol error and no event after it each time
 
   Make sure that `cargo nextest run -p mu-core --test telnet_parser --locked` passes.
-- [ ] 2.4 Add the oracle to `crates/mu-core/tests/telnet_parser.rs`. It generates random streams from parts, with the events that each part must give. An optional last part is a stream with a bad zlib header. Malformed framing is a part too: `IAC SB IAC SE`, a negotiation verb inside a subnegotiation, and `IAC` as the last byte. Add the property tests `parser_matches_the_oracle` and `parser_ignores_read_splits`, for the scenario "Random streams in random reads". Add `parser_round_trip`, which sends data through `telnet::escape` and payloads through `send_subnegotiation`. Make sure that `cargo nextest run -p mu-core --test telnet_parser --locked` passes.
+- [x] 2.4 Add the oracle to `crates/mu-core/tests/telnet_parser.rs`. It generates random streams from parts, with the events that each part must give. An optional last part is a stream with a bad zlib header. Malformed framing is a part too: `IAC SB IAC SE`, a negotiation verb inside a subnegotiation, and `IAC` as the last byte. Add the property tests `parser_matches_the_oracle` and `parser_ignores_read_splits`, for the scenario "Random streams in random reads". Add `parser_round_trip`, which sends data through `telnet::escape` and payloads through `send_subnegotiation`. Make sure that `cargo nextest run -p mu-core --test telnet_parser --locked` passes.
 
 ## 3. The transcripts
 

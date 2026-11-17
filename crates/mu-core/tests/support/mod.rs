@@ -241,3 +241,20 @@ pub async fn broken_world(setup: WorldSetup) -> (Portal, WorldId) {
     wait_state(&portal, &aria, WorldState::Connected).await;
     (portal, aria)
 }
+
+/// `bytes` split into reads that end at `points`. Points out of order or past the end are
+/// sorted and clamped.
+pub fn reads<'a>(bytes: &'a [u8], points: &[usize]) -> Vec<&'a [u8]> {
+    let mut points: Vec<usize> = points
+        .iter()
+        .map(|point| (*point).min(bytes.len()))
+        .collect();
+    points.sort_unstable();
+    let mut out = Vec::new();
+    let mut start = 0;
+    for point in points.into_iter().chain([bytes.len()]) {
+        out.push(&bytes[start..point]);
+        start = point;
+    }
+    out
+}
