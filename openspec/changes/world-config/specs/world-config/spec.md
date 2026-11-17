@@ -4,6 +4,8 @@
 
 Defines the configuration of the worlds: where its files live, how its layers merge into one resolved world, what each layer can set, and how the owner sees the result.
 
+Each scenario starts from a base directory `<dir>`, and names only what it changes. The base holds two files. `games/alpha.toml` sets `extends = "tinymux"`, `host = "mux.example.org"` and `port = 4201`. `characters/alpha/aria.toml` is empty. A scenario that removes a field or a file says so.
+
 ## ADDED Requirements
 
 ### Requirement: The configuration directory
@@ -101,8 +103,9 @@ A game file SHALL name its type with `extends`. A user type file can name anothe
 
 #### Scenario: An unknown type
 - **GIVEN** the game `alpha` sets `extends = "nosuch"`
+- **OR** `types/rp.toml` sets `extends = "nosuch"`, and no game extends `rp`
 - **WHEN** the user runs `mu world list --config <dir>`
-- **THEN** stderr names `games/alpha.toml` and `nosuch`
+- **THEN** stderr names the file that sets it and `nosuch`
 - **AND** the exit status is 1
 
 #### Scenario: A game with no type
@@ -266,7 +269,7 @@ The field `login.secret` SHALL be a secret reference of the form `env:<NAME>`. N
 - **AND** the exit status is 1
 
 #### Scenario: Show does not read the secret
-- **GIVEN** the character sets `login.secret = "env:ARIA_PW"`, and `ARIA_PW` is not set
+- **GIVEN** the character sets `login.name = "Aria"` and `login.secret = "env:ARIA_PW"`, and `ARIA_PW` is not set
 - **WHEN** the user runs `mu world show alpha/aria --config <dir>`
 - **THEN** stdout shows `env:ARIA_PW`
 - **AND** the exit status is 0
@@ -329,8 +332,8 @@ After the merge, each world SHALL have `host` and `port`, and `host` SHALL NOT b
 - **AND** the line of `rows` names `default`
 
 #### Scenario: An unknown world
-- **WHEN** the user runs `mu world show alpha/nobody --config <dir>`
-- **THEN** stderr names `alpha/nobody`
+- **WHEN** the user runs `mu world show alpha/nobody --config <dir>`, or `mu world show Alpha/x --config <dir>`
+- **THEN** stderr names the id
 - **AND** the exit status is 1
 
 ### Requirement: The server holds the configured worlds
@@ -350,6 +353,6 @@ At the start, `mu server` SHALL resolve the configuration directory. A bad confi
 - **AND** the exit status is 1
 
 #### Scenario: The secret is not read at the start
-- **GIVEN** the configuration holds the world `alpha/aria` with `login.secret = "env:ARIA_PW"`, and `ARIA_PW` is not set
+- **GIVEN** the character sets `login.name = "Aria"` and `login.secret = "env:ARIA_PW"`, and `ARIA_PW` is not set
 - **WHEN** the user runs `mu server --socket <dir>/s.sock --config <dir>/conf`
 - **THEN** an API call to list the worlds on `<dir>/s.sock` succeeds
