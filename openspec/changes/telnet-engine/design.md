@@ -143,7 +143,7 @@ The review of pull request #32 found that the spike stripped the prefix with no 
 
 The character set is a setting, not a result of the CHARSET answer. TinyMUX reads Latin-1 when the client gives no answer, so world-sessions sets ISO-8859-1 for TinyMUX either way.
 
-The property test `latin1_round_trip` encodes each character below 256 and decodes the bytes again, 128 to 159 included.
+The test `latin1_round_trip` encodes each character below 256 and decodes the bytes again, 128 to 159 included.
 
 Alternative: `encoding_rs`. Its label `ISO-8859-1` maps to windows-1252, which gives other characters for the bytes 128 to 159. The standard library gives the true ISO-8859-1 map, so no crate is needed.
 
@@ -218,7 +218,7 @@ This change follows "Using a spike" on `docs/src/content/docs/contributing/spike
 | A line of exactly the bound gives no empty line | The tests `line_of_exactly_the_bound` and `line_framer_line_of_exactly_the_bound`, each with LF and with CR LF. |
 | No empty prompt | The tests `read_that_ends_at_a_line_end` and `ga_after_a_line_end`. |
 | The lines of the telnet framer do not depend on the split | The property test `telnet_framer_lines_ignore_read_splits`. |
-| The framer decodes and encodes in its character set | The tests `latin1_line_from_the_game`, `utf8_line_from_the_game` and `latin1_line_to_the_game`, and the property test `latin1_round_trip`. |
+| The framer decodes and encodes in its character set | The tests `latin1_line_from_the_game`, `utf8_line_from_the_game` and `latin1_line_to_the_game`, and the test `latin1_round_trip`. |
 | No payload makes the framer fail | The property test `framer_survives_any_payload`. |
 | Each fact about RFCs and `miniz_oxide` holds | Task 1.1 reads the sources and fills the table of checked facts. |
 

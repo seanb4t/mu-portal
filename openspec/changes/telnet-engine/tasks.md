@@ -45,10 +45,10 @@ Load the `rust-best-practices` skill before this group.
 Load the `rust-best-practices` skill before this group.
 
 - [x] 4.1 Add the crate-private `LineBuffer` to `framer.rs`, with a unit test for each of its parts. Move these parts of `LineFramer` into it: the partial line, the LF split, the drop of CR and the cut at `MAX_LINE`. Change the cut so that a full partial line followed by LF is one line, and so that a CR never starts a cut. Add the unit test `line_framer_line_of_exactly_the_bound`, for the scenario "A line of exactly the bound", with LF and with CR LF. Make sure that `cargo nextest run -p mu-core --locked` passes with every existing `line_framer_*` test unchanged.
-- [ ] 4.2 Add `Charset`, `TelnetSettings`, with the character set, the window size and the accept policy, and `TelnetFramer` to `framer.rs` and export both from `lib.rs`. The framer gives lines, prompts, replies, marks, GMCP messages and `telnet` error messages, as the design describes. Add `crates/mu-core/tests/telnet_framer.rs` with these tests:
+- [x] 4.2 Add `Charset`, `TelnetSettings`, with the character set, the window size and the accept policy, and `TelnetFramer` to `framer.rs` and export both from `lib.rs`. The framer gives lines, prompts, replies, marks, GMCP messages and `telnet` error messages, as the design describes. Add `crates/mu-core/tests/telnet_framer.rs` with these tests:
   - `line_to_the_game`, for the scenario "A line to the game"
   - `line_ends`, `cr_nul_across_reads`, `long_run_with_no_line_end` and `line_of_exactly_the_bound`, with LF and with CR LF, for the four scenarios of lines
-  - `latin1_line_from_the_game`, `utf8_line_from_the_game` and `latin1_line_to_the_game`, and the property test `latin1_round_trip`, for the four scenarios of the character set
+  - `latin1_line_from_the_game`, `utf8_line_from_the_game` and `latin1_line_to_the_game`, and the test `latin1_round_trip`, for the four scenarios of the character set
   - `prompt_with_no_ga`, `prompt_with_ga`, `line_split_across_reads`, `read_that_ends_at_a_line_end`, `ga_after_a_line_end`, `negotiation_alone` and `same_prompt_after_a_line`, for the prompt scenarios of the same names
   - the property test `telnet_framer_lines_ignore_read_splits`, for the scenario "Lines in any split"
   - `two_marks_in_a_row` and `answer_to_a_mark`, for the scenarios of the same names

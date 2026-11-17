@@ -1,6 +1,7 @@
 //! The six transcripts of the telnet spike, read by the parser.
 
-use mu_core::telnet::{Event, Parser, Policy, Side, opt};
+use mu_core::TelnetSettings;
+use mu_core::telnet::{Event, Parser, Policy};
 
 use support::{reads, transcript_reads, transcripts};
 
@@ -8,20 +9,7 @@ mod support;
 
 /// The policy that recorded the transcripts.
 fn policy() -> Policy {
-    Policy::none()
-        .accept(Side::Local, &[opt::TTYPE, opt::NAWS, opt::CHARSET])
-        .accept(
-            Side::Remote,
-            &[
-                opt::ECHO,
-                opt::SGA,
-                opt::EOR,
-                opt::CHARSET,
-                opt::MSSP,
-                opt::MCCP2,
-                opt::GMCP,
-            ],
-        )
+    TelnetSettings::default().policy
 }
 
 /// The events of `parts` read in order, with adjacent data joined.

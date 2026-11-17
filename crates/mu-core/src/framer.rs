@@ -1,6 +1,8 @@
 //! Framers: bytes of the game in, lines and prompts out, and a line in, bytes out.
 
-use crate::telnet::{self, DO, IAC, WILL, WONT, opt};
+use crate::telnet::{
+    self, DO, EOR, Event, GA, IAC, Parser, Policy, Side, WILL, WONT, charset, opt, ttype,
+};
 
 /// What a framer gives for the bytes of the game.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -197,6 +199,234 @@ impl Framer for LineFramer {
             Role::Client => telnet::MARK.to_vec(),
             Role::Game => Vec::new(),
         }
+    }
+}
+
+/// The character set of the text of a world.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Charset {
+    /// UTF-8. Each invalid sequence becomes a replacement character.
+    #[default]
+    Utf8,
+    /// ISO-8859-1. Each byte is the character with the same number.
+    Latin1,
+}
+
+impl Charset {
+    /// The name that a CHARSET answer uses.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Utf8 => "UTF-8",
+            Self::Latin1 => "ISO-8859-1",
+        }
+    }
+
+    fn decode(self, bytes: &[u8]) -> String {
+        match self {
+            Self::Utf8 => String::from_utf8_lossy(bytes).into_owned(),
+            Self::Latin1 => bytes.iter().copied().map(char::from).collect(),
+        }
+    }
+
+    fn encode(self, text: &str) -> Vec<u8> {
+        match self {
+            Self::Utf8 => text.as_bytes().to_vec(),
+            Self::Latin1 => text
+                .chars()
+                .map(|c| u8::try_from(c).unwrap_or(b'?'))
+                .collect(),
+        }
+    }
+}
+
+/// The settings of a [`TelnetFramer`]: what the client answers, and the options it accepts.
+#[derive(Clone, Debug)]
+pub struct TelnetSettings {
+    /// The character set of the text, which a CHARSET answer offers.
+    pub charset: Charset,
+    /// The width of the window, which NAWS sends.
+    pub columns: u16,
+    /// The height of the window, which NAWS sends.
+    pub rows: u16,
+    /// The options that the client accepts on each side.
+    pub policy: Policy,
+}
+
+impl Default for TelnetSettings {
+    /// UTF-8, a window of 120 by 40, and the options of a MU client.
+    fn default() -> Self {
+        Self {
+            charset: Charset::Utf8,
+            columns: 120,
+            rows: 40,
+            policy: Policy::none()
+                .accept(Side::Local, &[opt::TTYPE, opt::NAWS, opt::CHARSET])
+                .accept(
+                    Side::Remote,
+                    &[
+                        opt::ECHO,
+                        opt::SGA,
+                        opt::EOR,
+                        opt::CHARSET,
+                        opt::MSSP,
+                        opt::MCCP2,
+                        opt::GMCP,
+                    ],
+                ),
+        }
+    }
+}
+
+/// The terminal types that the client gives, in order. It repeats the last one.
+const TERMINAL_TYPES: [&str; 3] = ["MU-PORTAL", "XTERM-256COLOR", "MTTS 269"];
+
+/// A framer for a telnet game. It reads the protocol with [`Parser`], answers the terminal
+/// type, the window size and the character set, and gives lines, prompts, marks, GMCP
+/// messages and protocol errors.
+#[derive(Debug)]
+pub struct TelnetFramer {
+    parser: Parser,
+    charset: Charset,
+    columns: u16,
+    rows: u16,
+    buffer: LineBuffer,
+    /// The last data byte was a CR, so a NUL right after it is dropped.
+    after_cr: bool,
+    /// The count of terminal types that the client gave.
+    terminal_types: usize,
+}
+
+impl TelnetFramer {
+    /// A framer with every option off and no partial line.
+    #[must_use]
+    pub fn new(settings: TelnetSettings) -> Self {
+        Self {
+            parser: Parser::new(settings.policy),
+            charset: settings.charset,
+            columns: settings.columns,
+            rows: settings.rows,
+            buffer: LineBuffer::default(),
+            after_cr: false,
+            terminal_types: 0,
+        }
+    }
+
+    /// Adds data bytes to the partial line, and gives each line that they end.
+    fn data(&mut self, bytes: &[u8], out: &mut Vec<Inbound>) {
+        for &byte in bytes {
+            let after_cr = std::mem::replace(&mut self.after_cr, byte == b'\r');
+            if after_cr && byte == 0 {
+                continue;
+            }
+            if let Some(line) = self.buffer.push(byte) {
+                out.push(Inbound::Line(self.charset.decode(&line)));
+            }
+        }
+    }
+
+    /// Gives the partial line as a prompt, if it is not empty, and clears it.
+    fn prompt(&mut self, out: &mut Vec<Inbound>) {
+        let text = self.buffer.take();
+        if !text.is_empty() {
+            out.push(Inbound::Prompt(self.charset.decode(&text)));
+        }
+    }
+
+    fn subnegotiation(&mut self, option: u8, payload: Vec<u8>, out: &mut Vec<Inbound>) {
+        match (option, payload.first()) {
+            (opt::GMCP, _) => out.push(Inbound::Message {
+                name: "GMCP".to_owned(),
+                body: payload,
+            }),
+            (opt::TTYPE, Some(&ttype::SEND)) if self.parser.is_enabled(Side::Local, opt::TTYPE) => {
+                let name = TERMINAL_TYPES[self.terminal_types.min(TERMINAL_TYPES.len() - 1)];
+                self.terminal_types += 1;
+                let answer = [&[ttype::IS], name.as_bytes()].concat();
+                self.parser.send_subnegotiation(opt::TTYPE, &answer);
+            }
+            (opt::CHARSET, Some(&charset::REQUEST)) => {
+                let answer = self.charset_answer(&payload[1..]);
+                self.parser.send_subnegotiation(opt::CHARSET, &answer);
+            }
+            _ => {}
+        }
+    }
+
+    /// The answer to the list of a CHARSET request, with its optional `[TTABLE ]` prefix.
+    fn charset_answer(&self, request: &[u8]) -> Vec<u8> {
+        let list = match request.strip_prefix(charset::TTABLE) {
+            Some(rest) => rest.get(1..).unwrap_or_default(),
+            None => request,
+        };
+        let accepted = list.split_first().and_then(|(separator, names)| {
+            names
+                .split(|byte| byte == separator)
+                .find(|name| name.eq_ignore_ascii_case(self.charset.name().as_bytes()))
+        });
+        match accepted {
+            Some(name) => [&[charset::ACCEPTED], name].concat(),
+            None => vec![charset::REJECTED],
+        }
+    }
+
+    fn window_size(&mut self) {
+        let [width_high, width_low] = self.columns.to_be_bytes();
+        let [height_high, height_low] = self.rows.to_be_bytes();
+        self.parser
+            .send_subnegotiation(opt::NAWS, &[width_high, width_low, height_high, height_low]);
+    }
+}
+
+impl Framer for TelnetFramer {
+    fn feed(&mut self, bytes: &[u8]) -> Vec<Inbound> {
+        self.parser.receive(bytes);
+        let mut out = Vec::new();
+        let mut added = false;
+        while let Some(event) = self.parser.poll_event() {
+            match event {
+                Event::Data(data) => {
+                    added = true;
+                    self.data(&data, &mut out);
+                }
+                Event::Command(GA | EOR) => {
+                    added = false;
+                    self.prompt(&mut out);
+                }
+                Event::Enabled(Side::Local, opt::NAWS) => self.window_size(),
+                Event::Subnegotiation(option, payload) => {
+                    self.subnegotiation(option, payload, &mut out);
+                }
+                Event::Mark => out.push(Inbound::Mark),
+                Event::Error(error) => out.push(Inbound::Message {
+                    name: "telnet".to_owned(),
+                    body: format!("{} {error}", error.code()).into_bytes(),
+                }),
+                Event::Command(_)
+                | Event::Enabled(..)
+                | Event::Disabled(..)
+                | Event::CompressionStarted
+                | Event::CompressionEnded => {}
+            }
+        }
+        let reply = self.parser.take_output();
+        if !reply.is_empty() {
+            out.push(Inbound::Reply(reply));
+        }
+        if added && !self.buffer.partial().is_empty() {
+            out.push(Inbound::Prompt(self.charset.decode(self.buffer.partial())));
+        }
+        out
+    }
+
+    fn encode(&self, line: &str) -> Vec<u8> {
+        let mut bytes = telnet::escape(&self.charset.encode(line));
+        bytes.extend_from_slice(b"\r\n");
+        bytes
+    }
+
+    fn mark(&self) -> Vec<u8> {
+        telnet::MARK.to_vec()
     }
 }
 

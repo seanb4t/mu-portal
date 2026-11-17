@@ -72,6 +72,26 @@ pub mod opt {
     pub const GMCP: u8 = 201;
 }
 
+/// The commands of a TTYPE subnegotiation (RFC 1091).
+pub mod ttype {
+    /// The answer: the name of a terminal type follows.
+    pub const IS: u8 = 0;
+    /// The request for the next terminal type.
+    pub const SEND: u8 = 1;
+}
+
+/// The commands of a CHARSET subnegotiation (RFC 2066).
+pub mod charset {
+    /// A request with a list of character sets.
+    pub const REQUEST: u8 = 1;
+    /// The answer that accepts one character set of the list.
+    pub const ACCEPTED: u8 = 2;
+    /// The answer that accepts none of the list.
+    pub const REJECTED: u8 = 3;
+    /// The optional prefix of a request, before its version byte.
+    pub const TTABLE: &[u8] = b"[TTABLE ]";
+}
+
 /// The bytes of a mark: `IAC DO TIMING-MARK`.
 pub const MARK: [u8; 3] = [IAC, DO, opt::TIMING_MARK];
 

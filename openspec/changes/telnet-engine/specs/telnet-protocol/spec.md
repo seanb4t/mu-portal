@@ -170,7 +170,7 @@ The telnet framer SHALL have one character set, UTF-8 or ISO-8859-1. It SHALL de
 - **THEN** it gives the line `café` and then a line with one replacement character
 
 #### Scenario: Every Latin-1 byte
-- **WHEN** a property test encodes the 256 characters below 256 as Latin-1 lines, and the framer decodes the bytes again
+- **WHEN** a test encodes each of the 256 characters below 256 as Latin-1 lines, and the framer decodes the bytes again
 - **THEN** each character other than CR and LF comes back unchanged, 128 to 159 included
 
 #### Scenario: A Latin-1 line to the game
