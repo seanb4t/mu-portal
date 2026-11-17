@@ -1,8 +1,10 @@
 //! The layers of the configuration, and the seam that gives them to the resolver.
 
 use std::fmt;
+use std::marker::PhantomData;
 
-use serde::{Deserialize, Serialize};
+use serde::de::{MapAccess, Visitor, value::MapAccessDeserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::id::WorldId;
 
@@ -161,7 +163,9 @@ pub(crate) struct LayerFile {
     charset: Option<String>,
     columns: Option<u16>,
     rows: Option<u16>,
+    #[serde(default, deserialize_with = "table")]
     login: Option<LoginFields>,
+    #[serde(default, deserialize_with = "table")]
     keepalive: Option<KeepaliveFields>,
     #[serde(default)]
     rules: Vec<toml::Table>,
@@ -196,7 +200,9 @@ impl LayerFile {
 #[serde(deny_unknown_fields)]
 pub(crate) struct Quirks {
     charset: Option<String>,
+    #[serde(default, deserialize_with = "table")]
     login: Option<QuirkLogin>,
+    #[serde(default, deserialize_with = "table")]
     keepalive: Option<KeepaliveFields>,
 }
 
@@ -219,4 +225,28 @@ impl From<Quirks> for LayerFields {
             ..Self::default()
         }
     }
+}
+
+/// Reads a table field as `T`, and refuses any other value. The derived `Deserialize` of a
+/// struct also reads an array, by the order of the fields, and drops extra elements.
+fn table<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    struct Table<T>(PhantomData<T>);
+
+    impl<'de, T: Deserialize<'de>> Visitor<'de> for Table<T> {
+        type Value = T;
+
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("a table")
+        }
+
+        fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<T, A::Error> {
+            T::deserialize(MapAccessDeserializer::new(map))
+        }
+    }
+
+    deserializer.deserialize_map(Table(PhantomData)).map(Some)
 }

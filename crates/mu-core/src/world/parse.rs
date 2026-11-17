@@ -23,7 +23,7 @@ pub(crate) fn parse<T: DeserializeOwned>(
         let place = at(place, text, error.inner().span());
         if path.is_empty() || path == "." {
             ConfigError::new(place, error.inner().message())
-        } else if path == "login" || path.starts_with("login.") {
+        } else if path == "login" || path.starts_with("login.") || path.starts_with("login[") {
             ConfigError::field(place, path, "is not a valid field or value")
         } else {
             ConfigError::field(place, path, error.inner().message())

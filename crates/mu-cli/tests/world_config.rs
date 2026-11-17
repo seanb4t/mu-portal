@@ -294,6 +294,8 @@ fn stray_file() {
         "characters/alpha.toml",
         "games/old/alpha.toml",
         "characters/alpha/aria/x.toml",
+        "games/.toml",
+        "games/beta.TOML",
     ] {
         let config = Config::base().file(path, "");
         fails_naming(&config.list(), &[path]);
@@ -428,11 +430,28 @@ fn wrong_type_under_login() {
     for (field, text, value) in [
         ("login.secret", "[login]\nsecret = 5\n", "integer"),
         ("login", "login = \"hunter2\"\n", "hunter2"),
+        ("login", "login = [123456]\n", "123456"),
+        ("login", "login = [\"a\", \"b\", 123456]\n", "123456"),
     ] {
         let config = Config::base().file("characters/alpha/aria.toml", text);
         let output = config.list();
         fails_naming(&output, &["characters/alpha/aria.toml", field]);
         assert!(!stderr(&output).contains(value), "{}", stderr(&output));
+    }
+}
+
+#[test]
+fn table_written_as_an_array() {
+    for (field, text) in [
+        (
+            "login",
+            "login = [\"connect {login} {password}\", \"Aria\", \"env:ARIA_PW\"]\n",
+        ),
+        ("keepalive", "keepalive = [\"idle\", 60]\n"),
+        ("keepalive", "keepalive = [\"idle\", 60, 7]\n"),
+    ] {
+        let config = Config::base().file("characters/alpha/aria.toml", text);
+        fails_naming(&config.list(), &["characters/alpha/aria.toml", field]);
     }
 }
 

@@ -1,11 +1,10 @@
 //! The layers of a configuration directory of TOML files.
 
-use std::collections::BTreeSet;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::id::{WorldId, is_part};
+use crate::id::{PART_RULE, WorldId, is_part};
 
 use super::error::ConfigError;
 use super::layer::{Layer, LayerFile, LayerKey, LayerOrigin, LayerSource, Trust};
@@ -14,7 +13,8 @@ use super::parse::parse;
 /// The layers of a configuration directory.
 ///
 /// The directory holds `global.toml`, `types/<name>.toml`, `games/<game>.toml` and
-/// `characters/<game>/<character>.toml`. Any other file that ends in `.toml` is an error.
+/// `characters/<game>/<character>.toml`. Any other file whose name ends in `.toml`, in any
+/// case, is an error.
 /// A missing directory holds no layers.
 #[derive(Clone, Debug)]
 pub struct TomlDirSource {
@@ -42,7 +42,6 @@ impl LayerSource for TomlDirSource {
             .iter()
             .map(|parts| key_of(parts))
             .collect::<Result<Vec<_>, _>>()?;
-        check_games(&files, &keys)?;
         files
             .iter()
             .zip(keys)
@@ -88,8 +87,8 @@ impl TomlDirSource {
     }
 }
 
-/// Adds to `files` the path of each file under `directory` that ends in `.toml`, as its parts
-/// relative to the root. `prefix` holds the parts of `directory`.
+/// Adds to `files` the path of each file under `directory` whose name ends in `.toml`, in any
+/// case, as its parts relative to the root. `prefix` holds the parts of `directory`.
 fn walk(
     directory: &Path,
     prefix: &mut Vec<String>,
@@ -106,13 +105,11 @@ fn walk(
         let entry = entry.map_err(|error| ConfigError::new(&place, error.to_string()))?;
         let name = entry.file_name().to_string_lossy().into_owned();
         let path = entry.path();
+        let toml = name.to_ascii_lowercase().ends_with(".toml");
         prefix.push(name);
         if path.is_dir() {
             walk(&path, prefix, files)?;
-        } else if path
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
-        {
+        } else if toml {
             files.push(prefix.clone());
         }
         prefix.pop();
@@ -128,10 +125,7 @@ fn key_of(parts: &[String]) -> Result<LayerKey, ConfigError> {
         if is_part(stem) {
             Ok(stem.to_owned())
         } else {
-            Err(ConfigError::new(
-                &path,
-                "the name must hold only a-z, 0-9 and '-', and start with a letter",
-            ))
+            Err(ConfigError::new(&path, format!("the name {PART_RULE}")))
         }
     };
     match parts {
@@ -140,12 +134,9 @@ fn key_of(parts: &[String]) -> Result<LayerKey, ConfigError> {
         [directory, file] if directory == "games" => Ok(LayerKey::Game(stem(file)?)),
         [directory, game, file] if directory == "characters" => {
             let character = stem(file)?;
-            let id: WorldId = format!("{game}/{character}").parse().map_err(|_| {
-                ConfigError::new(
-                    &path,
-                    "the game must hold only a-z, 0-9 and '-', and start with a letter",
-                )
-            })?;
+            let id: WorldId = format!("{game}/{character}")
+                .parse()
+                .map_err(|_| ConfigError::new(&path, format!("the game {PART_RULE}")))?;
             Ok(LayerKey::Character(id))
         }
         _ => Err(ConfigError::new(
@@ -154,26 +145,4 @@ fn key_of(parts: &[String]) -> Result<LayerKey, ConfigError> {
              games/<game>.toml or characters/<game>/<character>.toml",
         )),
     }
-}
-
-/// Checks that each character has the file of its game.
-fn check_games(files: &[Vec<String>], keys: &[LayerKey]) -> Result<(), ConfigError> {
-    let games: BTreeSet<&str> = keys
-        .iter()
-        .filter_map(|key| match key {
-            LayerKey::Game(game) => Some(game.as_str()),
-            _ => None,
-        })
-        .collect();
-    for (parts, key) in files.iter().zip(keys) {
-        if let LayerKey::Character(id) = key
-            && !games.contains(id.game())
-        {
-            return Err(ConfigError::new(
-                parts.join("/"),
-                format!("the game has no file games/{}.toml", id.game()),
-            ));
-        }
-    }
-    Ok(())
 }

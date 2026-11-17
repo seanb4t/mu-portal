@@ -105,7 +105,7 @@ The chain starts at the character and the game. Next comes the type that the gam
 - `games/<game>.toml`
 - `characters/<game>/<character>.toml`
 
-It checks each name, game and character with `is_part`, which becomes `pub(crate)`. Thus a file name and a world id follow one rule. Any other file that ends in `.toml` is an error that names its path. A character with no file `games/<game>.toml` is an error that names both paths. Files that do not end in `.toml` are not read.
+It checks each name, game and character with `is_part`, which becomes `pub(crate)`. Thus a file name and a world id follow one rule. Any other file whose name ends in `.toml`, in any case, is an error that names its path. Thus `games/beta.TOML` and `games/.toml` are errors, and are not skipped. A character with no file `games/<game>.toml` is an error that names both paths. The resolver makes this check, so it holds for each source of layers. Files whose names do not end in `.toml` are not read.
 
 ### Built-in types and the quirk schema
 
@@ -202,7 +202,7 @@ Task 1.1 fills this table with each fact that the design uses, with its source.
 | Fact | Source |
 |---|---|
 | `figment2` 0.11.5 has `Figment::merge`, `Figment::extract` and `Figment::find_metadata`, and `providers::Named::new` gives a provider a name. | The source of `figment2` 0.11.5: `src/figment.rs` lines 348, 605 and 940, and `src/providers/named.rs` line 39. The debate projects ran each of them. |
-| With no features, `figment2` 0.11.5 depends on `serde` and `uncased`, on `atomic` for targets of 32 bits or less, and on `version_check` to build. `toml_edit` 0.25 comes only with its TOML feature. | `Cargo.toml` of `figment2` 0.11.5. `Cargo.lock` holds `serde`, `atomic` and `version_check`, but not `uncased`. |
+| With no features, `figment2` 0.11.5 depends on `serde` and `uncased`, on `atomic` for targets of 32 bits or less, and on `version_check` to build. `toml_edit` 0.25 comes only with its TOML feature. | `Cargo.toml` of `figment2` 0.11.5. Before the change, `Cargo.lock` held `serde`, `atomic` and `version_check`, but not `uncased`. The change added only `figment2`, `uncased` and `serde_path_to_error`. |
 | A relative path in `XDG_CONFIG_HOME` is invalid and is ignored. If the variable is unset or empty, the base is `$HOME/.config`. | XDG Base Directory specification, version 0.8, sections 2 and 3: https://specifications.freedesktop.org/basedir-spec/latest/ |
 | All three servers log in with `connect <name> <password>`, so each built-in type sets `login.template = "connect {login} {password}"`. | The `>` lines of `tinymux-latin1.txt`, `aresmush.txt` and `evennia.txt` in `crates/mu-core/tests/fixtures/telnet/`. |
 | TinyMUX accepts the socket command `IDLE`, which does nothing and does not reset the idle time. Its help suggests to send it about once a minute. The type `tinymux` sets `keepalive = { command = "IDLE", seconds = 60 }`. | https://www.tinymux.org/wiki/flags/idle/ and https://www.tinymux.org/wiki/commands/socket-command/ |
