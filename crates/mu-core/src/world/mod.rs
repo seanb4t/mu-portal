@@ -277,6 +277,6 @@ mod tests {
             );
         }
         let keepalive = Keepalive::new("idle", 86_400).unwrap();
-        assert_eq!(keepalive.period(), Duration::from_secs(86_400));
+        assert_eq!(keepalive.period().as_secs(), 86_400);
     }
 }

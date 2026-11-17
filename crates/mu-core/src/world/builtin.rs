@@ -17,8 +17,8 @@ pub const BUILT_IN_TYPES: &[(&str, &str)] = &[
 ///
 /// # Errors
 ///
-/// An error that names the type and the field, for a field that is not a quirk or a value
-/// that fails a check.
+/// An error that names the type, for a TOML syntax error, or with the field, for a field that is
+/// not a quirk or a value that fails a check.
 pub fn parse_quirks(name: &str, text: &str) -> Result<Layer, ConfigError> {
     let origin = LayerOrigin::BuiltIn(name.to_owned());
     let quirks: Quirks = parse(&origin, text)?;
