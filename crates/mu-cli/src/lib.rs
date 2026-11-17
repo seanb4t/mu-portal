@@ -13,30 +13,38 @@ use std::process::ExitCode;
 use clap::{CommandFactory, Parser, Subcommand};
 
 pub use client::ClientArgs;
+pub use server::ServerArgs;
 
-/// Writes `mu <verb>: <error>` to stderr and returns the status 1. The line goes out in one
-/// write, so servers that share a log append whole lines.
-pub(crate) fn fail(verb: &str, error: &dyn std::fmt::Display) -> ExitCode {
+/// Writes `line` and a newline to stderr in one write, so servers that share a log append whole
+/// lines.
+fn report(line: &std::fmt::Arguments<'_>) {
     // A closed stderr leaves nothing to report to.
-    let _ = std::io::stderr().write_all(format!("mu {verb}: {error}\n").as_bytes());
+    let _ = std::io::stderr().write_all(format!("{line}\n").as_bytes());
+}
+
+/// Writes `mu <verb>: <error>` to stderr and returns the status 1.
+pub(crate) fn fail(verb: &str, error: &dyn std::fmt::Display) -> ExitCode {
+    report(&format_args!("mu {verb}: {error}"));
     ExitCode::from(1)
 }
 
-/// Writes `mu <verb>: warning: <message>` to stderr, in one write, as [`fail`] does.
+/// Writes `mu <verb>: warning: <message>` to stderr.
 pub(crate) fn warn(verb: &str, message: &dyn std::fmt::Display) {
-    // A closed stderr leaves nothing to report to.
-    let _ = std::io::stderr().write_all(format!("mu {verb}: warning: {message}\n").as_bytes());
+    report(&format_args!("mu {verb}: warning: {message}"));
 }
 
 /// Writes `text` to stdout. A closed stdout is not an error of the verb, as it is not for
 /// `--version`, but any other failed write fails the verb.
 pub(crate) fn print(verb: &str, text: &str) -> ExitCode {
-    match std::io::stdout().write_all(text.as_bytes()) {
+    print_to(&mut std::io::stdout(), verb, text)
+}
+
+fn print_to(out: &mut impl Write, verb: &str, text: &str) -> ExitCode {
+    match out.write_all(text.as_bytes()) {
         Err(error) if error.kind() != std::io::ErrorKind::BrokenPipe => fail(verb, &error),
         _ => ExitCode::SUCCESS,
     }
 }
-pub use server::ServerArgs;
 
 /// One server and many clients for MU* text games.
 #[derive(Debug, Parser)]
@@ -86,5 +94,41 @@ pub fn run(cli: Cli) -> ExitCode {
         Some(Verb::Server(args)) => server::run(&args),
         Some(Verb::World(args)) => world::run(&args),
         Some(Verb::Version) => print("version", &Cli::command().render_long_version()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{self, ErrorKind};
+
+    use super::*;
+
+    /// A writer whose every write fails with `kind`.
+    struct Failing(ErrorKind);
+
+    impl Write for Failing {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Err(self.0.into())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn print_ignores_only_a_broken_pipe() {
+        for (kind, status) in [
+            (ErrorKind::BrokenPipe, ExitCode::SUCCESS),
+            (ErrorKind::StorageFull, ExitCode::from(1)),
+            (ErrorKind::PermissionDenied, ExitCode::from(1)),
+        ] {
+            assert_eq!(
+                print_to(&mut Failing(kind), "test", "text"),
+                status,
+                "{kind}"
+            );
+        }
+        assert_eq!(print_to(&mut Vec::new(), "test", "text"), ExitCode::SUCCESS);
     }
 }
