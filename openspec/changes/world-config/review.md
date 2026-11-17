@@ -1,10 +1,10 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-17T17:00:53+00:00
-head: edc00b3e1bc9459a93fafafe81c76ace52c2a6e2
-round: 10
-next_id: 94
+reviewed_at: 2026-11-17T17:11:14+00:00
+head: e5fbdd2e95883c85858489541fa11679ccf392af
+round: 11
+next_id: 96
 lenses:
   spec-lint: not-applicable
   approach: ok
@@ -19,8 +19,8 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge |
 |---|---|---|---|---|---|---|---|---|
-| R-92 | fit | should-fix | in-change | The new warn in lib.rs copies fail line for line: the same one-write stderr call, the same format prefix and the same comment on a closed stderr. Its doc even says it writes as fail does, so a change to the policy of fail must be made twice. | crates/mu-cli/src/lib.rs:28 — "let _ = std::io::stderr().write_all(format!("mu {verb}: warning: {message}\\n").as_bytes());" | Make warn call fail with the text prefixed by `warning: ` and drop its result, so the stderr write and its one-write rule have one copy. |  |  |
-| R-93 | invariants | should-fix | in-change | The new print helper splits stdout write errors in two: BrokenPipe returns success, and any other kind fails the verb with status 1. No test passes either side, so a helper that swallows all errors or fails on BrokenPipe still passes every test. | crates/mu-cli/src/lib.rs:35 — "Err(error) if error.kind() != std::io::ErrorKind::BrokenPipe => fail(verb, &error)," | Move the write into a helper that is generic over the writer, used by print. In lib.rs, add a unit test with two failing writers. One returns ErrorKind::BrokenPipe and must give success. The other returns another kind, such as StorageFull, and must give status 1 with `mu <verb>:` on stderr. Or run `mu version` in a test with stdout on a pipe whose read end is closed. |  |  |
+| R-94 | invariants | should-fix | in-change | report states that each stderr line goes out in one write, so lines in a shared log stay whole. The format-then-write_all body enforces it, but no test pins it. A rewrite to writeln! on Stderr, which is unbuffered and writes each format piece apart, splits the line and passes every test. | crates/mu-cli/src/lib.rs:18 — "/// Writes `line` and a newline to stderr in one write, so servers that share a log append whole" | Split report into report_to(&mut impl Write, line), as print_to splits print. Add a unit test with a writer that counts its write calls, and assert that fail and warn each give one call that holds the whole line and its newline. |  |  |
+| R-95 | test-coverage | note | in-change | print_ignores_only_a_broken_pipe has no scenario and no task that names it. | crates/mu-cli/src/lib.rs:120 — "fn print_ignores_only_a_broken_pipe() {" | No action needed; it proves the stdout split that R-93 asked for. Optionally name it in a task. |  |  |
 
 ## Repeats
 
@@ -28,9 +28,7 @@ None.
 
 ## Out of bound
 
-| lens | severity | claim | evidence |
-|---|---|---|---|
-| test-honesty | should-fix | each_field_has_a_source takes its expected key set from FIELD_PATHS, the list the resolver loops over to fill sources, so a field dropped from FIELD_PATHS passes. | crates/mu-core/tests/world_config.rs:75 — "assert_eq!(paths, FIELD_PATHS.iter().copied().collect());" |
+None.
 
 ## Accepted
 
@@ -41,6 +39,7 @@ None.
 | R-83 | note | accepted | The test covers the skip side of the file-name rule of the design; a scenario of its own adds no new behavior, as with R-81. |  |
 | R-86 | should-fix | accepted | The lens had no diff tool. The only hunk it did not read is the switch of cli.rs to mu_command, which the fit and invariants lenses checked in this round. |  |
 | R-88 | should-fix | accepted | TomlDirSource documents a missing root as an empty configuration, which the server needs; the CLI check only names a directory that the user chose, so the two checks answer different questions. |  |
+| R-95 | note | accepted | The test proves the stdout split that R-93 asked for; like R-81 and R-83, a scenario of its own adds no new behavior. |  |
 
 ## Rounds
 
@@ -56,6 +55,7 @@ None.
 | 8 | implementation | follow-up | e93268cd0285174dd3a37447c882c356a18a8c13 | cb84c7c9a3d25d111612b019fcc03f33b433d9182307c242d6dbad5eb5636cbc | approve | 0 | 0 | 0 | 0 | operator decision |
 | 9 | implementation | follow-up | 9e9821d94110bd81d0680322241d02e47a5d55d7 | dd280ce143c9e8e44f06b96d5ca1cd1a1febdce25c2eb0712c376e9507a56c82 | approve-with-notes | 5 | 2 | 0 | 2 | operator decision |
 | 10 | implementation | follow-up | edc00b3e1bc9459a93fafafe81c76ace52c2a6e2 | 24b95a47109fda1f02ee2b69b93ca580129193043b7e2f082937c0e39ebd3d58 | approve-with-notes | 2 | 0 | 0 | 1 | operator decision |
+| 11 | implementation | follow-up | e5fbdd2e95883c85858489541fa11679ccf392af | 24b95a47109fda1f02ee2b69b93ca580129193043b7e2f082937c0e39ebd3d58 | approve-with-notes | 2 | 0 | 0 | 0 | operator decision |
 
 ## Judge
 
@@ -65,6 +65,11 @@ judge: 4 questions, 0.000 USD
 
 | scenario | covered by | status | verified |
 |---|---|---|---|
+| Help lists the verbs | crates/mu-cli/tests/cli.rs: help_lists_verbs | covered | pass |
+| Help for one verb | crates/mu-cli/tests/cli.rs: help_for_one_verb | covered | pass |
+| Two worlds connect | crates/mu-cli/tests/worlds.rs: two_worlds_connect | covered | pass |
+| A configured world waits | crates/mu-cli/tests/worlds.rs: configured_world_waits | covered | pass |
+| A configured world cannot connect yet | crates/mu-cli/tests/worlds.rs: configured_world_cannot_connect_yet | covered | pass |
 | The flag wins over the environment | crates/mu-cli/tests/world_config.rs: flag_wins_over_the_environment | covered | pass |
 | The default directory | crates/mu-cli/tests/world_config.rs: default_directory | covered | pass |
 | The directory under the home directory | crates/mu-cli/tests/world_config.rs: directory_under_home | covered | pass |
@@ -120,11 +125,6 @@ judge: 4 questions, 0.000 USD
 | A bad configuration stops the start | crates/mu-cli/tests/worlds.rs: bad_configuration_stops_the_start | covered | pass |
 | A fake world with a configured id | crates/mu-cli/tests/worlds.rs: fake_world_with_a_configured_id | covered | pass |
 | The secret is not read at the start | crates/mu-cli/tests/worlds.rs: server_does_not_read_a_configured_secret | covered | pass |
-| Help lists the verbs | crates/mu-cli/tests/cli.rs: help_lists_verbs | covered | pass |
-| Help for one verb | crates/mu-cli/tests/cli.rs: help_for_one_verb | covered | pass |
-| Two worlds connect | crates/mu-cli/tests/worlds.rs: two_worlds_connect | covered | pass |
-| A configured world waits | crates/mu-cli/tests/worlds.rs: configured_world_waits | covered | pass |
-| A configured world cannot connect yet | crates/mu-cli/tests/worlds.rs: configured_world_cannot_connect_yet | covered | pass |
 
 ### Not run
 
@@ -199,28 +199,25 @@ None.
 
 ## Lens notes
 
-- approach: Follow-up round since 9e9821d. Read each changed file of diff-files.txt except review.md: README.md, mu-cli config.rs, lib.rs, server.rs, world.rs, tests/world_config.rs, mu-core world/error.rs, tests/world_config.rs, and design.md.
-- approach: The approach lens has no Bash, so it bounded the round by the changed files, not by changed lines.
-- approach: The Context facts of design.md now say they describe the code before the change. Each one that the change does not move still holds at head: Source and Origin at the crate root of mu-core, has_line_break shared by secret.rs and session.rs, the TelnetSettings default of UTF-8 and 120 by 40, and the socket order in socket.rs. The listed moves also hold at head: world/ with is_part pub(crate), PathValue and parse_path in env_path.rs, toml and figment2 in mu-core, and mu_with through test_env.
-- approach: The fixed rows R-87 (warning prefix), R-89 (README status), R-90 (stdout write policy) and R-91 (FieldError promise) did not come back at head. The warning goes through crate::warn as `mu <verb>: warning:`, `mu version` and `mu world` share crate::print, README points to the docs site and its first-run guide, and FieldError promises only that it holds no value under login.
-- approach: server.rs follows the decision Configured worlds in the server: it resolves first, refuses an id shared by a fake and a configured world, then adds WorldSetup::without_transport. Both happen before the socket opens.
-- approach: world.rs follows the decision mu world: it takes the id as text, resolves every world first, and fails with exit 1 and an error that names an unknown id.
-- fit: The lens has no Bash tool, so it could not run git diff for the exact changed lines since 9e9821d. It read each file in diff-files.txt whole and put the changed text first in the evidence, judging from the round 9 fixes (R-87, R-89, R-90, R-91) and the commit subjects.
-- fit: The round 9 fixes hold: config.rs warns through crate::warn with the `mu <verb>:` prefix (R-87), mu world and mu version both write stdout through crate::print (R-90), and README.md points at the docs site instead of copying the status sentences (R-89).
-- fit: ConfigArgs follows the shape of SocketArgs: a pure function of the environment values (dir, like path) and a method that reads the process environment (worlds, like resolve), both on the shared helpers of env_path.rs.
-- fit: The mu-cli tests use the shared ConfigDir, BASE_GAME and mu_command of tests/support, so the copies that R-68, R-74 and R-77 named are gone from the changed files.
-- fit: built_in_types_hold_only_quirks lists the quirk fields by hand beside the Quirks struct. That repeats a production shape in a test on purpose, so the lens does not report it.
-- invariants: I1: print never fails the verb on a BrokenPipe write of stdout, and always fails it with status 1 on any other write error \| enforced at crates/mu-cli/src/lib.rs:33-36 \| boundary test none (inv-1)
-- invariants: I2: each warning of mu-cli is one write of the line `mu <verb>: warning: <message>` \| enforced at crates/mu-cli/src/lib.rs:26-29 \| boundary test missing_directory in crates/mu-cli/tests/world_config.rs:196, for the verb world only. The server caller passes the literal "server" at server.rs:62, and no test runs mu server with a missing --config.
-- invariants: I3: the text of a FieldError never holds a value under login \| enforced at crates/mu-core/src/world/check.rs:47-60 and 102-110, where each message under login is fixed text \| boundary test password_in_a_file, secret_that_is_not_a_reference and wrong_type_under_login, which check that stderr does not hold the value
-- invariants: I4: a built-in type sets only charset, login.template and keepalive, and sets at least one of them \| enforced at Quirks with deny_unknown_fields in crates/mu-core/src/world/layer.rs \| boundary test built_in_types_hold_only_quirks (the new loop at crates/mu-core/tests/world_config.rs:162-174) and quirks_refuse_other_fields
-- invariants: I5: the missing-directory warning fires only when --config or MU_CONFIG names the directory, never for the XDG or HOME default \| enforced at crates/mu-cli/src/config.rs:50-51 \| boundary test missing_directory and missing_default_directory_is_quiet
-- invariants: Follow-up round since 9e9821d: the changed code text is config.rs, lib.rs, server.rs, world.rs, error.rs and two test files. No changed file is a script, so no probe ran.
-- invariants: Messages under login in check_fields and check_login are fixed strings, so the narrowed FieldError doc at error.rs:48 holds for every builder of FieldError at head.
-- test-coverage: Test table_written_as_an_array, other_files_are_skipped and keepalive_of_a_built_in_type_resolves have no scenario; prior R-81 and R-83 are accepted, so not raised again.
-- test-honesty: No disabled test, no test without an assertion, and no vacuous gate found in the two changed test files.
-- test-honesty: Could not diff against the base (no git tool); I read both changed test files whole instead of only the changed lines.
-- test-coverage gap: Unit-test bodies in resolve.rs, builtin.rs and dir.rs were not read; their names were matched only. Tests were not run.
+- approach: Follow-up round since edc00b3: diff-files.txt lists crates/mu-cli/src/lib.rs and review.md. No artifact of the change changed, so no design citation is inside the bound; review.md was not read.
+- approach: lib.rs at head: fail and warn share one stderr writer, report; print delegates to print_to, which returns success on BrokenPipe and status 1 on any other write error. No decision of design.md states a stdout write policy, so no decision is departed from.
+- approach: The warning of a missing chosen directory (decision 'The configuration directory') still goes to stderr through warn as 'mu <verb>: warning: <message>'; config.rs:53 is its only caller.
+- approach: The doc comment of print says a closed stdout is not an error, as for --version. clap_builder 4.6.7 Error::exit does 'let _ = self.print();', so --version swallows every write error, not only BrokenPipe. The comment holds for a closed stdout; on another write error, mu version exits 1 while mu --version exits 0. The spec 'Version output' fixes only the line, not the status on a failed write.
+- fit: Follow-up round since edc00b3: the only changed code file is crates/mu-cli/src/lib.rs; review.md was not read.
+- fit: R-92 stays fixed: fail and warn now share one private report function, and no other stderr write remains in crates/mu-cli/src.
+- fit: R-90 stays fixed: mu version and mu world both write stdout through crate::print, and no println or other stdout write remains in crates/mu-cli/src.
+- fit: The test writer Failing in lib.rs has no existing counterpart in crates/mu-cli/tests/support or crates/mu-core/tests/support, so it is not a copy.
+- fit: The one-line per-verb fail wrappers in client.rs, server.rs and world.rs are outside the bound of this round and were not judged.
+- invariants: Follow-up round since edc00b3: the only code file that changed is crates/mu-cli/src/lib.rs (commit 4b89514). review.md was not read. Findings are bounded to lib.rs.
+- invariants: I1: print returns success on a BrokenPipe and on a full write, and status 1 on any other write error \| enforced at print_to, crates/mu-cli/src/lib.rs:42-46 \| boundary test print_ignores_only_a_broken_pipe (BrokenPipe, StorageFull, PermissionDenied, and Ok through a Vec), so both sides of the kind check are passed.
+- invariants: I2: each stderr line of mu-cli (fail, warn) is one write of the whole line and its newline \| enforced at report, crates/mu-cli/src/lib.rs:20-23 \| boundary test none (inv-1).
+- invariants: I3: fail and warn keep their output text, mu <verb>: <error> and mu <verb>: warning: <message> \| enforced at lib.rs:27 and lib.rs:33 \| the refactor keeps the same format strings, so no check is weakened.
+- invariants: I4: a failed stdout write surfaces at write_all only when the printed text ends in a newline, because stdout is a LineWriter that keeps a tail with no newline until exit \| enforced by the callers: the text of mu world list and show ends each line with a newline, and clap_builder 4.6.7 _render_version ends with a newline \| boundary test none. Not raised as a finding because no artifact states it and every caller holds it today.
+- invariants: R-92 (warn copies fail) and R-93 (no test of the stdout split) are fixed at head: report is the one stderr writer, and print_ignores_only_a_broken_pipe passes both sides of the split.
+- invariants: No enforcement point in the bound is a script, so no edge probe was run.
+- test-coverage: The new print_to test in lib.rs closes R-93.
+- test-honesty: Follow-up round: only crates/mu-cli/src/lib.rs changed in code. Its one test, print_ignores_only_a_broken_pipe, drives print_to with a failing writer for three error kinds and a working writer, and asserts the status of each. It can fail for the reason stated.
+- test-coverage gap: Follow-up round: only lib.rs changed. Matrix rows outside it were checked by test name and existence only, not by reading each assertion.
 
 ## Ledger
 
@@ -319,6 +316,8 @@ None.
 | R-91 | 9 | 9 | should-fix | in-change | ["path","crates/mu-core/src/world/error.rs",48] | fixed | aee5d3543f665a94b13df888e04019d66a682bad |  | The new public FieldError states that its text never holds the value, but check_ids builds a FieldError whose message holds the value of rules[N].id, as the spec requires. |
 | R-92 | 10 | 10 | should-fix | in-change | ["path","crates/mu-cli/src/lib.rs",28] | fixed | 4b8951437fd8ada4d7ece7171f05440ac56ba30a |  | The new warn in lib.rs copies fail line for line: the same one-write stderr call, the same format prefix and the same comment on a closed stderr. Its doc even says it writes as fail does, so a change to the policy of fail must be made twice. |
 | R-93 | 10 | 10 | should-fix | in-change | ["path","crates/mu-cli/src/lib.rs",35] | fixed | 4b8951437fd8ada4d7ece7171f05440ac56ba30a |  | The new print helper splits stdout write errors in two: BrokenPipe returns success, and any other kind fails the verb with status 1. No test passes either side, so a helper that swallows all errors or fails on BrokenPipe still passes every test. |
+| R-94 | 11 | 11 | should-fix | in-change | ["path","crates/mu-cli/src/lib.rs",18] |  |  |  | report states that each stderr line goes out in one write, so lines in a shared log stay whole. The format-then-write_all body enforces it, but no test pins it. A rewrite to writeln! on Stderr, which is unbuffered and writes each format piece apart, splits the line and passes every test. |
+| R-95 | 11 | 11 | note | in-change | ["path","crates/mu-cli/src/lib.rs",120] | accepted | ticket: none; reason: The test proves the stdout split that R-93 asked for; like R-81 and R-83, a scenario of its own adds no new behavior. |  | print_ignores_only_a_broken_pipe has no scenario and no task that names it. |
 
 ## Reviewed files
 
@@ -330,7 +329,7 @@ None.
 | crates/mu-cli/Cargo.toml | 14c5317c20fd2a10e7d1bdacfcc727c1a0177f45 |
 | crates/mu-cli/src/config.rs | 3bcdbe020f1c11b0e2c55a08b0e3754fb7fc2b03 |
 | crates/mu-cli/src/env_path.rs | ce12a6e2c9b2272d34c3583dedd0b64db74963cb |
-| crates/mu-cli/src/lib.rs | ca891976e4264930c147d7e93c8e678a6751e985 |
+| crates/mu-cli/src/lib.rs | cae17548c1ff338e5d2fcd08597968a1d603c2cb |
 | crates/mu-cli/src/server.rs | a90fbe9da0341bc0ecb8efe97646a20e69259317 |
 | crates/mu-cli/src/socket.rs | a47a169ecaddfc326fd182ec5f2d8e0ccf087a4d |
 | crates/mu-cli/src/world.rs | 936e3e584ced8f94f33f88afd79c1723eb6a4797 |
