@@ -38,7 +38,7 @@ See proposal.md, section Why. These are the facts of the code that shape the des
 
 ### Layers are parsed alone, then merged
 
-The resolver reads each file with the `toml` crate into a typed struct with `deny_unknown_fields`, before any merge. A bad field fails in its own file, and so does a bad type or a value out of range. Thus the error names that file and that field.
+The resolver reads each file with the `toml` crate into a typed struct with `deny_unknown_fields`, before any merge. A bad field fails in its own file, and so does a bad type or a value out of range. Thus the error names that file and that field. The derived `Deserialize` of a struct also reads an array, by the order of its fields, and drops extra elements. Thus the tables `login` and `keepalive` go through a guard, `table` in `layer.rs`, that accepts only a table. An array there fails as a bad type of that field.
 
 Each file parses into one struct, `LayerFile`, which holds the fields of `LayerFields` and an optional `extends`. The struct does not use `#[serde(flatten)]`, because `deny_unknown_fields` does not work with it. The walk of the directory then checks `extends` for the kind of the file. A game requires it, and a type accepts it. `global.toml` and a character file refuse it, with an error that names the file and `extends`.
 
