@@ -58,7 +58,7 @@ Load the `rust-best-practices` skill before this group.
   - `bad_configuration_stops_the_start`, `fake_world_with_a_configured_id` and `server_does_not_read_a_configured_secret`, for the three scenarios of "The server holds the configured worlds"
 
   Make sure that `cargo nextest run -p mu-cli --test worlds --locked` and `cargo nextest run -p mu-server --locked` pass.
-- [ ] 6.2 Edit `docs/src/content/docs/decisions/world-type-profiles.md` to name `figment2` and say why, and to call the window width `columns`, as the spec does. Make the plugin sentence of the page name the login template. Add a page on the files of the configuration to the user docs, with the layout, the layers, `extends`, `disable` and `mu world show`. Follow the `simple-english` skill. Make sure that `mise run docs:check` passes.
+- [x] 6.2 Edit `docs/src/content/docs/decisions/world-type-profiles.md` to name `figment2` and say why, and to call the window width `columns`, as the spec does. Make the plugin sentence of the page name the login template. Add a page on the files of the configuration to the user docs, with the layout, the layers, `extends`, `disable` and `mu world show`. Follow the `simple-english` skill. Make sure that `mise run docs:check` passes.
 
 ## 7. Checks
 

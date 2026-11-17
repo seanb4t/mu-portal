@@ -15,7 +15,7 @@ The configuration of a world comes from five layers. Each layer names its parent
 
 | Layer | Holds | Example |
 |---|---|---|
-| Global | The defaults of the owner for every world | `width = 100` |
+| Global | The defaults of the owner for every world | `columns = 100` |
 | Built-in type | The quirks of one server family. It ships inside the binary. | TinyMUX reads input as Latin-1 |
 | User type | Defaults that several games share | a set of roleplay highlights |
 | Game | One server | the host, the port and TLS |
@@ -23,14 +23,14 @@ The configuration of a world comes from five layers. Each layer names its parent
 
 The layers merge in this order, from global to character:
 
-- A field, for example the width, takes its value from the last layer that sets it.
+- A field, for example the window width `columns`, takes its value from the last layer that sets it.
 - Rules, macros and scripts accumulate. Each layer adds to the ones before it. A layer removes an inherited rule with `disable` and the id of the rule.
 
-A built-in type sets only quirk fields, for example the encoding, the telnet options, the login and the keepalive. It does not set a preference such as the width. Thus a global default reaches every world, but a global default cannot override a quirk of a type by accident.
+A built-in type sets only quirk fields, for example the encoding, the telnet options, the login and the keepalive. It does not set a preference such as `columns`. Thus a global default reaches every world, but a global default cannot override a quirk of a type by accident.
 
-The files are TOML. The `figment` crate merges the layers and records which file set each value. A loop in the `extends` chain is an error.
+The files are TOML. The `figment2` crate merges the fields of the layers and records which file set each value. `figment2` is a fork of `figment` with the same API. The project uses the fork because `figment` has had no release for a long time and depends on an old `toml` crate. The rules and the scripts stay out of the merge, because a merge replaces a whole array. A loop in the `extends` chain is an error.
 
-A password is never a value in a file. A character names a secret, and the server reads it through its secret store. A layer from a shared plugin cannot set the host, the port, TLS or a credential.
+A password is never a value in a file. A character names a secret, and the server reads it through its secret store. A layer from a shared plugin cannot set the host, the port, TLS, the login name, the secret or the login template.
 
 A later layer source can be Lua. It returns a table of fields, and the same merge rules apply to it. The [Lua decision](/decisions/lua-scripting/) describes it.
 
