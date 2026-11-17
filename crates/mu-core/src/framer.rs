@@ -287,9 +287,7 @@ const TERMINAL_TYPES: [&str; 3] = ["MU-PORTAL", "XTERM-256COLOR", "MTTS 269"];
 #[derive(Debug)]
 pub struct TelnetFramer {
     parser: Parser,
-    charset: Charset,
-    columns: u16,
-    rows: u16,
+    settings: TelnetSettings,
     buffer: LineBuffer,
     /// The last data byte was a CR, so a NUL right after it is dropped.
     after_cr: bool,
@@ -302,34 +300,36 @@ impl TelnetFramer {
     #[must_use]
     pub fn new(settings: TelnetSettings) -> Self {
         Self {
-            parser: Parser::new(settings.policy),
-            charset: settings.charset,
-            columns: settings.columns,
-            rows: settings.rows,
+            parser: Parser::new(settings.policy.clone()),
+            settings,
             buffer: LineBuffer::default(),
             after_cr: false,
             terminal_types: 0,
         }
     }
 
-    /// Adds data bytes to the partial line, and gives each line that they end.
-    fn data(&mut self, bytes: &[u8], out: &mut Vec<Inbound>) {
+    /// Adds data bytes to the partial line, and gives each line that they end. Gives whether
+    /// a byte went into the partial line, which a CR or a dropped NUL does not.
+    fn data(&mut self, bytes: &[u8], out: &mut Vec<Inbound>) -> bool {
+        let mut added = false;
         for &byte in bytes {
             let after_cr = std::mem::replace(&mut self.after_cr, byte == b'\r');
-            if after_cr && byte == 0 {
+            if byte == b'\r' || (after_cr && byte == 0) {
                 continue;
             }
+            added = true;
             if let Some(line) = self.buffer.push(byte) {
-                out.push(Inbound::Line(self.charset.decode(&line)));
+                out.push(Inbound::Line(self.settings.charset.decode(&line)));
             }
         }
+        added
     }
 
     /// Gives the partial line as a prompt, if it is not empty, and clears it.
     fn prompt(&mut self, out: &mut Vec<Inbound>) {
         let text = self.buffer.take();
         if !text.is_empty() {
-            out.push(Inbound::Prompt(self.charset.decode(&text)));
+            out.push(Inbound::Prompt(self.settings.charset.decode(&text)));
         }
     }
 
@@ -362,7 +362,7 @@ impl TelnetFramer {
         let accepted = list.split_first().and_then(|(separator, names)| {
             names
                 .split(|byte| byte == separator)
-                .find(|name| name.eq_ignore_ascii_case(self.charset.name().as_bytes()))
+                .find(|name| name.eq_ignore_ascii_case(self.settings.charset.name().as_bytes()))
         });
         match accepted {
             Some(name) => [&[charset::ACCEPTED], name].concat(),
@@ -371,8 +371,8 @@ impl TelnetFramer {
     }
 
     fn window_size(&mut self) {
-        let [width_high, width_low] = self.columns.to_be_bytes();
-        let [height_high, height_low] = self.rows.to_be_bytes();
+        let [width_high, width_low] = self.settings.columns.to_be_bytes();
+        let [height_high, height_low] = self.settings.rows.to_be_bytes();
         self.parser
             .send_subnegotiation(opt::NAWS, &[width_high, width_low, height_high, height_low]);
     }
@@ -385,10 +385,7 @@ impl Framer for TelnetFramer {
         let mut added = false;
         while let Some(event) = self.parser.poll_event() {
             match event {
-                Event::Data(data) => {
-                    added = true;
-                    self.data(&data, &mut out);
-                }
+                Event::Data(data) => added |= self.data(&data, &mut out),
                 Event::Command(GA | EOR) => {
                     added = false;
                     self.prompt(&mut out);
@@ -414,13 +411,21 @@ impl Framer for TelnetFramer {
             out.push(Inbound::Reply(reply));
         }
         if added && !self.buffer.partial().is_empty() {
-            out.push(Inbound::Prompt(self.charset.decode(self.buffer.partial())));
+            out.push(Inbound::Prompt(
+                self.settings.charset.decode(self.buffer.partial()),
+            ));
         }
         out
     }
 
     fn encode(&self, line: &str) -> Vec<u8> {
-        let mut bytes = telnet::escape(&self.charset.encode(line));
+        let mut bytes = Vec::new();
+        for byte in telnet::escape(&self.settings.charset.encode(line)) {
+            bytes.push(byte);
+            if byte == b'\r' {
+                bytes.push(0);
+            }
+        }
         bytes.extend_from_slice(b"\r\n");
         bytes
     }

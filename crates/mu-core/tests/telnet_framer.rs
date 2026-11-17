@@ -2,12 +2,12 @@
 
 use miniz_oxide::deflate::compress_to_vec_zlib;
 use mu_core::telnet::{
-    DO, GA, IAC, MARK, MAX_SUBNEGOTIATION, SB, SE, WILL, charset, escape, opt, ttype,
+    DO, EOR, GA, IAC, MAX_SUBNEGOTIATION, SB, SE, WILL, WONT, charset, escape, opt, ttype,
 };
 use mu_core::{Charset, Framer, Inbound, TelnetFramer, TelnetSettings};
 use proptest::prelude::*;
 
-use support::reads;
+use support::{reads, subnegotiation};
 
 mod support;
 
@@ -54,10 +54,6 @@ fn lines(items: Vec<Inbound>) -> Vec<String> {
             _ => None,
         })
         .collect()
-}
-
-fn subnegotiation(option: u8, payload: &[u8]) -> Vec<u8> {
-    [&[IAC, SB, option][..], &escape(payload), &[IAC, SE]].concat()
 }
 
 /// The reply of `framer` to `bytes`, after the parts before it.
@@ -136,6 +132,25 @@ fn prompt_with_no_ga() {
 }
 
 #[test]
+fn prompt_with_eor() {
+    let bytes = [&b"HP 10> "[..], &[IAC, EOR]].concat();
+    assert_eq!(framer().feed(&bytes), [prompt("HP 10> ")]);
+}
+
+#[test]
+fn cr_or_nul_alone_gives_no_prompt() {
+    let mut framer = framer();
+    assert_eq!(framer.feed(b"Name: "), [prompt("Name: ")]);
+    assert_eq!(framer.feed(b"\r"), []);
+    assert_eq!(framer.feed(b"\0"), []);
+}
+
+#[test]
+fn bare_cr_in_a_line_to_the_game() {
+    assert_eq!(framer().encode("a\rb"), b"a\r\0b\r\n");
+}
+
+#[test]
 fn prompt_with_ga() {
     let bytes = [&b"HP 10> "[..], &[IAC, GA], b"more"].concat();
     assert_eq!(framer().feed(&bytes), [prompt("HP 10> "), prompt("more")]);
@@ -183,17 +198,19 @@ fn same_prompt_after_a_line() {
 #[test]
 fn two_marks_in_a_row() {
     let framer = framer();
-    assert_eq!(framer.mark(), MARK);
-    assert_eq!(framer.mark(), MARK);
+    let mark = vec![IAC, DO, opt::TIMING_MARK];
+    assert_eq!([framer.mark(), framer.mark()], [mark.clone(), mark]);
 }
 
 #[test]
 fn answer_to_a_mark() {
-    let bytes = [&b"one\n"[..], &[IAC, WILL, opt::TIMING_MARK], b"two\n"].concat();
-    assert_eq!(
-        framer().feed(&bytes),
-        [line("one"), Inbound::Mark, line("two")]
-    );
+    for verb in [WILL, WONT] {
+        let bytes = [&b"one\n"[..], &[IAC, verb, opt::TIMING_MARK], b"two\n"].concat();
+        assert_eq!(
+            framer().feed(&bytes),
+            [line("one"), Inbound::Mark, line("two")]
+        );
+    }
 }
 
 #[test]
@@ -220,6 +237,12 @@ fn four_ttype_requests() {
         .map(|name| subnegotiation(opt::TTYPE, &[&[ttype::IS], name.as_bytes()].concat()))
         .collect();
     assert_eq!(answers, expected);
+}
+
+#[test]
+fn ttype_request_while_ttype_is_off() {
+    let request = subnegotiation(opt::TTYPE, &[ttype::SEND]);
+    assert_eq!(reply_to(&mut framer(), &request), []);
 }
 
 #[test]
@@ -289,6 +312,17 @@ fn ttable_prefix_with_no_version() {
         charset_reply(charset::TTABLE),
         charset_answer(&[charset::REJECTED])
     );
+}
+
+#[test]
+fn empty_charset_list() {
+    for body in [Vec::new(), [charset::TTABLE, &[1]].concat()] {
+        assert_eq!(
+            charset_reply(&body),
+            charset_answer(&[charset::REJECTED]),
+            "{body:?}"
+        );
+    }
 }
 
 fn telnet_message(item: &Inbound) -> Option<String> {
