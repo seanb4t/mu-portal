@@ -57,6 +57,15 @@ impl SignalKind {
     /// The two signals.
     pub const ALL: [Self; 2] = [Self::Traces, Self::Metrics];
 
+    /// The lower-case name of the signal, for the log lines.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Traces => "traces",
+            Self::Metrics => "metrics",
+        }
+    }
+
     /// The path that a base URL gets for this signal over `http/protobuf`.
     #[must_use]
     pub fn path(self) -> &'static str {
@@ -277,7 +286,7 @@ pub fn export(
             })
             .transpose()
     };
-    if var_os(SDK_DISABLED).is_some_and(|value| value.eq_ignore_ascii_case("true")) {
+    if var(SDK_DISABLED)?.is_some_and(|value| value.eq_ignore_ascii_case("true")) {
         return Ok(None);
     }
     let checked = |value: String, kind, place| {
@@ -285,7 +294,8 @@ pub fn export(
             .map(|uri| Checked { value, uri, place })
             .map_err(|message| SettingError::new(place, message))
     };
-    // The field is checked even when the variable wins over it.
+    // The field is checked even when the variable wins over it. The gRPC rule of no path and no
+    // query applies only to the endpoint that a signal uses, in `signal`.
     let base_variable = var(ENDPOINT)?
         .map(|value| checked(value, EndpointKind::Base, SettingSource::Variable(ENDPOINT)))
         .transpose()?;

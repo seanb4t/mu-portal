@@ -418,7 +418,13 @@ fn debug_hides_the_endpoint() {
 fn variable_that_is_not_utf8_is_refused_and_named() {
     use std::os::unix::ffi::OsStringExt as _;
 
-    for name in [ENDPOINT, TRACES_ENDPOINT, PROTOCOL, SERVICE_NAME] {
+    for name in [
+        SDK_DISABLED,
+        ENDPOINT,
+        TRACES_ENDPOINT,
+        PROTOCOL,
+        SERVICE_NAME,
+    ] {
         let bad = |asked: &str| (asked == name).then(|| OsString::from_vec(vec![0xff]));
         let result = export(
             |asked| bad(asked).or_else(|| (asked == METRICS_ENDPOINT).then(|| "http://m:1".into())),

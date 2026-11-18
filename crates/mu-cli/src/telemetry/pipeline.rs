@@ -23,7 +23,7 @@ use tracing_subscriber::filter::{LevelFilter, filter_fn};
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::registry::LookupSpan;
 
-use super::{Authorities, Export, Protocol, Signal};
+use super::{Authorities, Export, Protocol, Signal, SignalKind};
 
 /// The longest wait for the export at the stop.
 pub const STOP_BOUND: Duration = Duration::from_secs(5);
@@ -261,16 +261,17 @@ impl Providers {
         let meter = self.meter.take();
         // Each helper thread gets a clone, so a thread that cannot start drops no last reference
         // here: the drop of the last reference stops a provider with no bound.
-        let mut stops: Vec<(&'static str, Stop)> = Vec::new();
+        let mut stops: Vec<(SignalKind, Stop)> = Vec::new();
         if let Some(tracer) = tracer.clone() {
-            stops.push(("traces", Box::new(move || tracer.shutdown())));
+            stops.push((SignalKind::Traces, Box::new(move || tracer.shutdown())));
         }
         if let Some(meter) = meter.clone() {
-            stops.push(("metrics", Box::new(move || meter.shutdown())));
+            stops.push((SignalKind::Metrics, Box::new(move || meter.shutdown())));
         }
         let outcomes = stop_all(stops, bound);
         let mut late = Vec::new();
-        for (signal, outcome) in &outcomes {
+        for (kind, outcome) in &outcomes {
+            let signal = kind.name();
             match outcome {
                 Outcome::Done => {}
                 Outcome::Failed(error) => {
@@ -280,7 +281,7 @@ impl Providers {
                     tracing::warn!(signal, %error, "the stop of the export cannot start");
                 }
                 Outcome::Panicked => tracing::warn!(signal, "the stop of the export panicked"),
-                Outcome::Late => late.push(*signal),
+                Outcome::Late => late.push(signal),
             }
         }
         if !late.is_empty() {
@@ -289,16 +290,16 @@ impl Providers {
                 "the export did not finish within {bound:?}; the rest of the telemetry is lost"
             );
         }
-        let cannot_start = |name: &str| {
+        let cannot_start = |kind: SignalKind| {
             outcomes.iter().any(|(signal, outcome)| {
-                *signal == name && matches!(outcome, Outcome::CannotStart(_))
+                *signal == kind && matches!(outcome, Outcome::CannotStart(_))
             })
         };
         // A provider whose stop cannot start is never dropped, so its drop cannot block.
-        if cannot_start("traces") {
+        if cannot_start(SignalKind::Traces) {
             std::mem::forget(tracer);
         }
-        if cannot_start("metrics") {
+        if cannot_start(SignalKind::Metrics) {
             std::mem::forget(meter);
         }
         if let Some(runtime) = self.runtime.take() {
@@ -317,7 +318,7 @@ impl Drop for Providers {
 }
 
 /// Runs each stop on its own helper thread, and waits at most `bound` for the stops that start.
-fn stop_all(stops: Vec<(&'static str, Stop)>, bound: Duration) -> Vec<(&'static str, Outcome)> {
+fn stop_all(stops: Vec<(SignalKind, Stop)>, bound: Duration) -> Vec<(SignalKind, Outcome)> {
     let deadline = Instant::now() + bound;
     let (done, finished) = mpsc::channel();
     let mut outcomes = Vec::new();
@@ -325,7 +326,7 @@ fn stop_all(stops: Vec<(&'static str, Stop)>, bound: Duration) -> Vec<(&'static 
     for (signal, stop) in stops {
         let done = done.clone();
         let spawned = thread::Builder::new()
-            .name(format!("mu-telemetry-stop-{signal}"))
+            .name(format!("mu-telemetry-stop-{}", signal.name()))
             .spawn(move || {
                 let _ = done.send((signal, stop()));
             });
@@ -340,7 +341,7 @@ fn stop_all(stops: Vec<(&'static str, Stop)>, bound: Duration) -> Vec<(&'static 
     while !pending.is_empty() {
         match finished.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
             Ok((signal, result)) => {
-                pending.retain(|name| *name != signal);
+                pending.retain(|kind| *kind != signal);
                 let outcome = match result {
                     Ok(()) => Outcome::Done,
                     Err(error) => Outcome::Failed(error.to_string()),
@@ -486,22 +487,22 @@ mod tests {
     fn done_and_failed_stops_are_reported() {
         let outcomes = stop_all(
             vec![
-                ("traces", stop(Ok(()))),
+                (SignalKind::Traces, stop(Ok(()))),
                 (
-                    "metrics",
+                    SignalKind::Metrics,
                     stop(Err(OTelSdkError::InternalFailure("x".into()))),
                 ),
             ],
             LONG,
         );
         assert!(
-            outcomes.contains(&("traces", Outcome::Done)),
+            outcomes.contains(&(SignalKind::Traces, Outcome::Done)),
             "{outcomes:?}"
         );
         assert!(
             outcomes
                 .iter()
-                .any(|(signal, outcome)| *signal == "metrics"
+                .any(|(signal, outcome)| *signal == SignalKind::Metrics
                     && matches!(outcome, Outcome::Failed(_))),
             "{outcomes:?}"
         );
@@ -511,17 +512,20 @@ mod tests {
     fn panicked_stop_is_reported_without_the_bound() {
         let outcomes = stop_all(
             vec![
-                ("traces", Box::new(|| panic!("a stop that panics"))),
-                ("metrics", stop(Ok(()))),
+                (
+                    SignalKind::Traces,
+                    Box::new(|| panic!("a stop that panics")),
+                ),
+                (SignalKind::Metrics, stop(Ok(()))),
             ],
             LONG,
         );
         assert!(
-            outcomes.contains(&("traces", Outcome::Panicked)),
+            outcomes.contains(&(SignalKind::Traces, Outcome::Panicked)),
             "{outcomes:?}"
         );
         assert!(
-            outcomes.contains(&("metrics", Outcome::Done)),
+            outcomes.contains(&(SignalKind::Metrics, Outcome::Done)),
             "{outcomes:?}"
         );
     }
@@ -531,7 +535,7 @@ mod tests {
         let (open, gate) = mpsc::channel::<()>();
         let outcomes = stop_all(
             vec![(
-                "metrics",
+                SignalKind::Metrics,
                 Box::new(move || {
                     let _ = gate.recv();
                     Ok(())
@@ -540,7 +544,7 @@ mod tests {
             Duration::ZERO,
         );
         drop(open);
-        assert_eq!(outcomes, vec![("metrics", Outcome::Late)]);
+        assert_eq!(outcomes, vec![(SignalKind::Metrics, Outcome::Late)]);
     }
 
     #[test]

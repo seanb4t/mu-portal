@@ -17,9 +17,11 @@ pub struct ServerFile {
     pub telemetry: TelemetryTable,
 }
 
-/// The table `[telemetry]`. Its values are checked when the export is on. `endpoint` and
+/// The table `[telemetry]`. Its fields and their types are checked at each start, with the
+/// export on or off. Its values are checked only when the export is on. `endpoint` and
 /// `protocol` are checked even when a variable wins over them, but `certificate` only when
-/// `OTEL_EXPORTER_OTLP_CERTIFICATE` is unset.
+/// `OTEL_EXPORTER_OTLP_CERTIFICATE` is unset. The gRPC rule of no path and no query applies
+/// only to the endpoint that a signal uses.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TelemetryTable {
