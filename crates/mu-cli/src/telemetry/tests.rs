@@ -15,6 +15,14 @@ fn table(endpoint: Option<&str>) -> TelemetryTable {
     }
 }
 
+/// The table with `endpoint` and the protocol `grpc`.
+fn grpc_table(endpoint: &str) -> TelemetryTable {
+    TelemetryTable {
+        protocol: Some("grpc".to_owned()),
+        ..table(Some(endpoint))
+    }
+}
+
 fn run(
     vars: &[(&str, &str)],
     file: Option<&TelemetryTable>,
@@ -186,10 +194,7 @@ fn http_protobuf_is_the_default() {
 
 #[test]
 fn grpc_from_each_source() {
-    let file = TelemetryTable {
-        protocol: Some("grpc".to_owned()),
-        ..table(Some(BASE))
-    };
+    let file = grpc_table(BASE);
     let from_file = on(&[], Some(&file));
     assert_eq!(from_file.traces.unwrap().protocol, Protocol::Grpc);
     for name in [PROTOCOL, TRACES_PROTOCOL] {
@@ -203,10 +208,7 @@ fn grpc_from_each_source() {
 
 #[test]
 fn order_of_the_protocol() {
-    let file = TelemetryTable {
-        protocol: Some("grpc".to_owned()),
-        ..table(Some(BASE))
-    };
+    let file = grpc_table(BASE);
     let export = on(&[(PROTOCOL, "http/protobuf")], Some(&file));
     assert_eq!(export.traces.unwrap().protocol, Protocol::HttpProtobuf);
     let export = on(
@@ -258,10 +260,7 @@ fn http_json_without_an_export_is_accepted() {
 
 #[test]
 fn empty_protocol_variable_counts_as_unset() {
-    let file = TelemetryTable {
-        protocol: Some("grpc".to_owned()),
-        ..table(Some(BASE))
-    };
+    let file = grpc_table(BASE);
     let export = on(&[(TRACES_PROTOCOL, ""), (PROTOCOL, "")], Some(&file));
     assert_eq!(export.traces.unwrap().protocol, Protocol::Grpc);
 }
@@ -381,10 +380,7 @@ fn grpc_base_gets_no_path() {
 
 #[test]
 fn grpc_endpoint_with_a_path_or_a_query_is_refused_and_named() {
-    let grpc = TelemetryTable {
-        protocol: Some("grpc".to_owned()),
-        ..table(Some("http://h:4317/otel"))
-    };
+    let grpc = grpc_table("http://h:4317/otel");
     assert_eq!(
         refused_by(&[], Some(&grpc)),
         SettingSource::Field(TableField::Endpoint)
@@ -407,10 +403,7 @@ fn grpc_endpoint_with_a_path_or_a_query_is_refused_and_named() {
 
 #[test]
 fn grpc_source_with_a_path_that_loses_is_accepted() {
-    let grpc = TelemetryTable {
-        protocol: Some("grpc".to_owned()),
-        ..table(Some("http://h:4317/otel"))
-    };
+    let grpc = grpc_table("http://h:4317/otel");
     let export = on(&[(ENDPOINT, "http://h:4317")], Some(&grpc));
     assert_eq!(
         endpoints(&export),
