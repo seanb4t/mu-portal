@@ -30,8 +30,9 @@ pub struct TelemetryTable {
     /// `http/protobuf` or `grpc`.
     pub protocol: Option<String>,
     /// A PEM file of the authorities to trust beside the roots of the system. In the file, a
-    /// relative path starts at the configuration directory: [`read`] joins it to that directory,
-    /// so a table that `read` returns holds no relative path.
+    /// relative path starts at the configuration directory: [`read`] joins it to that directory.
+    /// A path that is still relative after the join starts at the working directory, as the
+    /// configuration directory does.
     pub certificate: Option<PathBuf>,
 }
 
