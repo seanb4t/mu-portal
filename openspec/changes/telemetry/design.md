@@ -72,6 +72,8 @@ Alternatives: an `opentelemetry` dependency in `mu-core`, with direct calls to a
 
 A new function, `EventKind::name`, in `crates/mu-core/src/event.rs`, gives the snake-case name of each kind: `connected`, `disconnected`, `line`, `prompt`, `message`, `input`, `echo`, `login`, `custom` and `script_error`. The value of `mu.event.kind` is that name. A new function, `Command::name`, gives the lower-case name of each variant: `send`, `connect`, `disconnect`, `login`, `echo` and `emit`. The value of `mu.command` is that name. `Origin::name` gives `player`, `script` and `system` for `mu.origin`. `WorldState::name` gives `connecting`, `connected` and `disconnected` for `mu.world.state.name`. A unit test of each function lists every variant, so a new variant fails to compile until it has a name. A failed call sets `otel.status_code = "ERROR"` on its span. `tracing-opentelemetry` reads that field as the status. The span of a world connection lives in the `Conn` state of the session. It opens at the start of a connect, and it closes in `down`.
 
+The span of `Subscribe` ends at the return of its stream, not at the end of the stream. A stream can live for the whole evening, and a span that stays open that long reaches the collector only at its end. The method returns a ready future, so the span covers the check of `from_seq` and the build of the stream. A `Subscribe` from past the end of the journal returns a stream that sends a `Hello` and then `out_of_range`. Its span gets the status `ERROR` before the method returns.
+
 For the gauge, `session::run` emits the value 1 for `disconnected` at the start of the session. Then `set_state` emits the value 0 for the old state and 1 for the new state. Thus the last export holds one 1 for each world, a world with no transport too.
 
 ### The lag of a subscriber reads the live journal
@@ -133,7 +135,7 @@ The gRPC exporter uses `grpc-tonic` and the feature `tls-ring` of `opentelemetry
 
 Both use rustls with the crypto provider `ring`. `server::run` installs `ring` as the default provider of the process before it builds a client. `aws-lc-rs` is not used, because the license of `aws-lc-sys` is outside the list of `deny.toml`. The decision page names the provider, so that the tls change (#58) uses the same one.
 
-The scheme decides TLS. `https` uses TLS, and `http` does not. A collector whose certificate the server does not trust gets no export. The SDK logs the failure at `WARN`, and the engine goes on.
+The scheme decides TLS. `https` uses TLS, and `http` does not. A collector whose certificate the server does not trust gets no export. The exporter logs the failure at `WARN`, the batch processor or the reader logs it at `ERROR`, and the engine goes on. The build turns on the feature `internal-logs` of the OpenTelemetry crates, so these lines go through `tracing` to stderr.
 
 Alternative: the root store that the crates embed, `tls-webpki-roots`, with the certificate file. It covers a private authority too. But it ignores an authority that the owner already installed in the system, and its list changes only with a new build of `mu`.
 
@@ -189,13 +191,14 @@ Task 1.1 read each fact in the source of the released crates: `opentelemetry-otl
 | `Resource::builder` runs the detectors first, `OTEL_SERVICE_NAME` among them. `with_service_name` merges after them, so it wins. | `opentelemetry_sdk` `src/resource/mod.rs` and `src/resource/env.rs` | none |
 | `shutdown` of the tracer provider exports the spans in the queue. `shutdown` of the meter provider collects and exports one last time. | `opentelemetry_sdk` `src/trace/span_processor.rs` and `src/metrics/periodic_reader.rs` | none |
 | `InMemorySpanExporter` and `InMemoryMetricExporter` need the feature `testing` of `opentelemetry_sdk`. | `opentelemetry_sdk` `src/trace/mod.rs` and `src/metrics/mod.rs` | none |
+| With the feature `internal-logs`, `otel_warn!` and `otel_error!` emit a `tracing` event with the crate name as target. Without it, they compile to nothing. | `opentelemetry` `src/global/internal_logging.rs` | the TLS section and the risks: the three OpenTelemetry crates turn on `internal-logs` |
 
 ## Risks / Trade-offs
 
 - [A blocking reqwest client that is built inside a tokio runtime can panic.] → `server::run` builds the exporters before it builds the runtime. Task 1.1 reads the current documentation of this point.
 - [`deny.toml` can refuse the TLS stack of `reqwest`, `tonic` and `rustls`.] → The change turns off the default features where it can. Task 1.2 runs `mise run deny`.
 - [A later change can build a gRPC client on the runtime of the engine by mistake.] → The decision page names the `mu-telemetry` runtime. The silent-collector test runs with each protocol.
-- [A dead collector can write warning lines on stderr.] → The SDK logs through `tracing`. The `fmt` layer keeps its lines at `WARN`. The SDK logs the first drop only once. A warning about a dead collector is useful to the owner. The OpenTelemetry layers filter out the targets of the SDK, so its logs do not loop back into the export.
+- [A dead collector can write warning lines on stderr.] → The SDK logs through `tracing`, because the build turns on its feature `internal-logs`. The `fmt` layer keeps the lines at `WARN` and above. Each failed export gives one line. The first drop of a full queue gives one line, and the stop gives the count of the drops. A warning about a dead collector is useful to the owner. The OpenTelemetry layers filter out the targets of the SDK, so its logs do not loop back into the export.
 - [A later change can add a field with a text.] → The scanning tests run on each change. The decision page states the rule.
 - [The full-queue test depends on the default queue size of the SDK.] → Task 1.1 records the size. The test sends 2100 calls, which make two spans each, about twice the default size of 2048.
 - [Up to five seconds more at the stop with a dead collector.] → It is the bound of the spec. `mu server` stops at the end of an evening, not in a loop.
@@ -208,4 +211,4 @@ Rollback: an earlier binary refuses `server.toml` as a stray file, and stops `mu
 
 ## Open Questions
 
-- The default queue size of the `BatchSpanProcessor` holds for now. If an evening with a busy world drops spans, a later change can set it.
+None. The default queue size of the `BatchSpanProcessor` holds, as the risks and task 6.2 record. If a busy evening drops spans, a later change can set it.

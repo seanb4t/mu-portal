@@ -61,11 +61,11 @@ Each endpoint variable follows the rules of the field. A bad value stops the sta
 
 The scheme decides TLS. `https` uses TLS, and `http` does not. The server trusts the roots of the system and the authorities of the certificate file. A certificate file that cannot be read, or that holds no PEM certificate, stops the start.
 
-If the server does not trust the certificate of the collector, it exports nothing and serves as usual.
+If the server does not trust the certificate of the collector, it exports nothing and serves as usual. It writes a line to stderr for each failed export.
 
 ## A slow collector
 
-The export runs apart from the worlds, with a bounded queue. If the collector is slow or absent, the server drops data, and the worlds do not wait. At the stop, the server waits at most five seconds for the export, then exits.
+The export runs apart from the worlds, with a bounded queue. If the collector is slow or absent, the server drops data, and the worlds do not wait. The server writes a line to stderr for each failed export, and one line at the first drop. At the stop, the server waits at most five seconds for the export, then exits.
 
 ## What the server does not support
 
