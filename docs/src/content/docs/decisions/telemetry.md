@@ -21,7 +21,7 @@ Both transports use rustls with the crypto provider `ring`. The server installs 
 
 The batch processor of the spans and the reader of the metrics each run on a thread of their own, with a bounded queue. A full queue drops new data. The gRPC exporter needs a tokio runtime, so it gets its own current-thread runtime on the thread `mu-telemetry`. No telemetry task runs on a worker of the engine.
 
-At the stop, a helper thread shuts the providers down. The server waits at most five seconds for it, then stops the `mu-telemetry` runtime and exits.
+At the stop, each provider shuts down on a helper thread of its own, so a slow trace export does not delay the last metrics. The server waits at most five seconds for both. A failed or late stop writes a line to stderr. Then the server stops the `mu-telemetry` runtime and exits.
 
 ### Names
 

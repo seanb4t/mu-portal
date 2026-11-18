@@ -45,7 +45,7 @@ See proposal.md, section Why. These are the facts of the code before this change
 A new module, `crates/mu-cli/src/telemetry.rs`, builds the subscriber of `mu server` from three layers:
 
 1. The `fmt` layer on stderr, with a filter at `WARN`, as today. A metric event is at `INFO`, so it never reaches stderr.
-2. `tracing_opentelemetry::OpenTelemetryLayer` over an `SdkTracerProvider`. It takes the targets of `mu_core`, `mu_server` and `mu_cli`, and their modules. It does not take `mu::metrics`, so a metric event adds no event to a span.
+2. `tracing_opentelemetry::OpenTelemetryLayer` over an `SdkTracerProvider`. It takes the targets of `mu_core`, `mu_server` and `mu_cli`, and their modules. It does not take `mu::metrics`, so a metric event adds no event to a span. The filter is the function `in_crates`, not `tracing_subscriber::filter::Targets`. `Targets` matches a bare prefix, so with it `mu_cli` also takes `mu_client`. The filter therefore needs the `::` boundary.
 3. `tracing_opentelemetry::MetricsLayer` over an `SdkMeterProvider`. It takes only the target `mu::metrics`.
 
 If the export is off, the subscriber has only the first layer. `server::run` installs the subscriber with `try_init`, which also sends the records of the `log` crate to it.
@@ -123,7 +123,7 @@ The certificate file is `OTEL_EXPORTER_OTLP_CERTIFICATE`, then the field `certif
 
 The same function reads `OTEL_SERVICE_NAME`. If it is set and not empty, its value is the service name. Otherwise the name is `mu`. The resource sets `service.name` with that value through `Resource::builder().with_service_name`, so the detectors of the SDK do not decide it.
 
-The walk of the directory in `dir.rs` skips the file `server.toml` at the top level only, before `key_of`. The check compares the whole relative path, so `characters/alpha/server.toml` is still the world `alpha/server`. `mu world` therefore ignores it.
+The walk of the directory in `dir.rs` skips the file `server.toml` at the top level only, before `key_of`. The walk skips a top-level entry that meets two rules. Its name is `server.toml` in any case, and `same_file::is_same_file` finds that it is the file `server.toml`. On a file system that ignores case, `server_config` reads `Server.toml` as that file, so the walk skips it too. On another file system, `Server.toml` is a stray file and an error. A link with another name to `server.toml` is still an error, and a `server.toml` that links to `global.toml` does not hide the global layer. `characters/alpha/server.toml` is still the world `alpha/server`. `mu world` therefore ignores the server file.
 
 Alternative: a `[telemetry]` table in `global.toml`. The operator chose `server.toml`, because each field of a layer is a field of a world.
 
@@ -198,7 +198,7 @@ Task 1.1 read each fact in the source of the released crates: `opentelemetry-otl
 - [A blocking reqwest client that is built inside a tokio runtime can panic.] → `server::run` builds the exporters before it builds the runtime. Task 1.1 reads the current documentation of this point.
 - [`deny.toml` can refuse the TLS stack of `reqwest`, `tonic` and `rustls`.] → The change turns off the default features where it can. Task 1.2 runs `mise run deny`.
 - [A later change can build a gRPC client on the runtime of the engine by mistake.] → The decision page names the `mu-telemetry` runtime. The silent-collector test runs with each protocol.
-- [A dead collector can write warning lines on stderr.] → The SDK logs through `tracing`, because the build turns on its feature `internal-logs`. The `fmt` layer keeps the lines at `WARN` and above. Each failed export gives one line. The first drop of a full queue gives one line, and the stop gives the count of the drops. A warning about a dead collector is useful to the owner. The OpenTelemetry layers filter out the targets of the SDK, so its logs do not loop back into the export.
+- [A dead collector can write warning lines on stderr.] → The SDK logs through `tracing`, because the build turns on its feature `internal-logs`. The `fmt` layer keeps the lines at `WARN` and above. Each failed export gives two lines: a `WARN` from the exporter and an `ERROR` from the batch processor or the reader. The first drop of a full queue gives one line, and the stop gives the count of the drops. A warning about a dead collector is useful to the owner. The OpenTelemetry layers filter out the targets of the SDK, so its logs do not loop back into the export.
 - [A later change can add a field with a text.] → The scanning tests run on each change. The decision page states the rule.
 - [The full-queue test depends on the default queue size of the SDK.] → Task 1.1 records the size. The test sends 2100 calls, which make two spans each, about twice the default size of 2048.
 - [Up to five seconds more at the stop with a dead collector.] → It is the bound of the spec. `mu server` stops at the end of an evening, not in a loop.
