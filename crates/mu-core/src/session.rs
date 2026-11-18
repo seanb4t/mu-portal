@@ -366,9 +366,8 @@ impl Session {
 
     fn set_state(&self, state: WorldState) {
         let old = self.parts.state.send_replace(state);
-        if old != state {
-            state_gauge(self.world(), old, 0);
-        }
+        // The 1 comes last, so a state that does not change keeps its 1.
+        state_gauge(self.world(), old, 0);
         state_gauge(self.world(), state, 1);
     }
 
