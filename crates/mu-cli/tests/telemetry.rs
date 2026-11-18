@@ -34,6 +34,9 @@ const SERVICE_NAME: &str = "OTEL_SERVICE_NAME";
 /// The text of the line that a stop past the bound writes.
 const LATE_STOP: &str = "did not finish within";
 
+/// The text of the line that a failed stop writes.
+const FAILED_STOP: &str = "the stop of the export failed";
+
 /// A server with the fake world `alpha/aria`, and its configuration directory.
 struct Setup {
     builder: ServerBuilder,
@@ -640,9 +643,8 @@ async fn collector_that_the_server_does_not_trust() {
     assert!(run.status.success(), "{:?}", run.stderr);
     assert!(collector.requests().is_empty(), "{:?}", collector.paths());
     assert!(
-        run.stderr
-            .iter()
-            .any(|line| line.contains("opentelemetry") && line.contains("ExportError")),
+        run.stderr.iter().any(|line| line.contains("ERROR")
+            && (line.contains("Processor.ExportError") || line.contains("Reader.ExportError"))),
         "{:#?}",
         run.stderr
     );
@@ -650,6 +652,31 @@ async fn collector_that_the_server_does_not_trust() {
         run.stderr
             .iter()
             .any(|line| line.contains("WARN") && line.contains("Export.Failed.Exhausted")),
+        "{:#?}",
+        run.stderr
+    );
+}
+
+#[tokio::test]
+async fn collector_on_a_closed_port() {
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let run = Setup::endpoint(&format!("http://127.0.0.1:{port}"))
+        .one_send()
+        .await;
+    assert!(run.status.success(), "{:?}", run.stderr);
+    assert!(
+        run.stderr
+            .iter()
+            .any(|line| line.contains("WARN") && line.contains(FAILED_STOP)),
+        "{:#?}",
+        run.stderr
+    );
+    assert!(
+        !run.stderr.iter().any(|line| line.contains(LATE_STOP)),
         "{:#?}",
         run.stderr
     );
