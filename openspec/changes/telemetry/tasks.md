@@ -2,7 +2,7 @@
 
 ## 1. Sources and dependencies
 
-- [ ] 1.1 Read the current documentation of `opentelemetry-otlp`, `opentelemetry_sdk` and `tracing-opentelemetry` for each fact that the design uses:
+- [x] 1.1 Read the current documentation of `opentelemetry-otlp`, `opentelemetry_sdk` and `tracing-opentelemetry` for each fact that the design uses:
   - the field prefixes of `MetricsLayer`, the `gauge.` prefix among them, and how its other fields become attributes
   - how `OpenTelemetryLayer` reads `otel.status_code`, and how it turns an event in a span into a span event
   - the thread of the default `BatchSpanProcessor` and of the `PeriodicReader`, the default queue size, and what `on_end` does with a full queue
@@ -16,7 +16,7 @@
   - the in-memory exporters of `opentelemetry_sdk` for the tests, and their feature
 
   Add a table "Checked facts" to the design with one row for each fact and its source. Make sure that each difference from the sources is an edit of the design that its row names.
-- [ ] 1.2 Add `opentelemetry`, `opentelemetry_sdk`, `opentelemetry-otlp`, `tracing-opentelemetry` and `opentelemetry-proto` to `[workspace.dependencies]`. Give `opentelemetry-otlp` the features `http-proto`, `reqwest-blocking-client`, `grpc-tonic`, `trace` and `metrics`, and the TLS features that task 1.1 picks. Add the first four, `serde` and `http` to the dependencies of `mu-cli`. If task 1.1 finds no re-export of the `reqwest` and `tonic` types, add those two crates too. Add `opentelemetry-proto` with its gRPC services, `tonic`, `axum`, `axum-server`, `rcgen` and `hex` to its dev-dependencies. Also add the testing feature of `opentelemetry_sdk` and the feature `test-util` of `tokio`. The last two serve the mu-core test helpers of task 5.2. Add the new crates of `mu-cli` to `ALLOWED_CRATES` in `crates/mu-cli/tests/workspace_boundary.rs`. Make sure that `mise run deny` and `cargo nextest run -p mu-cli --test workspace_boundary --locked` pass, and that Renovate reads each new pin from `Cargo.toml`.
+- [x] 1.2 Add `opentelemetry`, `opentelemetry_sdk`, `opentelemetry-otlp`, `tracing-opentelemetry` and `opentelemetry-proto` to `[workspace.dependencies]`. Give `opentelemetry-otlp` the features `http-proto`, `reqwest-blocking-client`, `grpc-tonic`, `trace` and `metrics`, and the TLS features that task 1.1 picks. Add the first four, `serde` and `http` to the dependencies of `mu-cli`. If task 1.1 finds no re-export of the `reqwest` and `tonic` types, add those two crates too. Add `opentelemetry-proto` with its gRPC services, `tonic`, `axum`, `axum-server`, `rcgen` and `hex` to its dev-dependencies. Also add the testing feature of `opentelemetry_sdk` and the feature `test-util` of `tokio`. The last two serve the mu-core test helpers of task 5.2. Add the new crates of `mu-cli` to `ALLOWED_CRATES` in `crates/mu-cli/tests/workspace_boundary.rs`. Make sure that `mise run deny` and `cargo nextest run -p mu-cli --test workspace_boundary --locked` pass, and that Renovate reads each new pin from `Cargo.toml`.
 
 ## 2. server.toml
 

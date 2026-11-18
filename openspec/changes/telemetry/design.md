@@ -127,7 +127,11 @@ Alternative: a `[telemetry]` table in `global.toml`. The operator chose `server.
 
 ### Two transports and one TLS stack
 
-The HTTP exporter uses `reqwest-blocking-client`. `server::run` builds the `reqwest::blocking::Client` itself, with rustls, the root certificates of the system and the certificates of the file. It passes the client with `with_http_client`. The gRPC exporter uses `grpc-tonic`, with a `ClientTlsConfig` that holds the roots of the system and the same certificates. Both use rustls with one crypto provider. Task 1.1 picks the provider that both crates support, and the decision page names it, so that the tls change (#58) uses the same one.
+The HTTP exporter uses `reqwest-blocking-client`. `server::run` builds the `reqwest::blocking::Client` itself, with the feature `rustls-no-provider` of `reqwest`. Its verifier is `rustls-platform-verifier`, which trusts the roots of the system. `tls_certs_merge` adds the certificates of the file. It passes the client with `with_http_client`.
+
+The gRPC exporter uses `grpc-tonic` and the feature `tls-ring` of `opentelemetry-otlp`. Its `ClientTlsConfig` calls `with_native_roots`, a feature of `tonic`, and `ca_certificate` for each certificate of the file.
+
+Both use rustls with the crypto provider `ring`. `server::run` installs `ring` as the default provider of the process before it builds a client. `aws-lc-rs` is not used, because the license of `aws-lc-sys` is outside the list of `deny.toml`. The decision page names the provider, so that the tls change (#58) uses the same one.
 
 The scheme decides TLS. `https` uses TLS, and `http` does not. A collector whose certificate the server does not trust gets no export. The SDK logs the failure at `WARN`, and the engine goes on.
 
@@ -165,6 +169,26 @@ The engine tests of the metrics, in `crates/mu-cli/tests/telemetry_engine.rs`, i
 | A slow collector does not slow a world | `silent_collector_does_not_delay_a_send`, which also measures the stop |
 | The span and metric names | the tests of each scenario, through the fake collector or the in-memory exporters |
 | `mu-core` and `mu-server` take no OpenTelemetry crate | `ALLOWED_CRATES` in the boundary test |
+
+## Checked facts
+
+Task 1.1 read each fact in the source of the released crates: `opentelemetry-otlp` 0.33.1, `opentelemetry_sdk` 0.33.1, `tracing-opentelemetry` 0.34.0, `reqwest` 0.13.5 and `tonic` 0.14.9.
+
+| Fact | Source | Edit of the design |
+|---|---|---|
+| `MetricsLayer` reads the prefixes `monotonic_counter.`, `counter.`, `histogram.` and `gauge.`. The other fields of the event become attributes. | `tracing-opentelemetry` `src/metrics.rs` | none |
+| `OpenTelemetryLayer` reads `otel.status_code` as the status, and turns an event inside a span into a span event. | `tracing-opentelemetry` `src/layer.rs` | none |
+| `BatchSpanProcessor` runs on the thread `OpenTelemetry.Traces.BatchProcessor`. Its queue holds 2048 spans. `on_end` calls `try_send`, and drops the span on a full queue. | `opentelemetry_sdk` `src/trace/span_processor.rs` | none |
+| `PeriodicReader` runs on the thread `OpenTelemetry.Metrics.PeriodicReader`, every 60 seconds by default. | `opentelemetry_sdk` `src/metrics/periodic_reader.rs` | none |
+| The HTTP exporter builds its own blocking client on a new thread, unless `with_http_client` gives one. | `opentelemetry-otlp` `src/exporter/http/mod.rs` | none |
+| `with_endpoint` wins over each endpoint variable, and the exporter adds no path to it. | `resolve_http_endpoint` and `resolve_endpoint` of the two exporters | none |
+| `with_protocol` wins over the protocol variables. The HTTP exporter refuses `grpc`. | `resolve_protocol` in `src/exporter/mod.rs` | none |
+| The gRPC exporter calls `connect_lazy`, which spawns its task on the current tokio runtime. An endpoint with a scheme ignores `OTEL_EXPORTER_OTLP_INSECURE`. | `src/exporter/tonic/mod.rs` | none |
+| An `https` gRPC endpoint needs `tls-ring`, `tls-aws-lc` or `tls-provider-agnostic` of `opentelemetry-otlp`. It re-exports `ClientTlsConfig` and `Certificate` in `tonic_types::transport`. It has no feature for the roots of the system. | `opentelemetry-otlp` `Cargo.toml` and `src/lib.rs` | the TLS section: `tonic` with `tls-native-roots` is a dependency of `mu-cli` |
+| `reqwest` 0.13 has `rustls`, which brings `aws-lc-rs`, and `rustls-no-provider`, which takes the default provider of the process. Both use the verifier `rustls-platform-verifier`. `tls_certs_merge` adds roots to it. `opentelemetry-otlp` does not re-export `reqwest`. | `reqwest` `Cargo.toml` and `src/async_impl/client.rs` | the TLS section: `reqwest` with `blocking` and `rustls-no-provider` is a dependency of `mu-cli` |
+| `Resource::builder` runs the detectors first, `OTEL_SERVICE_NAME` among them. `with_service_name` merges after them, so it wins. | `opentelemetry_sdk` `src/resource/mod.rs` and `src/resource/env.rs` | none |
+| `shutdown` of the tracer provider exports the spans in the queue. `shutdown` of the meter provider collects and exports one last time. | `opentelemetry_sdk` `src/trace/span_processor.rs` and `src/metrics/periodic_reader.rs` | none |
+| `InMemorySpanExporter` and `InMemoryMetricExporter` need the feature `testing` of `opentelemetry_sdk`. | `opentelemetry_sdk` `src/trace/mod.rs` and `src/metrics/mod.rs` | none |
 
 ## Risks / Trade-offs
 

@@ -24,6 +24,9 @@ allow = [
 confidence-threshold = 0.93
 # The list is a policy. It can hold a license that no crate uses yet.
 unused-allowed-license = "allow"
+# rustls-platform-verifier pulls webpki-root-certs only for wasm32, which
+# mu never builds. The graph covers each target, so the crate is listed.
+exceptions = [{ crate = "webpki-root-certs", allow = ["CDLA-Permissive-2.0"] }]
 
 [bans]
 multiple-versions = "warn"
