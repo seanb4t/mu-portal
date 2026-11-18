@@ -25,7 +25,7 @@ certificate = "/etc/mu/collector-ca.pem"
 |---|---|
 | `endpoint` | The base URL of the collector, with the scheme `http` or `https` |
 | `protocol` | `http/protobuf` or `grpc`. The default is `http/protobuf` |
-| `certificate` | A PEM file of the authorities to trust beside the roots of the system |
+| `certificate` | A PEM file of the authorities to trust beside the roots of the system. A relative path starts at the configuration directory |
 
 Each field is optional. The server reads the file once, at the start, before it opens its socket. An unknown table, an unknown field, or a value of the wrong type stops the start. So does an endpoint that is not a URL, or a scheme other than `http` and `https`. So does a base URL with a query or a fragment. The error names `server.toml` and the field, and the exit status is 1.
 
@@ -65,16 +65,16 @@ If the server does not trust the certificate of the collector, it exports nothin
 
 ## A slow collector
 
-The export runs apart from the worlds, with a bounded queue. If the collector is slow or absent, the server drops data, and the worlds do not wait. The server writes a line to stderr for each failed export, and one line at the first drop. At the stop, the server waits at most five seconds for the export, then exits.
+The export runs apart from the worlds, with a bounded queue. If the collector is slow or absent, the server drops data, and the worlds do not wait. The server writes a line to stderr for each failed export, and one line at the first drop. Each export request has a limit of ten seconds. At the stop, the server waits at most five seconds for the export of both signals. If the export does not finish in that time, the server writes a line to stderr and exits.
 
 ## What the server does not support
 
-The server does not support these features. Some of them can have an effect through the OpenTelemetry library, but `mu` does not test them:
+The server does not support these features. Some of them can have an effect through the OpenTelemetry library, but `mu` does not test them. The server sets its own request limit, so the timeout variables have no effect on gRPC:
 
 - The protocol `http/json`. The server refuses it at the start.
 - `OTEL_EXPORTER_OTLP_INSECURE`. The scheme decides TLS.
 - Client certificates, and the certificate variables of one signal.
-- Headers, timeouts, compression, samplers, the batch variables, `OTEL_TRACES_EXPORTER` and `OTEL_METRICS_EXPORTER`.
+- Headers, the timeout variables, compression, samplers, the batch variables, `OTEL_TRACES_EXPORTER` and `OTEL_METRICS_EXPORTER`.
 - The OTLP logs signal. The log lines stay on stderr, at the level `WARN`.
 - A reload of `server.toml` while the server runs.
 

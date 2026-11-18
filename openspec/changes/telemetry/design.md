@@ -45,10 +45,10 @@ See proposal.md, section Why. These are the facts of the code before this change
 A new module, `crates/mu-cli/src/telemetry.rs`, builds the subscriber of `mu server` from three layers:
 
 1. The `fmt` layer on stderr, with a filter at `WARN`, as today. A metric event is at `INFO`, so it never reaches stderr.
-2. `tracing_opentelemetry::OpenTelemetryLayer` over an `SdkTracerProvider`.
-3. `tracing_opentelemetry::MetricsLayer` over an `SdkMeterProvider`.
+2. `tracing_opentelemetry::OpenTelemetryLayer` over an `SdkTracerProvider`. It takes the targets of `mu_core`, `mu_server` and `mu_cli`, and their modules. It does not take `mu::metrics`, so a metric event adds no event to a span.
+3. `tracing_opentelemetry::MetricsLayer` over an `SdkMeterProvider`. It takes only the target `mu::metrics`.
 
-If the export is off, the subscriber has only the first layer.
+If the export is off, the subscriber has only the first layer. `server::run` installs the subscriber with `try_init`, which also sends the records of the `log` crate to it.
 
 A filter on the two OpenTelemetry layers passes only the targets of the workspace: `mu_core`, `mu_server`, `mu_cli` and `mu::metrics`. Thus the events of `connectrpc`, `h2`, `hyper`, `tower`, `reqwest` and the SDK never become span events or metrics. The SDK logs do not loop back into the export. A test sends an event from another target inside a span, and checks that the in-memory exporter gets no span event for it.
 
@@ -129,7 +129,7 @@ Alternative: a `[telemetry]` table in `global.toml`. The operator chose `server.
 
 ### Two transports and one TLS stack
 
-The HTTP exporter uses `reqwest-blocking-client`. `server::run` builds the `reqwest::blocking::Client` itself, with the feature `rustls-no-provider` of `reqwest`. Its verifier is `rustls-platform-verifier`, which trusts the roots of the system. `tls_certs_merge` adds the certificates of the file. It passes the client with `with_http_client`.
+The HTTP exporter uses `reqwest-blocking-client`. `server::run` builds the `reqwest::blocking::Client` itself, with the feature `rustls-no-provider` of `reqwest`. Its verifier is `rustls-platform-verifier`, which trusts the roots of the system. `tls_certs_merge` adds the certificates of the file. The client follows no redirect. It passes the client with `with_http_client`.
 
 The gRPC exporter uses `grpc-tonic` and the feature `tls-ring` of `opentelemetry-otlp`. Its `ClientTlsConfig` calls `with_native_roots`, a feature of `tonic`, and `ca_certificate` for each certificate of the file.
 
@@ -141,7 +141,7 @@ Alternative: the root store that the crates embed, `tls-webpki-roots`, with the 
 
 ### The exporter has its own threads and a bounded stop
 
-The default `BatchSpanProcessor` and the `PeriodicReader` each run on a dedicated thread. A full queue drops the span, and `on_end` never waits. So a slow collector does not touch a task of tokio.
+The default `BatchSpanProcessor` and the `PeriodicReader` each run on a dedicated thread. Each export request has a limit of ten seconds, `EXPORT_TIMEOUT` in `pipeline.rs`. The limit replaces the timeout variables of OpenTelemetry on gRPC, and the guide lists those variables as not supported. A full queue drops the span, and `on_end` never waits. So a slow collector does not touch a task of tokio.
 
 The blocking HTTP client is built before the runtime of the engine. The build of the gRPC exporter needs a tokio runtime, and its channel runs its tasks on that runtime. The telemetry therefore gets a runtime of its own. `telemetry.rs` starts one thread, `mu-telemetry`, with a current-thread tokio runtime. The thread runs `block_on` of a future that ends at the stop, so the runtime drives the tasks of the gRPC channel. `server::run` builds the gRPC exporters inside the `enter` of that runtime. Thus no telemetry task runs on a worker of the engine, for both protocols.
 
@@ -149,7 +149,7 @@ The engine keeps the multi-thread runtime of `Runtime::new` in `server::run`. Th
 
 Alternative: the gRPC exporter on the runtime of the engine. Its calls are I/O, so a silent collector holds no worker. But the export then shares the queue of the scheduler with each world, and the stop must flush before the runtime of the engine drops.
 
-The stop comes after `serve` returns. Then `server::run` calls `shutdown` of both providers on a helper thread, and waits at most five seconds for it. After the shutdown, or after the wait, the runtime of `mu-telemetry` stops. The runtime of the engine drops independently of it. Then the process exits, whether the flush finished or not. The shutdown flushes each span and collects the metrics one last time. The tests read the collector after the exit, so no test waits for an export interval.
+The stop comes after `serve` returns. Then `server::run` calls `shutdown` of each provider on a helper thread of its own, so a slow trace export does not delay the last metrics. It waits at most five seconds for both. A failed shutdown, or a wait that ends first, writes a line at `WARN` to stderr. After the shutdown, or after the wait, the runtime of `mu-telemetry` stops. The runtime of the engine drops independently of it. Then the process exits, whether the flush finished or not. The shutdown flushes each span and collects the metrics one last time. The tests read the collector after the exit, so no test waits for an export interval.
 
 Alternative: the async exporters with `rt-tokio`. They share the runtime of the engine, and the SDK documents the threaded processor as the default.
 
