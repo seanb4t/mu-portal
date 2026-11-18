@@ -8,7 +8,7 @@ use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_otlp::tonic_types::transport::{Certificate, ClientTlsConfig};
 use opentelemetry_otlp::{
     ExporterBuildError, MetricExporter, Protocol as OtlpProtocol, SpanExporter as OtlpSpanExporter,
-    WithExportConfig as _, WithHttpConfig as _, WithTonicConfig as _,
+    WithExportConfig, WithHttpConfig, WithTonicConfig,
 };
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
@@ -30,7 +30,7 @@ pub const STOP_BOUND: Duration = Duration::from_secs(5);
 const EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The targets that reach the OpenTelemetry layers: the workspace, and its metric events.
-pub const TARGETS: [&str; 4] = ["mu_core", "mu_server", "mu_cli", "mu::metrics"];
+pub const TARGETS: [&str; 4] = ["mu_core", "mu_server", "mu_cli", mu_core::METRICS_TARGET];
 
 /// The name of the thread of the telemetry runtime.
 const RUNTIME_THREAD: &str = "mu-telemetry";
@@ -130,8 +130,6 @@ impl Providers {
     ///
     /// A [`PipelineError`] of an exporter, of the HTTP client or of the runtime.
     pub fn start(export: &Export) -> Result<Self, PipelineError> {
-        // One crypto provider for reqwest and tonic. A second call finds it installed.
-        let _ = rustls::crypto::ring::default_provider().install_default();
         let grpc = [&export.traces, &export.metrics]
             .into_iter()
             .flatten()
@@ -230,8 +228,12 @@ fn targets() -> Targets {
     })
 }
 
+/// Whether the endpoint of `signal` has the scheme `https`, in any case.
 fn is_https(signal: &Signal) -> bool {
-    signal.endpoint.starts_with("https://")
+    signal
+        .endpoint
+        .parse::<http::Uri>()
+        .is_ok_and(|uri| uri.scheme() == Some(&http::uri::Scheme::HTTPS))
 }
 
 fn http_client(trust: &Trust) -> Result<reqwest::blocking::Client, PipelineError> {
@@ -255,33 +257,44 @@ fn tls_config(trust: &Trust) -> ClientTlsConfig {
     }
 }
 
+/// `builder` set for gRPC to the endpoint of `signal`, with TLS for `https`.
+fn grpc<B: WithExportConfig + WithTonicConfig>(builder: B, signal: &Signal, trust: &Trust) -> B {
+    let builder = builder
+        .with_protocol(OtlpProtocol::Grpc)
+        .with_timeout(EXPORT_TIMEOUT)
+        .with_endpoint(signal.endpoint.clone());
+    if is_https(signal) {
+        builder.with_tls_config(tls_config(trust))
+    } else {
+        builder
+    }
+}
+
+/// `builder` set for HTTP to the endpoint of `signal`.
+fn http<B: WithExportConfig + WithHttpConfig>(
+    builder: B,
+    signal: &Signal,
+    trust: &Trust,
+) -> Result<B, PipelineError> {
+    Ok(builder
+        .with_http_client(http_client(trust)?)
+        .with_protocol(OtlpProtocol::HttpBinary)
+        .with_endpoint(signal.endpoint.clone()))
+}
+
 fn span_exporter(
     signal: &Signal,
     trust: &Trust,
     runtime: Option<&tokio::runtime::Handle>,
 ) -> Result<OtlpSpanExporter, PipelineError> {
-    match (signal.protocol, runtime) {
+    let builder = OtlpSpanExporter::builder();
+    Ok(match (signal.protocol, runtime) {
         (Protocol::Grpc, Some(runtime)) => {
             let _entered = runtime.enter();
-            let builder = OtlpSpanExporter::builder()
-                .with_tonic()
-                .with_protocol(OtlpProtocol::Grpc)
-                .with_timeout(EXPORT_TIMEOUT)
-                .with_endpoint(signal.endpoint.clone());
-            let builder = if is_https(signal) {
-                builder.with_tls_config(tls_config(trust))
-            } else {
-                builder
-            };
-            Ok(builder.build()?)
+            grpc(builder.with_tonic(), signal, trust).build()?
         }
-        _ => Ok(OtlpSpanExporter::builder()
-            .with_http()
-            .with_http_client(http_client(trust)?)
-            .with_protocol(OtlpProtocol::HttpBinary)
-            .with_endpoint(signal.endpoint.clone())
-            .build()?),
-    }
+        _ => http(builder.with_http(), signal, trust)?.build()?,
+    })
 }
 
 fn metric_exporter(
@@ -289,26 +302,12 @@ fn metric_exporter(
     trust: &Trust,
     runtime: Option<&tokio::runtime::Handle>,
 ) -> Result<MetricExporter, PipelineError> {
-    match (signal.protocol, runtime) {
+    let builder = MetricExporter::builder();
+    Ok(match (signal.protocol, runtime) {
         (Protocol::Grpc, Some(runtime)) => {
             let _entered = runtime.enter();
-            let builder = MetricExporter::builder()
-                .with_tonic()
-                .with_protocol(OtlpProtocol::Grpc)
-                .with_timeout(EXPORT_TIMEOUT)
-                .with_endpoint(signal.endpoint.clone());
-            let builder = if is_https(signal) {
-                builder.with_tls_config(tls_config(trust))
-            } else {
-                builder
-            };
-            Ok(builder.build()?)
+            grpc(builder.with_tonic(), signal, trust).build()?
         }
-        _ => Ok(MetricExporter::builder()
-            .with_http()
-            .with_http_client(http_client(trust)?)
-            .with_protocol(OtlpProtocol::HttpBinary)
-            .with_endpoint(signal.endpoint.clone())
-            .build()?),
-    }
+        _ => http(builder.with_http(), signal, trust)?.build()?,
+    })
 }

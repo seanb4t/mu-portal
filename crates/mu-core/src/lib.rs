@@ -17,6 +17,10 @@ pub mod telnet;
 pub mod transport;
 pub mod world;
 
+/// The target of the metric events of the engine and the API, which the layer of the metrics
+/// reads.
+pub const METRICS_TARGET: &str = "mu::metrics";
+
 pub use command::{Command, Envelope, Origin};
 pub use error::PortalError;
 pub use event::{Event, EventKind, NewEvent, Seq, Source};

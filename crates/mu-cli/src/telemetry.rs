@@ -155,12 +155,6 @@ impl SettingError {
     }
 }
 
-/// A value and its source.
-struct Setting<'a> {
-    value: &'a str,
-    place: Source,
-}
-
 /// Picks the export from the variables, which `var` reads, and the table of `server.toml`. An
 /// empty variable counts as unset. `None` means no export.
 ///
@@ -177,21 +171,15 @@ pub fn export(
     }
     let file = file.cloned().unwrap_or_default();
     let base_variable = var(ENDPOINT);
-    let base = base_variable
-        .as_deref()
-        .map(|value| Setting {
-            value,
-            place: Source::Variable(ENDPOINT),
-        })
-        .or_else(|| {
-            file.endpoint.as_deref().map(|value| Setting {
-                value,
-                place: Source::Field("endpoint"),
-            })
-        });
-    if let Some(base) = &base {
-        check_endpoint(base.value, true)
-            .map_err(|message| SettingError::new(base.place, message))?;
+    let base = base_variable.as_deref().or(file.endpoint.as_deref());
+    // The field is checked even when the variable wins over it.
+    for (value, place) in [
+        (base_variable.as_deref(), Source::Variable(ENDPOINT)),
+        (file.endpoint.as_deref(), Source::Field("endpoint")),
+    ] {
+        if let Some(value) = value {
+            check_endpoint(value, true).map_err(|message| SettingError::new(place, message))?;
+        }
     }
     let mut own = [None, None];
     for (slot, kind) in own
@@ -231,7 +219,7 @@ pub fn export(
             .or(all_protocol)
             .or(field_protocol)
             .unwrap_or(Protocol::HttpProtobuf);
-        let endpoint = own.or_else(|| base.as_ref().map(|base| join(base.value, kind, protocol)));
+        let endpoint = own.or_else(|| base.map(|base| join(base, kind, protocol)));
         *slot = endpoint.map(|endpoint| Signal { endpoint, protocol });
     }
     let [traces, metrics] = signals;

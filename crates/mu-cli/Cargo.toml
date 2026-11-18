@@ -37,6 +37,7 @@ tracing-subscriber = { workspace = true }
 axum = { workspace = true }
 axum-server = { workspace = true }
 cargo_metadata = { workspace = true }
+connectrpc = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 mu-proto = { path = "../mu-proto" }

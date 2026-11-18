@@ -41,10 +41,10 @@ governor = { version = "0.10.4", default-features = false, features = ["std"] }
 hex = "0.4.3"
 http = "1.5.0"
 miniz_oxide = "0.9.1"
-opentelemetry = { version = "0.33.1", default-features = false, features = ["trace", "metrics"] }
-opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["grpc-tonic", "http-proto", "metrics", "reqwest-blocking-client", "tls-ring", "trace"] }
+opentelemetry = { version = "0.33.1", default-features = false, features = ["internal-logs", "metrics", "trace"] }
+opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["grpc-tonic", "http-proto", "internal-logs", "metrics", "reqwest-blocking-client", "tls-ring", "trace"] }
 opentelemetry-proto = { version = "0.33.1", default-features = false, features = ["gen-tonic", "metrics", "trace"] }
-opentelemetry_sdk = { version = "0.33.1", default-features = false, features = ["trace", "metrics"] }
+opentelemetry_sdk = { version = "0.33.1", default-features = false, features = ["internal-logs", "metrics", "trace"] }
 portable-pty = "0.9.0"
 proc-macro2 = "1.0.107"
 proptest = "1.12.0"

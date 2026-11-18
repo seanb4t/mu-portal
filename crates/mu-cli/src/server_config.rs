@@ -4,11 +4,9 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+pub use mu_core::world::SERVER_FILE;
 use mu_core::world::{ConfigError, parse_toml};
 use serde::Deserialize;
-
-/// The name of the file in the configuration directory.
-pub const SERVER_FILE: &str = "server.toml";
 
 /// The content of `server.toml`. A missing file is the default.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]

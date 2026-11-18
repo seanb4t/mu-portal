@@ -140,7 +140,8 @@ async fn lagged_stream_is_counted() {
     for n in 1..=5 {
         line(&journal, &format!("line {n}"));
     }
-    assert!(stream.next().await.unwrap().is_err());
+    let error = stream.next().await.unwrap().unwrap_err();
+    assert_eq!(error.code, connectrpc::ErrorCode::ResourceExhausted);
     assert_eq!(memory.value("mu.subscriber.lagged", &[]), Some(1));
 }
 
@@ -157,6 +158,26 @@ async fn lag_at_the_head_is_zero() {
     line(&journal, "the head");
     stream.next().await.unwrap().unwrap();
     assert_eq!(memory.histogram("mu.subscriber.lag"), Some((1, 0)));
+}
+
+#[tokio::test]
+async fn lag_behind_the_head() {
+    let memory = Memory::new();
+    let _default = tracing::subscriber::set_default(memory.subscriber());
+    let journal = Arc::new(MemoryJournal::new(8).unwrap());
+    let (_stop, stopping) = watch::channel(false);
+    let subscription = journal.subscribe(Seq(1)).unwrap();
+    let mut stream =
+        mu_server::service::event_stream(subscription, journal.clone(), "id", stopping);
+    stream.next().await.unwrap().unwrap();
+    for n in 1..=3 {
+        line(&journal, &format!("line {n}"));
+    }
+    for _ in 1..=3 {
+        stream.next().await.unwrap().unwrap();
+    }
+    // The three events are 2, 1 and 0 behind the head.
+    assert_eq!(memory.histogram("mu.subscriber.lag"), Some((3, 3)));
 }
 
 /// A world on a fake game whose handler answers `go` from the game with `count` echoes.

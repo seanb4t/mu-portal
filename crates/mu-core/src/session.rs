@@ -48,13 +48,10 @@ impl WorldState {
     }
 }
 
-/// The target of the metric events, which the layer of the metrics reads.
-const METRICS: &str = "mu::metrics";
-
 /// Records `value` in the gauge `mu.world.state` of `world` for `state`.
 fn state_gauge(world: &WorldId, state: WorldState, value: u64) {
     tracing::event!(
-        target: METRICS,
+        target: crate::METRICS_TARGET,
         tracing::Level::INFO,
         mu.world = %world,
         "gauge.mu.world.state" = value,
@@ -312,7 +309,7 @@ impl Session {
             depth,
         });
         tracing::event!(
-            target: METRICS,
+            target: crate::METRICS_TARGET,
             tracing::Level::INFO,
             mu.world = %self.parts.world,
             "monotonic_counter.mu.journal.events" = 1_u64,
@@ -324,7 +321,7 @@ impl Session {
 
     fn script_error(&mut self, text: &str, depth: u8) {
         tracing::event!(
-            target: METRICS,
+            target: crate::METRICS_TARGET,
             tracing::Level::INFO,
             mu.world = %self.parts.world,
             "monotonic_counter.mu.script.errors" = 1_u64,
@@ -350,7 +347,7 @@ impl Session {
     /// Records `reason` in `mu.commands.dropped`.
     fn dropped(&self, reason: &'static str) {
         tracing::event!(
-            target: METRICS,
+            target: crate::METRICS_TARGET,
             tracing::Level::INFO,
             mu.world = %self.parts.world,
             "monotonic_counter.mu.commands.dropped" = 1_u64,

@@ -89,7 +89,7 @@ impl TomlDirSource {
 }
 
 /// The file of the server at the top of the directory. It holds no layer.
-const SERVER_FILE: &str = "server.toml";
+pub const SERVER_FILE: &str = "server.toml";
 
 /// Adds to `files` the path of each file under `directory` whose name ends in `.toml`, in any
 /// case, as its parts relative to the root. `prefix` holds the parts of `directory`.

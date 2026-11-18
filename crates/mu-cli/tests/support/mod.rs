@@ -147,6 +147,16 @@ pub fn stderr(output: &Output) -> String {
     String::from_utf8(output.stderr.clone()).expect("stderr is UTF-8")
 }
 
+/// Asserts that `output` failed with status 1, and that stderr holds each of `names`.
+#[track_caller]
+pub fn fails_naming(output: &Output, names: &[&str]) {
+    let error = stderr(output);
+    assert_eq!(output.status.code(), Some(1), "stderr: {error}");
+    for name in names {
+        assert!(error.contains(name), "stderr names {name}: {error}");
+    }
+}
+
 /// The text of a file of the repository, by its path from the repository root.
 pub fn repo_file(relative: &str) -> String {
     let path = repo_root().join(relative);

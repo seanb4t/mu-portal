@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
-use support::{BASE_GAME, ConfigDir as Config, mu_command, mu_with, stderr, stdout};
+use support::{BASE_GAME, ConfigDir as Config, fails_naming, mu_command, mu_with, stderr, stdout};
 
 mod support;
 
@@ -35,16 +35,6 @@ fn game(drop: &[&str], extra: &str) -> String {
     }
     text.push_str(extra);
     text
-}
-
-/// Asserts that `output` failed with status 1, and that stderr holds each of `names`.
-#[track_caller]
-fn fails_naming(output: &Output, names: &[&str]) {
-    let error = stderr(output);
-    assert_eq!(output.status.code(), Some(1), "stderr: {error}");
-    for name in names {
-        assert!(error.contains(name), "stderr names {name}: {error}");
-    }
 }
 
 /// Asserts that `output` succeeded, and returns its stdout.

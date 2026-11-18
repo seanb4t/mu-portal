@@ -1,6 +1,6 @@
 //! The `PortalService` of the schema over the `Portal` of the engine.
 
-use std::future::{Ready, ready};
+use std::future::{Future, Ready, ready};
 use std::sync::Arc;
 
 use connectrpc::{
@@ -58,9 +58,6 @@ fn event_message(event: &mu_core::Event) -> proto::SubscribeResponse {
     }
 }
 
-/// The target of the metric events, which the layer of the metrics reads.
-const METRICS: &str = "mu::metrics";
-
 /// The stream of one subscriber: the `Hello`, then each event. A lag ends it with
 /// `resource_exhausted`, and `stopping` ends it with no error. For each event, it records the
 /// gap to the last event of `journal` in `mu.subscriber.lag`.
@@ -75,7 +72,7 @@ pub fn event_stream(
         Ok(event) => {
             let lag = journal.last().0.saturating_sub(event.seq.0);
             tracing::event!(
-                target: METRICS,
+                target: mu_core::METRICS_TARGET,
                 tracing::Level::INFO,
                 "histogram.mu.subscriber.lag" = lag,
             );
@@ -83,7 +80,7 @@ pub fn event_stream(
         }
         Err(Lagged(n)) => {
             tracing::event!(
-                target: METRICS,
+                target: mu_core::METRICS_TARGET,
                 tracing::Level::INFO,
                 "monotonic_counter.mu.subscriber.lagged" = 1_u64,
             );
@@ -109,28 +106,41 @@ pub fn event_stream(
     Box::pin(head.chain(events))
 }
 
-/// The service name of the spans of the API.
-const SERVICE: &str = "mu.v1.PortalService";
-
 /// The span of one call of `method`. `mu.world` and the status come later.
 fn call_span(method: &'static str) -> Span {
+    let service = proto::PORTAL_SERVICE_SERVICE_NAME;
     tracing::info_span!(
         "rpc",
-        otel.name = format!("{SERVICE}/{method}"),
+        otel.name = format!("{service}/{method}"),
         rpc.system = "connect_rpc",
-        rpc.service = SERVICE,
+        rpc.service = service,
         rpc.method = method,
         mu.world = tracing::field::Empty,
         otel.status_code = tracing::field::Empty,
     )
 }
 
+/// Marks `span` as failed.
+fn failed(span: &Span) {
+    span.record("otel.status_code", "ERROR");
+}
+
 /// Marks `span` as failed if `result` is an error.
 fn ended<T>(span: &Span, result: ServiceResult<T>) -> ServiceResult<T> {
     if result.is_err() {
-        span.record("otel.status_code", "ERROR");
+        failed(span);
     }
     result
+}
+
+/// Runs `call` in the span of one call of `method`.
+async fn traced<T>(
+    method: &'static str,
+    call: impl Future<Output = ServiceResult<T>>,
+) -> ServiceResult<T> {
+    let span = call_span(method);
+    let result = call.instrument(span.clone()).await;
+    ended(&span, result)
 }
 
 /// The world of a request, recorded in the current span.
@@ -169,6 +179,7 @@ impl proto::PortalService for PortalApi {
                     self.stopping.clone(),
                 )),
                 Err(error @ PortalError::PastEnd { last, .. }) => {
+                    failed(&span);
                     let items = [
                         Ok(hello(&self.instance_id, last)),
                         Err(convert::status(&error)),
@@ -208,8 +219,7 @@ impl proto::PortalService for PortalApi {
         _ctx: RequestContext,
         request: ServiceRequest<'_, proto::SendRequest>,
     ) -> ServiceResult<proto::SendResponse> {
-        let span = call_span("Send");
-        let result = async {
+        traced("Send", async {
             let world = named_world(request.world)?;
             let seq = self
                 .portal
@@ -220,10 +230,8 @@ impl proto::PortalService for PortalApi {
                 seq: seq.map(|seq| seq.0),
                 ..Default::default()
             })
-        }
-        .instrument(span.clone())
-        .await;
-        ended(&span, result)
+        })
+        .await
     }
 
     async fn connect(
@@ -231,18 +239,15 @@ impl proto::PortalService for PortalApi {
         _ctx: RequestContext,
         request: ServiceRequest<'_, proto::ConnectRequest>,
     ) -> ServiceResult<proto::ConnectResponse> {
-        let span = call_span("Connect");
-        let result = async {
+        traced("Connect", async {
             let world = named_world(request.world)?;
             self.portal
                 .connect(&world)
                 .await
                 .map_err(|error| convert::status(&error))?;
             Response::ok(proto::ConnectResponse::default())
-        }
-        .instrument(span.clone())
-        .await;
-        ended(&span, result)
+        })
+        .await
     }
 
     async fn disconnect(
@@ -250,18 +255,15 @@ impl proto::PortalService for PortalApi {
         _ctx: RequestContext,
         request: ServiceRequest<'_, proto::DisconnectRequest>,
     ) -> ServiceResult<proto::DisconnectResponse> {
-        let span = call_span("Disconnect");
-        let result = async {
+        traced("Disconnect", async {
             let world = named_world(request.world)?;
             self.portal
                 .disconnect(&world)
                 .await
                 .map_err(|error| convert::status(&error))?;
             Response::ok(proto::DisconnectResponse::default())
-        }
-        .instrument(span.clone())
-        .await;
-        ended(&span, result)
+        })
+        .await
     }
 }
 

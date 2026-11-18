@@ -1792,6 +1792,7 @@ dependencies = [
  "axum-server",
  "cargo_metadata",
  "clap",
+ "connectrpc",
  "futures",
  "hex",
  "http",
@@ -2076,6 +2077,7 @@ dependencies = [
  "js-sys",
  "pin-project-lite",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]

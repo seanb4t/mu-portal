@@ -267,6 +267,15 @@ fn bad_file_endpoint_is_refused_and_named() {
 }
 
 #[test]
+fn bad_file_endpoint_under_a_set_variable_is_refused() {
+    let vars = [(ENDPOINT, "http://127.0.0.1:4318")];
+    assert_eq!(
+        refused_by(&vars, Some(&table(Some("not a url")))),
+        Source::Field("endpoint")
+    );
+}
+
+#[test]
 fn scheme_is_named() {
     let message = run(&[(ENDPOINT, "ftp://collector.example:4318")], None)
         .unwrap_err()
@@ -423,7 +432,9 @@ proptest! {
         }
         let got = run(&vars, Some(&table(file.as_deref()))).unwrap();
         let expected = traces.clone().or_else(|| {
-            base.as_ref().or(file.as_ref()).map(|base| join(base, SignalKind::Traces, Protocol::HttpProtobuf))
+            base.as_ref()
+                .or(file.as_ref())
+                .map(|base| format!("{}/v1/traces", base.trim_end_matches('/')))
         });
         prop_assert_eq!(got.and_then(|export| export.traces).map(|signal| signal.endpoint), expected);
     }

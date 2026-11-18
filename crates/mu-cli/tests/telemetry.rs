@@ -13,8 +13,8 @@ use opentelemetry_proto::tonic::trace::v1::status::StatusCode;
 use rustix::process::Signal;
 
 use collector::{Collector, METRICS_EXPORT, Mode, TRACE_EXPORT};
-use support::ConfigDir;
 use support::process::{PW, SERVING, ServerBuilder, Session};
+use support::{ConfigDir, fails_naming};
 
 mod support;
 
@@ -227,16 +227,6 @@ async fn refused_with_file(text: &str) -> Output {
         .env("MU_CONFIG", Some(config.path()))
         .output()
         .await
-}
-
-/// Asserts that `output` failed with status 1, and that stderr holds each of `names`.
-#[track_caller]
-fn fails_naming(output: &Output, names: &[&str]) {
-    let error = support::stderr(output);
-    assert_eq!(output.status.code(), Some(1), "stderr: {error}");
-    for name in names {
-        assert!(error.contains(name), "stderr names {name}: {error}");
-    }
 }
 
 /// Set in the child test process of `helper_removes_the_otel_variables`.
@@ -587,11 +577,32 @@ async fn grpc_with_tls() {
 }
 
 #[tokio::test]
+async fn grpc_with_tls_and_an_upper_case_scheme() {
+    let collector = Collector::start(Mode::GrpcTls).await;
+    let url = collector.url().replacen("https", "HTTPS", 1);
+    Setup::new(&[
+        format!("endpoint = \"{url}\""),
+        "protocol = \"grpc\"".to_owned(),
+    ])
+    .env(CERTIFICATE, collector.authority().to_str().unwrap())
+    .one_send()
+    .await;
+    assert!(collector.got(TRACE_EXPORT), "{:?}", collector.paths());
+}
+
+#[tokio::test]
 async fn collector_that_the_server_does_not_trust() {
     let collector = Collector::start(Mode::Https).await;
     let run = Setup::endpoint(&collector.url()).one_send().await;
     assert!(run.status.success(), "{:?}", run.stderr);
     assert!(collector.requests().is_empty(), "{:?}", collector.paths());
+    assert!(
+        run.stderr
+            .iter()
+            .any(|line| line.contains("opentelemetry") && line.contains("ExportError")),
+        "{:#?}",
+        run.stderr
+    );
 }
 
 #[tokio::test]
@@ -667,6 +678,24 @@ async fn span_of_a_failed_call() {
     let span = one_span(&collector, "mu.v1.PortalService/Connect");
     let status = span.status.expect("the span has a status");
     assert_eq!(status.code, StatusCode::Error as i32);
+}
+
+#[tokio::test]
+async fn subscribe_past_the_end() {
+    let collector = Collector::start(Mode::Http).await;
+    let session = Setup::endpoint(&collector.url()).start().await;
+    let mut stream = session.client.subscribe(1_000_000).await.unwrap();
+    while stream.next().await.is_ok_and(|item| item.is_some()) {}
+    stop(session.server).await;
+    let failed: Vec<_> = spans_named(&collector, "mu.v1.PortalService/Subscribe")
+        .into_iter()
+        .filter(|span| {
+            span.status
+                .as_ref()
+                .is_some_and(|status| status.code == StatusCode::Error as i32)
+        })
+        .collect();
+    assert_eq!(failed.len(), 1, "{failed:?}");
 }
 
 #[tokio::test]

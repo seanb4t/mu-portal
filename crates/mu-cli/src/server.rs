@@ -55,6 +55,9 @@ fn fail(error: &dyn std::fmt::Display) -> ExitCode {
 
 /// Runs the server until a signal stops it.
 pub fn run(args: &ServerArgs) -> ExitCode {
+    // One crypto provider for the process: reqwest and tonic use it. A second call finds it
+    // installed.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     // `server.toml` and the variables decide the export before the socket opens. The HTTP
     // exporters are built here, outside the runtime of the engine.
     let file = match server_config::read(args.config.dir_from_env().as_deref()) {
