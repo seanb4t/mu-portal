@@ -162,6 +162,22 @@ fn sdk_disabled_reads_nothing_else() {
     assert_eq!(run(&vars, Some(&file)), Ok(None));
 }
 
+#[cfg(unix)]
+#[test]
+fn sdk_disabled_reads_no_variable_that_is_not_utf8() {
+    use std::os::unix::ffi::OsStringExt as _;
+
+    let result = export(
+        |asked| match asked {
+            SDK_DISABLED => Some("true".into()),
+            ENDPOINT | SERVICE_NAME => Some(OsString::from_vec(vec![0xff])),
+            _ => None,
+        },
+        &TelemetryTable::default(),
+    );
+    assert_eq!(result, Ok(None));
+}
+
 #[test]
 fn http_protobuf_is_the_default() {
     let export = on(&[], Some(&table(Some(BASE))));
@@ -387,6 +403,32 @@ fn grpc_endpoint_with_a_path_or_a_query_is_refused_and_named() {
             "{value}"
         );
     }
+}
+
+#[test]
+fn grpc_source_with_a_path_that_loses_is_accepted() {
+    let grpc = TelemetryTable {
+        protocol: Some("grpc".to_owned()),
+        ..table(Some("http://h:4317/otel"))
+    };
+    let export = on(&[(ENDPOINT, "http://h:4317")], Some(&grpc));
+    assert_eq!(
+        endpoints(&export),
+        (Some("http://h:4317"), Some("http://h:4317"))
+    );
+    let export = on(
+        &[
+            (PROTOCOL, "grpc"),
+            (ENDPOINT, "http://h:4317/otel"),
+            (TRACES_ENDPOINT, "http://t:4317"),
+            (METRICS_ENDPOINT, "http://m:4317"),
+        ],
+        None,
+    );
+    assert_eq!(
+        endpoints(&export),
+        (Some("http://t:4317"), Some("http://m:4317"))
+    );
 }
 
 #[test]
