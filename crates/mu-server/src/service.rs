@@ -346,6 +346,80 @@ mod tests {
         assert!(stream.next().await.is_none());
     }
 
+    /// A journal that counts the calls of `last`.
+    struct Counted {
+        journal: MemoryJournal,
+        lasts: std::sync::atomic::AtomicUsize,
+    }
+
+    impl Journal for Counted {
+        fn append(&self, event: NewEvent) -> mu_core::Event {
+            self.journal.append(event)
+        }
+
+        fn subscribe(&self, from: Seq) -> Result<mu_core::Subscription, mu_core::PortalError> {
+            self.journal.subscribe(from)
+        }
+
+        fn last(&self) -> Seq {
+            self.lasts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.journal.last()
+        }
+    }
+
+    /// A subscriber that takes only the metrics target, as the metrics layer does.
+    struct MetricsOnly;
+
+    impl tracing::Subscriber for MetricsOnly {
+        fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
+            metadata.target() == mu_core::METRICS_TARGET
+        }
+
+        fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+            tracing::span::Id::from_u64(1)
+        }
+
+        fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+
+        fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+
+        fn event(&self, _: &tracing::Event<'_>) {}
+
+        fn enter(&self, _: &tracing::span::Id) {}
+
+        fn exit(&self, _: &tracing::span::Id) {}
+    }
+
+    /// The number of reads of `last` while a stream sends one event.
+    async fn lasts_for_one_event() -> usize {
+        let journal = Arc::new(Counted {
+            journal: MemoryJournal::new(4).unwrap(),
+            lasts: std::sync::atomic::AtomicUsize::new(0),
+        });
+        let (_stop, stopping) = watch::channel(false);
+        let mut stream = event_stream(
+            journal.subscribe(Seq(1)).unwrap(),
+            journal.clone(),
+            "id",
+            stopping,
+        );
+        assert!(stream.next().await.is_some());
+        append(&journal.journal, "a line");
+        assert_eq!(text(&stream.next().await.unwrap()), "a line");
+        journal.lasts.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    #[tokio::test]
+    async fn lag_is_not_read_without_a_metrics_layer() {
+        assert_eq!(lasts_for_one_event().await, 0);
+    }
+
+    #[tokio::test]
+    async fn lag_is_read_once_per_event_with_a_metrics_layer() {
+        let _subscriber = tracing::subscriber::set_default(MetricsOnly);
+        assert_eq!(lasts_for_one_event().await, 1);
+    }
+
     #[tokio::test]
     async fn stopping_ends_the_stream() {
         let journal = Arc::new(MemoryJournal::new(4).unwrap());
