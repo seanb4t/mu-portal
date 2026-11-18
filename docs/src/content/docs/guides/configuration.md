@@ -20,6 +20,8 @@ This guide shows how to configure your worlds. A world is one character on one g
 
 If the directory does not exist, there are no configured worlds.
 
+The directory can also hold `server.toml`, the configuration of the server. It makes no world. The guide [The server file and telemetry](/guides/telemetry/) describes it.
+
 ## The layout
 
 The directory holds four kinds of files:

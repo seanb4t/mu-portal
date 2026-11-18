@@ -92,8 +92,8 @@ Load the `rust-best-practices` skill before this group.
 
 ## 7. Docs and follow-ups
 
-- [ ] 7.1 Add a page for `server.toml` and the telemetry to `docs/src/content/docs/guides/`, and link it from `configuration.md`. It names the field, the variables that work, and the variables that this change does not claim. It also says to remove or rename `server.toml` before a downgrade to an earlier binary. Make sure that `mise run docs:check` passes.
-- [ ] 7.2 Add the decision page `docs/src/content/docs/decisions/telemetry.md`. It states the `tracing` seam and the target filter. It states the two transports, the `mu-telemetry` runtime, the trust roots and the crypto provider. It also states the names of the spans and the metrics, and the rule that a field holds no text. Make sure that `mise run docs:check` passes.
+- [x] 7.1 Add a page for `server.toml` and the telemetry to `docs/src/content/docs/guides/`, and link it from `configuration.md`. It names the field, the variables that work, and the variables that this change does not claim. It also says to remove or rename `server.toml` before a downgrade to an earlier binary. Make sure that `mise run docs:check` passes.
+- [x] 7.2 Add the decision page `docs/src/content/docs/decisions/telemetry.md`. It states the `tracing` seam and the target filter. It states the two transports, the `mu-telemetry` runtime, the trust roots and the crypto provider. It also states the names of the spans and the metrics, and the rule that a field holds no text. Make sure that `mise run docs:check` passes.
 - [ ] 7.3 Open a Parked issue for the OTLP logs signal, and one for client certificates of the exporter. Each issue describes the gap only. Make sure that each issue exists in the Project with the status Parked.
 
 ## 8. Integration
