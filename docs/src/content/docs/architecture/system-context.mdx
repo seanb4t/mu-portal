@@ -1,12 +1,12 @@
 ---
 title: System context
-description: The player, the clients, the server and the games.
+description: The player, the clients, the server, the games and the collector.
 sidebar:
   order: 1
 ---
 
 import LikeC4View from '../../../components/LikeC4View.astro';
 
-One person plays on one or more games. The person uses one or more clients, and each client talks to one server. The server holds every game connection.
+One person plays on one or more games. The person uses one or more clients, and each client talks to one server. The server holds every game connection. If the owner sets an endpoint, the server also sends traces and metrics to an OpenTelemetry collector.
 
 <LikeC4View viewId="index" />
