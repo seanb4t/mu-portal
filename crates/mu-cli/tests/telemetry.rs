@@ -769,6 +769,21 @@ async fn file_with_no_certificate() {
 }
 
 #[tokio::test]
+async fn setting_that_the_sdk_ignores_is_written_to_stderr() {
+    let collector = Collector::start(Mode::Http).await;
+    let variable = "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE";
+    let run = Setup::endpoint(&collector.url())
+        .env(variable, "deltaa")
+        .one_send()
+        .await;
+    assert!(
+        run.stderr.iter().any(|line| line.contains(variable)),
+        "{:#?}",
+        run.stderr
+    );
+}
+
+#[tokio::test]
 async fn configuration_directory_that_is_a_file() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("not-a-directory");

@@ -80,7 +80,7 @@ The table `[telemetry]` of `server.toml` SHALL accept the field `endpoint`, the 
 - **AND** the exit status is 1
 
 ### Requirement: The standard variables
-The server SHALL read `OTEL_EXPORTER_OTLP_ENDPOINT` as a base URL, the same as the field `endpoint`. A value of that variable SHALL win over `server.toml`. `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` SHALL each be the full URL of one signal. The server SHALL add no path to them, and each SHALL win over the base URL for its signal. An empty variable SHALL count as unset.
+The server SHALL read `OTEL_EXPORTER_OTLP_ENDPOINT` as a base URL, the same as the field `endpoint`. A value of that variable SHALL win over `server.toml`. `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` SHALL each be the full URL of one signal. The server SHALL add no path to them, and each SHALL win over the base URL for its signal. An empty variable SHALL count as unset. When the OpenTelemetry library ignores the value of a variable that it reads at the start, the server SHALL write a line to stderr that names the variable.
 
 #### Scenario: The variable wins over the file
 - **GIVEN** the fake collectors A and B, `server.toml` names A, and `OTEL_EXPORTER_OTLP_ENDPOINT` names B
@@ -104,6 +104,11 @@ The server SHALL read `OTEL_EXPORTER_OTLP_ENDPOINT` as a base URL, the same as t
 - **GIVEN** a fake collector, `server.toml` names it, and `OTEL_EXPORTER_OTLP_ENDPOINT` is empty
 - **WHEN** a server starts, serves one `Send`, and gets SIGTERM
 - **THEN** the collector got `POST /v1/traces`
+
+#### Scenario: A value that the library ignores
+- **GIVEN** a fake collector, `server.toml` names it, and `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE` is `deltaa`
+- **WHEN** a server starts, serves one `Send`, and gets SIGTERM
+- **THEN** stderr names `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE`
 
 ### Requirement: Each endpoint variable is checked
 Each of the three endpoint variables SHALL pass the check of the field `endpoint`: a URL with the scheme `http` or `https`, and a host. A bad value SHALL stop the start with an error that names the variable, and the exit status SHALL be 1. Each telemetry variable that the server reads SHALL be UTF-8, except `OTEL_EXPORTER_OTLP_CERTIFICATE`, which is a path. A value that is not UTF-8 SHALL stop the start with an error that names the variable.

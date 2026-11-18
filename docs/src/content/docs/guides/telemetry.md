@@ -78,6 +78,8 @@ The server does not support these features. Some of them can have an effect thro
 - The OTLP logs signal. The log lines stay on stderr, at the level `WARN`.
 - A reload of `server.toml` while the server runs.
 
+If the OpenTelemetry library ignores the value of a variable at the start, for example `OTEL_EXPORTER_OTLP_COMPRESSION=gzip`, the server writes a warning to stderr that names the variable and the value.
+
 The OpenTelemetry library reads the header variables itself, for example `OTEL_EXPORTER_OTLP_HEADERS`, and it sends the headers with each export. Over `http`, the headers travel in clear text. If a header holds a token, use an `https` endpoint. Put a token in a header, not in the URL.
 
 The HTTP exporter uses the proxy variables `HTTP_PROXY`, `HTTPS_PROXY` and `ALL_PROXY`. To send the export past the proxy, add the host of the collector to `NO_PROXY`. The gRPC exporter uses no proxy.

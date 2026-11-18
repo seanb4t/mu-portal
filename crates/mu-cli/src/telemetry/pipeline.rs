@@ -197,6 +197,13 @@ impl Providers {
     ///
     /// A [`PipelineError`] of an exporter, of the HTTP client or of the runtime.
     pub fn start(export: &Export) -> Result<Self, PipelineError> {
+        // The SDK writes the settings that it ignores while it builds an exporter, before the
+        // subscriber of the server is installed.
+        let stderr = tracing_subscriber::registry().with(stderr_layer());
+        tracing::subscriber::with_default(stderr, || Self::build(export))
+    }
+
+    fn build(export: &Export) -> Result<Self, PipelineError> {
         let mut runtime = None;
         let authorities = export.authorities();
         let spans = export
@@ -261,11 +268,7 @@ impl Providers {
     /// The subscriber of `mu server`: the stderr lines at `WARN`, and the layers of the export.
     pub fn subscriber(&self) -> impl Subscriber + Send + Sync + use<> {
         tracing_subscriber::registry()
-            .with(
-                tracing_subscriber::fmt::layer()
-                    .with_writer(std::io::stderr)
-                    .with_filter(LevelFilter::WARN),
-            )
+            .with(stderr_layer())
             .with(self.layers())
     }
 
@@ -421,6 +424,16 @@ fn transport(
             Transport::Grpc(runtime.handle.clone())
         }
     })
+}
+
+/// The lines at `WARN` and above, to stderr.
+fn stderr_layer<S>() -> impl Layer<S> + Send + Sync
+where
+    S: Subscriber + for<'span> LookupSpan<'span>,
+{
+    tracing_subscriber::fmt::layer()
+        .with_writer(std::io::stderr)
+        .with_filter(LevelFilter::WARN)
 }
 
 /// Whether `target` is one of [`CRATES`] or a module of one.
