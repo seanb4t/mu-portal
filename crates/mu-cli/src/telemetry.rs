@@ -1,5 +1,6 @@
 //! The telemetry of `mu server`: where it sends traces and metrics, and its subscriber.
 
+use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -53,6 +54,9 @@ pub enum SignalKind {
 }
 
 impl SignalKind {
+    /// The two signals.
+    pub const ALL: [Self; 2] = [Self::Traces, Self::Metrics];
+
     /// The path that a base URL gets for this signal over `http/protobuf`.
     #[must_use]
     pub fn path(self) -> &'static str {
@@ -78,56 +82,139 @@ impl SignalKind {
 }
 
 /// Where one signal goes.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Signal {
-    /// The full URL, for `http/protobuf`, or the address of the services, for `grpc`.
-    pub endpoint: String,
-    /// The protocol.
-    pub protocol: Protocol,
+    endpoint: String,
+    protocol: Protocol,
+    https: bool,
 }
 
-/// The authorities that the export trusts beside the roots of the system.
+impl Signal {
+    /// The full URL, for `http/protobuf`, or the address of the services, for `grpc`.
+    #[must_use]
+    pub fn endpoint(&self) -> &str {
+        &self.endpoint
+    }
+
+    /// The protocol.
+    #[must_use]
+    pub fn protocol(&self) -> Protocol {
+        self.protocol
+    }
+
+    /// Whether the endpoint has the scheme `https`, in any case.
+    #[must_use]
+    pub fn is_https(&self) -> bool {
+        self.https
+    }
+}
+
+/// The endpoint is hidden, because a URL can hold a password.
+impl fmt::Debug for Signal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Signal")
+            .field("endpoint", &"<hidden>")
+            .field("protocol", &self.protocol)
+            .field("https", &self.https)
+            .finish()
+    }
+}
+
+/// The authorities that the export trusts beside the roots of the system. `pem` and
+/// `certificates` hold the same set, because `read_authorities` is the only constructor that
+/// fills them.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Trust {
+pub struct Authorities {
     pem: Vec<u8>,
     certificates: Vec<CertificateDer<'static>>,
 }
 
-impl Trust {
+impl Authorities {
     /// The certificates of the file, in DER. Empty without a file.
     #[must_use]
     pub fn certificates(&self) -> &[CertificateDer<'static>] {
         &self.certificates
+    }
+
+    /// The text of the file, in PEM. Empty without a file.
+    #[must_use]
+    pub fn pem(&self) -> &[u8] {
+        &self.pem
     }
 }
 
 /// The export of the server. Without it, the server exports nothing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Export {
+    traces: Option<Signal>,
+    metrics: Option<Signal>,
+    service_name: String,
+    authorities: Authorities,
+}
+
+impl Export {
     /// The traces, if they have an endpoint.
-    pub traces: Option<Signal>,
+    #[must_use]
+    pub fn traces(&self) -> Option<&Signal> {
+        self.traces.as_ref()
+    }
+
     /// The metrics, if they have an endpoint.
-    pub metrics: Option<Signal>,
+    #[must_use]
+    pub fn metrics(&self) -> Option<&Signal> {
+        self.metrics.as_ref()
+    }
+
     /// The value of `service.name`.
-    pub service_name: String,
+    #[must_use]
+    pub fn service_name(&self) -> &str {
+        &self.service_name
+    }
+
     /// The authorities of the certificate file.
-    pub trust: Trust,
+    #[must_use]
+    pub fn authorities(&self) -> &Authorities {
+        &self.authorities
+    }
+}
+
+/// A field of `[telemetry]` in `server.toml`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TableField {
+    /// `endpoint`.
+    Endpoint,
+    /// `protocol`.
+    Protocol,
+    /// `certificate`.
+    Certificate,
+}
+
+impl TableField {
+    /// The name of the field.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Endpoint => "endpoint",
+            Self::Protocol => "protocol",
+            Self::Certificate => "certificate",
+        }
+    }
 }
 
 /// Where a bad value came from: a variable, or a field of `[telemetry]`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Source {
+pub enum SettingSource {
     /// A variable of the environment.
     Variable(&'static str),
     /// A field of `[telemetry]` in `server.toml`.
-    Field(&'static str),
+    Field(TableField),
 }
 
-impl fmt::Display for Source {
+impl fmt::Display for SettingSource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Variable(name) => f.write_str(name),
-            Self::Field(name) => write!(f, "{SERVER_FILE}: telemetry.{name}"),
+            Self::Field(field) => write!(f, "{SERVER_FILE}: telemetry.{}", field.name()),
         }
     }
 }
@@ -136,12 +223,12 @@ impl fmt::Display for Source {
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("{place}: {message}")]
 pub struct SettingError {
-    place: Source,
+    place: SettingSource,
     message: String,
 }
 
 impl SettingError {
-    fn new(place: Source, message: impl Into<String>) -> Self {
+    fn new(place: SettingSource, message: impl Into<String>) -> Self {
         Self {
             place,
             message: message.into(),
@@ -150,110 +237,158 @@ impl SettingError {
 
     /// The source of the bad value.
     #[must_use]
-    pub fn place(&self) -> Source {
+    pub fn place(&self) -> SettingSource {
         self.place
     }
 }
 
+/// What an endpoint is for: the base URL of both signals, or the full URL of one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EndpointKind {
+    Base,
+    Signal,
+}
+
+/// A checked endpoint, and its source.
+struct Checked {
+    value: String,
+    uri: http::Uri,
+    place: SettingSource,
+}
+
 /// Picks the export from the variables, which `var` reads, and the table of `server.toml`. An
-/// empty variable counts as unset. `None` means no export.
+/// empty variable counts as unset. A variable that the export reads must be UTF-8, except
+/// `OTEL_EXPORTER_OTLP_CERTIFICATE`, which is a path. `None` means no export.
 ///
 /// # Errors
 ///
 /// A [`SettingError`] that names the variable or the field.
 pub fn export(
-    var: impl Fn(&str) -> Option<String>,
-    file: Option<&TelemetryTable>,
+    var: impl Fn(&str) -> Option<OsString>,
+    file: &TelemetryTable,
 ) -> Result<Option<Export>, SettingError> {
-    let var = |name: &str| var(name).filter(|value| !value.is_empty());
-    if var(SDK_DISABLED).is_some_and(|value| value.eq_ignore_ascii_case("true")) {
+    let var_os = |name: &str| var(name).filter(|value| !value.is_empty());
+    let var = |name: &'static str| {
+        var_os(name)
+            .map(|value| {
+                value.into_string().map_err(|_| {
+                    SettingError::new(SettingSource::Variable(name), "the value is not UTF-8")
+                })
+            })
+            .transpose()
+    };
+    if var_os(SDK_DISABLED).is_some_and(|value| value.eq_ignore_ascii_case("true")) {
         return Ok(None);
     }
-    let file = file.cloned().unwrap_or_default();
-    let base_variable = var(ENDPOINT);
-    let base = base_variable.as_deref().or(file.endpoint.as_deref());
+    let checked = |value: String, kind, place| {
+        check_endpoint(&value, kind)
+            .map(|uri| Checked { value, uri, place })
+            .map_err(|message| SettingError::new(place, message))
+    };
     // The field is checked even when the variable wins over it.
-    for (value, place) in [
-        (base_variable.as_deref(), Source::Variable(ENDPOINT)),
-        (file.endpoint.as_deref(), Source::Field("endpoint")),
-    ] {
-        if let Some(value) = value {
-            check_endpoint(value, true).map_err(|message| SettingError::new(place, message))?;
-        }
-    }
+    let base_variable = var(ENDPOINT)?
+        .map(|value| checked(value, EndpointKind::Base, SettingSource::Variable(ENDPOINT)))
+        .transpose()?;
+    let base_field = file
+        .endpoint
+        .clone()
+        .map(|value| {
+            checked(
+                value,
+                EndpointKind::Base,
+                SettingSource::Field(TableField::Endpoint),
+            )
+        })
+        .transpose()?;
+    let base = base_variable.or(base_field);
     let mut own = [None, None];
-    for (slot, kind) in own
-        .iter_mut()
-        .zip([SignalKind::Traces, SignalKind::Metrics])
-    {
+    for (slot, kind) in own.iter_mut().zip(SignalKind::ALL) {
         let name = kind.endpoint_variable();
-        if let Some(value) = var(name) {
-            check_endpoint(&value, false)
-                .map_err(|message| SettingError::new(Source::Variable(name), message))?;
-            *slot = Some(value);
-        }
+        *slot = var(name)?
+            .map(|value| checked(value, EndpointKind::Signal, SettingSource::Variable(name)))
+            .transpose()?;
     }
-    let [own_traces, own_metrics] = own;
-    if base.is_none() && own_traces.is_none() && own_metrics.is_none() {
+    if base.is_none() && own.iter().all(Option::is_none) {
         return Ok(None);
     }
 
     let field_protocol = file
         .protocol
         .as_deref()
-        .map(|value| parse_protocol(value, Source::Field("protocol")))
+        .map(|value| parse_protocol(value, SettingSource::Field(TableField::Protocol)))
         .transpose()?;
-    let all_protocol = var(PROTOCOL)
-        .map(|value| parse_protocol(&value, Source::Variable(PROTOCOL)))
+    let all_protocol = var(PROTOCOL)?
+        .map(|value| parse_protocol(&value, SettingSource::Variable(PROTOCOL)))
         .transpose()?;
     let mut signals = [None, None];
-    for ((slot, kind), own) in signals
-        .iter_mut()
-        .zip([SignalKind::Traces, SignalKind::Metrics])
-        .zip([own_traces, own_metrics])
-    {
+    for ((slot, kind), own) in signals.iter_mut().zip(SignalKind::ALL).zip(own) {
         let name = kind.protocol_variable();
-        let protocol = var(name)
-            .map(|value| parse_protocol(&value, Source::Variable(name)))
+        let protocol = var(name)?
+            .map(|value| parse_protocol(&value, SettingSource::Variable(name)))
             .transpose()?
             .or(all_protocol)
             .or(field_protocol)
             .unwrap_or(Protocol::HttpProtobuf);
-        let endpoint = own.or_else(|| base.map(|base| join(base, kind, protocol)));
-        *slot = endpoint.map(|endpoint| Signal { endpoint, protocol });
+        *slot = signal(kind, protocol, own.as_ref(), base.as_ref())?;
     }
     let [traces, metrics] = signals;
 
-    let certificate = var(CERTIFICATE)
-        .map(|path| (PathBuf::from(path), Source::Variable(CERTIFICATE)))
+    let certificate = var_os(CERTIFICATE)
+        .map(|path| (PathBuf::from(path), SettingSource::Variable(CERTIFICATE)))
         .or_else(|| {
             file.certificate
                 .clone()
-                .map(|path| (path, Source::Field("certificate")))
+                .map(|path| (path, SettingSource::Field(TableField::Certificate)))
         });
-    let trust = match certificate {
+    let authorities = match certificate {
         Some((path, place)) => {
-            read_trust(&path).map_err(|message| SettingError::new(place, message))?
+            read_authorities(&path).map_err(|message| SettingError::new(place, message))?
         }
-        None => Trust::default(),
+        None => Authorities::default(),
     };
-    let service_name = var(SERVICE_NAME).unwrap_or_else(|| DEFAULT_SERVICE_NAME.to_owned());
+    let service_name = var(SERVICE_NAME)?.unwrap_or_else(|| DEFAULT_SERVICE_NAME.to_owned());
     Ok(Some(Export {
         traces,
         metrics,
         service_name,
-        trust,
+        authorities,
     }))
 }
 
-/// Checks that `value` is a URL with the scheme `http` or `https` and a host. No URL can hold a
-/// fragment. A `base` URL can also hold no query, because a path follows it. The message never
-/// holds the value, because a URL can hold a password.
-///
-/// # Errors
-///
-/// What is wrong with the value.
-pub fn check_endpoint(value: &str, base: bool) -> Result<(), String> {
+/// The signal `kind` over `protocol`, from its own endpoint or else from the base URL. A gRPC
+/// endpoint can hold no path and no query, because tonic sends only its scheme and its host.
+fn signal(
+    kind: SignalKind,
+    protocol: Protocol,
+    own: Option<&Checked>,
+    base: Option<&Checked>,
+) -> Result<Option<Signal>, SettingError> {
+    let Some(source) = own.or(base) else {
+        return Ok(None);
+    };
+    if protocol == Protocol::Grpc
+        && (!matches!(source.uri.path(), "" | "/") || source.uri.query().is_some())
+    {
+        return Err(SettingError::new(
+            source.place,
+            "a gRPC endpoint can hold no path and no query",
+        ));
+    }
+    let endpoint = match own {
+        Some(own) => own.value.clone(),
+        None => join(&source.value, kind, protocol),
+    };
+    Ok(Some(Signal {
+        endpoint,
+        protocol,
+        https: source.uri.scheme() == Some(&http::uri::Scheme::HTTPS),
+    }))
+}
+
+/// Checks that `value` is a URL with the scheme `http` or `https` and a host, and returns it
+/// parsed. No URL can hold a fragment. A base URL can also hold no query, with either protocol.
+/// The message holds no more of the value than its scheme, because a URL can hold a password.
+fn check_endpoint(value: &str, kind: EndpointKind) -> Result<http::Uri, String> {
     if value.contains('#') {
         return Err("a URL of the export can hold no fragment".to_owned());
     }
@@ -266,24 +401,27 @@ pub fn check_endpoint(value: &str, base: bool) -> Result<(), String> {
     if uri.host().is_none_or(str::is_empty) {
         return Err("has no host".to_owned());
     }
-    if base && uri.query().is_some() {
+    if kind == EndpointKind::Base && uri.query().is_some() {
         return Err("a base URL can hold no query".to_owned());
     }
-    Ok(())
+    Ok(uri)
 }
 
-fn parse_protocol(value: &str, place: Source) -> Result<Protocol, SettingError> {
+/// The protocol of `value`. The message holds no part of the value, which can be a URL that was
+/// put in the wrong place.
+fn parse_protocol(value: &str, place: SettingSource) -> Result<Protocol, SettingError> {
     match value {
         "http/protobuf" => Ok(Protocol::HttpProtobuf),
         "grpc" => Ok(Protocol::Grpc),
-        other => Err(SettingError::new(
+        _ => Err(SettingError::new(
             place,
-            format!("the protocol `{other}` is not http/protobuf or grpc"),
+            "the protocol is not http/protobuf or grpc",
         )),
     }
 }
 
-/// The URL of `kind` under the base URL `base`.
+/// The URL of `kind` for `protocol`: for `http/protobuf`, the base URL `base` with the path of
+/// the signal, and for `grpc`, `base` itself.
 fn join(base: &str, kind: SignalKind, protocol: Protocol) -> String {
     match protocol {
         Protocol::Grpc => base.to_owned(),
@@ -292,7 +430,7 @@ fn join(base: &str, kind: SignalKind, protocol: Protocol) -> String {
 }
 
 /// The certificates of the PEM file at `path`.
-fn read_trust(path: &Path) -> Result<Trust, String> {
+fn read_authorities(path: &Path) -> Result<Authorities, String> {
     let shown = path.display();
     let pem = std::fs::read(path).map_err(|error| format!("{shown}: {error}"))?;
     let certificates = CertificateDer::pem_slice_iter(&pem)
@@ -301,7 +439,7 @@ fn read_trust(path: &Path) -> Result<Trust, String> {
     if certificates.is_empty() {
         return Err(format!("{shown}: the file holds no PEM certificate"));
     }
-    Ok(Trust { pem, certificates })
+    Ok(Authorities { pem, certificates })
 }
 
 #[cfg(test)]

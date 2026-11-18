@@ -1,6 +1,6 @@
 //! The pipeline of the export: the exporters, the providers, the layers and the bounded stop.
 
-use std::sync::mpsc;
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -23,7 +23,7 @@ use tracing_subscriber::filter::{LevelFilter, filter_fn};
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::registry::LookupSpan;
 
-use super::{Export, Protocol, Signal, Trust};
+use super::{Authorities, Export, Protocol, Signal};
 
 /// The longest wait for the export at the stop.
 pub const STOP_BOUND: Duration = Duration::from_secs(5);
@@ -41,21 +41,63 @@ type Stop = Box<dyn FnOnce() -> OTelSdkResult + Send>;
 /// The name of the thread of the telemetry runtime.
 const RUNTIME_THREAD: &str = "mu-telemetry";
 
-/// An error of the build of the export.
+/// An error of the build of the export. The message holds the text of the inner error, so no
+/// variant also exposes it as a source.
 #[derive(Debug, thiserror::Error)]
 pub enum PipelineError {
-    /// An exporter refused its configuration.
+    /// An exporter refused its configuration. The text names the setting, never its value.
     #[error("the export: {0}")]
-    Exporter(#[from] ExporterBuildError),
+    Exporter(String),
     /// The HTTP client cannot be built, or a certificate is bad.
     #[error("the export: {0}")]
-    Client(#[from] reqwest::Error),
+    Client(reqwest::Error),
     /// The telemetry runtime or its thread cannot start.
     #[error("the export: {0}")]
-    Runtime(#[source] std::io::Error),
-    /// A gRPC signal has no telemetry runtime.
-    #[error("the export: a gRPC signal has no telemetry runtime")]
-    NoRuntime,
+    Runtime(std::io::Error),
+}
+
+impl From<ExporterBuildError> for PipelineError {
+    fn from(error: ExporterBuildError) -> Self {
+        Self::Exporter(match error {
+            // The text is `<setting>: <reason>`, and the reason can quote the endpoint.
+            ExporterBuildError::InvalidConfiguration(text) => match text.split_once(':') {
+                Some((setting, _)) => format!("an exporter refused the setting `{setting}`"),
+                None => "an exporter refused its configuration".to_owned(),
+            },
+            ExporterBuildError::InternalFailure(text) => {
+                format!("an exporter cannot start: {text}")
+            }
+        })
+    }
+}
+
+impl From<reqwest::Error> for PipelineError {
+    fn from(error: reqwest::Error) -> Self {
+        Self::Client(error)
+    }
+}
+
+/// How the exporters of one signal reach the collector.
+enum Transport {
+    /// The blocking HTTP client.
+    Http,
+    /// tonic, on the telemetry runtime of this handle.
+    Grpc(tokio::runtime::Handle),
+}
+
+/// How one stop of a provider ended.
+#[derive(Debug, PartialEq, Eq)]
+enum Outcome {
+    /// The provider flushed and stopped.
+    Done,
+    /// The provider reported this error.
+    Failed(String),
+    /// The helper thread cannot start, with this error.
+    CannotStart(String),
+    /// The helper thread ended without a result.
+    Panicked,
+    /// The bound passed first.
+    Late,
 }
 
 /// The current-thread tokio runtime of the gRPC exporters, on its own thread.
@@ -87,7 +129,8 @@ impl TelemetryRuntime {
     }
 }
 
-/// The providers of the export. Without a signal, a provider is absent.
+/// The providers of the export. Without a signal, a provider is absent. A drop stops the export
+/// within [`STOP_BOUND`], and [`Providers::shutdown`] stops it within another bound.
 pub struct Providers {
     tracer: Option<SdkTracerProvider>,
     meter: Option<SdkMeterProvider>,
@@ -133,32 +176,31 @@ impl Providers {
     }
 
     /// The providers of `export`. The HTTP exporters are built here, so the caller must be
-    /// outside a tokio runtime. The gRPC exporters are built on the `mu-telemetry` runtime.
+    /// outside a tokio runtime. The gRPC exporters are built in the context of the
+    /// `mu-telemetry` runtime, which starts with the first gRPC signal, and their tasks run on
+    /// its thread.
     ///
     /// # Errors
     ///
     /// A [`PipelineError`] of an exporter, of the HTTP client or of the runtime.
     pub fn start(export: &Export) -> Result<Self, PipelineError> {
-        let grpc = [&export.traces, &export.metrics]
-            .into_iter()
-            .flatten()
-            .any(|signal| signal.protocol == Protocol::Grpc);
-        let runtime = grpc
-            .then(TelemetryRuntime::start)
-            .transpose()
-            .map_err(PipelineError::Runtime)?;
-        let handle = runtime.as_ref().map(|runtime| runtime.handle.clone());
+        let mut runtime = None;
+        let authorities = export.authorities();
         let spans = export
-            .traces
-            .as_ref()
-            .map(|signal| span_exporter(signal, &export.trust, handle.as_ref()))
+            .traces()
+            .map(|signal| {
+                let transport = transport(signal.protocol(), &mut runtime)?;
+                span_exporter(signal, authorities, &transport)
+            })
             .transpose()?;
         let metrics = export
-            .metrics
-            .as_ref()
-            .map(|signal| metric_exporter(signal, &export.trust, handle.as_ref()))
+            .metrics()
+            .map(|signal| {
+                let transport = transport(signal.protocol(), &mut runtime)?;
+                metric_exporter(signal, authorities, &transport)
+            })
             .transpose()?;
-        let mut providers = Self::with_exporters(spans, metrics, &export.service_name);
+        let mut providers = Self::with_exporters(spans, metrics, export.service_name());
         providers.runtime = runtime;
         Ok(providers)
     }
@@ -207,63 +249,130 @@ impl Providers {
     }
 
     /// Flushes and stops the two providers at the same time, each on its own helper thread, and
-    /// waits for both at most `bound`. A failed or late stop writes a `WARN` line. Then it sends
-    /// the stop to the telemetry runtime, and joins its thread only if both stops finished in time.
-    pub fn shutdown(self, bound: Duration) {
-        let Self {
-            tracer,
-            meter,
-            runtime,
-        } = self;
-        let deadline = Instant::now() + bound;
-        let (done, finished) = mpsc::channel();
-        let mut started = 0;
-        let stops: [(&str, Option<Stop>); 2] = [
-            (
-                "traces",
-                tracer.map(|tracer| Box::new(move || tracer.shutdown()) as _),
-            ),
-            (
-                "metrics",
-                meter.map(|meter| Box::new(move || meter.shutdown()) as _),
-            ),
-        ];
-        for (signal, stop) in stops {
-            let Some(stop) = stop else { continue };
-            let done = done.clone();
-            let spawned = thread::Builder::new()
-                .name(format!("mu-telemetry-stop-{signal}"))
-                .spawn(move || {
-                    let _ = done.send((signal, stop()));
-                });
-            match spawned {
-                Ok(_) => started += 1,
-                Err(error) => tracing::warn!(signal, %error, "the stop of the export cannot start"),
-            }
+    /// waits at most `bound` for the stops that start. A stop that fails, cannot start, panics or
+    /// is late writes a `WARN` line, and the line of a late stop names its signals. Then it sends
+    /// the stop to the telemetry runtime, and joins its thread only if no stop is late.
+    pub fn shutdown(mut self, bound: Duration) {
+        self.stop(bound);
+    }
+
+    fn stop(&mut self, bound: Duration) {
+        let tracer = self.tracer.take();
+        let meter = self.meter.take();
+        // Each helper thread gets a clone, so a thread that cannot start drops no last reference
+        // here: the drop of the last reference stops a provider with no bound.
+        let mut stops: Vec<(&'static str, Stop)> = Vec::new();
+        if let Some(tracer) = tracer.clone() {
+            stops.push(("traces", Box::new(move || tracer.shutdown())));
         }
-        let mut in_time = true;
-        for _ in 0..started {
-            match finished.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-                Ok((_, Ok(()))) => {}
-                Ok((signal, Err(error))) => {
+        if let Some(meter) = meter.clone() {
+            stops.push(("metrics", Box::new(move || meter.shutdown())));
+        }
+        let outcomes = stop_all(stops, bound);
+        let mut late = Vec::new();
+        for (signal, outcome) in &outcomes {
+            match outcome {
+                Outcome::Done => {}
+                Outcome::Failed(error) => {
                     tracing::warn!(signal, %error, "the stop of the export failed");
                 }
-                Err(_) => {
-                    in_time = false;
-                    tracing::warn!(
-                        "the export did not finish within {bound:?}; the rest of the telemetry is lost"
-                    );
-                    break;
+                Outcome::CannotStart(error) => {
+                    tracing::warn!(signal, %error, "the stop of the export cannot start");
                 }
+                Outcome::Panicked => tracing::warn!(signal, "the stop of the export panicked"),
+                Outcome::Late => late.push(*signal),
             }
         }
-        if let Some(runtime) = runtime {
+        if !late.is_empty() {
+            tracing::warn!(
+                signals = %late.join(", "),
+                "the export did not finish within {bound:?}; the rest of the telemetry is lost"
+            );
+        }
+        let cannot_start = |name: &str| {
+            outcomes.iter().any(|(signal, outcome)| {
+                *signal == name && matches!(outcome, Outcome::CannotStart(_))
+            })
+        };
+        // A provider whose stop cannot start is never dropped, so its drop cannot block.
+        if cannot_start("traces") {
+            std::mem::forget(tracer);
+        }
+        if cannot_start("metrics") {
+            std::mem::forget(meter);
+        }
+        if let Some(runtime) = self.runtime.take() {
             let _ = runtime.stop.send(());
-            if in_time && runtime.thread.join().is_err() {
+            if late.is_empty() && runtime.thread.join().is_err() {
                 tracing::warn!("the thread of the telemetry runtime panicked");
             }
         }
     }
+}
+
+impl Drop for Providers {
+    fn drop(&mut self) {
+        self.stop(STOP_BOUND);
+    }
+}
+
+/// Runs each stop on its own helper thread, and waits at most `bound` for the stops that start.
+fn stop_all(stops: Vec<(&'static str, Stop)>, bound: Duration) -> Vec<(&'static str, Outcome)> {
+    let deadline = Instant::now() + bound;
+    let (done, finished) = mpsc::channel();
+    let mut outcomes = Vec::new();
+    let mut pending = Vec::new();
+    for (signal, stop) in stops {
+        let done = done.clone();
+        let spawned = thread::Builder::new()
+            .name(format!("mu-telemetry-stop-{signal}"))
+            .spawn(move || {
+                let _ = done.send((signal, stop()));
+            });
+        match spawned {
+            Ok(_) => pending.push(signal),
+            Err(error) => outcomes.push((signal, Outcome::CannotStart(error.to_string()))),
+        }
+    }
+    // The channel disconnects when each helper thread ended, so a thread that panics before it
+    // sends ends the wait early.
+    drop(done);
+    while !pending.is_empty() {
+        match finished.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            Ok((signal, result)) => {
+                pending.retain(|name| *name != signal);
+                let outcome = match result {
+                    Ok(()) => Outcome::Done,
+                    Err(error) => Outcome::Failed(error.to_string()),
+                };
+                outcomes.push((signal, outcome));
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                outcomes.extend(pending.drain(..).map(|signal| (signal, Outcome::Late)));
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                outcomes.extend(pending.drain(..).map(|signal| (signal, Outcome::Panicked)));
+            }
+        }
+    }
+    outcomes
+}
+
+/// The transport of `protocol`. The first gRPC signal starts the telemetry runtime.
+fn transport(
+    protocol: Protocol,
+    runtime: &mut Option<TelemetryRuntime>,
+) -> Result<Transport, PipelineError> {
+    Ok(match protocol {
+        Protocol::HttpProtobuf => Transport::Http,
+        Protocol::Grpc => {
+            let runtime = match runtime {
+                Some(runtime) => runtime,
+                None => runtime.insert(TelemetryRuntime::start().map_err(PipelineError::Runtime)?),
+            };
+            Transport::Grpc(runtime.handle.clone())
+        }
+    })
 }
 
 /// Whether `target` is one of [`CRATES`] or a module of one.
@@ -275,16 +384,8 @@ fn in_crates(target: &str) -> bool {
     })
 }
 
-/// Whether the endpoint of `signal` has the scheme `https`, in any case.
-fn is_https(signal: &Signal) -> bool {
-    signal
-        .endpoint
-        .parse::<http::Uri>()
-        .is_ok_and(|uri| uri.scheme() == Some(&http::uri::Scheme::HTTPS))
-}
-
-fn http_client(trust: &Trust) -> Result<reqwest::blocking::Client, PipelineError> {
-    let certificates = trust
+fn http_client(authorities: &Authorities) -> Result<reqwest::blocking::Client, PipelineError> {
+    let certificates = authorities
         .certificates()
         .iter()
         .map(|der| reqwest::Certificate::from_der(der))
@@ -296,68 +397,159 @@ fn http_client(trust: &Trust) -> Result<reqwest::blocking::Client, PipelineError
         .build()?)
 }
 
-fn tls_config(trust: &Trust) -> ClientTlsConfig {
+fn tls_config(authorities: &Authorities) -> ClientTlsConfig {
     let config = ClientTlsConfig::new().with_native_roots();
-    if trust.pem.is_empty() {
+    if authorities.pem().is_empty() {
         config
     } else {
-        config.ca_certificate(Certificate::from_pem(&trust.pem))
+        config.ca_certificate(Certificate::from_pem(authorities.pem()))
     }
 }
 
 /// `builder` set for gRPC to the endpoint of `signal`, with TLS for `https`.
-fn grpc<B: WithExportConfig + WithTonicConfig>(builder: B, signal: &Signal, trust: &Trust) -> B {
+fn grpc<B: WithExportConfig + WithTonicConfig>(
+    builder: B,
+    signal: &Signal,
+    authorities: &Authorities,
+) -> B {
     let builder = builder
         .with_protocol(OtlpProtocol::Grpc)
         .with_timeout(EXPORT_TIMEOUT)
-        .with_endpoint(signal.endpoint.clone());
-    if is_https(signal) {
-        builder.with_tls_config(tls_config(trust))
+        .with_endpoint(signal.endpoint());
+    if signal.is_https() {
+        builder.with_tls_config(tls_config(authorities))
     } else {
         builder
     }
 }
 
-/// `builder` set for HTTP to the endpoint of `signal`.
+/// `builder` set for HTTP to the endpoint of `signal`. The timeout in code keeps the timeout
+/// variables of OpenTelemetry from setting the retry deadline.
 fn http<B: WithExportConfig + WithHttpConfig>(
     builder: B,
     signal: &Signal,
-    trust: &Trust,
+    authorities: &Authorities,
 ) -> Result<B, PipelineError> {
     Ok(builder
-        .with_http_client(http_client(trust)?)
+        .with_http_client(http_client(authorities)?)
         .with_protocol(OtlpProtocol::HttpBinary)
-        .with_endpoint(signal.endpoint.clone()))
+        .with_timeout(EXPORT_TIMEOUT)
+        .with_endpoint(signal.endpoint()))
 }
 
 fn span_exporter(
     signal: &Signal,
-    trust: &Trust,
-    runtime: Option<&tokio::runtime::Handle>,
+    authorities: &Authorities,
+    transport: &Transport,
 ) -> Result<OtlpSpanExporter, PipelineError> {
     let builder = OtlpSpanExporter::builder();
-    Ok(match (signal.protocol, runtime) {
-        (Protocol::Grpc, Some(runtime)) => {
+    Ok(match transport {
+        Transport::Grpc(runtime) => {
             let _entered = runtime.enter();
-            grpc(builder.with_tonic(), signal, trust).build()?
+            grpc(builder.with_tonic(), signal, authorities).build()?
         }
-        (Protocol::HttpProtobuf, _) => http(builder.with_http(), signal, trust)?.build()?,
-        (Protocol::Grpc, None) => return Err(PipelineError::NoRuntime),
+        Transport::Http => http(builder.with_http(), signal, authorities)?.build()?,
     })
 }
 
 fn metric_exporter(
     signal: &Signal,
-    trust: &Trust,
-    runtime: Option<&tokio::runtime::Handle>,
+    authorities: &Authorities,
+    transport: &Transport,
 ) -> Result<MetricExporter, PipelineError> {
     let builder = MetricExporter::builder();
-    Ok(match (signal.protocol, runtime) {
-        (Protocol::Grpc, Some(runtime)) => {
+    Ok(match transport {
+        Transport::Grpc(runtime) => {
             let _entered = runtime.enter();
-            grpc(builder.with_tonic(), signal, trust).build()?
+            grpc(builder.with_tonic(), signal, authorities).build()?
         }
-        (Protocol::HttpProtobuf, _) => http(builder.with_http(), signal, trust)?.build()?,
-        (Protocol::Grpc, None) => return Err(PipelineError::NoRuntime),
+        Transport::Http => http(builder.with_http(), signal, authorities)?.build()?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc;
+
+    use opentelemetry_sdk::error::OTelSdkError;
+
+    use super::*;
+
+    /// A bound that no stop in these tests reaches unless the wait is wrong.
+    const LONG: Duration = Duration::from_secs(60);
+
+    fn stop(result: OTelSdkResult) -> Stop {
+        Box::new(move || result)
+    }
+
+    #[test]
+    fn done_and_failed_stops_are_reported() {
+        let outcomes = stop_all(
+            vec![
+                ("traces", stop(Ok(()))),
+                (
+                    "metrics",
+                    stop(Err(OTelSdkError::InternalFailure("x".into()))),
+                ),
+            ],
+            LONG,
+        );
+        assert!(
+            outcomes.contains(&("traces", Outcome::Done)),
+            "{outcomes:?}"
+        );
+        assert!(
+            outcomes
+                .iter()
+                .any(|(signal, outcome)| *signal == "metrics"
+                    && matches!(outcome, Outcome::Failed(_))),
+            "{outcomes:?}"
+        );
+    }
+
+    #[test]
+    fn panicked_stop_is_reported_without_the_bound() {
+        let outcomes = stop_all(
+            vec![
+                ("traces", Box::new(|| panic!("a stop that panics"))),
+                ("metrics", stop(Ok(()))),
+            ],
+            LONG,
+        );
+        assert!(
+            outcomes.contains(&("traces", Outcome::Panicked)),
+            "{outcomes:?}"
+        );
+        assert!(
+            outcomes.contains(&("metrics", Outcome::Done)),
+            "{outcomes:?}"
+        );
+    }
+
+    #[test]
+    fn late_stop_is_named() {
+        let (open, gate) = mpsc::channel::<()>();
+        let outcomes = stop_all(
+            vec![(
+                "metrics",
+                Box::new(move || {
+                    let _ = gate.recv();
+                    Ok(())
+                }),
+            )],
+            Duration::ZERO,
+        );
+        drop(open);
+        assert_eq!(outcomes, vec![("metrics", Outcome::Late)]);
+    }
+
+    #[test]
+    fn exporter_error_names_the_setting_and_not_the_value() {
+        let error = PipelineError::from(ExporterBuildError::InvalidConfiguration(
+            "endpoint: invalid endpoint 'http://u:hunter2@h': bad".to_owned(),
+        ))
+        .to_string();
+        assert!(error.contains("`endpoint`"), "{error}");
+        assert!(!error.contains("hunter2"), "{error}");
+    }
 }

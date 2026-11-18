@@ -12,12 +12,14 @@ use serde::Deserialize;
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ServerFile {
-    /// The table `[telemetry]`.
-    pub telemetry: Option<TelemetryTable>,
+    /// The table `[telemetry]`. A missing table is the default, the same as an empty one.
+    #[serde(default)]
+    pub telemetry: TelemetryTable,
 }
 
-/// The table `[telemetry]`. Its values are checked when the export is on, but `certificate`
-/// only when `OTEL_EXPORTER_OTLP_CERTIFICATE` is unset.
+/// The table `[telemetry]`. Its values are checked when the export is on. `endpoint` and
+/// `protocol` are checked even when a variable wins over them, but `certificate` only when
+/// `OTEL_EXPORTER_OTLP_CERTIFICATE` is unset.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TelemetryTable {
@@ -25,8 +27,9 @@ pub struct TelemetryTable {
     pub endpoint: Option<String>,
     /// `http/protobuf` or `grpc`.
     pub protocol: Option<String>,
-    /// A PEM file of the authorities to trust beside the roots of the system. A relative path
-    /// starts at the configuration directory.
+    /// A PEM file of the authorities to trust beside the roots of the system. In the file, a
+    /// relative path starts at the configuration directory: [`read`] joins it to that directory,
+    /// so a table that `read` returns holds no relative path.
     pub certificate: Option<PathBuf>,
 }
 
@@ -41,7 +44,7 @@ pub enum ServerFileError {
     Parse(#[from] ConfigError),
     /// The file cannot be read.
     #[error("{SERVER_FILE}: {0}")]
-    Read(#[source] io::Error),
+    Read(io::Error),
 }
 
 /// Reads `server.toml` from `dir`. With no directory, or no file, it is the default. A relative
@@ -59,8 +62,8 @@ pub fn read(dir: Option<&Path>) -> Result<ServerFile, ServerFileError> {
             let mut file: ServerFile = parse_toml(&SERVER_FILE, &text, HIDDEN)?;
             if let Some(path) = file
                 .telemetry
+                .certificate
                 .as_mut()
-                .and_then(|table| table.certificate.as_mut())
                 .filter(|path| path.is_relative())
             {
                 *path = dir.join(&*path);
@@ -84,12 +87,7 @@ mod tests {
     }
 
     fn certificate(file: &ServerFile) -> &Path {
-        file.telemetry
-            .as_ref()
-            .unwrap()
-            .certificate
-            .as_deref()
-            .unwrap()
+        file.telemetry.certificate.as_deref().unwrap()
     }
 
     #[test]

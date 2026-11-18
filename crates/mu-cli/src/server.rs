@@ -64,7 +64,7 @@ pub fn run(args: &ServerArgs) -> ExitCode {
         Ok(file) => file,
         Err(error) => return fail(&error),
     };
-    let export = match telemetry::export(|name| std::env::var(name).ok(), file.telemetry.as_ref()) {
+    let export = match telemetry::export(|name| std::env::var_os(name), &file.telemetry) {
         Ok(export) => export,
         Err(error) => return fail(&error),
     };

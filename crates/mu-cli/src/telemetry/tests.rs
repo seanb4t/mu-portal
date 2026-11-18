@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use proptest::prelude::*;
@@ -22,7 +23,10 @@ fn run(
         .iter()
         .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
         .collect();
-    export(|name| vars.get(name).cloned(), file)
+    export(
+        |name| vars.get(name).map(OsString::from),
+        file.unwrap_or(&TelemetryTable::default()),
+    )
 }
 
 fn on(vars: &[(&str, &str)], file: Option<&TelemetryTable>) -> Export {
@@ -42,7 +46,7 @@ fn endpoints(export: &Export) -> (Option<&str>, Option<&str>) {
     )
 }
 
-fn refused_by(vars: &[(&str, &str)], file: Option<&TelemetryTable>) -> Source {
+fn refused_by(vars: &[(&str, &str)], file: Option<&TelemetryTable>) -> SettingSource {
     run(vars, file).unwrap_err().place()
 }
 
@@ -202,18 +206,26 @@ fn http_json_with_an_endpoint_is_refused_and_named() {
     for name in [PROTOCOL, TRACES_PROTOCOL, METRICS_PROTOCOL] {
         assert_eq!(
             refused_by(&[(name, "http/json")], Some(&table(Some(BASE)))),
-            Source::Variable(name)
+            SettingSource::Variable(name)
         );
     }
     let file = TelemetryTable {
         protocol: Some("http/json".to_owned()),
         ..table(Some(BASE))
     };
-    assert_eq!(refused_by(&[], Some(&file)), Source::Field("protocol"));
-    let message = run(&[(PROTOCOL, "http/json")], Some(&table(Some(BASE))))
-        .unwrap_err()
-        .to_string();
-    assert!(message.contains("http/json"), "{message}");
+    assert_eq!(
+        refused_by(&[], Some(&file)),
+        SettingSource::Field(TableField::Protocol)
+    );
+}
+
+#[test]
+fn bad_protocol_is_not_echoed() {
+    let value = "https://u:hunter2@collector.example";
+    for vars in [&[(PROTOCOL, value)][..], &[(TRACES_PROTOCOL, value)][..]] {
+        let message = run(vars, Some(&table(Some(BASE)))).unwrap_err().to_string();
+        assert!(!message.contains("hunter2"), "{message}");
+    }
 }
 
 #[test]
@@ -249,7 +261,7 @@ fn bad_endpoint_variables_are_refused_and_named() {
         ] {
             assert_eq!(
                 refused_by(&[(name, value)], None),
-                Source::Variable(name),
+                SettingSource::Variable(name),
                 "{name}={value}"
             );
         }
@@ -261,7 +273,7 @@ fn bad_file_endpoint_is_refused_and_named() {
     for value in ["not a url", "ftp://c:1", "http://127.0.0.1:4318?tenant=a"] {
         assert_eq!(
             refused_by(&[], Some(&table(Some(value)))),
-            Source::Field("endpoint")
+            SettingSource::Field(TableField::Endpoint)
         );
     }
 }
@@ -271,7 +283,7 @@ fn bad_file_endpoint_under_a_set_variable_is_refused() {
     let vars = [(ENDPOINT, "http://127.0.0.1:4318")];
     assert_eq!(
         refused_by(&vars, Some(&table(Some("not a url")))),
-        Source::Field("endpoint")
+        SettingSource::Field(TableField::Endpoint)
     );
 }
 
@@ -288,7 +300,7 @@ fn query_or_fragment_in_the_base_is_refused() {
     for value in ["http://h:1?tenant=a", "http://h:1#top"] {
         assert_eq!(
             refused_by(&[(ENDPOINT, value)], None),
-            Source::Variable(ENDPOINT)
+            SettingSource::Variable(ENDPOINT)
         );
     }
 }
@@ -298,7 +310,7 @@ fn fragment_in_a_signal_variable_is_refused() {
     for name in [TRACES_ENDPOINT, METRICS_ENDPOINT] {
         assert_eq!(
             refused_by(&[(name, "http://t:1/x#top")], None),
-            Source::Variable(name)
+            SettingSource::Variable(name)
         );
     }
 }
@@ -352,6 +364,94 @@ fn grpc_base_gets_no_path() {
 }
 
 #[test]
+fn grpc_endpoint_with_a_path_or_a_query_is_refused_and_named() {
+    let grpc = TelemetryTable {
+        protocol: Some("grpc".to_owned()),
+        ..table(Some("http://h:4317/otel"))
+    };
+    assert_eq!(
+        refused_by(&[], Some(&grpc)),
+        SettingSource::Field(TableField::Endpoint)
+    );
+    assert_eq!(
+        refused_by(
+            &[(PROTOCOL, "grpc"), (ENDPOINT, "http://h:4317/otel")],
+            None
+        ),
+        SettingSource::Variable(ENDPOINT)
+    );
+    for value in ["http://h:4317/v1/traces", "http://h:4317?tenant=a"] {
+        assert_eq!(
+            refused_by(&[(PROTOCOL, "grpc"), (TRACES_ENDPOINT, value)], None),
+            SettingSource::Variable(TRACES_ENDPOINT),
+            "{value}"
+        );
+    }
+}
+
+#[test]
+fn grpc_endpoint_with_a_slash_is_accepted() {
+    let export = on(&[(PROTOCOL, "grpc"), (ENDPOINT, "http://h:4317/")], None);
+    assert_eq!(
+        endpoints(&export),
+        (Some("http://h:4317/"), Some("http://h:4317/"))
+    );
+}
+
+#[test]
+fn https_is_found_in_any_case() {
+    let export = on(&[(ENDPOINT, "HTTPS://h:4318")], None);
+    assert!(export.traces.unwrap().is_https());
+    let export = on(&[(ENDPOINT, "http://h:4318")], None);
+    assert!(!export.traces.unwrap().is_https());
+}
+
+#[test]
+fn debug_hides_the_endpoint() {
+    let export = on(&[(ENDPOINT, "https://u:hunter2@h:4318")], None);
+    let shown = format!("{export:?}");
+    assert!(!shown.contains("hunter2"), "{shown}");
+}
+
+#[cfg(unix)]
+#[test]
+fn variable_that_is_not_utf8_is_refused_and_named() {
+    use std::os::unix::ffi::OsStringExt as _;
+
+    for name in [ENDPOINT, TRACES_ENDPOINT, PROTOCOL, SERVICE_NAME] {
+        let bad = |asked: &str| (asked == name).then(|| OsString::from_vec(vec![0xff]));
+        let result = export(
+            |asked| bad(asked).or_else(|| (asked == METRICS_ENDPOINT).then(|| "http://m:1".into())),
+            &TelemetryTable::default(),
+        );
+        assert_eq!(
+            result.unwrap_err().place(),
+            SettingSource::Variable(name),
+            "{name}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn certificate_variable_that_is_not_utf8_is_a_path() {
+    use std::os::unix::ffi::OsStringExt as _;
+
+    let path = OsString::from_vec(b"/nonexistent/\xff.pem".to_vec());
+    let result = export(
+        |asked| match asked {
+            ENDPOINT => Some("http://h:1".into()),
+            CERTIFICATE => Some(path.clone()),
+            _ => None,
+        },
+        &TelemetryTable::default(),
+    );
+    let error = result.unwrap_err();
+    assert_eq!(error.place(), SettingSource::Variable(CERTIFICATE));
+    assert!(!error.to_string().contains("UTF-8"), "{error}");
+}
+
+#[test]
 fn certificate_variable_wins_over_the_field() {
     let (_dir, good) = pem_file(&authority_pem());
     let file = TelemetryTable {
@@ -359,8 +459,11 @@ fn certificate_variable_wins_over_the_field() {
         ..table(Some(BASE))
     };
     let export = on(&[(CERTIFICATE, good.to_str().unwrap())], Some(&file));
-    assert_eq!(export.trust.certificates().len(), 1);
-    assert_eq!(refused_by(&[], Some(&file)), Source::Field("certificate"));
+    assert_eq!(export.authorities.certificates().len(), 1);
+    assert_eq!(
+        refused_by(&[], Some(&file)),
+        SettingSource::Field(TableField::Certificate)
+    );
 }
 
 #[test]
@@ -383,13 +486,16 @@ fn file_with_no_certificate_is_refused() {
             &[(CERTIFICATE, path.to_str().unwrap())],
             Some(&table(Some(BASE)))
         ),
-        Source::Variable(CERTIFICATE)
+        SettingSource::Variable(CERTIFICATE)
     );
 }
 
 #[test]
 fn no_certificate_means_the_system_roots_only() {
-    assert_eq!(on(&[], Some(&table(Some(BASE)))).trust.certificates(), &[]);
+    assert_eq!(
+        on(&[], Some(&table(Some(BASE)))).authorities.certificates(),
+        &[]
+    );
 }
 
 #[test]
