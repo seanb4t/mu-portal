@@ -27,7 +27,7 @@ certificate = "/etc/mu/collector-ca.pem"
 | `protocol` | `http/protobuf` or `grpc`. The default is `http/protobuf` |
 | `certificate` | A PEM file of the authorities to trust beside the roots of the system. A relative path starts at the configuration directory |
 
-Each field is optional. The server reads the file once, at the start, before it opens its socket. An unknown table, an unknown field, or a value of the wrong type stops the start. So does an endpoint that is not a URL, or a scheme other than `http` and `https`. So does a base URL with a query or a fragment. The error names `server.toml` and the field, and the exit status is 1.
+Each field is optional. The server reads the file once, at the start, before it opens its socket. An unknown table, an unknown field, or a value of the wrong type stops the start. So does an endpoint that is not a URL, or a scheme other than `http` and `https`. So does a base URL with a query, or any endpoint with a fragment. The error names `server.toml` and the field, and the exit status is 1.
 
 With `http/protobuf`, the server sends the traces to `v1/traces` and the metrics to `v1/metrics` under the base URL. One trailing slash does not change the result. With `grpc`, the base URL is the address of the gRPC services, and the server adds no path.
 
