@@ -52,6 +52,7 @@ The verdict covers only what the lenses checked. While the `ctl-lens` row of an 
 | id | severity | disposition | reason | ticket |
 |---|---|---|---|---|
 | R-64 | suggestion | accepted | Only the metric name and the attributes vary between the six events, so a macro adds a layer of indirection for little gain. |  |
+| R-90 | should-fix | accepted | Round 8 runs the test-honesty lens again on the head that holds the round 7 fixes. |  |
 
 ## Rounds
 
@@ -330,7 +331,7 @@ None.
 | R-87 | 7 | 7 | should-fix | in-change | ["path","crates/mu-cli/src/telemetry.rs",280] | duplicate | R-84 |  | Each telemetry variable that the server reads must be UTF-8, the certificate variable excepted, but OTEL_SDK_DISABLED is read with var_os and compared as bytes. A value that is not UTF-8 is not refused: it reads as not true, and the server starts with the export on. |
 | R-88 | 7 | 7 | should-fix | in-change | ["path","crates/mu-cli/src/telemetry.rs",366] | fixed | 4756ab8ab2706d7c442ec82563747b9c3a7be6cc |  | The gRPC rule (no path, no query) runs only on the endpoint that a signal uses. A server.toml endpoint with a path under protocol grpc starts the server while OTEL_EXPORTER_OTLP_ENDPOINT wins over it, though the field is said to be checked even when a variable wins. |
 | R-89 | 7 | 7 | should-fix | in-change | ["path","crates/mu-server/src/service.rs",75] | fixed | cd0541ee1ce7083b9ab34f69f2014da22af42fb7 |  | event_stream must read Journal::last only while a layer takes the metrics target, because the read locks the journal. No test runs event_stream without a metrics layer and counts the reads, so a removal of the enabled! guard passes every test. |
-| R-90 | 7 | 7 | should-fix | in-change | ["artifact",["review","lens-status"],"test-honesty partial"] |  |  |  | lens test-honesty reported partial, gaps: 2 |
+| R-90 | 7 | 7 | should-fix | in-change | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: none; reason: Round 8 runs the test-honesty lens again on the head that holds the round 7 fixes. |  | lens test-honesty reported partial, gaps: 2 |
 
 ## Reviewed files
 
