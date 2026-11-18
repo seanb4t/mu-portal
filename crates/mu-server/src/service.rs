@@ -7,7 +7,7 @@ use connectrpc::{
     ConnectError, RequestContext, Response, Router, ServiceRequest, ServiceResult, ServiceStream,
 };
 use futures::StreamExt as _;
-use mu_core::{Lagged, Portal, PortalError, Seq, Subscription, WorldId};
+use mu_core::{Journal, Lagged, Portal, PortalError, Seq, Subscription, WorldId};
 use mu_proto as proto;
 use proto::__buffa::oneof::subscribe_response::Message;
 use proto::PortalServiceExt as _;
@@ -58,19 +58,39 @@ fn event_message(event: &mu_core::Event) -> proto::SubscribeResponse {
     }
 }
 
+/// The target of the metric events, which the layer of the metrics reads.
+const METRICS: &str = "mu::metrics";
+
 /// The stream of one subscriber: the `Hello`, then each event. A lag ends it with
-/// `resource_exhausted`, and `stopping` ends it with no error.
+/// `resource_exhausted`, and `stopping` ends it with no error. For each event, it records the
+/// gap to the last event of `journal` in `mu.subscriber.lag`.
 pub fn event_stream(
     subscription: Subscription,
+    journal: Arc<dyn Journal>,
     instance_id: &str,
     stopping: watch::Receiver<bool>,
 ) -> ServiceStream<proto::SubscribeResponse> {
     let head = futures::stream::once(ready(Ok(hello(instance_id, subscription.last()))));
-    let events = subscription.into_stream().map(|item| match item {
-        Ok(event) => Ok(event_message(&event)),
-        Err(Lagged(n)) => Err(ConnectError::resource_exhausted(format!(
-            "the subscriber fell {n} events behind; subscribe again from the next number"
-        ))),
+    let events = subscription.into_stream().map(move |item| match item {
+        Ok(event) => {
+            let lag = journal.last().0.saturating_sub(event.seq.0);
+            tracing::event!(
+                target: METRICS,
+                tracing::Level::INFO,
+                "histogram.mu.subscriber.lag" = lag,
+            );
+            Ok(event_message(&event))
+        }
+        Err(Lagged(n)) => {
+            tracing::event!(
+                target: METRICS,
+                tracing::Level::INFO,
+                "monotonic_counter.mu.subscriber.lagged" = 1_u64,
+            );
+            Err(ConnectError::resource_exhausted(format!(
+                "the subscriber fell {n} events behind; subscribe again from the next number"
+            )))
+        }
     });
     // The stop ends the stream only when no event is ready, so the events that the server
     // recorded before the stop, for example the disconnect of each world, still go out.
@@ -144,6 +164,7 @@ impl proto::PortalService for PortalApi {
             match self.portal.subscribe(Seq(request.from_seq)) {
                 Ok(subscription) => Response::stream_ok(event_stream(
                     subscription,
+                    Arc::clone(self.portal.journal()),
                     &self.instance_id,
                     self.stopping.clone(),
                 )),
@@ -247,7 +268,7 @@ impl proto::PortalService for PortalApi {
 #[cfg(test)]
 mod tests {
     use connectrpc::ErrorCode;
-    use mu_core::{EventKind, Journal as _, MemoryJournal, NewEvent, Source};
+    use mu_core::{EventKind, MemoryJournal, NewEvent, Source};
 
     use super::*;
 
@@ -270,10 +291,20 @@ mod tests {
 
     #[tokio::test]
     async fn lagged_stream_ends_with_resource_exhausted() {
-        let journal = MemoryJournal::new(4).unwrap();
+        let journal = Arc::new(MemoryJournal::new(4).unwrap());
         let (_stop, stopping) = watch::channel(false);
-        let mut slow = event_stream(journal.subscribe(Seq(1)).unwrap(), "id", stopping.clone());
-        let mut fast = event_stream(journal.subscribe(Seq(1)).unwrap(), "id", stopping);
+        let mut slow = event_stream(
+            journal.subscribe(Seq(1)).unwrap(),
+            journal.clone(),
+            "id",
+            stopping.clone(),
+        );
+        let mut fast = event_stream(
+            journal.subscribe(Seq(1)).unwrap(),
+            journal.clone(),
+            "id",
+            stopping,
+        );
         assert!(matches!(
             slow.next().await.unwrap().unwrap().message,
             Some(Message::Hello(_))
@@ -293,9 +324,14 @@ mod tests {
 
     #[tokio::test]
     async fn stop_sends_the_ready_events_first() {
-        let journal = MemoryJournal::new(4).unwrap();
+        let journal = Arc::new(MemoryJournal::new(4).unwrap());
         let (stop, stopping) = watch::channel(false);
-        let mut stream = event_stream(journal.subscribe(Seq(1)).unwrap(), "id", stopping);
+        let mut stream = event_stream(
+            journal.subscribe(Seq(1)).unwrap(),
+            journal.clone(),
+            "id",
+            stopping,
+        );
         assert!(stream.next().await.is_some());
         append(&journal, "the last line");
         stop.send_replace(true);
@@ -305,9 +341,14 @@ mod tests {
 
     #[tokio::test]
     async fn stopping_ends_the_stream() {
-        let journal = MemoryJournal::new(4).unwrap();
+        let journal = Arc::new(MemoryJournal::new(4).unwrap());
         let (stop, stopping) = watch::channel(false);
-        let mut stream = event_stream(journal.subscribe(Seq(1)).unwrap(), "id", stopping);
+        let mut stream = event_stream(
+            journal.subscribe(Seq(1)).unwrap(),
+            journal.clone(),
+            "id",
+            stopping,
+        );
         assert!(stream.next().await.is_some());
         stop.send_replace(true);
         assert!(stream.next().await.is_none());

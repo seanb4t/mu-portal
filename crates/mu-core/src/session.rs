@@ -12,6 +12,7 @@ use governor::clock::Clock;
 use governor::{Quota, RateLimiter};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _, ReadHalf, WriteHalf};
 use tokio::sync::{mpsc, oneshot, watch};
+use tracing::{Instrument as _, Span};
 
 use crate::command::{Command, Envelope, Origin};
 use crate::error::PortalError;
@@ -35,19 +36,57 @@ pub enum WorldState {
     Disconnected,
 }
 
+impl WorldState {
+    /// The lower-case name of the state, for the telemetry.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Connecting => "connecting",
+            Self::Connected => "connected",
+            Self::Disconnected => "disconnected",
+        }
+    }
+}
+
+/// The target of the metric events, which the layer of the metrics reads.
+const METRICS: &str = "mu::metrics";
+
+/// Records `value` in the gauge `mu.world.state` of `world` for `state`.
+fn state_gauge(world: &WorldId, state: WorldState, value: u64) {
+    tracing::event!(
+        target: METRICS,
+        tracing::Level::INFO,
+        mu.world = %world,
+        "gauge.mu.world.state" = value,
+        mu.world.state.name = state.name(),
+    );
+}
+
 /// The reply to a command: the sequence number of its event, or none.
 pub(crate) type Reply = Result<Option<Seq>, PortalError>;
 
 /// What a world queue holds.
 pub(crate) enum Request {
-    /// A command, with the reply for its caller if it has one.
+    /// A command, with the reply for its caller if it has one, and the span of its caller.
     Command {
         envelope: Envelope,
         reply: Option<oneshot::Sender<Reply>>,
+        span: Span,
     },
     /// A control frame. The session answers it after each request before it and, if the
     /// world is up, after the game answers a mark. It is not a command and no event records it.
     Frame(oneshot::Sender<Reply>),
+}
+
+impl Request {
+    /// A command with the current span as the span of its caller.
+    pub(crate) fn command(envelope: Envelope, reply: Option<oneshot::Sender<Reply>>) -> Self {
+        Self::Command {
+            envelope,
+            reply,
+            span: Span::current(),
+        }
+    }
 }
 
 /// Answers `frame` with no result. The caller can give up on the answer.
@@ -89,7 +128,7 @@ pub(crate) type Router = Arc<BTreeMap<WorldId, mpsc::UnboundedSender<Request>>>;
 pub(crate) fn route(router: &Router, commands: Vec<Command>, depth: u8) {
     for command in commands {
         let Some(sender) = router.get(command.world()) else {
-            tracing::warn!(world = %command.world(), "a handler named an unknown world");
+            tracing::warn!(mu.world = %command.world(), "a handler named an unknown world");
             continue;
         };
         let envelope = Envelope {
@@ -98,10 +137,7 @@ pub(crate) fn route(router: &Router, commands: Vec<Command>, depth: u8) {
             depth: depth.saturating_add(1),
         };
         // A closed channel means the server stops.
-        let _ = sender.send(Request::Command {
-            envelope,
-            reply: None,
-        });
+        let _ = sender.send(Request::command(envelope, None));
     }
 }
 
@@ -160,13 +196,26 @@ enum Conn {
         connect: BoxFuture<'static, io::Result<Box<dyn ByteStream>>>,
         depth: u8,
         frames: WaitingFrames,
+        /// The `world.connection` span. The drop in `down` closes it.
+        span: Span,
     },
     Up {
         read: ReadHalf<Box<dyn ByteStream>>,
         write: WriteHalf<Box<dyn ByteStream>>,
         framer: Box<dyn Framer>,
         frames: WaitingFrames,
+        span: Span,
     },
+}
+
+impl Conn {
+    /// The `world.connection` span, or a disabled span with no connection.
+    fn span(&self) -> Span {
+        match self {
+            Self::Down => Span::none(),
+            Self::Connecting { span, .. } | Self::Up { span, .. } => span.clone(),
+        }
+    }
 }
 
 enum Step {
@@ -190,6 +239,7 @@ pub(crate) async fn run(parts: SessionParts) {
         limiter: RateLimiter::direct_with_clock(Quota::per_second(RATE), TokioClock),
         last_script_error: None,
     };
+    state_gauge(&session.parts.world, WorldState::Disconnected, 1);
     let mut buffer = vec![0_u8; 4096];
     loop {
         let step = tokio::select! {
@@ -198,19 +248,37 @@ pub(crate) async fn run(parts: SessionParts) {
         };
         match step {
             Step::Request(None) => return,
-            Step::Request(Some(Request::Command { envelope, reply })) => {
-                let result = session.handle(envelope).await;
+            Step::Request(Some(Request::Command {
+                envelope,
+                reply,
+                span,
+            })) => {
+                let command = tracing::info_span!(
+                    parent: &span,
+                    "command",
+                    mu.world = %session.parts.world,
+                    mu.command = envelope.command.name(),
+                    mu.origin = envelope.origin.name(),
+                    mu.depth = envelope.depth,
+                );
+                let result = session.handle(envelope).instrument(command).await;
                 if let Some(sender) = reply {
                     // The caller can give up on the reply.
                     let _ = sender.send(result);
                 }
             }
             Step::Request(Some(Request::Frame(frame))) => session.on_frame(frame).await,
-            Step::Connected(result, depth) => session.on_connect(result, depth).await,
+            Step::Connected(result, depth) => {
+                let span = session.conn.span();
+                session.on_connect(result, depth).instrument(span).await;
+            }
             Step::Read(Ok(0) | Err(_)) => {
                 session.down("the game closed the connection", 0);
             }
-            Step::Read(Ok(n)) => session.on_bytes(&buffer[..n]).await,
+            Step::Read(Ok(n)) => {
+                let span = session.conn.span();
+                session.on_bytes(&buffer[..n]).instrument(span).await;
+            }
         }
     }
 }
@@ -243,11 +311,24 @@ impl Session {
             text,
             depth,
         });
+        tracing::event!(
+            target: METRICS,
+            tracing::Level::INFO,
+            mu.world = %self.parts.world,
+            "monotonic_counter.mu.journal.events" = 1_u64,
+            mu.event.kind = kind.name(),
+        );
         run_handlers(&self.parts.handlers, &self.parts.router, &event);
         event
     }
 
     fn script_error(&mut self, text: &str, depth: u8) {
+        tracing::event!(
+            target: METRICS,
+            tracing::Level::INFO,
+            mu.world = %self.parts.world,
+            "monotonic_counter.mu.script.errors" = 1_u64,
+        );
         self.record(EventKind::ScriptError, Origin::Script, text, depth);
     }
 
@@ -266,8 +347,23 @@ impl Session {
         }
     }
 
+    /// Records `reason` in `mu.commands.dropped`.
+    fn dropped(&self, reason: &'static str) {
+        tracing::event!(
+            target: METRICS,
+            tracing::Level::INFO,
+            mu.world = %self.parts.world,
+            "monotonic_counter.mu.commands.dropped" = 1_u64,
+            mu.drop.reason = reason,
+        );
+    }
+
     fn set_state(&self, state: WorldState) {
-        self.parts.state.send_replace(state);
+        let old = self.parts.state.send_replace(state);
+        if old != state {
+            state_gauge(self.world(), old, 0);
+        }
+        state_gauge(self.world(), state, 1);
     }
 
     /// Ends the connection or the connect, records it, and answers each waiting frame.
@@ -344,9 +440,9 @@ impl Session {
         match result {
             Ok(stream) => {
                 let (read, write) = tokio::io::split(stream);
-                let frames = match &mut self.conn {
-                    Conn::Connecting { frames, .. } => std::mem::take(frames),
-                    Conn::Down | Conn::Up { .. } => WaitingFrames::default(),
+                let (frames, span) = match &mut self.conn {
+                    Conn::Connecting { frames, span, .. } => (std::mem::take(frames), span.clone()),
+                    Conn::Down | Conn::Up { .. } => (WaitingFrames::default(), Span::current()),
                 };
                 let waiting = frames.len();
                 self.conn = Conn::Up {
@@ -354,6 +450,7 @@ impl Session {
                     write,
                     framer: (self.parts.framer)(),
                     frames,
+                    span,
                 };
                 self.set_state(WorldState::Connected);
                 self.record(EventKind::Connected, Origin::System, "connected", depth);
@@ -411,10 +508,12 @@ impl Session {
             let text = format!(
                 "a chain of handlers passed the depth limit of {DEPTH_LIMIT}, so the engine dropped a command"
             );
+            self.dropped("depth");
             self.script_error(&text, depth);
             return Ok(None);
         }
         if origin == Origin::Script && self.limiter.check().is_err() {
+            self.dropped("rate");
             self.rate_drop(depth);
             return Ok(None);
         }
@@ -453,10 +552,17 @@ impl Session {
                 }
                 if matches!(self.conn, Conn::Down) {
                     let connect = transport.connect(self.world());
+                    let span = tracing::info_span!(
+                        parent: None,
+                        "world.connection",
+                        mu.world = %self.parts.world,
+                    );
+                    span.follows_from(Span::current());
                     self.conn = Conn::Connecting {
                         connect,
                         depth,
                         frames: WaitingFrames::default(),
+                        span,
                     };
                     self.set_state(WorldState::Connecting);
                 }
@@ -485,6 +591,22 @@ mod tests {
     use tokio::sync::oneshot::error::TryRecvError;
 
     use super::*;
+
+    #[test]
+    fn each_state_has_a_name() {
+        let states = [
+            WorldState::Connecting,
+            WorldState::Connected,
+            WorldState::Disconnected,
+        ];
+        for state in states {
+            match state {
+                WorldState::Connecting | WorldState::Connected | WorldState::Disconnected => {}
+            }
+        }
+        let names: Vec<_> = states.into_iter().map(WorldState::name).collect();
+        assert_eq!(names, ["connecting", "connected", "disconnected"]);
+    }
 
     #[test]
     fn waiting_frames_answer_in_order() {

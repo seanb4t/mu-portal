@@ -63,6 +63,23 @@ impl EventKind {
         Self::Custom,
         Self::ScriptError,
     ];
+
+    /// The snake-case name of the kind, for the telemetry.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Connected => "connected",
+            Self::Disconnected => "disconnected",
+            Self::Line => "line",
+            Self::Prompt => "prompt",
+            Self::Message => "message",
+            Self::Input => "input",
+            Self::Echo => "echo",
+            Self::Login => "login",
+            Self::Custom => "custom",
+            Self::ScriptError => "script_error",
+        }
+    }
 }
 
 /// Who an event comes from. Each event has exactly one source.
@@ -161,5 +178,25 @@ mod tests {
             assert_eq!(Source::of(kind, Origin::System), Source::System);
         }
         assert_eq!(fixed.len() + 2, EventKind::ALL.len());
+    }
+
+    #[test]
+    fn each_kind_has_a_name() {
+        let names: Vec<_> = EventKind::ALL.into_iter().map(EventKind::name).collect();
+        assert_eq!(
+            names,
+            [
+                "connected",
+                "disconnected",
+                "line",
+                "prompt",
+                "message",
+                "input",
+                "echo",
+                "login",
+                "custom",
+                "script_error",
+            ]
+        );
     }
 }

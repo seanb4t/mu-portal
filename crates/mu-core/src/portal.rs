@@ -205,11 +205,8 @@ impl Portal {
     /// [`PortalError::Stopped`].
     pub async fn submit(&self, envelope: Envelope) -> Result<Option<Seq>, PortalError> {
         let world = envelope.command.world().clone();
-        self.ask(&world, |reply| Request::Command {
-            envelope,
-            reply: Some(reply),
-        })
-        .await
+        self.ask(&world, |reply| Request::command(envelope, Some(reply)))
+            .await
     }
 
     /// Sends the request that `make` builds from the answer sender to `world`, and waits for the
@@ -273,18 +270,16 @@ impl Portal {
     pub async fn stop(&self) {
         // The flag goes up first, so a connect that a session reads after it fails.
         self.stopped.store(true, Ordering::Release);
-        self.to_every_world(|world, reply| Request::Command {
-            envelope: Envelope::system(Command::Disconnect { world }),
-            reply: Some(reply),
+        self.to_every_world(|world, reply| {
+            Request::command(Envelope::system(Command::Disconnect { world }), Some(reply))
         })
         .await;
     }
 
     /// Connects every world, as the server. Each world logs in when it connects.
     pub async fn connect_all(&self) {
-        self.to_every_world(|world, reply| Request::Command {
-            envelope: Envelope::system(Command::Connect { world }),
-            reply: Some(reply),
+        self.to_every_world(|world, reply| {
+            Request::command(Envelope::system(Command::Connect { world }), Some(reply))
         })
         .await;
     }

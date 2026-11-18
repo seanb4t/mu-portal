@@ -67,6 +67,31 @@ impl Command {
             | Self::Emit { world, .. } => world,
         }
     }
+
+    /// The lower-case name of the variant, for the telemetry. It never holds the text.
+    #[must_use]
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Send { .. } => "send",
+            Self::Connect { .. } => "connect",
+            Self::Disconnect { .. } => "disconnect",
+            Self::Login { .. } => "login",
+            Self::Echo { .. } => "echo",
+            Self::Emit { .. } => "emit",
+        }
+    }
+}
+
+impl Origin {
+    /// The lower-case name of the origin, for the telemetry.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Player => "player",
+            Self::Script => "script",
+            Self::System => "system",
+        }
+    }
 }
 
 /// A command with its origin and its depth.
@@ -99,5 +124,64 @@ impl Envelope {
             origin: Origin::System,
             depth: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_command_has_a_name() {
+        let world: WorldId = "alpha/aria".parse().unwrap();
+        let text = String::new();
+        let commands = [
+            Command::Send {
+                world: world.clone(),
+                text: text.clone(),
+            },
+            Command::Connect {
+                world: world.clone(),
+            },
+            Command::Disconnect {
+                world: world.clone(),
+            },
+            Command::Login {
+                world: world.clone(),
+            },
+            Command::Echo {
+                world: world.clone(),
+                text: text.clone(),
+            },
+            Command::Emit { world, text },
+        ];
+        // The match has no wildcard, so a new variant fails to compile until the list holds it.
+        for command in &commands {
+            match command {
+                Command::Send { .. }
+                | Command::Connect { .. }
+                | Command::Disconnect { .. }
+                | Command::Login { .. }
+                | Command::Echo { .. }
+                | Command::Emit { .. } => {}
+            }
+        }
+        let names: Vec<_> = commands.iter().map(Command::name).collect();
+        assert_eq!(
+            names,
+            ["send", "connect", "disconnect", "login", "echo", "emit"]
+        );
+    }
+
+    #[test]
+    fn each_origin_has_a_name() {
+        let origins = [Origin::Player, Origin::Script, Origin::System];
+        for origin in origins {
+            match origin {
+                Origin::Player | Origin::Script | Origin::System => {}
+            }
+        }
+        let names: Vec<_> = origins.into_iter().map(Origin::name).collect();
+        assert_eq!(names, ["player", "script", "system"]);
     }
 }

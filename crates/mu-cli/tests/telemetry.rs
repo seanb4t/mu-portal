@@ -2,7 +2,11 @@
 
 use std::process::{Command, ExitStatus, Output};
 
+use opentelemetry_proto::tonic::common::v1::KeyValue;
 use opentelemetry_proto::tonic::common::v1::any_value::Value;
+use opentelemetry_proto::tonic::metrics::v1::metric::Data;
+use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as Number;
+use opentelemetry_proto::tonic::metrics::v1::{Metric, NumberDataPoint};
 use opentelemetry_proto::tonic::resource::v1::Resource;
 use opentelemetry_proto::tonic::trace::v1::Span;
 use opentelemetry_proto::tonic::trace::v1::status::StatusCode;
@@ -10,7 +14,7 @@ use rustix::process::Signal;
 
 use collector::{Collector, METRICS_EXPORT, Mode, TRACE_EXPORT};
 use support::ConfigDir;
-use support::process::{SERVING, ServerBuilder, Session};
+use support::process::{PW, SERVING, ServerBuilder, Session};
 
 mod support;
 
@@ -134,8 +138,12 @@ fn one_span(collector: &Collector, name: &str) -> Span {
 
 /// The text form of the attribute `key` of `span`.
 fn attribute(span: &Span, key: &str) -> Option<String> {
-    let value = span
-        .attributes
+    attribute_of(&span.attributes, key)
+}
+
+/// The text form of the attribute `key` in `attributes`.
+fn attribute_of(attributes: &[KeyValue], key: &str) -> Option<String> {
+    let value = attributes
         .iter()
         .find(|attribute| attribute.key == key)?
         .value
@@ -148,6 +156,37 @@ fn attribute(span: &Span, key: &str) -> Option<String> {
         Value::BoolValue(flag) => flag.to_string(),
         other => format!("{other:?}"),
     })
+}
+
+/// The metric `name` of the last export that holds it.
+fn last_metric(collector: &Collector, name: &str) -> Option<Metric> {
+    collector
+        .metrics()
+        .into_iter()
+        .flat_map(|request| request.resource_metrics)
+        .flat_map(|metrics| metrics.scope_metrics)
+        .flat_map(|scope| scope.metrics)
+        .rfind(|metric| metric.name == name)
+}
+
+/// The value of the point of the sum or gauge `name`, in its last export, whose attributes
+/// hold each pair of `attributes`.
+fn last_value(collector: &Collector, name: &str, attributes: &[(&str, &str)]) -> Option<f64> {
+    let points: Vec<NumberDataPoint> = match last_metric(collector, name)?.data? {
+        Data::Sum(sum) => sum.data_points,
+        Data::Gauge(gauge) => gauge.data_points,
+        other => panic!("{name} is not a sum or a gauge: {other:?}"),
+    };
+    let point = points.into_iter().find(|point| {
+        attributes
+            .iter()
+            .all(|(key, value)| attribute_of(&point.attributes, key).as_deref() == Some(value))
+    })?;
+    #[expect(clippy::cast_precision_loss, reason = "the counts of a test are small")]
+    match point.value? {
+        Number::AsInt(value) => Some(value as f64),
+        Number::AsDouble(value) => Some(value),
+    }
 }
 
 /// The value of `service.name` in `resource`.
@@ -628,4 +667,197 @@ async fn span_of_a_failed_call() {
     let span = one_span(&collector, "mu.v1.PortalService/Connect");
     let status = span.status.expect("the span has a status");
     assert_eq!(status.code, StatusCode::Error as i32);
+}
+
+#[tokio::test]
+async fn command_under_its_call() {
+    let collector = Collector::start(Mode::Http).await;
+    Setup::endpoint(&collector.url()).one_send().await;
+    let call = one_span(&collector, "mu.v1.PortalService/Send");
+    let commands: Vec<_> = spans_named(&collector, "command")
+        .into_iter()
+        .filter(|span| attribute(span, "mu.command").as_deref() == Some("send"))
+        .collect();
+    assert_eq!(commands.len(), 1, "{commands:?}");
+    let command = &commands[0];
+    assert_eq!(
+        attribute(command, "mu.world").as_deref(),
+        Some("alpha/aria")
+    );
+    assert_eq!(attribute(command, "mu.origin").as_deref(), Some("player"));
+    assert_eq!(command.trace_id, call.trace_id);
+    assert_eq!(command.parent_span_id, call.span_id);
+}
+
+#[tokio::test]
+async fn command_of_the_server() {
+    let collector = Collector::start(Mode::Http).await;
+    Setup::endpoint(&collector.url()).run(&[]).await;
+    let connects: Vec<_> = spans_named(&collector, "command")
+        .into_iter()
+        .filter(|span| attribute(span, "mu.command").as_deref() == Some("connect"))
+        .collect();
+    assert_eq!(connects.len(), 1, "{connects:?}");
+    assert_eq!(
+        attribute(&connects[0], "mu.origin").as_deref(),
+        Some("system")
+    );
+}
+
+#[tokio::test]
+async fn connection_of_a_fake_world() {
+    let collector = Collector::start(Mode::Http).await;
+    Setup::endpoint(&collector.url()).run(&[]).await;
+    let span = one_span(&collector, "world.connection");
+    assert_eq!(attribute(&span, "mu.world").as_deref(), Some("alpha/aria"));
+}
+
+#[tokio::test]
+async fn events_of_a_world() {
+    let collector = Collector::start(Mode::Http).await;
+    Setup::endpoint(&collector.url()).run(&["one", "two"]).await;
+    let inputs = last_value(
+        &collector,
+        "mu.journal.events",
+        &[("mu.world", "alpha/aria"), ("mu.event.kind", "input")],
+    );
+    assert_eq!(inputs, Some(2.0));
+}
+
+#[tokio::test]
+async fn lag_of_a_subscriber() {
+    let collector = Collector::start(Mode::Http).await;
+    let session = Setup::endpoint(&collector.url()).start().await;
+    assert!(session.seen().len() >= 3, "{:?}", session.seen());
+    stop(session.server).await;
+    let metric = last_metric(&collector, "mu.subscriber.lag").expect("the lag is exported");
+    let Some(Data::Histogram(histogram)) = metric.data else {
+        panic!("not a histogram: {metric:?}");
+    };
+    let count: u64 = histogram.data_points.iter().map(|point| point.count).sum();
+    assert!(count >= 3, "{count}");
+}
+
+#[tokio::test]
+async fn world_that_never_connects() {
+    let collector = Collector::start(Mode::Http).await;
+    let config = ConfigDir::base().file(
+        "server.toml",
+        &format!("[telemetry]\nendpoint = \"{}\"\n", collector.url()),
+    );
+    let server = ServerBuilder::new()
+        .env("MU_CONFIG", Some(config.path()))
+        .start()
+        .await;
+    stop(server).await;
+    let state = |name| {
+        last_value(
+            &collector,
+            "mu.world.state",
+            &[("mu.world", "alpha/aria"), ("mu.world.state.name", name)],
+        )
+    };
+    assert_eq!(state("disconnected"), Some(1.0));
+}
+
+#[tokio::test]
+async fn state_at_the_stop() {
+    let collector = Collector::start(Mode::Http).await;
+    Setup::endpoint(&collector.url()).run(&[]).await;
+    let state = |name| {
+        last_value(
+            &collector,
+            "mu.world.state",
+            &[("mu.world", "alpha/aria"), ("mu.world.state.name", name)],
+        )
+    };
+    assert_eq!(state("disconnected"), Some(1.0));
+    assert_eq!(state("connected"), Some(0.0));
+}
+
+/// Whether `text` occurs in a body that `collector` got.
+fn in_a_body(collector: &Collector, text: &str) -> bool {
+    collector.requests().iter().any(|request| {
+        request
+            .body
+            .windows(text.len())
+            .any(|window| window == text.as_bytes())
+    })
+}
+
+#[tokio::test]
+async fn password_stays_out() {
+    let collector = Collector::start(Mode::Http).await;
+    let config = ConfigDir::empty().file(
+        "server.toml",
+        &format!("[telemetry]\nendpoint = \"{}\"\n", collector.url()),
+    );
+    let builder = ServerBuilder::new()
+        .env("MU_CONFIG", Some(config.path()))
+        .fake_world("alpha/aria", "ALPHA_PW", PW);
+    let mut session = Session::start(builder).await;
+    session.welcome("alpha/aria").await;
+    let text = format!("say {PW}");
+    session.client.send("alpha/aria", &text).await.unwrap();
+    let run = stop(session.server).await;
+    assert!(!collector.requests().is_empty());
+    assert!(!in_a_body(&collector, PW), "a body holds the password");
+    assert!(
+        run.stderr.iter().all(|line| !line.contains(PW)),
+        "{:?}",
+        run.stderr
+    );
+}
+
+#[tokio::test]
+async fn line_text_stays_out() {
+    let collector = Collector::start(Mode::Http).await;
+    Setup::endpoint(&collector.url())
+        .run(&["say marker-7f3a"])
+        .await;
+    assert!(!collector.requests().is_empty());
+    assert!(
+        !in_a_body(&collector, "marker-7f3a"),
+        "a body holds the line"
+    );
+}
+
+/// The number of calls that fill the queue of 2048 spans twice, at two spans each.
+const CALLS: usize = 2100;
+
+/// The longest time from SIGTERM to the exit: the bound of the stop and a margin.
+const EXIT_BOUND: std::time::Duration = std::time::Duration::from_secs(7);
+
+async fn silent_collector_with(protocol: &str) {
+    let collector = Collector::start(Mode::Silent).await;
+    let session = Setup::new(&[
+        format!("endpoint = \"{}\"", collector.url()),
+        format!("protocol = \"{protocol}\""),
+    ])
+    .start()
+    .await;
+    for n in 0..CALLS {
+        let seq = session
+            .client
+            .send("alpha/aria", &format!("line {n}"))
+            .await;
+        assert!(matches!(seq, Ok(Some(_))), "call {n}: {seq:?}");
+    }
+    let mut server = session.server;
+    let start = std::time::Instant::now();
+    server.signal(Signal::TERM);
+    let status = server.wait_exit().await;
+    let elapsed = start.elapsed();
+    assert!(status.success(), "{status:?}");
+    assert!(
+        elapsed <= EXIT_BOUND,
+        "{protocol}: the exit took {elapsed:?}"
+    );
+}
+
+#[tokio::test]
+async fn silent_collector_does_not_delay_a_send() {
+    for protocol in ["http/protobuf", "grpc"] {
+        silent_collector_with(protocol).await;
+    }
 }
