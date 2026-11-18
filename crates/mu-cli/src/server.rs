@@ -9,7 +9,9 @@ use mu_core::{
 };
 
 use crate::config::ConfigArgs;
+use crate::server_config;
 use crate::socket::SocketArgs;
+use crate::telemetry::{self, Providers, STOP_BOUND};
 
 /// Arguments of `mu server`.
 #[derive(Clone, Debug, Default, Args)]
@@ -53,11 +55,29 @@ fn fail(error: &dyn std::fmt::Display) -> ExitCode {
 
 /// Runs the server until a signal stops it.
 pub fn run(args: &ServerArgs) -> ExitCode {
+    // `server.toml` and the variables decide the export before the socket opens. The HTTP
+    // exporters are built here, outside the runtime of the engine.
+    let file = match server_config::read(args.config.dir_from_env().as_deref()) {
+        Ok(file) => file,
+        Err(error) => return fail(&error),
+    };
+    let export = match telemetry::export(|name| std::env::var(name).ok(), file.telemetry.as_ref()) {
+        Ok(export) => export,
+        Err(error) => return fail(&error),
+    };
+    let providers = match export.as_ref().map(Providers::start).transpose() {
+        Ok(providers) => providers.unwrap_or_else(Providers::none),
+        Err(error) => return fail(&error),
+    };
     // Only the server logs: the lines would break the screen of the client.
-    let _ = tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_max_level(tracing::Level::WARN)
-        .try_init();
+    let _ = tracing::subscriber::set_global_default(providers.subscriber());
+    let code = serve_worlds(args);
+    providers.shutdown(STOP_BOUND);
+    code
+}
+
+/// Resolves the worlds, opens the socket and serves until a signal stops it.
+fn serve_worlds(args: &ServerArgs) -> ExitCode {
     // The configuration resolves first, so a bad file stops the start before the socket opens.
     let configured = match args.config.worlds("server") {
         Ok(worlds) => worlds,

@@ -35,6 +35,15 @@ impl ConfigArgs {
             .or_else(|| xdg_base(home).map(|home| home.join(".config").join("mu")))
     }
 
+    /// The directory, read from the environment of the process.
+    #[must_use]
+    pub fn dir_from_env(&self) -> Option<PathBuf> {
+        self.dir(
+            std::env::var_os("XDG_CONFIG_HOME"),
+            std::env::var_os("HOME"),
+        )
+    }
+
     /// The resolved worlds of the directory, read from the environment of the process. With no
     /// directory, or a missing one, there are no worlds. If `--config` or `MU_CONFIG` names a
     /// missing directory, a warning of `verb` on stderr names it.
@@ -43,10 +52,7 @@ impl ConfigArgs {
     ///
     /// A [`ConfigError`] that names the file or the world, and the field.
     pub fn worlds(&self, verb: &str) -> Result<Vec<ResolvedWorld>, ConfigError> {
-        let dir = self.dir(
-            std::env::var_os("XDG_CONFIG_HOME"),
-            std::env::var_os("HOME"),
-        );
+        let dir = self.dir_from_env();
         if let Some(named) = self.config.as_ref().and_then(PathValue::path)
             && matches!(named.try_exists(), Ok(false))
         {

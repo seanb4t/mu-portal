@@ -12,10 +12,11 @@ use serde::de::DeserializeOwned;
 use super::error::ConfigError;
 
 /// Parses `text`, the file at `place`, into `T`.
-pub(crate) fn parse<T: DeserializeOwned>(
-    place: &impl fmt::Display,
-    text: &str,
-) -> Result<T, ConfigError> {
+///
+/// # Errors
+///
+/// A [`ConfigError`] that names `place`, the line, the column and the path of the field.
+pub fn parse<T: DeserializeOwned>(place: &impl fmt::Display, text: &str) -> Result<T, ConfigError> {
     let deserializer = toml::Deserializer::parse(text)
         .map_err(|error| ConfigError::new(at(place, text, error.span()), error.message()))?;
     serde_path_to_error::deserialize(deserializer).map_err(|error| {

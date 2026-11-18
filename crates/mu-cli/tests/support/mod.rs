@@ -20,15 +20,23 @@ pub fn repo_root() -> &'static Path {
 /// The changes to the environment of each `mu` that a test starts, in the shape
 /// `(name, Some(value))` to set a variable and `(name, None)` to remove one. They remove
 /// `MU_SOCKET` and point `MU_CONFIG` at an empty directory, so that the socket and the
-/// configuration of the developer never reach a test.
+/// configuration of the developer never reach a test. They also remove each variable whose
+/// name starts with `OTEL_`, so that the telemetry of the developer never reaches a test.
 pub fn test_env() -> Vec<(OsString, Option<OsString>)> {
-    vec![
+    let mut changes: Vec<(OsString, Option<OsString>)> = vec![
         ("MU_SOCKET".into(), None),
         (
             "MU_CONFIG".into(),
             Some(empty_config_dir().into_os_string()),
         ),
-    ]
+    ];
+    changes.extend(
+        std::env::vars_os()
+            .map(|(name, _)| name)
+            .filter(|name| name.as_encoded_bytes().starts_with(b"OTEL_"))
+            .map(|name| (name, None)),
+    );
+    changes
 }
 
 /// An empty directory under the temporary directory of the target, for `MU_CONFIG`.

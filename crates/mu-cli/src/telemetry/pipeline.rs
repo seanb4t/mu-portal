@@ -1,0 +1,314 @@
+//! The pipeline of the export: the exporters, the providers, the layers and the bounded stop.
+
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
+
+use opentelemetry::trace::TracerProvider as _;
+use opentelemetry_otlp::tonic_types::transport::{Certificate, ClientTlsConfig};
+use opentelemetry_otlp::{
+    ExporterBuildError, MetricExporter, Protocol as OtlpProtocol, SpanExporter as OtlpSpanExporter,
+    WithExportConfig as _, WithHttpConfig as _, WithTonicConfig as _,
+};
+use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::metrics::SdkMeterProvider;
+use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
+use opentelemetry_sdk::trace::{SdkTracerProvider, SpanExporter};
+use tokio::sync::oneshot;
+use tracing::Subscriber;
+use tracing_subscriber::Layer;
+use tracing_subscriber::filter::{LevelFilter, Targets};
+use tracing_subscriber::layer::SubscriberExt as _;
+use tracing_subscriber::registry::LookupSpan;
+
+use super::{Export, Protocol, Signal, Trust};
+
+/// The longest wait for the export at the stop.
+pub const STOP_BOUND: Duration = Duration::from_secs(5);
+
+/// The longest wait for one export request.
+const EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The targets that reach the OpenTelemetry layers: the workspace, and its metric events.
+pub const TARGETS: [&str; 4] = ["mu_core", "mu_server", "mu_cli", "mu::metrics"];
+
+/// The name of the thread of the telemetry runtime.
+const RUNTIME_THREAD: &str = "mu-telemetry";
+
+/// An error of the build of the export.
+#[derive(Debug, thiserror::Error)]
+pub enum PipelineError {
+    /// An exporter refused its configuration.
+    #[error("the export: {0}")]
+    Exporter(#[from] ExporterBuildError),
+    /// The HTTP client cannot be built, or a certificate is bad.
+    #[error("the export: {0}")]
+    Client(#[from] reqwest::Error),
+    /// The thread of the telemetry runtime cannot start.
+    #[error("the export: {0}")]
+    Runtime(#[from] std::io::Error),
+}
+
+/// The current-thread tokio runtime of the gRPC exporters, on its own thread.
+struct TelemetryRuntime {
+    handle: tokio::runtime::Handle,
+    stop: oneshot::Sender<()>,
+    thread: thread::JoinHandle<()>,
+}
+
+impl TelemetryRuntime {
+    fn start() -> std::io::Result<Self> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        let handle = runtime.handle().clone();
+        let (stop, stopped) = oneshot::channel::<()>();
+        let thread = thread::Builder::new()
+            .name(RUNTIME_THREAD.to_owned())
+            .spawn(move || {
+                runtime.block_on(async {
+                    let _ = stopped.await;
+                });
+            })?;
+        Ok(Self {
+            handle,
+            stop,
+            thread,
+        })
+    }
+}
+
+/// The providers of the export. Without a signal, a provider is absent.
+pub struct Providers {
+    tracer: Option<SdkTracerProvider>,
+    meter: Option<SdkMeterProvider>,
+    runtime: Option<TelemetryRuntime>,
+}
+
+impl Providers {
+    /// No export.
+    #[must_use]
+    pub fn none() -> Self {
+        Self {
+            tracer: None,
+            meter: None,
+            runtime: None,
+        }
+    }
+
+    /// The providers of `spans` and `metrics`, with the resource of `service_name`.
+    #[must_use]
+    pub fn with_exporters<S, M>(spans: Option<S>, metrics: Option<M>, service_name: &str) -> Self
+    where
+        S: SpanExporter + 'static,
+        M: PushMetricExporter,
+    {
+        let resource = Resource::builder()
+            .with_service_name(service_name.to_owned())
+            .build();
+        Self {
+            tracer: spans.map(|exporter| {
+                SdkTracerProvider::builder()
+                    .with_batch_exporter(exporter)
+                    .with_resource(resource.clone())
+                    .build()
+            }),
+            meter: metrics.map(|exporter| {
+                SdkMeterProvider::builder()
+                    .with_periodic_exporter(exporter)
+                    .with_resource(resource)
+                    .build()
+            }),
+            runtime: None,
+        }
+    }
+
+    /// The providers of `export`. The HTTP exporters are built here, so the caller must be
+    /// outside a tokio runtime. The gRPC exporters are built on the `mu-telemetry` runtime.
+    ///
+    /// # Errors
+    ///
+    /// A [`PipelineError`] of an exporter, of the HTTP client or of the runtime.
+    pub fn start(export: &Export) -> Result<Self, PipelineError> {
+        // One crypto provider for reqwest and tonic. A second call finds it installed.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let grpc = [&export.traces, &export.metrics]
+            .into_iter()
+            .flatten()
+            .any(|signal| signal.protocol == Protocol::Grpc);
+        let runtime = grpc.then(TelemetryRuntime::start).transpose()?;
+        let handle = runtime.as_ref().map(|runtime| runtime.handle.clone());
+        let spans = export
+            .traces
+            .as_ref()
+            .map(|signal| span_exporter(signal, &export.trust, handle.as_ref()))
+            .transpose()?;
+        let metrics = export
+            .metrics
+            .as_ref()
+            .map(|signal| metric_exporter(signal, &export.trust, handle.as_ref()))
+            .transpose()?;
+        let mut providers = Self::with_exporters(spans, metrics, &export.service_name);
+        providers.runtime = runtime;
+        Ok(providers)
+    }
+
+    /// The tracer provider, if the traces have an endpoint.
+    #[must_use]
+    pub fn tracer_provider(&self) -> Option<&SdkTracerProvider> {
+        self.tracer.as_ref()
+    }
+
+    /// The meter provider, if the metrics have an endpoint.
+    #[must_use]
+    pub fn meter_provider(&self) -> Option<&SdkMeterProvider> {
+        self.meter.as_ref()
+    }
+
+    /// The two OpenTelemetry layers, each behind the filter of [`TARGETS`].
+    #[must_use]
+    pub fn layers<S>(&self) -> impl Layer<S> + Send + Sync + use<S>
+    where
+        S: Subscriber + for<'span> LookupSpan<'span> + Send + Sync,
+    {
+        let spans = self.tracer.as_ref().map(|provider| {
+            tracing_opentelemetry::OpenTelemetryLayer::new(provider.tracer("mu"))
+                .with_filter(targets())
+        });
+        let metrics = self.meter.as_ref().map(|provider| {
+            tracing_opentelemetry::MetricsLayer::new(provider.clone()).with_filter(targets())
+        });
+        tracing_subscriber::layer::Identity::new()
+            .and_then(spans)
+            .and_then(metrics)
+    }
+
+    /// The subscriber of `mu server`: the stderr lines at `WARN`, and the layers of the export.
+    pub fn subscriber(&self) -> impl Subscriber + Send + Sync + use<> {
+        tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(std::io::stderr)
+                    .with_filter(LevelFilter::WARN),
+            )
+            .with(self.layers())
+    }
+
+    /// Flushes and stops the providers on a helper thread, and waits for it at most `bound`.
+    /// Then it stops the telemetry runtime.
+    pub fn shutdown(self, bound: Duration) {
+        let Self {
+            tracer,
+            meter,
+            runtime,
+        } = self;
+        let (done, finished) = mpsc::channel();
+        let flush = thread::Builder::new()
+            .name("mu-telemetry-stop".to_owned())
+            .spawn(move || {
+                if let Some(tracer) = tracer {
+                    let _ = tracer.shutdown();
+                }
+                if let Some(meter) = meter {
+                    let _ = meter.shutdown();
+                }
+                let _ = done.send(());
+            });
+        let in_time = flush.is_ok() && finished.recv_timeout(bound).is_ok();
+        if let Some(runtime) = runtime {
+            let _ = runtime.stop.send(());
+            if in_time {
+                let _ = runtime.thread.join();
+            }
+        }
+    }
+}
+
+fn targets() -> Targets {
+    TARGETS.into_iter().fold(Targets::new(), |filter, target| {
+        filter.with_target(target, LevelFilter::TRACE)
+    })
+}
+
+fn is_https(signal: &Signal) -> bool {
+    signal.endpoint.starts_with("https://")
+}
+
+fn http_client(trust: &Trust) -> Result<reqwest::blocking::Client, PipelineError> {
+    let certificates = trust
+        .certificates()
+        .iter()
+        .map(|der| reqwest::Certificate::from_der(der))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(reqwest::blocking::Client::builder()
+        .timeout(EXPORT_TIMEOUT)
+        .tls_certs_merge(certificates)
+        .build()?)
+}
+
+fn tls_config(trust: &Trust) -> ClientTlsConfig {
+    let config = ClientTlsConfig::new().with_native_roots();
+    if trust.pem.is_empty() {
+        config
+    } else {
+        config.ca_certificate(Certificate::from_pem(&trust.pem))
+    }
+}
+
+fn span_exporter(
+    signal: &Signal,
+    trust: &Trust,
+    runtime: Option<&tokio::runtime::Handle>,
+) -> Result<OtlpSpanExporter, PipelineError> {
+    match (signal.protocol, runtime) {
+        (Protocol::Grpc, Some(runtime)) => {
+            let _entered = runtime.enter();
+            let builder = OtlpSpanExporter::builder()
+                .with_tonic()
+                .with_protocol(OtlpProtocol::Grpc)
+                .with_timeout(EXPORT_TIMEOUT)
+                .with_endpoint(signal.endpoint.clone());
+            let builder = if is_https(signal) {
+                builder.with_tls_config(tls_config(trust))
+            } else {
+                builder
+            };
+            Ok(builder.build()?)
+        }
+        _ => Ok(OtlpSpanExporter::builder()
+            .with_http()
+            .with_http_client(http_client(trust)?)
+            .with_protocol(OtlpProtocol::HttpBinary)
+            .with_endpoint(signal.endpoint.clone())
+            .build()?),
+    }
+}
+
+fn metric_exporter(
+    signal: &Signal,
+    trust: &Trust,
+    runtime: Option<&tokio::runtime::Handle>,
+) -> Result<MetricExporter, PipelineError> {
+    match (signal.protocol, runtime) {
+        (Protocol::Grpc, Some(runtime)) => {
+            let _entered = runtime.enter();
+            let builder = MetricExporter::builder()
+                .with_tonic()
+                .with_protocol(OtlpProtocol::Grpc)
+                .with_timeout(EXPORT_TIMEOUT)
+                .with_endpoint(signal.endpoint.clone());
+            let builder = if is_https(signal) {
+                builder.with_tls_config(tls_config(trust))
+            } else {
+                builder
+            };
+            Ok(builder.build()?)
+        }
+        _ => Ok(MetricExporter::builder()
+            .with_http()
+            .with_http_client(http_client(trust)?)
+            .with_protocol(OtlpProtocol::HttpBinary)
+            .with_endpoint(signal.endpoint.clone())
+            .build()?),
+    }
+}

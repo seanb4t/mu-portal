@@ -12,6 +12,7 @@ use mu_proto as proto;
 use proto::__buffa::oneof::subscribe_response::Message;
 use proto::PortalServiceExt as _;
 use tokio::sync::watch;
+use tracing::{Instrument as _, Span};
 
 use crate::convert;
 
@@ -88,6 +89,37 @@ pub fn event_stream(
     Box::pin(head.chain(events))
 }
 
+/// The service name of the spans of the API.
+const SERVICE: &str = "mu.v1.PortalService";
+
+/// The span of one call of `method`. `mu.world` and the status come later.
+fn call_span(method: &'static str) -> Span {
+    tracing::info_span!(
+        "rpc",
+        otel.name = format!("{SERVICE}/{method}"),
+        rpc.system = "connect_rpc",
+        rpc.service = SERVICE,
+        rpc.method = method,
+        mu.world = tracing::field::Empty,
+        otel.status_code = tracing::field::Empty,
+    )
+}
+
+/// Marks `span` as failed if `result` is an error.
+fn ended<T>(span: &Span, result: ServiceResult<T>) -> ServiceResult<T> {
+    if result.is_err() {
+        span.record("otel.status_code", "ERROR");
+    }
+    result
+}
+
+/// The world of a request, recorded in the current span.
+fn named_world(text: &str) -> Result<WorldId, ConnectError> {
+    let world = world(text)?;
+    Span::current().record("mu.world", tracing::field::display(&world));
+    Ok(world)
+}
+
 /// The world of a request. A text that is not an id names no world, so it is `not_found` too.
 fn world(text: &str) -> Result<WorldId, ConnectError> {
     text.parse()
@@ -104,21 +136,27 @@ impl proto::PortalService for PortalApi {
         _ctx: RequestContext,
         request: ServiceRequest<'_, proto::SubscribeRequest>,
     ) -> Ready<ServiceResult<ServiceStream<proto::SubscribeResponse>>> {
-        ready(match self.portal.subscribe(Seq(request.from_seq)) {
-            Ok(subscription) => Response::stream_ok(event_stream(
-                subscription,
-                &self.instance_id,
-                self.stopping.clone(),
-            )),
-            Err(error @ PortalError::PastEnd { last, .. }) => {
-                let items = [
-                    Ok(hello(&self.instance_id, last)),
-                    Err(convert::status(&error)),
-                ];
-                Response::stream_ok(Box::pin(futures::stream::iter(items)))
-            }
-            Err(error) => Err(convert::status(&error)),
-        })
+        // The span ends when this method returns, not with the stream.
+        let span = call_span("Subscribe");
+        let _entered = span.enter();
+        ready(ended(
+            &span,
+            match self.portal.subscribe(Seq(request.from_seq)) {
+                Ok(subscription) => Response::stream_ok(event_stream(
+                    subscription,
+                    &self.instance_id,
+                    self.stopping.clone(),
+                )),
+                Err(error @ PortalError::PastEnd { last, .. }) => {
+                    let items = [
+                        Ok(hello(&self.instance_id, last)),
+                        Err(convert::status(&error)),
+                    ];
+                    Response::stream_ok(Box::pin(futures::stream::iter(items)))
+                }
+                Err(error) => Err(convert::status(&error)),
+            },
+        ))
     }
 
     fn list_worlds(
@@ -126,6 +164,8 @@ impl proto::PortalService for PortalApi {
         _ctx: RequestContext,
         _request: ServiceRequest<'_, proto::ListWorldsRequest>,
     ) -> Ready<ServiceResult<proto::ListWorldsResponse>> {
+        let span = call_span("ListWorlds");
+        let _entered = span.enter();
         let worlds = self
             .portal
             .worlds()
@@ -147,16 +187,22 @@ impl proto::PortalService for PortalApi {
         _ctx: RequestContext,
         request: ServiceRequest<'_, proto::SendRequest>,
     ) -> ServiceResult<proto::SendResponse> {
-        let world = world(request.world)?;
-        let seq = self
-            .portal
-            .send(&world, request.text)
-            .await
-            .map_err(|error| convert::status(&error))?;
-        Response::ok(proto::SendResponse {
-            seq: seq.map(|seq| seq.0),
-            ..Default::default()
-        })
+        let span = call_span("Send");
+        let result = async {
+            let world = named_world(request.world)?;
+            let seq = self
+                .portal
+                .send(&world, request.text)
+                .await
+                .map_err(|error| convert::status(&error))?;
+            Response::ok(proto::SendResponse {
+                seq: seq.map(|seq| seq.0),
+                ..Default::default()
+            })
+        }
+        .instrument(span.clone())
+        .await;
+        ended(&span, result)
     }
 
     async fn connect(
@@ -164,12 +210,18 @@ impl proto::PortalService for PortalApi {
         _ctx: RequestContext,
         request: ServiceRequest<'_, proto::ConnectRequest>,
     ) -> ServiceResult<proto::ConnectResponse> {
-        let world = world(request.world)?;
-        self.portal
-            .connect(&world)
-            .await
-            .map_err(|error| convert::status(&error))?;
-        Response::ok(proto::ConnectResponse::default())
+        let span = call_span("Connect");
+        let result = async {
+            let world = named_world(request.world)?;
+            self.portal
+                .connect(&world)
+                .await
+                .map_err(|error| convert::status(&error))?;
+            Response::ok(proto::ConnectResponse::default())
+        }
+        .instrument(span.clone())
+        .await;
+        ended(&span, result)
     }
 
     async fn disconnect(
@@ -177,12 +229,18 @@ impl proto::PortalService for PortalApi {
         _ctx: RequestContext,
         request: ServiceRequest<'_, proto::DisconnectRequest>,
     ) -> ServiceResult<proto::DisconnectResponse> {
-        let world = world(request.world)?;
-        self.portal
-            .disconnect(&world)
-            .await
-            .map_err(|error| convert::status(&error))?;
-        Response::ok(proto::DisconnectResponse::default())
+        let span = call_span("Disconnect");
+        let result = async {
+            let world = named_world(request.world)?;
+            self.portal
+                .disconnect(&world)
+                .await
+                .map_err(|error| convert::status(&error))?;
+            Response::ok(proto::DisconnectResponse::default())
+        }
+        .instrument(span.clone())
+        .await;
+        ended(&span, result)
     }
 }
 
