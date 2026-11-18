@@ -78,7 +78,7 @@ The server does not support these features. Some of them can have an effect thro
 - The OTLP logs signal. The log lines stay on stderr, at the level `WARN`.
 - A reload of `server.toml` while the server runs.
 
-The OpenTelemetry library can ignore the value of a variable at the start, for example `OTEL_EXPORTER_OTLP_COMPRESSION=gzip`. Then the server writes a warning to stderr that names the variable and the value.
+The OpenTelemetry library can ignore the value of a variable at the start, for example `OTEL_EXPORTER_OTLP_COMPRESSION=gzip`. For the compression and the temporality, the server then writes a warning to stderr that names the variable and the value. The library ignores a bad value of another variable that it reads itself, for example `OTEL_BSP_MAX_QUEUE_SIZE`, and writes no line.
 
 The OpenTelemetry library reads the header variables itself, for example `OTEL_EXPORTER_OTLP_HEADERS`, and it sends the headers with each export. Over `http`, the headers travel in clear text. If a header holds a token, use an `https` endpoint. The server refuses a URL with a user or a password, so put a token in a header.
 

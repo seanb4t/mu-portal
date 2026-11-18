@@ -87,7 +87,7 @@ The table `[telemetry]` of `server.toml` SHALL accept the field `endpoint`, the 
 - **AND** the exit status is 1
 
 ### Requirement: The standard variables
-The server SHALL read `OTEL_EXPORTER_OTLP_ENDPOINT` as a base URL, the same as the field `endpoint`. A value of that variable SHALL win over `server.toml`. `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` SHALL each be the full URL of one signal. The server SHALL add no path to them, and each SHALL win over the base URL for its signal. An empty variable SHALL count as unset. When the OpenTelemetry library ignores the value of a variable that it reads at the start, the server SHALL write a line to stderr that names the variable.
+The server SHALL read `OTEL_EXPORTER_OTLP_ENDPOINT` as a base URL, the same as the field `endpoint`. A value of that variable SHALL win over `server.toml`. `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` SHALL each be the full URL of one signal. The server SHALL add no path to them, and each SHALL win over the base URL for its signal. An empty variable SHALL count as unset. When the OpenTelemetry library reports that it ignores the value of a variable at the start, the server SHALL write that report to stderr as a line that names the variable. The library reports this for the compression and the temporality. The server does not check the other variables that the library reads itself.
 
 #### Scenario: The variable wins over the file
 - **GIVEN** the fake collectors A and B, `server.toml` names A, and `OTEL_EXPORTER_OTLP_ENDPOINT` names B
