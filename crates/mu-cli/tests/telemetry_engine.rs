@@ -135,6 +135,25 @@ fn metric_event_makes_no_span_event() {
 }
 
 #[test]
+fn metric_field_under_another_target_makes_no_metric() {
+    let memory = Memory::new();
+    tracing::subscriber::with_default(memory.subscriber(), || {
+        tracing::event!(
+            target: "mu_core",
+            tracing::Level::INFO,
+            "monotonic_counter.mu.probe.other" = 1_u64,
+        );
+        tracing::event!(
+            target: mu_core::METRICS_TARGET,
+            tracing::Level::INFO,
+            "monotonic_counter.mu.probe.metrics" = 1_u64,
+        );
+    });
+    assert_eq!(memory.value("mu.probe.metrics", &[]), Some(1));
+    assert_eq!(memory.value("mu.probe.other", &[]), None);
+}
+
+#[test]
 fn crate_with_a_longer_name_makes_no_span() {
     let memory = Memory::new();
     tracing::subscriber::with_default(memory.subscriber(), || {

@@ -294,6 +294,16 @@ fn query_or_fragment_in_the_base_is_refused() {
 }
 
 #[test]
+fn fragment_in_a_signal_variable_is_refused() {
+    for name in [TRACES_ENDPOINT, METRICS_ENDPOINT] {
+        assert_eq!(
+            refused_by(&[(name, "http://t:1/x#top")], None),
+            Source::Variable(name)
+        );
+    }
+}
+
+#[test]
 fn query_in_a_signal_variable_is_used_as_it_is() {
     let export = on(&[(TRACES_ENDPOINT, "http://t:1/x?tenant=a")], None);
     assert_eq!(endpoints(&export).0, Some("http://t:1/x?tenant=a"));

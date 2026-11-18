@@ -24,6 +24,12 @@ use prost::Message as _;
 use tempfile::TempDir;
 use tokio::task::JoinHandle;
 
+/// The HTTP paths under this prefix answer with a redirect to [`ELSEWHERE`].
+pub const REDIRECT: &str = "/redirect";
+
+/// The target of each redirect.
+pub const ELSEWHERE: &str = "/elsewhere";
+
 /// The path of the gRPC call of the traces.
 pub const TRACE_EXPORT: &str = "/opentelemetry.proto.collector.trace.v1.TraceService/Export";
 /// The path of the gRPC call of the metrics.
@@ -244,6 +250,13 @@ fn http_app(log: Log) -> Router {
                     content_type,
                     body: body.to_vec(),
                 });
+                if uri.path().starts_with(REDIRECT) {
+                    return (
+                        StatusCode::TEMPORARY_REDIRECT,
+                        [(header::LOCATION, ELSEWHERE)],
+                    )
+                        .into_response();
+                }
                 (
                     StatusCode::OK,
                     [(header::CONTENT_TYPE, "application/x-protobuf")],

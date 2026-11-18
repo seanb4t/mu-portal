@@ -31,6 +31,9 @@ const CERTIFICATE: &str = "OTEL_EXPORTER_OTLP_CERTIFICATE";
 const SDK_DISABLED: &str = "OTEL_SDK_DISABLED";
 const SERVICE_NAME: &str = "OTEL_SERVICE_NAME";
 
+/// The text of the line that a stop past the bound writes.
+const LATE_STOP: &str = "did not finish within";
+
 /// A server with the fake world `alpha/aria`, and its configuration directory.
 struct Setup {
     builder: ServerBuilder,
@@ -323,6 +326,34 @@ async fn traces_and_metrics_reach_the_collector() {
             assert_eq!(request.content_type, "application/x-protobuf");
         }
     }
+    assert!(
+        !run.stderr.iter().any(|line| line.contains(LATE_STOP)),
+        "{:?}",
+        run.stderr
+    );
+}
+
+#[tokio::test]
+async fn redirect_is_not_followed() {
+    let collector = Collector::start(Mode::Http).await;
+    Setup::new(&[])
+        .env(
+            TRACES_ENDPOINT,
+            &format!("{}{}/traces", collector.url(), collector::REDIRECT),
+        )
+        .one_send()
+        .await;
+    let paths = collector.paths();
+    assert!(
+        paths
+            .iter()
+            .any(|path| path.starts_with(collector::REDIRECT)),
+        "{paths:?}"
+    );
+    assert!(
+        !paths.iter().any(|path| path == collector::ELSEWHERE),
+        "{paths:?}"
+    );
 }
 
 #[tokio::test]
@@ -901,6 +932,14 @@ async fn silent_collector_with(protocol: &str) {
     assert!(
         elapsed <= EXIT_BOUND,
         "{protocol}: the exit took {elapsed:?}"
+    );
+    server.wait_stderr(|_| false).await;
+    let stderr = server.stderr();
+    assert!(
+        stderr
+            .iter()
+            .any(|line| line.contains("WARN") && line.contains(LATE_STOP)),
+        "{protocol}: {stderr:?}"
     );
 }
 
