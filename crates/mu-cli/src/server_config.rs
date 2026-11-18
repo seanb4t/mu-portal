@@ -30,6 +30,9 @@ pub struct TelemetryTable {
     pub certificate: Option<PathBuf>,
 }
 
+/// The tables of `server.toml` whose values can hold a password: an endpoint URL can.
+const HIDDEN: &[&str] = &["telemetry"];
+
 /// An error of `server.toml`.
 #[derive(Debug, thiserror::Error)]
 pub enum ServerFileError {
@@ -53,7 +56,7 @@ pub fn read(dir: Option<&Path>) -> Result<ServerFile, ServerFileError> {
     };
     match fs::read_to_string(dir.join(SERVER_FILE)) {
         Ok(text) => {
-            let mut file: ServerFile = parse_toml(&SERVER_FILE, &text)?;
+            let mut file: ServerFile = parse_toml(&SERVER_FILE, &text, HIDDEN)?;
             if let Some(path) = file
                 .telemetry
                 .as_mut()
@@ -87,6 +90,19 @@ mod tests {
             .certificate
             .as_deref()
             .unwrap()
+    }
+
+    #[test]
+    fn error_under_telemetry_holds_no_value() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join(SERVER_FILE),
+            "telemetry = \"https://u:hunter2@h\"\n",
+        )
+        .unwrap();
+        let error = read(Some(dir.path())).unwrap_err().to_string();
+        assert!(!error.contains("hunter2"), "{error}");
+        assert!(error.contains("telemetry"), "{error}");
     }
 
     #[test]

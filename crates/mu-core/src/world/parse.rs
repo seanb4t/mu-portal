@@ -2,8 +2,8 @@
 //!
 //! An error names the file, the line and the column, and the path of the field. It never
 //! holds the `Display` of a `toml` error, because that text quotes the line of the file, and
-//! the line can hold a password. Under `login` and `telemetry` it also drops the message,
-//! because a message of `serde` can quote the value, and a value there can hold a password.
+//! the line can hold a password. Under each table that the caller names as hidden, it also
+//! drops the message, because a message of `serde` can quote the value.
 
 use std::fmt;
 
@@ -15,8 +15,19 @@ use super::error::ConfigError;
 ///
 /// # Errors
 ///
+/// The tables of a world layer whose values can hold a password.
+pub const LAYER_HIDDEN: &[&str] = &["login"];
+
+/// Parses `text`. Under each table of `hidden`, an error holds no message of `serde`.
+///
+/// # Errors
+///
 /// A [`ConfigError`] that names `place`, the line, the column and the path of the field.
-pub fn parse<T: DeserializeOwned>(place: &impl fmt::Display, text: &str) -> Result<T, ConfigError> {
+pub fn parse<T: DeserializeOwned>(
+    place: &impl fmt::Display,
+    text: &str,
+    hidden: &[&str],
+) -> Result<T, ConfigError> {
     let deserializer = toml::Deserializer::parse(text)
         .map_err(|error| ConfigError::new(at(place, text, error.span()), error.message()))?;
     serde_path_to_error::deserialize(deserializer).map_err(|error| {
@@ -24,17 +35,13 @@ pub fn parse<T: DeserializeOwned>(place: &impl fmt::Display, text: &str) -> Resu
         let place = at(place, text, error.inner().span());
         if path.is_empty() || path == "." {
             ConfigError::new(place, error.inner().message())
-        } else if HIDDEN.iter().any(|table| under(&path, table)) {
+        } else if hidden.iter().any(|table| under(&path, table)) {
             ConfigError::field(place, path, "is not a valid field or value")
         } else {
             ConfigError::field(place, path, error.inner().message())
         }
     })
 }
-
-/// The tables whose values can hold a password: the login of a world, and the endpoint of the
-/// export in `server.toml`.
-const HIDDEN: [&str; 2] = ["login", "telemetry"];
 
 /// Whether `path` is `table` or a path inside it.
 fn under(path: &str, table: &str) -> bool {
@@ -75,7 +82,7 @@ mod tests {
     }
 
     fn error(text: &str) -> String {
-        parse::<File>(&"games/alpha.toml", text)
+        parse::<File>(&"games/alpha.toml", text, LAYER_HIDDEN)
             .unwrap_err()
             .to_string()
     }
@@ -83,22 +90,6 @@ mod tests {
     #[test]
     fn error_names_the_line_and_the_field() {
         assert!(error("\nport = 70000\n").starts_with("games/alpha.toml:2:8: port: "));
-    }
-
-    #[test]
-    fn error_under_telemetry_drops_the_message() {
-        #[derive(Debug, Deserialize)]
-        #[expect(dead_code, reason = "the test reads only the error")]
-        struct Server {
-            telemetry: Option<Table>,
-        }
-        #[derive(Debug, Deserialize)]
-        struct Table {}
-        let error = parse::<Server>(&"server.toml", "telemetry = \"https://u:hunter2@h\"\n")
-            .unwrap_err()
-            .to_string();
-        assert!(!error.contains("hunter2"), "{error}");
-        assert!(error.contains("telemetry"), "{error}");
     }
 
     #[test]

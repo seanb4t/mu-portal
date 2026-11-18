@@ -3,7 +3,7 @@
 use super::check::check_layer;
 use super::error::ConfigError;
 use super::layer::{Layer, LayerKey, LayerOrigin, Quirks, Trust};
-use super::parse::parse;
+use super::parse::{LAYER_HIDDEN, parse};
 
 /// The name and the TOML text of each built-in type.
 pub const BUILT_IN_TYPES: &[(&str, &str)] = &[
@@ -21,7 +21,7 @@ pub const BUILT_IN_TYPES: &[(&str, &str)] = &[
 /// not a quirk or a value that fails a check.
 pub fn parse_quirks(name: &str, text: &str) -> Result<Layer, ConfigError> {
     let origin = LayerOrigin::BuiltIn(name.to_owned());
-    let quirks: Quirks = parse(&origin, text)?;
+    let quirks: Quirks = parse(&origin, text, LAYER_HIDDEN)?;
     let layer = Layer {
         key: LayerKey::Type(name.to_owned()),
         origin,

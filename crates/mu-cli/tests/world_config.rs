@@ -281,6 +281,24 @@ fn server_file_in_another_case() {
 }
 
 #[test]
+fn hard_link_to_the_server_file_is_an_error() {
+    let config = Config::base().file("server.toml", "");
+    std::fs::hard_link(
+        config.path().join("server.toml"),
+        config.path().join("worlds.toml"),
+    )
+    .unwrap();
+    fails_naming(&config.list(), &["worlds.toml"]);
+}
+
+#[test]
+fn server_file_that_links_to_global_keeps_the_layer() {
+    let config = Config::base().file("global.toml", "rows = 50\n");
+    std::os::unix::fs::symlink("global.toml", config.path().join("server.toml")).unwrap();
+    has_line(&succeeds(&config.show("alpha/aria")), "rows = 50");
+}
+
+#[test]
 fn character_named_server_is_a_world() {
     let config = Config::empty()
         .file("games/alpha.toml", BASE_GAME)

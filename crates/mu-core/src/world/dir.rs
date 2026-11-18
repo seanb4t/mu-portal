@@ -8,7 +8,7 @@ use crate::id::{PART_RULE, WorldId, is_part};
 
 use super::error::ConfigError;
 use super::layer::{Layer, LayerFile, LayerKey, LayerOrigin, LayerSource, Trust};
-use super::parse::parse;
+use super::parse::{LAYER_HIDDEN, parse};
 
 /// The layers of a configuration directory.
 ///
@@ -37,11 +37,9 @@ impl LayerSource for TomlDirSource {
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(ConfigError::new(self.root.display(), error.to_string())),
         }
-        let server = fs::metadata(self.root.join(SERVER_FILE)).ok();
-        files.retain(|parts| match (parts.as_slice(), &server) {
-            ([name], Some(server)) => !is_server_file(&self.root.join(name), server),
-            _ => true,
-        });
+        files.retain(
+            |parts| !matches!(parts.as_slice(), [name] if is_server_file(&self.root, name)),
+        );
         files.sort();
         let keys = files
             .iter()
@@ -64,7 +62,7 @@ impl TomlDirSource {
             .fold(self.root.clone(), |path, part| path.join(part));
         let text = fs::read_to_string(&path)
             .map_err(|error| ConfigError::new(&origin, error.to_string()))?;
-        let (extends, fields) = parse::<LayerFile>(&origin, &text)?.split();
+        let (extends, fields) = parse::<LayerFile>(&origin, &text, LAYER_HIDDEN)?.split();
         match (&key, &extends) {
             (LayerKey::Game(_), None) => {
                 return Err(ConfigError::field(
@@ -95,20 +93,11 @@ impl TomlDirSource {
 /// The file of the server at the top of the directory. It holds no layer.
 pub const SERVER_FILE: &str = "server.toml";
 
-/// Whether `path` is the file of `server`, the metadata of [`SERVER_FILE`]. On a file system
-/// that ignores case, `Server.toml` is that file too.
-fn is_server_file(path: &Path, server: &fs::Metadata) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt as _;
-        fs::metadata(path)
-            .is_ok_and(|file| (file.dev(), file.ino()) == (server.dev(), server.ino()))
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = server;
-        path.file_name().is_some_and(|name| name == SERVER_FILE)
-    }
+/// Whether the top-level entry `name` is [`SERVER_FILE`]: the same name in any case, and the
+/// same file. On a file system that ignores case, `Server.toml` is that file.
+fn is_server_file(root: &Path, name: &str) -> bool {
+    name.eq_ignore_ascii_case(SERVER_FILE)
+        && same_file::is_same_file(root.join(name), root.join(SERVER_FILE)).unwrap_or(false)
 }
 
 /// Adds to `files` the path of each file under `directory` whose name ends in `.toml`, in any

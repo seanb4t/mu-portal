@@ -65,6 +65,7 @@ syn = { version = "3.0.10", default-features = false }
 tempfile = "3.27.0"
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+same-file = "1.0.6"
 toml = "1.2.1"
 tonic = { version = "0.14.9", default-features = false, features = ["tls-native-roots", "tls-ring"] }
 tracing = "0.1.44"
