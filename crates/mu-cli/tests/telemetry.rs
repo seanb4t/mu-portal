@@ -70,6 +70,12 @@ impl Setup {
         self
     }
 
+    /// Writes `text` to the file at `path` in the configuration directory.
+    fn file(mut self, path: &str, text: &str) -> Self {
+        self.config = self.config.file(path, text);
+        self
+    }
+
     /// Starts the server, sends one line to `alpha/aria`, and stops it with SIGTERM.
     async fn one_send(self) -> Run {
         self.run(&["hello"]).await
@@ -238,9 +244,9 @@ async fn refused_with_file(text: &str) -> Output {
 /// Set in the child test process of `helper_removes_the_otel_variables`.
 const PROBE: &str = "MU_TEST_OTEL_PROBE";
 
-/// The test process cannot set a variable in itself without `unsafe`, so the test runs itself
-/// again as a child with the variable set. The child starts a process with the test
-/// environment, and checks that the process does not see the variable.
+/// Runs itself again as a child with the variable set, because `set_var` needs `unsafe`. The
+/// child starts a process with the test environment, and checks that the process does not see
+/// the variable.
 #[test]
 fn helper_removes_the_otel_variables() {
     if std::env::var_os(PROBE).is_some() {
@@ -295,6 +301,28 @@ async fn endpoint_with_a_query() {
     let output =
         refused_with_file("[telemetry]\nendpoint = \"http://127.0.0.1:4318?tenant=a\"\n").await;
     fails_naming(&output, &["server.toml", "telemetry.endpoint"]);
+}
+
+#[tokio::test]
+async fn grpc_endpoint_with_a_path() {
+    let output = refused_with_file(
+        "[telemetry]\nendpoint = \"http://127.0.0.1:4317/otel\"\nprotocol = \"grpc\"\n",
+    )
+    .await;
+    fails_naming(&output, &["server.toml", "telemetry.endpoint"]);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn variable_that_is_not_utf8() {
+    use std::os::unix::ffi::OsStringExt as _;
+
+    let output = ServerBuilder::new()
+        .env("MU_CONFIG", Some(support::empty_config_dir()))
+        .env(ENDPOINT, Some(std::ffi::OsString::from_vec(vec![0xff])))
+        .output()
+        .await;
+    fails_naming(&output, &[ENDPOINT, "UTF-8"]);
 }
 
 #[tokio::test]
@@ -564,7 +592,12 @@ async fn http_json_is_refused() {
         .env(PROTOCOL, "http/json")
         .output()
         .await;
-    fails_naming(&output, &[PROTOCOL, "http/json"]);
+    fails_naming(&output, &[PROTOCOL]);
+    assert!(
+        !support::stderr(&output).contains("http/json"),
+        "{}",
+        support::stderr(&output)
+    );
 }
 
 #[tokio::test]
@@ -582,6 +615,20 @@ async fn unknown_protocol_in_the_file() {
 async fn unknown_protocol_with_the_export_off() {
     let run = Setup::new(&[]).env(PROTOCOL, "http/json").run(&[]).await;
     assert!(run.status.success(), "{:?}", run.stderr);
+}
+
+#[tokio::test]
+async fn relative_certificate_path() {
+    let collector = Collector::start(Mode::Https).await;
+    let authority = std::fs::read_to_string(collector.authority()).unwrap();
+    Setup::new(&[
+        format!("endpoint = \"{}\"", collector.url()),
+        "certificate = \"certs/ca.pem\"".to_owned(),
+    ])
+    .file("certs/ca.pem", &authority)
+    .one_send()
+    .await;
+    assert!(collector.got("/v1/traces"), "{:?}", collector.paths());
 }
 
 #[tokio::test]
@@ -753,8 +800,12 @@ async fn span_of_a_failed_call() {
     session.client.connect("zeta/zed").await.unwrap_err();
     stop(session.server).await;
     let span = one_span(&collector, "mu.v1.PortalService/Connect");
-    let status = span.status.expect("the span has a status");
+    let status = span.status.as_ref().expect("the span has a status");
     assert_eq!(status.code, StatusCode::Error as i32);
+    assert_eq!(
+        attribute(&span, "rpc.connect_rpc.error_code").as_deref(),
+        Some("not_found")
+    );
 }
 
 #[tokio::test]
@@ -928,8 +979,8 @@ async fn line_text_stays_out() {
     );
 }
 
-/// The number of calls that fill the default queue of the batch span processor, 2048 spans,
-/// twice. Each call makes two spans: `rpc` and `command`.
+/// The number of calls that make more than twice the 2048 spans of the default queue of the
+/// batch span processor. Each call makes two spans: `rpc` and `command`.
 const CALLS: usize = 2100;
 
 /// The longest time from SIGTERM to the exit: the bound of the stop and a margin.

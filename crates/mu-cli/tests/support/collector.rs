@@ -53,7 +53,7 @@ pub enum Mode {
 /// One request that the collector got.
 #[derive(Clone, Debug)]
 pub struct Request {
-    /// `POST` for HTTP, `gRPC` for a gRPC call.
+    /// The HTTP method, or `gRPC` for a gRPC call.
     pub method: String,
     /// The path of the URL, or of the gRPC call.
     pub path: String,
