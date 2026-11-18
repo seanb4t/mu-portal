@@ -1,41 +1,32 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-18T14:11:56+00:00
-head: 7ed2ec9c037453db265767ba47c4a7633bb9a1b1
-round: 11
-next_id: 107
+reviewed_at: 2026-11-18T14:18:33+00:00
+head: 30e380df17ea65d10ea17b9a016ef1f5ec770876
+round: 12
+next_id: 111
 lenses:
   spec-lint: not-applicable
   approach: ok
   fit: ok
-  test-coverage: partial
+  test-coverage: ok
   test-honesty: ok
   invariants: ok
 ---
 # Review
 
-## Incomplete lenses
-
-- test-coverage: partial, gaps: 2
-  - Bodies of unchanged tests in telemetry.rs lines 1-680 and world_config.rs were matched by name and a spot check, not read in full; this is a follow-up round and only pipeline.rs, tests.rs and telemetry_engine.rs changed.
-  - design.md and proposal.md not read; no BREAKING requirement was seen in the delta specs.
-
-The verdict covers only what the lenses checked. While the `ctl-lens` row of an incomplete lens is open, the verdict cannot be `approve`.
-
 ## Findings
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge |
 |---|---|---|---|---|---|---|---|---|
-| R-104 | fit | should-fix | in-change | fit-1: The new test warn_lines_stay_with_only_the_traces builds the traces-only Providers with the same five lines as lag_is_not_read_with_only_the_traces: with_exporters over a default InMemorySpanExporter, None::<InMemoryMetricExporter> and "mu". Memory::new already names the both-signals case; the traces-only case now has two inline copies.; fit-2: The two new tests warn_lines_stay_with_the_export_off and warn_lines_stay_with_only_the_traces have the same body: set the subscriber of the providers as default, then assert that WARN of mu_core is enabled. Only the Providers value varies, and it varies on purpose. | crates/mu-cli/tests/telemetry_engine.rs:283 — "Some(InMemorySpanExporter::default())," | fit-1: Add one helper in telemetry_engine.rs, for example fn traces_only() -> Providers, and call it from both tests.; fit-2: Make one test, warn_lines_stay, that loops over the Providers: Providers::none() and the traces-only providers, with the case named in the assert message. |  |  |
-| R-105 | fit | should-fix | in-change | The new helper started in the tests of pipeline.rs builds an Export from variables with its own match closure over super::super::export. The tests of telemetry/tests.rs already have on(vars, file) for exactly this, and started passes only UTF-8 strings, so it needs none of the OsString closures that the non-UTF-8 tests keep. Two mechanisms now build a test Export from a list of variables. | crates/mu-cli/src/telemetry/pipeline.rs:493 — "let export = super::super::export(" | Make on in telemetry/tests.rs pub(super), and build the export of started with on(&[(ENDPOINT, ...), (TRACES_PROTOCOL, traces), (METRICS_PROTOCOL, metrics)], None). |  |  |
-| R-106 | invariants | should-fix | in-change | warn_lines_stay_with_only_the_traces asserts WARN for the target mu_core, which the span layer itself takes, so it passes even if the one-layer stack lost the stderr lines of every other target, such as the SDK export warnings. | crates/mu-cli/tests/telemetry_engine.rs:288 — "assert!(tracing::enabled!(target: "mu_core", tracing::Level::WARN));" | In warn_lines_stay_with_only_the_traces, assert WARN for a target outside CRATES that only the fmt layer takes, for example opentelemetry_sdk, or add the same test with only the metrics layer, whose filter takes only mu::metrics. |  |  |
+| R-108 | test-coverage | should-fix | in-change | covered row 'The log lines stay' has no verification run | review > not-run — "The log lines stay" | run the covering test and record it in verification-runs.txt |  |  |
+| R-109 | test-coverage | should-fix | in-change | covered row 'A failed call' has no verification run | review > not-run — "A failed call" | run the covering test and record it in verification-runs.txt |  |  |
+| R-110 | test-coverage | should-fix | in-change | covered row 'The lag of a subscriber' has no verification run | review > not-run — "The lag of a subscriber" | run the covering test and record it in verification-runs.txt |  |  |
+| R-107 | fit | suggestion | in-change | The new table of warn_lines_stay_with_any_set_of_layers builds the metrics-only Providers inline, next to the new helper traces_only. The two blocks are the same with_exporters call over default in-memory exporters and "mu". Only which signal gets an exporter varies, and it varies on purpose. Memory::new builds the third combination, both signals. | crates/mu-cli/tests/telemetry_engine.rs:288 — "Some(InMemoryMetricExporter::default())," | Replace traces_only with one helper that takes the signals as its parameter, for example to_memory(traces: bool, metrics: bool) -> Providers, and use it for the traces-only and the metrics-only case of the table and for lag_is_not_read_with_only_the_traces. |  |  |
 
 ## Repeats
 
-| id | lens | severity | claim | evidence |
-|---|---|---|---|---|
-| R-99 | test-coverage | should-fix | lens test-coverage reported partial, gaps: 2 | review > lens-status — "test-coverage partial" |
+None.
 
 ## Out of bound
 
@@ -48,6 +39,7 @@ None.
 | R-64 | suggestion | accepted | Only the metric name and the attributes vary between the six events, so a macro adds a layer of indirection for little gain. |  |
 | R-90 | should-fix | accepted | Round 8 runs the test-honesty lens again on the head that holds the round 7 fixes. |  |
 | R-99 | should-fix | accepted | All 60 covering tests passed one at a time, and round 12 runs the test-coverage lens again on the new head. |  |
+| R-107 | suggestion | accepted | A suggestion on test setup only; the two providers differ on purpose, and the review at this head stays valid for the archive gate. |  |
 
 ## Rounds
 
@@ -64,19 +56,27 @@ None.
 | 9 | implementation | follow-up | c63e50631db7dc01cd2853fd9d1d55002bf060ca | 7dee5ffb8e3fdfb8ece8ea544c714bed3f04ca500e73141c3220be81de87425e | approve-with-notes | 4 | 0 | 0 | 0 | operator decision |
 | 10 | implementation | follow-up | f33185644044ce9bdcb13cf6b92c9905369a12d3 | 386cad6f9d4d87a228a63156cf6afa232dce870d08cb102bae2d49ca4a4a0a6e | changes-requested | 4 | 0 | 0 | 0 | operator decision |
 | 11 | implementation | follow-up | 7ed2ec9c037453db265767ba47c4a7633bb9a1b1 | 386cad6f9d4d87a228a63156cf6afa232dce870d08cb102bae2d49ca4a4a0a6e | approve-with-notes | 3 | 1 | 0 | 0 | operator decision |
+| 12 | implementation | follow-up | 30e380df17ea65d10ea17b9a016ef1f5ec770876 | 386cad6f9d4d87a228a63156cf6afa232dce870d08cb102bae2d49ca4a4a0a6e | approve-with-notes | 4 | 0 | 0 | 0 | operator decision |
 
 ## Judge
 
-judge: 6 questions, 0.000 USD
+judge: 2 questions, 0.000 USD
 
 ## Coverage matrix
 
 | scenario | covered by | status | verified |
 |---|---|---|---|
+| Worlds from character files | crates/mu-cli/tests/world_config.rs: worlds_from_character_files | covered | pass |
+| A character with no game | crates/mu-cli/tests/world_config.rs: character_with_no_game | covered | pass |
+| A file name outside the id rule | crates/mu-cli/tests/world_config.rs: file_name_outside_the_id_rule | covered | pass |
+| A stray file | crates/mu-cli/tests/world_config.rs: stray_file | covered | pass |
+| A link to nothing | crates/mu-cli/tests/world_config.rs: link_to_nothing_is_an_error | covered | pass |
+| The file of the server | crates/mu-cli/tests/world_config.rs: server_file_makes_no_world | covered | pass |
+| A character named server | crates/mu-cli/tests/world_config.rs: character_named_server_is_a_world | covered | pass |
 | A server with no endpoint | crates/mu-cli/tests/telemetry.rs: server_without_endpoint_writes_only_the_serving_line | covered | pass |
 | Traces and metrics reach the collector | crates/mu-cli/tests/telemetry.rs: traces_and_metrics_reach_the_collector | covered | pass |
 | A base URL with a trailing slash | crates/mu-cli/tests/telemetry.rs: base_url_with_a_trailing_slash | covered | pass |
-| The log lines stay | crates/mu-cli/tests/telemetry.rs: log_lines_stay | covered | pass |
+| The log lines stay | crates/mu-cli/tests/telemetry.rs: log_lines_stay; crates/mu-cli/tests/telemetry_engine.rs: warn_lines_stay_with_any_set_of_layers | covered | not-run |
 | An unknown field | crates/mu-cli/tests/telemetry.rs: unknown_field_in_server_toml | covered | pass |
 | An unknown table | crates/mu-cli/tests/telemetry.rs: unknown_table_in_server_toml | covered | pass |
 | A value of the wrong type | crates/mu-cli/tests/telemetry.rs: value_of_the_wrong_type | covered | pass |
@@ -111,12 +111,12 @@ judge: 6 questions, 0.000 USD
 | A file that holds no certificate | crates/mu-cli/tests/telemetry.rs: file_with_no_certificate | covered | pass |
 | The span of a Send | crates/mu-cli/tests/telemetry.rs: span_of_a_send | covered | pass |
 | The span of a Subscribe | crates/mu-cli/tests/telemetry.rs: span_of_a_subscribe | covered | pass |
-| A failed call | crates/mu-cli/tests/telemetry.rs: span_of_a_failed_call | covered | pass |
+| A failed call | crates/mu-cli/tests/telemetry.rs: span_of_a_failed_call; subscribe_past_the_end | covered | not-run |
 | A command under its call | crates/mu-cli/tests/telemetry.rs: command_under_its_call | covered | pass |
 | A command of the server | crates/mu-cli/tests/telemetry.rs: command_of_the_server | covered | pass |
 | The connection of a fake world | crates/mu-cli/tests/telemetry.rs: connection_of_a_fake_world | covered | pass |
 | The events of a world | crates/mu-cli/tests/telemetry.rs: events_of_a_world | covered | pass |
-| The lag of a subscriber | crates/mu-cli/tests/telemetry.rs: lag_of_a_subscriber | covered | pass |
+| The lag of a subscriber | crates/mu-cli/tests/telemetry.rs: lag_of_a_subscriber; crates/mu-cli/tests/telemetry_engine.rs: lag_behind_the_head | covered | not-run |
 | A stream that a lag ended | crates/mu-cli/tests/telemetry_engine.rs: lagged_stream_is_counted | covered | pass |
 | A command past the depth limit | crates/mu-cli/tests/telemetry_engine.rs: command_past_the_depth_limit | covered | pass |
 | A command over the rate | crates/mu-cli/tests/telemetry_engine.rs: command_over_the_rate | covered | pass |
@@ -126,17 +126,12 @@ judge: 6 questions, 0.000 USD
 | The password stays out | crates/mu-cli/tests/telemetry.rs: password_stays_out | covered | pass |
 | The line text stays out | crates/mu-cli/tests/telemetry.rs: line_text_stays_out | covered | pass |
 | A collector that never answers | crates/mu-cli/tests/telemetry.rs: silent_collector_does_not_delay_a_send | covered | pass |
-| Worlds from character files | crates/mu-cli/tests/world_config.rs: worlds_from_character_files | covered | pass |
-| A character with no game | crates/mu-cli/tests/world_config.rs: character_with_no_game | covered | pass |
-| A file name outside the id rule | crates/mu-cli/tests/world_config.rs: file_name_outside_the_id_rule | covered | pass |
-| A stray file | crates/mu-cli/tests/world_config.rs: stray_file | covered | pass |
-| A link to nothing | crates/mu-cli/tests/world_config.rs: link_to_nothing_is_an_error | covered | pass |
-| The file of the server | crates/mu-cli/tests/world_config.rs: server_file_makes_no_world | covered | pass |
-| A character named server | crates/mu-cli/tests/world_config.rs: character_named_server_is_a_world | covered | pass |
 
 ### Not run
 
-None.
+- The log lines stay: no verification run names this row
+- A failed call: no verification run names this row
+- The lag of a subscriber: no verification run names this row
 
 ## Verification runs
 
@@ -179,6 +174,7 @@ None.
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=span_of_a_send)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=span_of_a_subscribe)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=state_at_the_stop)'`
+- exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=subscribe_past_the_end)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=traces_and_metrics_reach_the_collector)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=unknown_field_in_server_toml)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=unknown_protocol_in_the_file)'`
@@ -192,7 +188,9 @@ None.
 - exit 0: `cargo nextest run -p mu-cli --test telemetry_engine --locked -E 'test(=command_over_the_rate)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry_engine --locked -E 'test(=command_past_the_depth_limit)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry_engine --locked -E 'test(=commands_at_the_rate)'`
+- exit 0: `cargo nextest run -p mu-cli --test telemetry_engine --locked -E 'test(=lag_behind_the_head)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry_engine --locked -E 'test(=lagged_stream_is_counted)'`
+- exit 0: `cargo nextest run -p mu-cli --test telemetry_engine --locked -E 'test(=warn_lines_stay_with_any_set_of_layers)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=character_named_server_is_a_world)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=character_with_no_game)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=file_name_outside_the_id_rule)'`
@@ -207,25 +205,27 @@ None.
 
 ## Lens notes
 
-- approach: Follow-up round since the head of round 10. No change artifact other than review.md changed, and review.md is not read, so the bound holds only the code of pipeline.rs, telemetry/tests.rs and telemetry_engine.rs.
-- approach: Providers::layers now returns None with no provider and the present layers otherwise. This matches design.md 'The engine speaks tracing, and mu-cli bridges it': with the export off the subscriber has only the fmt layer, and the layers hold only the present ones.
-- approach: Checked against tracing-subscriber 0.3.23: a None Option layer returns Interest::always and enabled true, so the inner fmt filter decides, while a Vec layer folds from Interest::never and LevelFilter::OFF. The code comment at pipeline.rs:227-229 holds.
-- approach: Rows R-97, R-100, R-101, R-102 and R-103 (fixed) do not recur at head: layers takes only &self, the export-off subscriber keeps WARN lines, telemetry_engine.rs has warn_lines_stay_with_the_export_off, pipeline.rs tests the runtime edges, and protocol_table builds the http/json table.
-- fit: Follow-up round since f331856: the changed files are pipeline.rs, telemetry/tests.rs and telemetry_engine.rs. review.md is in the list but excluded by rule. No change artifact changed, so no artifact finding is inside the bound.
-- fit: R-100 and R-103 hold at head: Providers::layers returns None for no layer, and server::run and every test build the stack through Providers::subscriber or Memory::subscriber; the settings tests build every protocol table with protocol_table.
-- fit: Providers::subscriber is the one place that builds the stack of mu server; server.rs calls it, so the fix adds no second subscriber build.
-- fit: The bound of fit-3 rests on R-102 of prior.json: at the base no test of the runtime edges existed, so started and its two tests are new text.
-- invariants: Follow-up round: read the diff f331856..7ed2ec9 of pipeline.rs, telemetry/tests.rs and tests/telemetry_engine.rs; review.md was not read.
-- invariants: I1: With the export off, Providers::subscriber keeps the stderr WARN lines (no empty layer list) \| enforced at pipeline.rs:245 (!layers.is_empty()).then_some(layers); tracing-subscriber 0.3.23 Option::None registers Interest::always and Layered::pick_level_hint special-cases a None layer \| boundary test warn_lines_stay_with_the_export_off (null case). An empty Vec layer returns Interest::never in 0.3.23, so the old code fails this test under nextest's process-per-test runner.
-- invariants: I2: With one layer present, the stderr WARN lines of every target stay \| enforced at pipeline.rs:220-246 (per-layer filters only) \| boundary test warn_lines_stay_with_only_the_traces asserts a target inside the span filter: see inv-1.
-- invariants: I3: With the export off, event_stream reads no lag (INFO mu::metrics is not enabled) \| enforced at the fmt WARN filter and Option::None level hint (max WARN) \| boundary test lag_is_not_read_with_the_export_off, lag_is_not_read_with_only_the_traces.
-- invariants: I4: The mu-telemetry runtime starts only with the first gRPC signal, once \| enforced at pipeline.rs:371-385 transport (match on Option, insert once) \| boundary tests http_export_starts_no_runtime and grpc_signal_starts_the_runtime (each signal and both); the once property for two gRPC signals is checked end to end by grpc_from_the_file, which needs both exporters on one live runtime.
-- invariants: I5: The new unit-test helper started() exports to 127.0.0.1:4318 but sends nothing: no span is recorded, and the PeriodicReader skips an empty collect (opentelemetry_sdk 0.33.1 periodic_reader.rs:420).
-- invariants: The test helper rename grpc_table to protocol_table changes no input of the tests it touches; each call passes the same protocol and endpoint as before.
-- invariants: No probe was run: the changed enforcement points are Rust code, not scripts, and building them needs cargo, which only the controller runs.
-- invariants: Prior rows R-100, R-101, R-102 and R-103 are fixed at head; none is raised again.
-- test-coverage: No finding raised: the changed telemetry_engine.rs tests assert the THEN conditions (resource_exhausted code, lag sum 3, rate drop 5, none at 20).
-- test-honesty: Follow-up round: read the tests of tests.rs (protocol_table helper and all unit tests), telemetry_engine.rs (warn_lines_stay_* and lag tests) and the pipeline.rs test module. Each asserts a value that production code computes, and none is a mock echo, tautology, constant or disabled test. The proptest region of tests.rs was read only to its generator.
+- approach: Follow-up round since 7ed2ec9: the changed code is test code only. The started helper in the tests of pipeline.rs now builds the Export with on() of telemetry/tests.rs, which is now pub(super). telemetry_engine.rs adds the helper traces_only and the table test warn_lines_stay_with_any_set_of_layers. No change touches design.md, proposal.md, tasks.md or a spec.
+- approach: The new WARN test relies on the target opentelemetry_sdk for the internal logs of the SDK. This matches the checked fact of design.md: opentelemetry 0.33.1 src/global/internal_logging.rs emits otel_warn! with target env!("CARGO_PKG_NAME"), and Cargo.toml turns on internal-logs for opentelemetry, opentelemetry_sdk and opentelemetry-otlp.
+- approach: The started helper installs ring as the process provider before Providers::start, the same order that the TLS decision of design.md gives server::run, and it runs outside a tokio runtime, as the blocking-client risk of design.md needs.
+- approach: No artifact names the renamed tests (warn_lines_stay_with_the_export_off, warn_lines_stay_with_only_the_traces), so no citation went stale. The fixed rows R-102, R-104, R-105 and R-106 show no return of their defect in the changed text.
+- fit: The bound of this follow-up round holds crates/mu-cli/src/telemetry/pipeline.rs (the test helper started), crates/mu-cli/src/telemetry/tests.rs (on is now pub(super)) and crates/mu-cli/tests/telemetry_engine.rs (traces_only and the table test of the WARN lines). review.md is in diff-files.txt but was not read, as the agent file requires.
+- fit: R-104, R-105 and R-106 are fixed at head: traces_only names the traces-only case, the two WARN tests are one table test over three cases that also asserts the target opentelemetry_sdk, and started builds its Export through the on helper of telemetry/tests.rs.
+- fit: The line rustls::crypto::ring::default_provider().install_default() is in server.rs, tests/support/collector.rs and the test helper started of pipeline.rs. The two test copies repeat the production install on purpose, because no test runs server::run, so the exclusion for test fixtures applies and no finding is raised.
+- fit: tests/telemetry.rs restates ENDPOINT, TRACES_ENDPOINT and METRICS_ENDPOINT, which mu_cli::telemetry exports as public constants. The file did not change since the base, so this is outside the bound, and no finding is raised.
+- fit: The table test follows the existing pattern of the repository (let cases = [...] and for (case, ...) in cases, as in world_config.rs and spike_records.rs).
+- invariants: Follow-up round since 7ed2ec9. The changed code is test-only: started() in pipeline.rs tests, on() made pub(super) in telemetry/tests.rs, and the traces_only helper plus warn_lines_stay_with_any_set_of_layers in tests/telemetry_engine.rs. No artifact other than review.md changed, and review.md was not read.
+- invariants: I1: The stderr fmt layer keeps WARN of every target, whatever set of export layers is present \| enforced at crates/mu-cli/src/telemetry/pipeline.rs:245 (no layer is None, not an empty Vec) and :254 (LevelFilter::WARN on the fmt layer) \| boundary test warn_lines_stay_with_any_set_of_layers (empty set, traces only, metrics only; targets mu_core and opentelemetry_sdk). The full set (both layers) is passed by collector_that_the_server_does_not_trust, which asserts a WARN line of the exporter target with both signals on.
+- invariants: I2: A record below WARN never reaches stderr \| enforced at crates/mu-cli/src/telemetry/pipeline.rs:254 \| boundary test server_without_endpoint_writes_only_the_serving_line (stderr.len() == 1 while INFO metric events are emitted).
+- invariants: I3: event_stream reads Journal::last only while a layer takes mu::metrics \| enforced at the enabled! guard in crates/mu-server/src/service.rs \| boundary tests lag_is_read_once_per_event_with_the_export, lag_is_not_read_with_only_the_traces (now through traces_only, same providers as before), lag_is_not_read_with_the_export_off.
+- invariants: I4: An HTTP-only export starts no mu-telemetry runtime, and any gRPC signal starts one \| enforced at the lazy insert in transport() of pipeline.rs \| boundary tests http_export_starts_no_runtime and grpc_signal_starts_the_runtime. Their helper started() now builds the export through tests::on, which passes TelemetryTable::default() for None, the same input as the removed closure.
+- invariants: The two removed tests (warn_lines_stay_with_the_export_off, warn_lines_stay_with_only_the_traces) are subsumed: each of their assertions is a case of the new table test, so no check is weakened.
+- invariants: Each case of the new table test calls set_default, which rebuilds the callsite interest cache, so an interest cached under an earlier case cannot make a later enabled! check pass or fail falsely.
+- invariants: No enforcement point in the changed text is a script, so no probe was run.
+- test-coverage: Follow-up round: read the changed tests in telemetry_engine.rs (warn_lines_stay_with_any_set_of_layers now covers none, traces-only, metrics-only, with the mu_core and opentelemetry_sdk targets; closes R-106) and found no new gap.
+- test-coverage: Rows outside the changed files are matched by test name and a read of the assertions of the earlier rounds, not re-read in this round.
+- test-honesty: Follow-up round: read the changed tests only (warn_lines_stay_with_any_set_of_layers, lag tests in telemetry_engine.rs; started helper and runtime tests in pipeline.rs; grpc tests in telemetry/tests.rs). Each asserts an expected literal or a count against the real layers; none is a mock echo, tautology or constant.
+- test-honesty: warn_lines_stay_with_any_set_of_layers asserts WARN for mu_core and opentelemetry_sdk under the real Providers::subscriber, so a one-layer stack that loses the fmt layer fails it.
 
 ## Ledger
 
@@ -337,6 +337,10 @@ None.
 | R-104 | 11 | 11 | should-fix | in-change | ["path","crates/mu-cli/tests/telemetry_engine.rs",283] | fixed | 5caa02c8926df9a5717ed55766ebe23f49646daf |  | fit-1: The new test warn_lines_stay_with_only_the_traces builds the traces-only Providers with the same five lines as lag_is_not_read_with_only_the_traces: with_exporters over a default InMemorySpanExporter, None::<InMemoryMetricExporter> and "mu". Memory::new already names the both-signals case; the traces-only case now has two inline copies.; fit-2: The two new tests warn_lines_stay_with_the_export_off and warn_lines_stay_with_only_the_traces have the same body: set the subscriber of the providers as default, then assert that WARN of mu_core is enabled. Only the Providers value varies, and it varies on purpose. |
 | R-105 | 11 | 11 | should-fix | in-change | ["path","crates/mu-cli/src/telemetry/pipeline.rs",493] | fixed | 5c27fb03d4cf14abc67b9231a0d932740e507a56 |  | The new helper started in the tests of pipeline.rs builds an Export from variables with its own match closure over super::super::export. The tests of telemetry/tests.rs already have on(vars, file) for exactly this, and started passes only UTF-8 strings, so it needs none of the OsString closures that the non-UTF-8 tests keep. Two mechanisms now build a test Export from a list of variables. |
 | R-106 | 11 | 11 | should-fix | in-change | ["path","crates/mu-cli/tests/telemetry_engine.rs",288] | fixed | 5caa02c8926df9a5717ed55766ebe23f49646daf |  | warn_lines_stay_with_only_the_traces asserts WARN for the target mu_core, which the span layer itself takes, so it passes even if the one-layer stack lost the stderr lines of every other target, such as the SDK export warnings. |
+| R-107 | 12 | 12 | suggestion | in-change | ["path","crates/mu-cli/tests/telemetry_engine.rs",288] | accepted | ticket: none; reason: A suggestion on test setup only; the two providers differ on purpose, and the review at this head stays valid for the archive gate. |  | The new table of warn_lines_stay_with_any_set_of_layers builds the metrics-only Providers inline, next to the new helper traces_only. The two blocks are the same with_exporters call over default in-memory exporters and "mu". Only which signal gets an exporter varies, and it varies on purpose. Memory::new builds the third combination, both signals. |
+| R-108 | 12 | 12 | should-fix | in-change | ["artifact",["review","not-run"],"The log lines stay"] | refuted | Each test the matrix row names ran alone at head and passed; the merge matches a run only when the row names one test, and this row names two. |  | covered row 'The log lines stay' has no verification run |
+| R-109 | 12 | 12 | should-fix | in-change | ["artifact",["review","not-run"],"A failed call"] | refuted | Each test the matrix row names ran alone at head and passed; the merge matches a run only when the row names one test, and this row names two. |  | covered row 'A failed call' has no verification run |
+| R-110 | 12 | 12 | should-fix | in-change | ["artifact",["review","not-run"],"The lag of a subscriber"] | refuted | Each test the matrix row names ran alone at head and passed; the merge matches a run only when the row names one test, and this row names two. |  | covered row 'The lag of a subscriber' has no verification run |
 
 ## Reviewed files
 
@@ -350,13 +354,13 @@ None.
 | crates/mu-cli/src/server.rs | 9404897440ed73d7a82ea0363ea4a2251a4ab7fd |
 | crates/mu-cli/src/server_config.rs | c790ff54a166f82084f9629ec8d09ca91370ad55 |
 | crates/mu-cli/src/telemetry.rs | c87eff7b4725552d955e048e797a18f13878078a |
-| crates/mu-cli/src/telemetry/pipeline.rs | 7f4674bc499569c6e8bed3f87f43a9cf29701aa5 |
-| crates/mu-cli/src/telemetry/tests.rs | 11c9153aa40e7e1f3b1af13f39c786b5f6b665a1 |
+| crates/mu-cli/src/telemetry/pipeline.rs | 7e6ae4ce234546b50aabe44fc22c5ffedcd760f7 |
+| crates/mu-cli/src/telemetry/tests.rs | a6d6f94a3d9f9945620256c31ec923f9a2b4f84d |
 | crates/mu-cli/tests/support/collector.rs | cede1e2c60a34f823ff09e8f3e36e9732aa004da |
 | crates/mu-cli/tests/support/mod.rs | 25e00f84aca56cf2686f4c0f88f55c51a01c47fb |
 | crates/mu-cli/tests/support/process.rs | f6657e1fe453b23671b07de4842f1eccfc64ef86 |
 | crates/mu-cli/tests/telemetry.rs | eaef3a6756a0383212bcfe36006d12d296020c88 |
-| crates/mu-cli/tests/telemetry_engine.rs | 43e927fd207fdea00e4911677e8399032662ec9f |
+| crates/mu-cli/tests/telemetry_engine.rs | 67d0503a27ba15718047ac4699728748fbc61424 |
 | crates/mu-cli/tests/workspace_boundary.rs | 93d09024c15aedc8061c5b5852dd1234e249ac52 |
 | crates/mu-cli/tests/world_config.rs | e99d2d6ff30036052cc14aa28e782c4006df5567 |
 | crates/mu-core/Cargo.toml | 4512c53aaa6e65e74ca5f28aef694171efa7d1c4 |
