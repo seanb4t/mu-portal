@@ -490,17 +490,14 @@ mod tests {
     /// The providers of an export to `127.0.0.1` with the protocols of the two signals.
     fn started(traces: &str, metrics: &str) -> Providers {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let export = super::super::export(
-            |name| match name {
-                super::super::ENDPOINT => Some("http://127.0.0.1:4318".into()),
-                super::super::TRACES_PROTOCOL => Some(traces.into()),
-                super::super::METRICS_PROTOCOL => Some(metrics.into()),
-                _ => None,
-            },
-            &crate::server_config::TelemetryTable::default(),
-        )
-        .unwrap()
-        .unwrap();
+        let export = super::super::tests::on(
+            &[
+                (super::super::ENDPOINT, "http://127.0.0.1:4318"),
+                (super::super::TRACES_PROTOCOL, traces),
+                (super::super::METRICS_PROTOCOL, metrics),
+            ],
+            None,
+        );
         Providers::start(&export).unwrap()
     }
 

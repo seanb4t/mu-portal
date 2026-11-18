@@ -37,7 +37,7 @@ fn run(
     )
 }
 
-fn on(vars: &[(&str, &str)], file: Option<&TelemetryTable>) -> Export {
+pub(super) fn on(vars: &[(&str, &str)], file: Option<&TelemetryTable>) -> Export {
     run(vars, file).unwrap().expect("the export is on")
 }
 
