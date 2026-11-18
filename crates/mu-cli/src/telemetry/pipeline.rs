@@ -220,12 +220,13 @@ impl Providers {
     /// The two OpenTelemetry layers. The span layer takes the targets of [`CRATES`], and the
     /// metrics layer takes only [`mu_core::METRICS_TARGET`].
     #[must_use]
-    pub fn layers<S>(&self) -> Vec<Box<dyn Layer<S> + Send + Sync>>
+    pub fn layers<S>(&self) -> Option<Vec<Box<dyn Layer<S> + Send + Sync>>>
     where
         S: Subscriber + for<'span> LookupSpan<'span> + Send + Sync,
     {
         // Only the layers that are present: an absent layer in the stack still enables its
-        // targets, and `event_stream` then reads the lag with no metrics layer.
+        // targets, and `event_stream` then reads the lag with no metrics layer. No layer at all
+        // is `None`, because an empty list turns off every callsite, the stderr lines too.
         let mut layers = Vec::new();
         if let Some(provider) = &self.tracer {
             layers.push(
@@ -241,7 +242,7 @@ impl Providers {
                     .boxed(),
             );
         }
-        layers
+        (!layers.is_empty()).then_some(layers)
     }
 
     /// The subscriber of `mu server`: the stderr lines at `WARN`, and the layers of the export.
@@ -485,6 +486,35 @@ mod tests {
 
     /// A bound that no stop in these tests reaches unless the wait is wrong.
     const LONG: Duration = Duration::from_secs(60);
+
+    /// The providers of an export to `127.0.0.1` with the protocols of the two signals.
+    fn started(traces: &str, metrics: &str) -> Providers {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let export = super::super::export(
+            |name| match name {
+                super::super::ENDPOINT => Some("http://127.0.0.1:4318".into()),
+                super::super::TRACES_PROTOCOL => Some(traces.into()),
+                super::super::METRICS_PROTOCOL => Some(metrics.into()),
+                _ => None,
+            },
+            &crate::server_config::TelemetryTable::default(),
+        )
+        .unwrap()
+        .unwrap();
+        Providers::start(&export).unwrap()
+    }
+
+    #[test]
+    fn http_export_starts_no_runtime() {
+        assert!(started("http/protobuf", "http/protobuf").runtime.is_none());
+    }
+
+    #[test]
+    fn grpc_signal_starts_the_runtime() {
+        assert!(started("grpc", "http/protobuf").runtime.is_some());
+        assert!(started("http/protobuf", "grpc").runtime.is_some());
+        assert!(started("grpc", "grpc").runtime.is_some());
+    }
 
     fn stop(result: OTelSdkResult) -> Stop {
         Box::new(move || result)
