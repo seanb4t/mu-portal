@@ -64,6 +64,15 @@ pub fn run(args: &ServerArgs) -> ExitCode {
         Ok(file) => file,
         Err(error) => return fail(&error),
     };
+    if telemetry::sdk_disabled_is_ignored(|name| std::env::var_os(name)) {
+        crate::warn(
+            "server",
+            &format_args!(
+                "{}: the value is not true or false, so the server ignores it",
+                telemetry::SDK_DISABLED
+            ),
+        );
+    }
     let export = match telemetry::export(|name| std::env::var_os(name), &file.telemetry) {
         Ok(export) => export,
         Err(error) => return fail(&error),

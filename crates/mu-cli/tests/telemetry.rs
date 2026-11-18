@@ -493,6 +493,21 @@ async fn sdk_disabled_turns_the_export_off() {
 }
 
 #[tokio::test]
+async fn sdk_disabled_with_another_value_is_named() {
+    let collector = Collector::start(Mode::Http).await;
+    let run = Setup::endpoint(&collector.url())
+        .env(SDK_DISABLED, "1")
+        .one_send()
+        .await;
+    assert!(
+        run.stderr.iter().any(|line| line.contains(SDK_DISABLED)),
+        "{:#?}",
+        run.stderr
+    );
+    assert!(!collector.requests().is_empty());
+}
+
+#[tokio::test]
 async fn sdk_disabled_with_a_bad_variable() {
     let run = Setup::new(&[])
         .env(SDK_DISABLED, "true")

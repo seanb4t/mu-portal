@@ -154,6 +154,18 @@ fn sdk_disabled_with_another_value_keeps_the_order() {
 }
 
 #[test]
+fn sdk_disabled_value_that_is_ignored() {
+    let ignored = |value: &str| sdk_disabled_is_ignored(|_| Some(OsString::from(value)));
+    for value in ["1", "yes", "on", " true"] {
+        assert!(ignored(value), "{value}");
+    }
+    for value in ["", "true", "TRUE", "false", "False"] {
+        assert!(!ignored(value), "{value}");
+    }
+    assert!(!sdk_disabled_is_ignored(|_| None));
+}
+
+#[test]
 fn sdk_disabled_reads_nothing_else() {
     let file = TelemetryTable {
         endpoint: Some("not a url".to_owned()),

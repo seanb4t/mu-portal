@@ -132,13 +132,19 @@ Each of the three endpoint variables SHALL pass the check of the field `endpoint
 - **AND** the exit status is 1
 
 ### Requirement: The variables that turn the export off and name the service
-`OTEL_SDK_DISABLED` with the value `true`, in any case, SHALL turn the export off, whatever the endpoint. The server SHALL then read and check no other telemetry variable and no value of `[telemetry]`. An unknown table or field, or a value of the wrong type, in `server.toml` SHALL still stop the start. The resource of each export SHALL carry `service.name`. If `OTEL_SERVICE_NAME` is set and not empty, its value SHALL be that variable. Otherwise, its value SHALL be `mu`.
+`OTEL_SDK_DISABLED` with the value `true`, in any case, SHALL turn the export off, whatever the endpoint. The server SHALL then read and check no other telemetry variable and no value of `[telemetry]`. An unknown table or field, or a value of the wrong type, in `server.toml` SHALL still stop the start. A value other than `true`, `false` or empty, in any case, SHALL leave the export as the other settings make it, and the server SHALL write a warning that names `OTEL_SDK_DISABLED`. The resource of each export SHALL carry `service.name`. If `OTEL_SERVICE_NAME` is set and not empty, its value SHALL be that variable. Otherwise, its value SHALL be `mu`.
 
 #### Scenario: The export is off
 - **GIVEN** a fake collector, `server.toml` names it, and `OTEL_SDK_DISABLED` is `TRUE`
 - **WHEN** a server starts, serves one `Send`, and gets SIGTERM
 - **THEN** the collector got no request
 - **AND** the exit status is 0
+
+#### Scenario: A value that is not true or false
+- **GIVEN** a fake collector, `server.toml` names it, and `OTEL_SDK_DISABLED` is `1`
+- **WHEN** a server starts, serves one `Send`, and gets SIGTERM
+- **THEN** stderr names `OTEL_SDK_DISABLED`
+- **AND** the collector got requests
 
 #### Scenario: The export is off with a bad variable
 - **GIVEN** `OTEL_SDK_DISABLED` is `true`, and `OTEL_EXPORTER_OTLP_ENDPOINT` is `ftp://collector.example:4318`

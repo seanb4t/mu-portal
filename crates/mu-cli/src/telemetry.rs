@@ -274,6 +274,18 @@ struct Checked {
     place: SettingSource,
 }
 
+/// Whether `OTEL_SDK_DISABLED`, which `var` reads, holds a value other than `true`, `false` or
+/// empty, in any case. [`export`] ignores such a value.
+#[must_use]
+pub fn sdk_disabled_is_ignored(var: impl Fn(&str) -> Option<OsString>) -> bool {
+    var(SDK_DISABLED).is_some_and(|value| {
+        let value = value.to_string_lossy();
+        !(value.is_empty()
+            || value.eq_ignore_ascii_case("true")
+            || value.eq_ignore_ascii_case("false"))
+    })
+}
+
 /// Picks the export from the variables, which `var` reads, and the table of `server.toml`. An
 /// empty variable counts as unset. A variable that the export reads must be UTF-8, except
 /// `OTEL_EXPORTER_OTLP_CERTIFICATE`, which is a path. `None` means no export.
