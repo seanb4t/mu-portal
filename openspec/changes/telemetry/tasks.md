@@ -99,7 +99,7 @@ Load the `rust-best-practices` skill before this group.
 ## 8. Integration
 
 - [x] 8.1 Run `/sb:openspec-review telemetry implementation`. Make sure that the verdict is not changes-requested.
-- [ ] 8.2 Run `/sb:suite-review` on the branch. Fix or triage each blocker and major finding. Make sure that `mise run check` passes.
+- [x] 8.2 Run `/sb:suite-review` on the branch. Fix or triage each blocker and major finding. Make sure that `mise run check` passes.
 
 ## Workflow follow-up
 
