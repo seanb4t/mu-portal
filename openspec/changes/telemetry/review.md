@@ -1,36 +1,28 @@
 ---
-verdict: approve-with-notes
+verdict: changes-requested
 phase: implementation
-reviewed_at: 2026-11-18T13:49:21+00:00
-head: c63e50631db7dc01cd2853fd9d1d55002bf060ca
-round: 9
-next_id: 100
+reviewed_at: 2026-11-18T14:06:01+00:00
+head: f33185644044ce9bdcb13cf6b92c9905369a12d3
+round: 10
+next_id: 104
 lenses:
   spec-lint: not-applicable
   approach: ok
   fit: ok
-  test-coverage: partial
+  test-coverage: ok
   test-honesty: ok
   invariants: ok
 ---
 # Review
 
-## Incomplete lenses
-
-- test-coverage: partial, gaps: 2
-  - Assertion bodies of the fails_naming tests and of world_config.rs were matched by name and helper use, not read line by line.
-  - proposal.md was not read for BREAKING requirements; the spec deltas carry no BREAKING marker.
-
-The verdict covers only what the lenses checked. While the `ctl-lens` row of an incomplete lens is open, the verdict cannot be `approve`.
-
 ## Findings
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge |
 |---|---|---|---|---|---|---|---|---|
-| R-96 | approach | should-fix | in-change | The changed text says pipeline.rs starts the mu-telemetry thread and that the telemetry gets a runtime of its own. At head the runtime starts only with the first gRPC signal. An HTTP-only export starts no mu-telemetry thread, and the decision states no such condition. | design.md > The exporter has its own threads and a bounded stop — "`telemetry/pipeline.rs` starts one thread, `mu-telemetry`, with a current-thread tokio runtime." | In design.md, say that pipeline.rs starts the mu-telemetry thread only when a signal uses grpc, and that an HTTP-only export runs on the SDK threads alone, as the decision page already says. |  |  |
-| R-97 | approach,invariants | should-fix | in-change | app-2: The design says the function that builds the layers takes the span and metric exporters as arguments, and that server::run passes the OTLP exporters. At head, layers() takes only &self and composes the two Option layers from the providers. Providers::with_exporters takes the exporters. server::run passes the Export to Providers::start, which builds the OTLP exporters itself.; inv-1: event_stream must read Journal::last only while a layer takes mu::metrics. With traces on and metrics off, the None metrics layer in the and_then chain enables the target anyway, so each sent event takes the journal lock for no metric. No test covers traces only. | crates/mu-cli/src/telemetry/pipeline.rs:237 — "Layer::<S>::and_then(spans, metrics)" | app-2: Reword the paragraph: Providers::with_exporters takes the exporters, which Providers::start builds from the Export for mu server and a test passes as in-memory exporters. Providers::layers builds the two layers from the providers, with no base layer.; inv-1: Build layers() from the present layers only, for example a Vec<Box<dyn Layer<S> + Send + Sync>>; the probe shows that form returns false for traces only. Add a lasts_for_one_event test under Providers::with_exporters(Some(spans), None, "mu") that expects 0. |  |  |
-| R-98 | fit | should-fix | in-change | The new test grpc_source_with_a_path_that_loses_is_accepted builds the gRPC table with the path /otel by the same three lines as grpc_endpoint_with_a_path_or_a_query_is_refused_and_named. Three more tests build a gRPC table the same way with BASE, and only the endpoint varies. | crates/mu-cli/src/telemetry/tests.rs:410 — "let grpc = TelemetryTable {" | Add a helper grpc_table(endpoint) next to table in tests.rs, and build each gRPC table of the tests with it. |  | severity? suggestion 0.79 |
-| R-99 | test-coverage | should-fix | in-change | lens test-coverage reported partial, gaps: 2 | review > lens-status — "test-coverage partial" | rerun the lens or accept the gap in the review |  |  |
+| R-100 | invariants | blocker | in-change | With the export off, Providers::layers now returns an empty Vec. In tracing-subscriber 0.3.23 an empty Vec layer registers every callsite as never, and Layered returns that never before it asks the fmt layer. So a server with no endpoint drops every WARN line on stderr, the route warning and the log-crate records too. The base, with two None Option layers, passed them. A probe built from the pinned crate confirms it: the WARN line is lost with zero layers and printed with one or two. | crates/mu-cli/src/telemetry/pipeline.rs:229 — "let mut layers = Vec::new();" | Add no layer to the stack when the Vec is empty, for example `.with((!layers.is_empty()).then_some(layers))` in Providers::subscriber. A probe with the pinned crate shows that this keeps the WARN line with zero layers and leaves the metrics target off with traces only. Add the test of inv-2. |  |  |
+| R-101 | invariants | should-fix | in-change | No test passes the null case, Providers::none, and checks that a WARN line still reaches the fmt layer. lag_is_not_read_with_the_export_off passes under the empty subscriber because every callsite is off, so it hides inv-1. The stderr tests with a WARN line all run with the export on. | crates/mu-cli/tests/telemetry_engine.rs:267 — "async fn lag_is_not_read_with_the_export_off() {" | Add a test that installs Providers::none().subscriber() and asserts that a tracing::warn! is enabled (or reaches a captured writer), and a server test with no endpoint whose handler names an unknown world, so that stderr holds the route warning. |  |  |
+| R-102 | invariants | should-fix | in-change | The changed design says the mu-telemetry thread starts only with the first gRPC signal, once, and an http/protobuf export starts none. transport() enforces it with the lazy insert, but no test passes either edge: an HTTP-only export (no runtime) or two gRPC signals (one runtime). A change that starts the runtime always, or once per signal, passes every test. | design.md > The exporter has its own threads and a bounded stop — "An export over `http/protobuf` alone starts no such thread, and it runs on the threads of the SDK." | Add a unit test in the pipeline module: Providers::start on an HTTP-only Export leaves runtime None, and on an Export with gRPC for both signals holds one runtime (or one thread named mu-telemetry). |  |  |
+| R-103 | fit | suggestion | in-change | The new helper grpc_table fixes the protocol to grpc, while http_json_with_an_endpoint_is_refused_and_named still builds the same table shape inline with the protocol http/json. The two blocks differ only in the protocol value. | crates/mu-cli/src/telemetry/tests.rs:19 — "fn grpc_table(endpoint: &str) -> TelemetryTable {" | Give the helper the protocol as a parameter, for example protocol_table(protocol, endpoint), and use it for the grpc tables and the http/json table at line 230. |  |  |
 
 ## Repeats
 
@@ -61,10 +53,11 @@ None.
 | 7 | implementation | follow-up | bc67f3d1be9cb4d6eaf33bb30ca45ccbce11c535 | 57820490af4e131ec1c8eb56b448aaf0267798b0dd7032b3efde500a0e024f26 | approve-with-notes | 7 | 1 | 0 | 1 | operator decision |
 | 8 | implementation | follow-up | d2ee4fa8c230e6e27dc8ab64f5fe75059fbd5a18 | d92ea7fd4f763ece5ff28eb331c52b7aac1f976d9e448c4edaae7ef8261db974 | changes-requested | 5 | 0 | 0 | 1 | operator decision |
 | 9 | implementation | follow-up | c63e50631db7dc01cd2853fd9d1d55002bf060ca | 7dee5ffb8e3fdfb8ece8ea544c714bed3f04ca500e73141c3220be81de87425e | approve-with-notes | 4 | 0 | 0 | 0 | operator decision |
+| 10 | implementation | follow-up | f33185644044ce9bdcb13cf6b92c9905369a12d3 | 386cad6f9d4d87a228a63156cf6afa232dce870d08cb102bae2d49ca4a4a0a6e | changes-requested | 4 | 0 | 0 | 0 | operator decision |
 
 ## Judge
 
-judge: 6 questions, 0.000 USD
+judge: 8 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -123,13 +116,13 @@ judge: 6 questions, 0.000 USD
 | The password stays out | crates/mu-cli/tests/telemetry.rs: password_stays_out | covered | pass |
 | The line text stays out | crates/mu-cli/tests/telemetry.rs: line_text_stays_out | covered | pass |
 | A collector that never answers | crates/mu-cli/tests/telemetry.rs: silent_collector_does_not_delay_a_send | covered | pass |
+| The file of the server | crates/mu-cli/tests/world_config.rs: server_file_makes_no_world | covered | pass |
+| A character named server | crates/mu-cli/tests/world_config.rs: character_named_server_is_a_world | covered | pass |
 | Worlds from character files | crates/mu-cli/tests/world_config.rs: worlds_from_character_files | covered | pass |
 | A character with no game | crates/mu-cli/tests/world_config.rs: character_with_no_game | covered | pass |
 | A file name outside the id rule | crates/mu-cli/tests/world_config.rs: file_name_outside_the_id_rule | covered | pass |
 | A stray file | crates/mu-cli/tests/world_config.rs: stray_file | covered | pass |
 | A link to nothing | crates/mu-cli/tests/world_config.rs: link_to_nothing_is_an_error | covered | pass |
-| The file of the server | crates/mu-cli/tests/world_config.rs: server_file_makes_no_world | covered | pass |
-| A character named server | crates/mu-cli/tests/world_config.rs: character_named_server_is_a_world | covered | pass |
 
 ### Not run
 
@@ -204,25 +197,30 @@ None.
 
 ## Lens notes
 
-- approach: Follow-up round since d2ee4fa. I read the changed code files: pipeline.rs, telemetry/tests.rs, telemetry_engine.rs and service.rs. I also read the decisions of design.md that they touch: the lag guard, the layers, the mu-telemetry thread, the gRPC losing-source rule and OTEL_SDK_DISABLED.
-- approach: This lens has no Bash, so it could not diff design.md against the base. The changed design.md lines are inferred from the commit subjects, such as e4a3370, which names pipeline.rs as the home of the telemetry thread. The merge should check the bound of app-1 and app-2 against the real diff.
-- approach: The new enabled! guard in event_stream matches the lag decision. I traced the tracing-subscriber 0.3.23 Option<Layer> and Registry logic: a None layer does not enable mu::metrics by itself, so an export with traces only also reads no lag.
-- approach: The two new unit tests match the design text: grpc_source_with_a_path_that_loses_is_accepted and sdk_disabled_reads_no_variable_that_is_not_utf8. They cover the gRPC rule of the used endpoint only, and the early return on OTEL_SDK_DISABLED.
-- approach: No prior.json row is raised again. The fixed rows R-89, R-92, R-93, R-94 and R-95 in the changed area are fixed at head as far as this lens can tell.
-- fit: Follow-up round: read the five changed code and design files of diff-files.txt (review.md is not read by rule). The spec files did not change since the base, so only their requirement headings were read.
-- fit: R-91 and R-92 hold as fixed: the lag-read tests moved to telemetry_engine.rs, use the real subscriber of Providers::none() for the export-off case, and share the stream setup through stream_of and subscriber(capacity).
-- fit: The Counted journal of telemetry_engine.rs has no counterpart in mu_core::fake or the mu-core test support, so it is no copy.
-- fit: The new comment and the Option layers in Providers::layers, and the design text that names pipeline.rs for EXPORT_TIMEOUT and the mu-telemetry thread, match the code and add no new component.
-- invariants: I1: event_stream reads Journal::last only while a layer takes mu::metrics \| enforced at crates/mu-server/src/service.rs:75 (enabled! guard) together with the layer composition at crates/mu-cli/src/telemetry/pipeline.rs:237 \| boundary tests lag_is_not_read_without_a_subscriber, lag_is_not_read_with_the_export_off, lag_is_read_once_per_event_with_the_export in crates/mu-cli/tests/telemetry_engine.rs; none for traces only, where it fails (inv-1).
-- invariants: Probe of I1: a model of Providers::layers and Providers::subscriber with no-op layers under the same filter_fn filters, tracing 0.1.44, tracing-subscriber 0.3.23 and tracing-core 0.1.36 as in Cargo.lock. Source at /private/tmp/claude-501/-Volumes-Code-github-com-seanb4t-mu-portal/f43d12f9-84a6-4b55-a843-635a9c680810/scratchpad/handoff/review-telemetry-implementation-r9/probe-inv/src/main.rs. enabled!(mu::metrics, INFO): off=false, traces-only=true, metrics-only=true, both=true. With a Vec of boxed present layers: off=false, traces-only=false, metrics-only=true, both=true.
-- invariants: Cause of I1 in tracing-subscriber 0.3.23: the Layer impl of Option<L> returns Interest::always() and enabled true for None, so the None metrics layer is a layer that takes every callsite, the case the new comment at pipeline.rs:235 sets out to avoid.
-- invariants: I2: with OTEL_SDK_DISABLED true, export reads and checks no other variable, the UTF-8 check included \| enforced at crates/mu-cli/src/telemetry.rs:289 (early return before any other var read) \| boundary test sdk_disabled_reads_no_variable_that_is_not_utf8 (non-UTF-8 ENDPOINT and SERVICE_NAME) and sdk_disabled_reads_nothing_else. R-94 stays fixed.
-- invariants: I3: the gRPC rule of no path and no query applies only to the endpoint that a signal uses \| enforced in signal() of crates/mu-cli/src/telemetry.rs (own.or(base)) \| boundary tests grpc_source_with_a_path_that_loses_is_accepted (losing field, losing base variable) and grpc_endpoint_with_a_path_or_a_query_is_refused_and_named (winning side). R-93 stays fixed.
-- invariants: I4: event_stream skips the lag read under a present subscriber that refuses mu::metrics \| enforced at service.rs:75 \| boundary test lag_is_not_read_with_the_export_off under Providers::none().subscriber(), the fmt WARN layer of an export-off server. R-95 stays fixed; R-92 stays fixed, since the hand-written MetricsOnly subscriber left service.rs and the tests now run under the real layers.
-- invariants: I5: mu.subscriber.lag is last minus seq, saturating at 0 \| enforced at crates/mu-server/src/service.rs:76 \| boundary tests lag_at_the_head_is_zero and lag_behind_the_head in telemetry_engine.rs; this round does not change them.
-- invariants: The design.md hunk of this round only renames telemetry.rs to telemetry/pipeline.rs as the home of the mu-telemetry thread; it states no new invariant.
-- test-coverage: The silent-collector test checks the exit bound and the late-stop WARN, but does not assert that a drop happened; the queue fill rests on 2100 calls against the 2048 queue.
-- test-honesty: Follow-up round: read the new and changed tests in telemetry_engine.rs (lag read counts, lag_behind_the_head), tests.rs (grpc_source_with_a_path_that_loses_is_accepted, sdk_disabled_reads_no_variable_that_is_not_utf8) and the pipeline.rs stop tests. Each can fail for its named reason.
+- approach: Follow-up round since c63e506. The bound held pipeline.rs, telemetry/tests.rs, telemetry_engine.rs and design.md; review.md was not read.
+- approach: The changed text of 'The engine speaks tracing, and mu-cli bridges it' holds at head: Providers::with_exporters takes two optional exporters, Providers::start builds the OTLP exporters, and Providers::layers pushes only the layers whose provider is present (pipeline.rs 153-245).
+- approach: The changed text of 'The exporter has its own threads and a bounded stop' holds at head: transport() starts the mu-telemetry runtime only for the first gRPC signal, the gRPC exporters build inside its enter, and an http/protobuf export starts no such thread (pipeline.rs 369-384, 448-476).
+- approach: The cited fact that the batch span processor drops the result of its last export holds in opentelemetry_sdk 0.33.1: shutdown_with_timeout maps the received result to Ok(()) (src/trace/span_processor.rs 944-953).
+- approach: The engine metric tests run under the real layers through Memory::subscriber, and the lag guard has tests for traces only, export off and no subscriber (telemetry_engine.rs 248-276), as the design states.
+- approach: R-96 and R-97 (fixed) were checked again against the changed design text and the code; neither defect is back.
+- fit: Without Bash, the changed lines of each file were found from the commit subjects since the base and the prior rows, not from a line diff; the bound of fit-1 rests on the commit that added grpc_table.
+- fit: Providers::layers now returns a Vec of boxed layers, the runtime-configuration pattern of tracing-subscriber, and server::run builds its subscriber only through Providers::subscriber: no second subscriber build found.
+- fit: The Counted journal and stream_of in telemetry_engine.rs have no other copy: the only other Journal impl is MemoryJournal, and the stream setups of the service.rs tests are unchanged in this round.
+- fit: The changed design text (the layers of Providers, and the mu-telemetry thread only for gRPC) matches pipeline.rs at head.
+- invariants: I1: With the export off, the subscriber passes WARN lines to stderr \| enforced at none: the empty Vec of Providers::layers (pipeline.rs:229) disables every callsite \| boundary test none (inv-1, inv-2)
+- invariants: I2: event_stream reads Journal::last only while a layer takes mu::metrics \| enforced at Providers::layers (only present layers) and the enabled! guard of event_stream \| boundary test lag_is_read_once_per_event_with_the_export, lag_is_not_read_with_only_the_traces, lag_is_not_read_with_the_export_off, lag_is_not_read_without_a_subscriber
+- invariants: I3: The span layer takes only mu_core, mu_server and mu_cli with a :: boundary \| enforced at in_crates (pipeline.rs:387) \| boundary test other_targets_make_no_span_event
+- invariants: I4: The metrics layer takes only mu::metrics \| enforced at the filter_fn of the metrics layer (pipeline.rs) \| boundary test from the fix of R-73
+- invariants: I5: The mu-telemetry thread starts once, and only with a gRPC signal \| enforced at transport (pipeline.rs:370) \| boundary test none (inv-3)
+- invariants: I6: grpc_table builds the same table as the inline literals it replaces \| enforced at grpc_table (tests.rs) \| refactor only, no edge to test
+- invariants: Probe: a crate under the handoff directory (probe/) with tracing 0.1.44 and tracing-subscriber 0.3.23, offline. Head composition: 0 layers -> WARN line lost, metrics target off; 1 filtered layer -> WARN kept, metrics off; 2 layers -> WARN kept, metrics on.
+- invariants: Probe of the base composition (two Option layers via and_then): export off -> WARN kept; traces only -> metrics target on, the defect that 88ec32f fixed.
+- invariants: Probe of the proposed fix (Option of the Vec, None when empty): 0, 1 and 2 layers all keep the WARN line, and the metrics target is on only with 2 layers.
+- test-coverage: Every scenario of the two delta specs maps to a named test whose assertion checks its THEN condition. Round 10 changes (pipeline.rs, tests.rs, telemetry_engine.rs, design.md) add no uncovered scenario.
+- test-honesty: lag_is_not_read_with_only_the_traces counts Journal::last on a Counted journal under Providers::with_exporters(spans, None) and subscriber(); it would fail with the old None metrics layer, so it can fail for its reason.
+- test-honesty: grpc_table helper in tests.rs only builds inputs; the assertions on protocol and endpoint remain computed by export(), no tautology.
+- test-coverage gap: Unit tests in crates/mu-cli/src/telemetry/tests.rs and pipeline.rs were not read; orphan-test and tests-the-library checks are not done for them.
+- test-coverage gap: No test was run, as the lens forbids it.
 
 ## Ledger
 
@@ -327,6 +325,10 @@ None.
 | R-97 | 9 | 9 | should-fix | in-change | ["path","crates/mu-cli/src/telemetry/pipeline.rs",237] | fixed | 88ec32f19a92b2297b87114625bc21e5e7ca8bd9 |  | app-2: The design says the function that builds the layers takes the span and metric exporters as arguments, and that server::run passes the OTLP exporters. At head, layers() takes only &self and composes the two Option layers from the providers. Providers::with_exporters takes the exporters. server::run passes the Export to Providers::start, which builds the OTLP exporters itself.; inv-1: event_stream must read Journal::last only while a layer takes mu::metrics. With traces on and metrics off, the None metrics layer in the and_then chain enables the target anyway, so each sent event takes the journal lock for no metric. No test covers traces only. |
 | R-98 | 9 | 9 | should-fix | in-change | ["path","crates/mu-cli/src/telemetry/tests.rs",410] | fixed | ef5a2b7780157af9cfd47aa7b19330f32f70752a |  | The new test grpc_source_with_a_path_that_loses_is_accepted builds the gRPC table with the path /otel by the same three lines as grpc_endpoint_with_a_path_or_a_query_is_refused_and_named. Three more tests build a gRPC table the same way with BASE, and only the endpoint varies. |
 | R-99 | 9 | 9 | should-fix | in-change | ["artifact",["review","lens-status"],"test-coverage partial"] | accepted | ticket: none; reason: Round 10 runs the test-coverage lens again on the head that holds the round 9 fixes. |  | lens test-coverage reported partial, gaps: 2 |
+| R-100 | 10 | 10 | blocker | in-change | ["path","crates/mu-cli/src/telemetry/pipeline.rs",229] | fixed | 430cd26fd97bee91ed7e3aff2bb63844c9af3afb |  | With the export off, Providers::layers now returns an empty Vec. In tracing-subscriber 0.3.23 an empty Vec layer registers every callsite as never, and Layered returns that never before it asks the fmt layer. So a server with no endpoint drops every WARN line on stderr, the route warning and the log-crate records too. The base, with two None Option layers, passed them. A probe built from the pinned crate confirms it: the WARN line is lost with zero layers and printed with one or two. |
+| R-101 | 10 | 10 | should-fix | in-change | ["path","crates/mu-cli/tests/telemetry_engine.rs",267] | fixed | 430cd26fd97bee91ed7e3aff2bb63844c9af3afb |  | No test passes the null case, Providers::none, and checks that a WARN line still reaches the fmt layer. lag_is_not_read_with_the_export_off passes under the empty subscriber because every callsite is off, so it hides inv-1. The stderr tests with a WARN line all run with the export on. |
+| R-102 | 10 | 10 | should-fix | in-change | ["artifact",["design.md","The exporter has its own threads and a bounded stop"],"An export over `http/protobuf` alone starts no such thread, and it runs on the threads of the SDK."] | fixed | 430cd26fd97bee91ed7e3aff2bb63844c9af3afb |  | The changed design says the mu-telemetry thread starts only with the first gRPC signal, once, and an http/protobuf export starts none. transport() enforces it with the lazy insert, but no test passes either edge: an HTTP-only export (no runtime) or two gRPC signals (one runtime). A change that starts the runtime always, or once per signal, passes every test. |
+| R-103 | 10 | 10 | suggestion | in-change | ["path","crates/mu-cli/src/telemetry/tests.rs",19] | fixed | fc19eb4a2a2dcb999241df7f9d33e57c0eb40c71 |  | The new helper grpc_table fixes the protocol to grpc, while http_json_with_an_endpoint_is_refused_and_named still builds the same table shape inline with the protocol http/json. The two blocks differ only in the protocol value. |
 
 ## Reviewed files
 
@@ -340,13 +342,13 @@ None.
 | crates/mu-cli/src/server.rs | 9404897440ed73d7a82ea0363ea4a2251a4ab7fd |
 | crates/mu-cli/src/server_config.rs | c790ff54a166f82084f9629ec8d09ca91370ad55 |
 | crates/mu-cli/src/telemetry.rs | c87eff7b4725552d955e048e797a18f13878078a |
-| crates/mu-cli/src/telemetry/pipeline.rs | dcdc3e205d938ff0db4381d175b184939a548073 |
-| crates/mu-cli/src/telemetry/tests.rs | ee3f2146a6c16dbf904a974f8255da3df233ef03 |
+| crates/mu-cli/src/telemetry/pipeline.rs | 592cf86bc36411d8b2cd7d628e7f21b5f49cf790 |
+| crates/mu-cli/src/telemetry/tests.rs | db692b5eed44f150a7647700fc94388d13ecdcd5 |
 | crates/mu-cli/tests/support/collector.rs | cede1e2c60a34f823ff09e8f3e36e9732aa004da |
 | crates/mu-cli/tests/support/mod.rs | 25e00f84aca56cf2686f4c0f88f55c51a01c47fb |
 | crates/mu-cli/tests/support/process.rs | f6657e1fe453b23671b07de4842f1eccfc64ef86 |
 | crates/mu-cli/tests/telemetry.rs | eaef3a6756a0383212bcfe36006d12d296020c88 |
-| crates/mu-cli/tests/telemetry_engine.rs | c17b3b509428018d3ede425df36113f7ef858501 |
+| crates/mu-cli/tests/telemetry_engine.rs | c6fb0f581fdc08cbdef2d75ac7bd6780f8d512a6 |
 | crates/mu-cli/tests/workspace_boundary.rs | 93d09024c15aedc8061c5b5852dd1234e249ac52 |
 | crates/mu-cli/tests/world_config.rs | e99d2d6ff30036052cc14aa28e782c4006df5567 |
 | crates/mu-core/Cargo.toml | 4512c53aaa6e65e74ca5f28aef694171efa7d1c4 |
@@ -365,7 +367,7 @@ None.
 | docs/src/content/docs/guides/configuration.md | 2acfbf5eb084781003533329a8fcbcccc8056604 |
 | docs/src/content/docs/guides/telemetry.md | 5a40b1b8d8cbf47c416c23abeb481f7cad42a9a8 |
 | openspec/changes/telemetry/.openspec.yaml | 578c89ac91eda0589930783c384ddbe6201a0568 |
-| openspec/changes/telemetry/design.md | a4d1068b56c06f72cc03e7aa51957fd10e8b86db |
+| openspec/changes/telemetry/design.md | 7a79d51a0da12ed0b65166176369e03bbb78f825 |
 | openspec/changes/telemetry/proposal.md | 09698870137709423e65935a81326ce42d8f4ac0 |
 | openspec/changes/telemetry/specs/telemetry/spec.md | 9b231edffd78a4bff6cd443ed1882296f421237d |
 | openspec/changes/telemetry/specs/world-config/spec.md | ae472d6ae06864b5462314cc111c3028330c76f2 |
