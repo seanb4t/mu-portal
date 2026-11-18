@@ -58,6 +58,13 @@ fn refused_by(vars: &[(&str, &str)], file: Option<&TelemetryTable>) -> SettingSo
     run(vars, file).unwrap_err().place()
 }
 
+/// The message of the refusal of the certificate file at `path`, with the base URL of the table.
+fn certificate_refusal(path: &str) -> String {
+    run(&[(CERTIFICATE, path)], Some(&table(Some(BASE))))
+        .unwrap_err()
+        .to_string()
+}
+
 fn pem_file(text: &str) -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("ca.pem");
@@ -561,12 +568,7 @@ fn certificate_variable_wins_over_the_field() {
 
 #[test]
 fn missing_certificate_file_names_the_path() {
-    let message = run(
-        &[(CERTIFICATE, "/nonexistent/ca.pem")],
-        Some(&table(Some(BASE))),
-    )
-    .unwrap_err()
-    .to_string();
+    let message = certificate_refusal("/nonexistent/ca.pem");
     assert!(message.contains(CERTIFICATE), "{message}");
     assert!(message.contains("/nonexistent/ca.pem"), "{message}");
 }
@@ -589,12 +591,7 @@ const BAD_DER_PEM: &str = "-----BEGIN CERTIFICATE-----\nAAECAwQF\n-----END CERTI
 #[test]
 fn certificate_that_does_not_parse_is_refused_and_named() {
     let (_dir, path) = pem_file(BAD_DER_PEM);
-    let message = run(
-        &[(CERTIFICATE, path.to_str().unwrap())],
-        Some(&table(Some(BASE))),
-    )
-    .unwrap_err()
-    .to_string();
+    let message = certificate_refusal(path.to_str().unwrap());
     assert!(message.contains(CERTIFICATE), "{message}");
     assert!(message.contains(path.to_str().unwrap()), "{message}");
     assert!(message.contains("certificate 1 is not valid"), "{message}");
@@ -603,12 +600,7 @@ fn certificate_that_does_not_parse_is_refused_and_named() {
 #[test]
 fn bad_certificate_after_a_good_one_is_refused_and_named() {
     let (_dir, path) = pem_file(&(authority_pem() + BAD_DER_PEM));
-    let message = run(
-        &[(CERTIFICATE, path.to_str().unwrap())],
-        Some(&table(Some(BASE))),
-    )
-    .unwrap_err()
-    .to_string();
+    let message = certificate_refusal(path.to_str().unwrap());
     assert!(message.contains("certificate 2 is not valid"), "{message}");
 }
 
