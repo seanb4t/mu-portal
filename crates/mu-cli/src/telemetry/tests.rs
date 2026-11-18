@@ -154,15 +154,27 @@ fn sdk_disabled_with_another_value_keeps_the_order() {
 }
 
 #[test]
-fn sdk_disabled_value_that_is_ignored() {
-    let ignored = |value: &str| sdk_disabled_is_ignored(|_| Some(OsString::from(value)));
+fn sdk_disabled_values() {
+    let read = |value: &str| sdk_disabled(|_| Some(OsString::from(value))).unwrap();
     for value in ["1", "yes", "on", " true"] {
-        assert!(ignored(value), "{value}");
+        assert_eq!(read(value), SdkDisabled::Ignored, "{value}");
     }
-    for value in ["", "true", "TRUE", "false", "False"] {
-        assert!(!ignored(value), "{value}");
+    for value in ["", "false", "False"] {
+        assert_eq!(read(value), SdkDisabled::No, "{value}");
     }
-    assert!(!sdk_disabled_is_ignored(|_| None));
+    for value in ["true", "TRUE"] {
+        assert_eq!(read(value), SdkDisabled::Yes, "{value}");
+    }
+    assert_eq!(sdk_disabled(|_| None), Ok(SdkDisabled::No));
+}
+
+#[cfg(unix)]
+#[test]
+fn sdk_disabled_that_is_not_utf8_is_refused_and_not_ignored() {
+    use std::os::unix::ffi::OsStringExt as _;
+
+    let error = sdk_disabled(|_| Some(OsString::from_vec(vec![0xff]))).unwrap_err();
+    assert_eq!(error.place(), SettingSource::Variable(SDK_DISABLED));
 }
 
 #[test]

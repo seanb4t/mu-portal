@@ -12,7 +12,7 @@ use tracing_subscriber::util::SubscriberInitExt as _;
 use crate::config::ConfigArgs;
 use crate::server_config;
 use crate::socket::SocketArgs;
-use crate::telemetry::{self, Providers, STOP_BOUND};
+use crate::telemetry::{self, Providers, STOP_BOUND, SdkDisabled};
 
 /// Arguments of `mu server`.
 #[derive(Clone, Debug, Default, Args)]
@@ -64,7 +64,8 @@ pub fn run(args: &ServerArgs) -> ExitCode {
         Ok(file) => file,
         Err(error) => return fail(&error),
     };
-    if telemetry::sdk_disabled_is_ignored(|name| std::env::var_os(name)) {
+    // A value that is not UTF-8 gets no warning here: `export` refuses it below.
+    if telemetry::sdk_disabled(|name| std::env::var_os(name)) == Ok(SdkDisabled::Ignored) {
         crate::warn(
             "server",
             &format_args!(

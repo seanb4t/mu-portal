@@ -274,15 +274,38 @@ struct Checked {
     place: SettingSource,
 }
 
-/// Whether `OTEL_SDK_DISABLED`, which `var` reads, holds a value other than `true`, `false` or
-/// empty, in any case. [`export`] ignores such a value.
-#[must_use]
-pub fn sdk_disabled_is_ignored(var: impl Fn(&str) -> Option<OsString>) -> bool {
-    var(SDK_DISABLED).is_some_and(|value| {
-        let value = value.to_string_lossy();
-        !(value.is_empty()
-            || value.eq_ignore_ascii_case("true")
-            || value.eq_ignore_ascii_case("false"))
+/// The meaning of the value of `OTEL_SDK_DISABLED`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SdkDisabled {
+    /// Unset, empty or `false`, in any case: the other settings decide the export.
+    No,
+    /// `true`, in any case: no export.
+    Yes,
+    /// Another value: the other settings decide the export, and the server writes a warning.
+    Ignored,
+}
+
+/// Reads `OTEL_SDK_DISABLED` with `var`. [`export`] reads it with this function too.
+///
+/// # Errors
+///
+/// A [`SettingError`] that names the variable, when its value is not UTF-8.
+pub fn sdk_disabled(var: impl Fn(&str) -> Option<OsString>) -> Result<SdkDisabled, SettingError> {
+    let Some(value) = var(SDK_DISABLED) else {
+        return Ok(SdkDisabled::No);
+    };
+    let value = value.into_string().map_err(|_| {
+        SettingError::new(
+            SettingSource::Variable(SDK_DISABLED),
+            "the value is not UTF-8",
+        )
+    })?;
+    Ok(if value.is_empty() || value.eq_ignore_ascii_case("false") {
+        SdkDisabled::No
+    } else if value.eq_ignore_ascii_case("true") {
+        SdkDisabled::Yes
+    } else {
+        SdkDisabled::Ignored
     })
 }
 
@@ -297,6 +320,9 @@ pub fn export(
     var: impl Fn(&str) -> Option<OsString>,
     file: &TelemetryTable,
 ) -> Result<Option<Export>, SettingError> {
+    if sdk_disabled(&var)? == SdkDisabled::Yes {
+        return Ok(None);
+    }
     let var_os = |name: &str| var(name).filter(|value| !value.is_empty());
     let var = |name: &'static str| {
         var_os(name)
@@ -307,9 +333,6 @@ pub fn export(
             })
             .transpose()
     };
-    if var(SDK_DISABLED)?.is_some_and(|value| value.eq_ignore_ascii_case("true")) {
-        return Ok(None);
-    }
     let checked = |value: String, kind, place| {
         check_endpoint(&value, kind)
             .map(|uri| Checked { value, uri, place })
