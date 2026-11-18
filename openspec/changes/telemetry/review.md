@@ -1,10 +1,10 @@
 ---
-verdict: approve-with-notes
+verdict: approve
 phase: implementation
-reviewed_at: 2026-11-18T17:45:29+00:00
-head: 73616d2087586df6b2daaf1534f7659de14751d8
-round: 15
-next_id: 131
+reviewed_at: 2026-11-18T18:18:23+00:00
+head: 911177619cbd39daa08e7ce8269b3f94b59f9eed
+round: 16
+next_id: 132
 lenses:
   spec-lint: not-applicable
   approach: ok
@@ -17,10 +17,9 @@ lenses:
 
 ## Incomplete lenses
 
-- test-honesty: partial, gaps: 3
-  - crates/mu-cli/tests/telemetry.rs lines 346-800 read by assertion grep only, not line by line
-  - crates/mu-cli/src/telemetry/tests.rs lines 1-610 read by test-name grep only
-  - tests in crates/mu-core and crates/mu-cli/tests/world_config.rs and workspace_boundary.rs not read
+- test-honesty: partial, gaps: 2
+  - No Bash tool, so the exact diff since the base was not read; changed tests were located from commit subjects and read in place: the new proptest refused_endpoint_never_echoes_its_secret, helper_removes_the_otel_variables, service-name tests, sdk_disabled tests.
+  - The test module of crates/mu-core/src/session.rs (diff since base) was not located or read.
 
 The verdict covers only what the lenses checked. While the `ctl-lens` row of an incomplete lens is open, the verdict cannot be `approve`.
 
@@ -28,20 +27,14 @@ The verdict covers only what the lenses checked. While the `ctl-lens` row of an 
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge |
 |---|---|---|---|---|---|---|---|---|
-| R-123 | approach | should-fix | in-change | The TLS decision says the gRPC ClientTlsConfig calls ca_certificate for each certificate of the file. At head, tls_config calls ca_certificate once, with the PEM text of the whole file; tonic then parses each CERTIFICATE section of it. | design.md > Two transports and one TLS stack — "Its `ClientTlsConfig` calls `with_native_roots`, a feature of `tonic`, and `ca_certificate` for each certificate of the " | Say in the TLS decision that ca_certificate gets the whole PEM file once, and that tonic reads each certificate of it. |  |  |
-| R-124 | approach | should-fix | in-change | The risk of the full-queue test says the test sends 2100 calls. At head, the test sends CALLS, the default queue size plus 100, which is 2148 calls. | design.md > Risks / Trade-offs — "The test sends 2100 calls, which make two spans each, about twice the default size of 2048." | Write the count of the test in the risk as the default queue size plus 100 (2148), or make CALLS 2100 to match the design and the scenario. |  | scope? deviates-design 0.61 |
-| R-125 | approach | should-fix | in-change | The design says Session::handle makes the command span, and the span table names Session::handle as its place. At head, session::run makes the span from the request and instruments the call of handle with it; handle makes no span. | design.md > The span of a command follows it across the queue — "`Session::handle` makes the `command` span with that span as its parent." | Name session::run as the place that makes the command span, in the decision text and in the Where column of the span table. |  | scope? deviates-design 0.62 |
-| R-126 | fit | should-fix | in-change | The three service-name tests of telemetry.rs repeat one body: start an HTTP collector, run Setup::endpoint with no line, read service_names, assert it is not empty, and assert each name equals one value. Only the OTEL_SERVICE_NAME value and the expected name vary. | crates/mu-cli/tests/telemetry.rs:546 — "async fn default_service_name() {" | Add one helper in telemetry.rs that takes the value of OTEL_SERVICE_NAME (or none) and the expected name, runs the server and asserts each exported name; keep the three named tests as one-line calls of it. |  | severity? suggestion 0.93 |
-| R-127 | fit | should-fix | in-change | world_that_never_connects and state_at_the_stop each define the same closure state, which reads last_value of mu.world.state for mu.world alpha/aria and one state name. | crates/mu-cli/tests/telemetry.rs:997 — "let state = \|name\| {" | Move the closure to one function of telemetry.rs that takes the collector and the state name, and call it from both tests. |  | severity? suggestion 0.65 |
-| R-128 | fit | should-fix | in-change | password_stays_out builds its server inline with the lines of Setup::new and Setup::start: a ConfigDir with server.toml that names the collector, MU_CONFIG on a ServerBuilder, the fake world alpha/aria, Session::start and welcome. Only the name of the password variable differs (ALPHA_PW, not PW_0). | crates/mu-cli/tests/telemetry.rs:1035 — "let config = ConfigDir::empty().file(" | Let Setup name the password variable of alpha/aria (for example a constructor argument or a method that Setup::new reads), and build password_stays_out with Setup::endpoint and start. |  |  |
-| R-129 | invariants | should-fix | in-change | The gauge must hold 0 for each state a world left. set_state emits 0 for the old state only when old != state. No test checks that connecting ends at 0 after it is left, and none passes old == state. A regression that skips the 0 for connecting, or that drops the guard, passes every test. | crates/mu-core/src/session.rs:369 — "if old != state {" | In state_at_the_stop, also assert state("connecting") == Some(0.0). In telemetry_engine.rs, add a case that sets a world to the state it already has, for example a Disconnect of a disconnected world, and assert that disconnected stays at 1. |  |  |
-| R-130 | invariants | suggestion | in-change | check_endpoint promises that its message holds no more of the value than its scheme, for any input string. The tests pass only a few fixed hunter2 URLs, but the domain of endpoint values has no bound. | crates/mu-cli/src/telemetry.rs:445 — "/// with either protocol. The message holds no more of the value than its scheme." | Add a proptest case beside the proptest! block in crates/mu-cli/src/telemetry/tests.rs. It should build a value as <scheme>://<user>:<secret>@<host><path><query or fragment> from random parts, run it through each of the three variables and the field, and assert that no refusal message contains <secret>. |  | severity? should-fix 0.67 |
+| R-131 | approach | should-fix | in-change | The corrected decision now says session::run makes the command span and runs Session::handle in it, as the code does. Task 4.2 still cites Session::handle as the place that makes the command span, which is not so at head. | design.md > The span of a command follows it across the queue — "`session::run` makes the `command` span with that span as its parent, and runs `Session::handle` in it." | In task 4.2, say that session::run makes the command span with the span of the request as its parent and instruments the call of Session::handle with it, as the design now says. |  |  |
+| R-129 | invariants | should-fix | in-change | set_state now rests the case old == state on statement order alone: the 0 for old, then the 1 for the new state. The new comment states that a state that does not change keeps its 1. No test passes old == state, so a swap of the two calls passes every test. Every current caller changes the state, so only a direct call reaches the edge. | crates/mu-core/src/session.rs:369 — "// The 1 comes last, so a state that does not change keeps its 1." | Add a test that calls set_state with the state the world already has, under a recording subscriber, and asserts that the last value of mu.world.state for that state is 1. If no caller may ever pass the same state, drop the claim of the comment, or assert old != state with debug_assert_ne. | regression |  |
 
 ## Repeats
 
 | id | lens | severity | claim | evidence |
 |---|---|---|---|---|
-| R-90 | test-honesty | should-fix | lens test-honesty reported partial, gaps: 3 | review > lens-status — "test-honesty partial" |
+| R-90 | test-honesty | should-fix | lens test-honesty reported partial, gaps: 2 | review > lens-status — "test-honesty partial" |
 
 ## Out of bound
 
@@ -52,9 +45,11 @@ None.
 | id | severity | disposition | reason | ticket |
 |---|---|---|---|---|
 | R-64 | suggestion | accepted | Only the metric name and the attributes vary between the six events, so a macro adds a layer of indirection for little gain. |  |
-| R-90 | should-fix | accepted | The test-honesty lens returned partial in rounds 13, 14 and 15. It runs out of turns before it reads the whole test surface of this change, about 1,900 new lines of tests. After round 15, the controller read the rest by hand: tests/telemetry.rs lines 340 to 830, src/telemetry/tests.rs lines 1 to 580, the test modules of mu-core, world_config.rs and workspace_boundary.rs. That read found no test that cannot fail for a user who is not root. Two tests in world_config.rs check nothing when they run as root: unreadable_server_file_in_another_case_names_the_error returns early, and unreadable_server_file_makes_no_world can still read the file. collector_that_the_server_does_not_trust asserts on the names of log events of the OpenTelemetry SDK (Processor.ExportError, Reader.ExportError, Export.Failed.Exhausted), which the SDK owns. | https://github.com/seanb4t/mu-portal/issues/97 |
+| R-90 | should-fix | accepted | Tracked in https://github.com/seanb4t/mu-portal/issues/97: the test-honesty lens stays partial on this change, and the controller read the missed tests by hand in round 15. |  |
 | R-99 | should-fix | accepted | All 60 covering tests passed one at a time, and round 12 runs the test-coverage lens again on the new head. |  |
 | R-107 | suggestion | accepted | A suggestion on test setup only; the two providers differ on purpose, and the review at this head stays valid for the archive gate. |  |
+| R-129 | should-fix | deferred | No caller of set_state passes the state that the world already has, so no test reaches that case, and the result in that case rests on the order of the two state_gauge calls. Two more small problems of the telemetry change are open with it: task 4.2 in tasks.md still names Session::handle as the place that makes the command span (R-131), and in crates/mu-cli/tests/telemetry.rs the doc comment of last_value sits above world_state, so last_value has none. | https://github.com/seanb4t/mu-portal/issues/98 |
+| R-131 | should-fix | accepted | Tracked with R-129 in https://github.com/seanb4t/mu-portal/issues/98, to fix after PR 96 merges, because a fix now makes the review stale. |  |
 
 ## Rounds
 
@@ -75,10 +70,11 @@ None.
 | 13 | implementation | follow-up | 0d3bb3a548a47d56a774eaaf0a043689dd9e33b1 | dfc8ad33fbb12ba3bc8901b890bb6295a159a790a827b990ad6f956c7542d548 | approve-with-notes | 8 | 1 | 0 | 0 | operator decision |
 | 14 | implementation | follow-up | 9a3e33ddfee3681af5c938826266097f7dcb7e3b | 1d41472d7b876c205b9d96cf7527a901744196f4b41e5b59a7df4d52d2a42ec0 | changes-requested | 4 | 2 | 0 | 0 | operator decision |
 | 15 | implementation | full | 73616d2087586df6b2daaf1534f7659de14751d8 | b3a770f52dccb57c1f5af01daacfd934ccb55434fc4f86693e658948441a956c | approve-with-notes | 8 | 1 | 0 | 0 | operator decision |
+| 16 | implementation | follow-up | 911177619cbd39daa08e7ce8269b3f94b59f9eed | cd9213929c30dff57fa9e5facd12a1b0ad55d9fe5f9c69a5ee9b4bf80acd836b | approve-with-notes | 1 | 1 | 1 | 0 | operator decision |
 
 ## Judge
 
-judge: 16 questions, 0.001 USD
+judge: 4 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -230,32 +226,27 @@ None.
 
 ## Lens notes
 
-- approach: Each requirement of specs/telemetry/spec.md and specs/world-config/spec.md has a decision in design.md that produces it; no unaddressed requirement found.
-- approach: Checked against the pinned crates: the SDK warns on an ignored compression, temporality or protocol value (opentelemetry-otlp 0.33.1 exporter/mod.rs), the batch processor default queue is 2048 and its first drop and shutdown count warn (opentelemetry_sdk 0.33.1), MetricsLayer reads the gauge. prefix (tracing-opentelemetry 0.34.0), and reqwest 0.13.5 reads the proxy variables from the environment.
-- approach: The migration plan has a rollback step, and the guide states it under Before a downgrade.
-- fit: The catch_unwind rewrite of the stop (R-122) follows the library: helper maps the Err of catch_unwind to Panicked. The Disconnected branch of stop_all still maps to Panicked; it is reachable only when the drop of a panic payload itself panics, so it is not raised again.
-- fit: tests/telemetry.rs restates the OTEL_* variable names as literals instead of importing mu_cli::telemetry constants. This is not raised: a test of a user-facing name that imported the production constant could not catch a typo in it.
-- fit: The test authority of telemetry/tests.rs (authority_pem) and of tests/support/collector.rs (pki) are both rcgen CA builds, but they live in a unit-test module and an integration-test binary, which share no module; not raised.
-- fit: The non-UTF-8 value OsString::from_vec(vec![0xff]) is built inline in three unit tests of telemetry/tests.rs; one expression each, not raised.
-- fit: The library rows of openspec/config.yaml were checked: each new crate of mu-cli enters through [workspace.dependencies] with workspace = true, and the test helpers come from tests/support/mod.rs.
-- invariants: I1: an endpoint has scheme http or https, a host, no fragment and no user or password, and a base URL has no query \| enforced at crates/mu-cli/src/telemetry.rs check_endpoint (446-472) \| boundary test bad_endpoint_variables_are_refused_and_named, query_or_fragment_in_the_base_is_refused, fragment_in_a_signal_variable_is_refused, user_or_password_in_an_endpoint_is_refused_and_not_echoed (http://@h), at_sign_in_the_path_or_the_query_is_accepted
-- invariants: I2: a gRPC endpoint that a signal uses has no path other than / and no query \| enforced at telemetry.rs signal (424-431) \| boundary test grpc_endpoint_with_a_path_or_a_query_is_refused_and_named, grpc_endpoint_with_a_slash_is_accepted, grpc_source_with_a_path_that_loses_is_accepted
-- invariants: I3: the join of a base is the base with every trailing slash removed, then /v1/<signal> \| enforced at telemetry.rs join \| boundary test join_of_a_base_with_a_slash_and_with_a_path and the proptest joined_url_is_the_trimmed_base_and_the_path
-- invariants: I4: OTEL_SDK_DISABLED=true in any case turns the export off and reads nothing else, and another value warns only while a signal is exported \| enforced at telemetry.rs sdk_disabled and export, and server.rs 72-82 \| boundary test sdk_disabled_values, sdk_disabled_reads_nothing_else, sdk_disabled_with_another_value_is_named, sdk_disabled_with_another_value_and_no_endpoint_writes_only_the_serving_line. Export Some always implies at least one signal, because export returns None when base and both own endpoints are None
-- invariants: I5: a protocol other than http/protobuf or grpc is refused only while a signal has an endpoint, and an empty value counts as unset \| enforced at telemetry.rs parse_protocol and the early return at 365 \| boundary test http_json_with_an_endpoint_is_refused_and_named, http_json_without_an_export_is_accepted, empty_protocol_variable_counts_as_unset
-- invariants: I6: every certificate in the file parses, and the file holds at least one \| enforced at telemetry.rs read_authorities \| boundary test file_with_no_certificate_is_refused, certificate_that_does_not_parse_is_refused_and_named, bad_certificate_after_a_good_one_is_refused_and_named
-- invariants: I7: an error in server.toml quotes no value \| enforced at parse.rs with Hidden::All \| boundary test all_hidden_drops_the_message_of_each_field, error_under_telemetry_holds_no_value. The root-path branch at parse.rs:53 ignores hidden, but serde_path_to_error 0.1.20 next_key_seed records the key of an unknown field, so no reachable error of ServerFile has an empty path
-- invariants: I8: the walk skips only the top-level server.toml or the same file in another case \| enforced at dir.rs is_server_file \| boundary test server_file_in_another_case, hard_link_to_the_server_file_is_an_error, server_file_that_links_to_global_keeps_the_layer, character_named_server_is_a_world, unreadable_server_file_* tests
-- invariants: I9: the stop waits at most STOP_BOUND, and each helper sends exactly one outcome \| enforced at pipeline.rs stop_all and helper (catch_unwind) \| boundary test late_stop_is_named (Duration::ZERO), panicked_stop_is_reported_without_the_bound, helper_that_never_runs_sends_nothing, silent_collector_does_not_delay_a_send. A drop of the original provider after Panicked does not block: opentelemetry_sdk 0.33.1 sets is_shutdown and shutdown_invoked before it calls the processors, so Drop skips a second shutdown
-- invariants: I10: the span layer takes only mu_core, mu_server and mu_cli with a :: boundary, and the metrics layer takes only mu::metrics \| enforced at pipeline.rs in_crates and the filter_fn \| boundary test crate_with_a_longer_name_makes_no_span, other_targets_make_no_span_event, metric_field_under_another_target_makes_no_metric
-- invariants: I11: mu.subscriber.lag is last - seq, saturating at 0, and is read only while a layer takes the metrics target \| enforced at service.rs event_stream 75-82 \| boundary test lag_at_the_head_is_zero, lag_behind_the_head, lag_is_not_read_with_only_the_traces, lag_is_not_read_with_the_export_off
-- invariants: I12: rate drops count only commands past the limiter's burst of 20 \| enforced at session.rs handle \| boundary test commands_at_the_rate (20, none) and command_over_the_rate (25, 5). Memory::value matches a subset of attributes, so the None in commands_at_the_rate is not vacuous
-- invariants: I13: the gauge holds 1 for the current state and 0 for each state left \| enforced at session.rs set_state and the start emit in run \| boundary test partial, see inv-1
-- invariants: I14: mu-core and mu-server take no OpenTelemetry crate \| enforced at crates/mu-cli/tests/workspace_boundary.rs ALLOWED_CRATES \| boundary test the boundary test itself
-- invariants: No enforcement point is a script: the enforcement is Rust code, so there was no script probe. I read the SDK sources in the cargo registry instead: opentelemetry-otlp 0.33.1 logs the export URL only at DEBUG, so the WARN or ERROR lines of a failed export do not quote an endpoint query.
-- test-coverage: Orphan tests with no scenario, each explained by an earlier finding or a design decision: redirect_is_not_followed, collector_on_a_closed_port, subscribe_past_the_end, silent_traces_collector_does_not_stop_the_metrics, grpc_with_tls_and_an_upper_case_scheme.
-- test-honesty: No ignored, skipped or assertion-free test found in the files read; the proptest expected URL no longer uses the production join helper.
-- test-coverage gap: The assertion bodies of the world_config.rs tests and of the server.toml and variable tests in telemetry.rs (lines 1-845) were matched by name; only the span, metric, secret, silent-collector, TLS and engine tests were read.
+- approach: No Bash tool, so the changed lines of design.md were inferred from the commit subjects since the base and the fixed rows R-120 to R-130; the bound of app-1 rests on the R-125 correction of the command-span text.
+- approach: Checked at head and found to hold: the gauge text (session::run emits 1 for the start state, set_state emits 0 for the old and 1 for the new state, session.rs 248 and 367-371); the command span in session::run (span table and the queue decision); Request::command in submit, stop, connect_all and route; ca_certificate called once with the whole PEM text (pipeline.rs 459); CALLS = 2100 with a const assertion against OTEL_BSP_MAX_QUEUE_SIZE_DEFAULT (tests/telemetry.rs 1057-1058); the stop with catch_unwind, CannotStart and a clone per helper thread (pipeline.rs 290-403); sdk_disabled shared by export and server::run; internal-logs on the three OpenTelemetry crates.
+- approach: The test names that design.md cites in 'Which test decides each rule' still exist in crates/mu-cli/tests/telemetry.rs after the refactor of shared steps.
+- approach: The decision and guide pages under docs/src/content/docs hold none of the three corrected citations (Session::handle, ca_certificate per certificate, 2148 calls).
+- fit: Follow-up round since 73616d2: the bound is the four changed files of diff-files.txt besides review.md. Each was read at the changed places: set_state and state_gauge in crates/mu-core/src/session.rs, exports_service_name, world_state, Setup::with_password_variable and password_stays_out in crates/mu-cli/tests/telemetry.rs, secret_endpoint_strategy and refused_endpoint_never_echoes_its_secret in crates/mu-cli/src/telemetry/tests.rs, and the corrected citations of design.md.
+- fit: The fixes of R-126, R-127 and R-128 collapse their copies into one helper each (exports_service_name, world_state, Setup::with_password_variable), and each helper has two or more call sites. No new copy was found.
+- fit: The fix of R-129 keeps the one emission helper state_gauge for every value of mu.world.state; no second mechanism emits the gauge.
+- fit: The corrected design citations (ca_certificate once with the whole PEM text, the command span in session::run, 2100 calls) match pipeline.rs line 459, session.rs line 262 and telemetry.rs line 1057. The decision page and the guide cite none of the three, so no mirror drifted.
+- fit: Outside the fit categories: in crates/mu-cli/tests/telemetry.rs lines 189-191, the doc comment of last_value now sits above world_state, merged with the doc of world_state, and last_value at line 200 has no doc comment.
+- invariants: I1: mu.world.state holds 1 for the current state and 0 for each state left \| enforced at crates/mu-core/src/session.rs:367 set_state and :248 the start gauge \| boundary test state_at_the_stop (connecting 0, connected 0, disconnected 1), world_that_never_connects, world_without_transport_is_disconnected; old == state has none (inv-1).
+- invariants: I2: a refused endpoint error holds no more of the value than its scheme \| enforced at crates/mu-cli/src/telemetry.rs:446 check_endpoint, whose messages are constant except the scheme \| boundary test refused_endpoint_never_echoes_its_secret (proptest over user, user:password and fragment shapes, schemes http, https, HTTP, ftp, and @ in the path).
+- invariants: I3: the silent-collector test sends more calls than the default queue holds, so its two spans per call exceed twice the queue \| enforced at crates/mu-cli/tests/telemetry.rs const assertion CALLS > OTEL_BSP_MAX_QUEUE_SIZE_DEFAULT \| boundary: the assertion fails at compile time when the size reaches 2100, as the changed Risks bullet states; 2*CALLS > 2*size is equivalent to CALLS > size.
+- invariants: I4: the command span of an API call is a child of the call span \| enforced at crates/mu-core/src/session.rs:262 info_span with parent the span of Request::Command, and handle instrumented in it \| boundary test command_under_its_call; the changed design text now names session::run, which matches the code.
+- invariants: I5: each certificate of the file parses, for both protocols \| enforced at crates/mu-cli/src/telemetry.rs:498 read_authorities before the gRPC ca_certificate call with the whole PEM at pipeline.rs:459 \| boundary test bad_certificate_after_a_good_one_is_refused_and_named and certificate_that_does_not_parse; the changed TLS text matches the code.
+- invariants: I6: Setup::new still gives alpha/aria the password PW in PW_0, the same as fake_worlds did, and password_stays_out still waits for the welcome before its Send, through Setup::start.
+- invariants: No enforcement script changed since the base, so no probe ran.
+- invariants: Information outside this lens: the doc lines of last_value in crates/mu-cli/tests/telemetry.rs now sit above the doc of world_state, at lines 189 to 191, so last_value has no doc and world_state has both.
+- test-coverage: Not run: the controller runs the tests; this matrix reads assertions only.
+- test-coverage: Follow-up round: the changed tests (lag_behind_the_head, silent_collector_with stderr WARN check, hard-link and unreadable server file tests) assert their THEN conditions; no new gap found.
+- test-honesty: The new proptest asserts on error text that the production code builds and the secret is a generated value, so it can fail; unwrap_err fails the case if the endpoint is accepted.
+- test-honesty: helper_removes_the_otel_variables re-runs itself as a child with OTEL_EXPORTER_OTLP_COMPRESSION set and checks the child process env, so it can fail.
 
 ## Ledger
 
@@ -350,7 +341,7 @@ None.
 | R-87 | 7 | 7 | should-fix | in-change | ["path","crates/mu-cli/src/telemetry.rs",280] | duplicate | R-84 |  | Each telemetry variable that the server reads must be UTF-8, the certificate variable excepted, but OTEL_SDK_DISABLED is read with var_os and compared as bytes. A value that is not UTF-8 is not refused: it reads as not true, and the server starts with the export on. |
 | R-88 | 7 | 7 | should-fix | in-change | ["path","crates/mu-cli/src/telemetry.rs",366] | fixed | 4756ab8ab2706d7c442ec82563747b9c3a7be6cc |  | The gRPC rule (no path, no query) runs only on the endpoint that a signal uses. A server.toml endpoint with a path under protocol grpc starts the server while OTEL_EXPORTER_OTLP_ENDPOINT wins over it, though the field is said to be checked even when a variable wins. |
 | R-89 | 7 | 7 | should-fix | in-change | ["path","crates/mu-server/src/service.rs",75] | fixed | cd0541ee1ce7083b9ab34f69f2014da22af42fb7 |  | event_stream must read Journal::last only while a layer takes the metrics target, because the read locks the journal. No test runs event_stream without a metrics layer and counts the reads, so a removal of the enabled! guard passes every test. |
-| R-90 | 7 | 15 | should-fix | in-change | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/97; reason: The test-honesty lens returned partial in rounds 13, 14 and 15. It runs out of turns before it reads the whole test surface of this change, about 1,900 new lines of tests. After round 15, the controller read the rest by hand: tests/telemetry.rs lines 340 to 830, src/telemetry/tests.rs lines 1 to 580, the test modules of mu-core, world_config.rs and workspace_boundary.rs. That read found no test that cannot fail for a user who is not root. Two tests in world_config.rs check nothing when they run as root: unreadable_server_file_in_another_case_names_the_error returns early, and unreadable_server_file_makes_no_world can still read the file. collector_that_the_server_does_not_trust asserts on the names of log events of the OpenTelemetry SDK (Processor.ExportError, Reader.ExportError, Export.Failed.Exhausted), which the SDK owns. |  | lens test-honesty reported partial, gaps: 2 |
+| R-90 | 7 | 16 | should-fix | in-change | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: none; reason: Tracked in https://github.com/seanb4t/mu-portal/issues/97: the test-honesty lens stays partial on this change, and the controller read the missed tests by hand in round 15. |  | lens test-honesty reported partial, gaps: 2 |
 | R-91 | 8 | 8 | blocker | in-change | ["path","crates/mu-server/src/service.rs",401] | fixed | f9dd0e5472f1a118f5645d9179feb0a3621c142b |  | lasts_for_one_event adds a third copy, in the tests of service.rs, of one stream setup. The setup is a watch channel, event_stream over journal.subscribe(Seq(1)) with the clone of the journal and the id "id", and a read of the Hello. stop_sends_the_ready_events_first and stopping_ends_the_stream already repeat it line for line. Only the type of the journal varies. |
 | R-92 | 8 | 8 | should-fix | in-change | ["path","crates/mu-server/src/service.rs",370] | fixed | f9dd0e5472f1a118f5645d9179feb0a3621c142b |  | The new tests of the enabled! guard in event_stream run under a hand-written tracing::Subscriber, MetricsOnly, in mu-server. Its enabled() restates the filter of the metrics layer in pipeline.rs. The closest pattern, the other event_stream metric tests in telemetry_engine.rs, runs under the real layers of Providers through Memory and the helper subscriber(capacity). The design says the engine metric tests go through the real layers, and it names no reason for the stub. The 'without a metrics layer' case also uses no subscriber at all, not the fmt-only subscriber that an export-off server installs. |
 | R-93 | 8 | 8 | should-fix | in-change | ["artifact",["design.md","Where the endpoint comes from"],"The rule applies only to the endpoint that a signal uses. A field or a base variable that a higher source wins over gets only the check of `check_endpoint`."] | fixed | bedb5356bc059e32517bf6abcc8bdb14fca172c0 |  | The changed design says the gRPC rule of no path and no query applies only to the endpoint that a signal uses, so a losing source with a path must pass. signal() enforces this with own.or(base), but every gRPC path test passes the refused side; no test passes a losing field or base variable with a path under grpc and expects the start to go on. |
@@ -389,8 +380,9 @@ None.
 | R-126 | 15 | 15 | should-fix | in-change | ["path","crates/mu-cli/tests/telemetry.rs",546] | fixed | adb72ff8923bb9ef7bc185af022bd2b945efbce8 |  | The three service-name tests of telemetry.rs repeat one body: start an HTTP collector, run Setup::endpoint with no line, read service_names, assert it is not empty, and assert each name equals one value. Only the OTEL_SERVICE_NAME value and the expected name vary. |
 | R-127 | 15 | 15 | should-fix | in-change | ["path","crates/mu-cli/tests/telemetry.rs",997] | fixed | adb72ff8923bb9ef7bc185af022bd2b945efbce8 |  | world_that_never_connects and state_at_the_stop each define the same closure state, which reads last_value of mu.world.state for mu.world alpha/aria and one state name. |
 | R-128 | 15 | 15 | should-fix | in-change | ["path","crates/mu-cli/tests/telemetry.rs",1035] | fixed | adb72ff8923bb9ef7bc185af022bd2b945efbce8 |  | password_stays_out builds its server inline with the lines of Setup::new and Setup::start: a ConfigDir with server.toml that names the collector, MU_CONFIG on a ServerBuilder, the fake world alpha/aria, Session::start and welcome. Only the name of the password variable differs (ALPHA_PW, not PW_0). |
-| R-129 | 15 | 15 | should-fix | in-change | ["path","crates/mu-core/src/session.rs",369] | fixed | adb72ff8923bb9ef7bc185af022bd2b945efbce8 |  | The gauge must hold 0 for each state a world left. set_state emits 0 for the old state only when old != state. No test checks that connecting ends at 0 after it is left, and none passes old == state. A regression that skips the 0 for connecting, or that drops the guard, passes every test. |
+| R-129 | 15 | 16 | should-fix | in-change | ["path","crates/mu-core/src/session.rs",369] | deferred | ticket: https://github.com/seanb4t/mu-portal/issues/98; reason: No caller of set_state passes the state that the world already has, so no test reaches that case, and the result in that case rests on the order of the two state_gauge calls. Two more small problems of the telemetry change are open with it: task 4.2 in tasks.md still names Session::handle as the place that makes the command span (R-131), and in crates/mu-cli/tests/telemetry.rs the doc comment of last_value sits above world_state, so last_value has none. |  | The gauge must hold 0 for each state a world left. set_state emits 0 for the old state only when old != state. No test checks that connecting ends at 0 after it is left, and none passes old == state. A regression that skips the 0 for connecting, or that drops the guard, passes every test. |
 | R-130 | 15 | 15 | suggestion | in-change | ["path","crates/mu-cli/src/telemetry.rs",445] | fixed | 619bd2658f810b05d40dce8fd86ea108f6747943 |  | check_endpoint promises that its message holds no more of the value than its scheme, for any input string. The tests pass only a few fixed hunter2 URLs, but the domain of endpoint values has no bound. |
+| R-131 | 16 | 16 | should-fix | in-change | ["artifact",["design.md","The span of a command follows it across the queue"],"`session::run` makes the `command` span with that span as its parent, and runs `Session::handle` in it."] | accepted | ticket: none; reason: Tracked with R-129 in https://github.com/seanb4t/mu-portal/issues/98, to fix after PR 96 merges, because a fix now makes the review stale. |  | The corrected decision now says session::run makes the command span and runs Session::handle in it, as the code does. Task 4.2 still cites Session::handle as the place that makes the command span, which is not so at head. |
 
 ## Reviewed files
 
@@ -407,11 +399,11 @@ None.
 | crates/mu-cli/src/server_config.rs | d363328bafd3b110463a7212fdfd459a1c36cf28 |
 | crates/mu-cli/src/telemetry.rs | 956191681bb111a2f8a9113c0eaa4b36a4413d9d |
 | crates/mu-cli/src/telemetry/pipeline.rs | 4574f3ad5f09e2630fab1e5a6ecb1ac63e27a75f |
-| crates/mu-cli/src/telemetry/tests.rs | 6e005efe3bb19df7115d6e4d1eca0eaf0739e94b |
+| crates/mu-cli/src/telemetry/tests.rs | 44e0c83e479df1a474192baab35d20087c584c64 |
 | crates/mu-cli/tests/support/collector.rs | cede1e2c60a34f823ff09e8f3e36e9732aa004da |
 | crates/mu-cli/tests/support/mod.rs | 25e00f84aca56cf2686f4c0f88f55c51a01c47fb |
 | crates/mu-cli/tests/support/process.rs | f6657e1fe453b23671b07de4842f1eccfc64ef86 |
-| crates/mu-cli/tests/telemetry.rs | 0315a261199015df961c89a641f505f49c98b61b |
+| crates/mu-cli/tests/telemetry.rs | 0f21a7f97c5230c9ba69cd5fc1cf35385af9f2c1 |
 | crates/mu-cli/tests/telemetry_engine.rs | 84e5320ba9b08d1d44574e025a7247c60b89ab67 |
 | crates/mu-cli/tests/workspace_boundary.rs | 93d09024c15aedc8061c5b5852dd1234e249ac52 |
 | crates/mu-cli/tests/world_config.rs | e99d2d6ff30036052cc14aa28e782c4006df5567 |
@@ -420,7 +412,7 @@ None.
 | crates/mu-core/src/event.rs | 1de0c7515daf1c69c9e3038c89de64e2875b013e |
 | crates/mu-core/src/lib.rs | 8c507cc99ac198430e949d8366bd4f27405dde83 |
 | crates/mu-core/src/portal.rs | 8ac1ed6006a7b2095b07e17fbd31eaa26b95be64 |
-| crates/mu-core/src/session.rs | 131f1b23f7ae5e2b43b89073c7ca3e3b99e917d9 |
+| crates/mu-core/src/session.rs | 6042a792e9e9a6ddbb1ce3eb73b3a7fa6848b2a4 |
 | crates/mu-core/src/world/builtin.rs | 8b7141aa17fed91b8e851315a8672dc98e0b40d0 |
 | crates/mu-core/src/world/dir.rs | ba64b9627df4ba2978cdd8ce3fdc78828275f7ba |
 | crates/mu-core/src/world/mod.rs | b3a6920da644afc5882ef5eb01e54a7786cc0fcd |
@@ -432,7 +424,7 @@ None.
 | docs/src/content/docs/guides/configuration.md | 2acfbf5eb084781003533329a8fcbcccc8056604 |
 | docs/src/content/docs/guides/telemetry.md | c6e4a2b4b25557f3c6eda8d307aff2fec56065e4 |
 | openspec/changes/telemetry/.openspec.yaml | 578c89ac91eda0589930783c384ddbe6201a0568 |
-| openspec/changes/telemetry/design.md | 863454b05266748e32d0a4dd0ede62f5bb874bbf |
+| openspec/changes/telemetry/design.md | f91a0af22075df73df5d4dd28002e0bbec4f8291 |
 | openspec/changes/telemetry/proposal.md | 09698870137709423e65935a81326ce42d8f4ac0 |
 | openspec/changes/telemetry/specs/telemetry/spec.md | b4c0920f1b8793c8f0a1c9d00706b18db79bdd60 |
 | openspec/changes/telemetry/specs/world-config/spec.md | ae472d6ae06864b5462314cc111c3028330c76f2 |
