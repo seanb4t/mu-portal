@@ -16,7 +16,7 @@
   - the in-memory exporters of `opentelemetry_sdk` for the tests, and their feature
 
   Add a table "Checked facts" to the design with one row for each fact and its source. Make sure that each difference from the sources is an edit of the design that its row names.
-- [ ] 1.2 Add `opentelemetry`, `opentelemetry_sdk`, `opentelemetry-otlp`, `tracing-opentelemetry` and `opentelemetry-proto` to `[workspace.dependencies]`. Give `opentelemetry-otlp` the features `http-proto`, `reqwest-blocking-client`, `grpc-tonic`, `trace` and `metrics`, and the TLS features that task 1.1 picks. Add the first four, `serde` and `http` to the dependencies of `mu-cli`. If task 1.1 finds no re-export of the `reqwest` and `tonic` types, add those two crates too. Add `opentelemetry-proto` with its gRPC services, `tonic`, `axum`, `axum-server` and `rcgen` to its dev-dependencies, and the testing feature of `opentelemetry_sdk`. Add the new crates of `mu-cli` to `ALLOWED_CRATES` in `crates/mu-cli/tests/workspace_boundary.rs`. Make sure that `cargo deny check` and `cargo nextest run -p mu-cli --test workspace_boundary --locked` pass, and that Renovate reads each new pin from `Cargo.toml`.
+- [ ] 1.2 Add `opentelemetry`, `opentelemetry_sdk`, `opentelemetry-otlp`, `tracing-opentelemetry` and `opentelemetry-proto` to `[workspace.dependencies]`. Give `opentelemetry-otlp` the features `http-proto`, `reqwest-blocking-client`, `grpc-tonic`, `trace` and `metrics`, and the TLS features that task 1.1 picks. Add the first four, `serde` and `http` to the dependencies of `mu-cli`. If task 1.1 finds no re-export of the `reqwest` and `tonic` types, add those two crates too. Add `opentelemetry-proto` with its gRPC services, `tonic`, `axum`, `axum-server`, `rcgen` and `hex` to its dev-dependencies. Also add the testing feature of `opentelemetry_sdk` and the feature `test-util` of `tokio`. The last two serve the mu-core test helpers of task 5.2. Add the new crates of `mu-cli` to `ALLOWED_CRATES` in `crates/mu-cli/tests/workspace_boundary.rs`. Make sure that `mise run deny` and `cargo nextest run -p mu-cli --test workspace_boundary --locked` pass, and that Renovate reads each new pin from `Cargo.toml`.
 
 ## 2. server.toml
 
@@ -39,11 +39,14 @@ Load the `rust-best-practices` skill before this group.
   - the order of the protocol, and `grpc` and `http/protobuf` from each source
   - `http/json` in each of the three protocol variables and in the field, with an endpoint: refused, and the error names the source
   - `http/json` with no endpoint, and with the export off: accepted
-  - `ftp://` and `not a url` in each of the three endpoint variables: refused, and the error names the variable
+  - an empty protocol variable with an endpoint: it counts as unset, and the next source decides
+  - `OTEL_SDK_DISABLED=true` with a bad endpoint variable, a bad protocol and a missing certificate file: the export is off, and nothing is refused
+  - `ftp://`, `not a url`, `collector.example:4318` (no scheme) and `http:///v1` (no host) in each of the three endpoint variables: refused, and the error names the variable
+  - a query or a fragment in the base variable: refused. A query in a signal variable: accepted, and used as it is
   - the join of `http://h:4318/` and of `http://h:4318/otel` with each signal path, and no join with `grpc`
   - the order of the certificate file, a missing file, and a file with no PEM certificate
   - the service name with the variable unset, empty and set
-  - a `proptest` block over bases with and without a trailing slash and a path, and over random sets of the variables. It checks that no URL holds `//` before `v1/`, and that a set step always wins over each lower step
+  - a `proptest` block over bases with and without a trailing slash and a path, and over random sets of the variables. It checks that each joined URL equals the base with its trailing slashes removed, then `/v1/<signal>`. It also checks that a set step always wins over each lower step
 
   Make sure that `cargo nextest run -p mu-cli --lib --locked` passes.
 - [ ] 3.2 Add the function that builds the three layers from a span exporter and a metric exporter, with the resource of the design. Give the two OpenTelemetry layers the filter that passes only the targets `mu_core`, `mu_server`, `mu_cli` and `mu::metrics`. Make `server::run` build the HTTP exporters with their own `reqwest` client before the runtime. It builds the gRPC exporters inside the `enter` of the `mu-telemetry` runtime, on its own thread. Each exporter gets the TLS of the design. Install the subscriber. After `serve` returns, it shuts the providers down on a helper thread, and waits at most five seconds. Without an endpoint, install only the `fmt` layer. Add `other_targets_make_no_span_event` to `crates/mu-cli/tests/telemetry_engine.rs`. It sends an event with the target `h2` inside a span, under the in-memory exporters, and checks that the span has no event. Make sure that it passes, and that `cargo nextest run -p mu-cli --locked` passes.
@@ -65,8 +68,8 @@ Load the `rust-best-practices` skill before this group.
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 4.1 Add a span named `PortalService/<method>` to each method of `PortalApi`. Give it `mu.world` for a call that names a world, and `otel.status_code` for a failure. The span of `Subscribe` closes before the method returns its stream. Add `span_of_a_send`, `span_of_a_subscribe` and `span_of_a_failed_call` to `crates/mu-cli/tests/telemetry.rs`, for the three scenarios of "A span for each API call". Make sure that the three pass.
-- [ ] 4.2 Add `Command::name` and `Origin::name`, each with a unit test that lists every variant. Add the field `span` and the constructor `Request::command` to `session.rs`. Use the constructor in `Portal::submit`, `Portal::stop`, `Portal::connect_all` and `route`. Make the `command` span in `Session::handle` with that span as the parent. Rename the field of the `warn!` in `route` to `mu.world`. Add `command_under_its_call` and `command_of_the_server`, for the two scenarios of "A span for each command of a world". Make sure that both pass, and that `cargo nextest run -p mu-core --locked` passes.
+- [ ] 4.1 Add a span named `mu.v1.PortalService/<method>` to each method of `PortalApi`. Give it the three `rpc.*` attributes, `mu.world` for a call that names a world, and `otel.status_code` for a failure. The span of `Subscribe` closes before the method returns its stream. Add `span_of_a_send`, `span_of_a_subscribe` and `span_of_a_failed_call` to `crates/mu-cli/tests/telemetry.rs`, for the three scenarios of "A span for each API call". Make sure that the three pass.
+- [ ] 4.2 Add `Command::name`, `Origin::name` and `WorldState::name`, each with a unit test that lists every variant. Add the field `span` and the constructor `Request::command` to `session.rs`. Use the constructor in `Portal::submit`, `Portal::stop`, `Portal::connect_all` and `route`. Make the `command` span in `Session::handle` with that span as the parent. Rename the field of the `warn!` in `route` to `mu.world`. Add `command_under_its_call` and `command_of_the_server`, for the two scenarios of "A span for each command of a world". Make sure that both pass, and that `cargo nextest run -p mu-core --locked` passes.
 - [ ] 4.3 Add the `world.connection` span to the `Conn` state of the session, from the start of a connect to `down`. Add `connection_of_a_fake_world`, for its scenario. Make sure that it passes.
 
 ## 5. The metrics
@@ -75,8 +78,9 @@ Load the `rust-best-practices` skill before this group.
 
 - [ ] 5.1 Add `EventKind::name`, with a unit test that lists every kind. Emit `mu.journal.events` in `Session::record`, with the target `mu::metrics`. Give `event_stream` the journal as an argument, and pass it from `PortalApi::subscribe` and the tests of `service.rs`. Emit `mu.subscriber.lag` and `mu.subscriber.lagged` there, as the design describes. Add `events_of_a_world` and `lag_of_a_subscriber` to `crates/mu-cli/tests/telemetry.rs`. Add `lagged_stream_is_counted` and `lag_at_the_head_is_zero` to `crates/mu-cli/tests/telemetry_engine.rs`, which run `event_stream` under the layers of 3.2 with the in-memory exporters. Make sure that the four tests pass.
 - [ ] 5.2 Emit `mu.commands.dropped` and `mu.script.errors` in `Session::handle` and `Session::script_error`. Emit `mu.world.state` at the start of `session::run` and in `Session::set_state`. Include `crates/mu-core/tests/support/mod.rs` in `telemetry_engine.rs` with a `#[path]` module, and add these tests there, under the in-memory exporters:
-  - `command_past_the_depth_limit`, with a handler from `on` that sends a command for each event
+  - `command_past_the_depth_limit`, with a handler from `on` that answers each event with one `Echo`, after one line of a client
   - `command_over_the_rate`, with a paused clock and a handler that sends 25 commands for one event. It expects 5 in `mu.commands.dropped`
+  - `commands_at_the_rate`, the same with 20 commands. It expects no value of `mu.commands.dropped`
   - `world_without_transport_is_disconnected`, with `WorldSetup::without_transport`
 
   Add `world_that_never_connects` and `state_at_the_stop` to `telemetry.rs`. Make sure that the five tests pass.
@@ -84,7 +88,7 @@ Load the `rust-best-practices` skill before this group.
 ## 6. Secrets and a slow collector
 
 - [ ] 6.1 Add `password_stays_out` and `line_text_stays_out` to `crates/mu-cli/tests/telemetry.rs`. Each one scans each body that the collector got, and stderr. Make sure that both pass. Put the text of the `Send` in a span field by hand, and make sure that both then fail.
-- [ ] 6.2 Add `silent_collector_does_not_delay_a_send` for the scenario "A collector that never answers", with the silent mode of the collector and 2100 calls. Run it for each protocol. It measures the time from SIGTERM to the exit, and expects at most seven seconds. Make sure that it passes. Remove the bound of the stop by hand, and make sure that the test then fails.
+- [ ] 6.2 Add `silent_collector_does_not_delay_a_send` for the scenario "A collector that never answers", with the silent mode of the collector. If task 1.1 records a queue of 2048 spans, send 2100 calls. For another size, send enough calls for twice that size, at two spans each. Run it for each protocol. It measures the time from SIGTERM to the exit, and expects at most seven seconds. Make sure that it passes. Remove the bound of the stop by hand, and make sure that the test then fails.
 
 ## 7. Docs and follow-ups
 

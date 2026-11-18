@@ -35,7 +35,7 @@ The table `[telemetry]` of `server.toml` SHALL accept the field `endpoint`, the 
 - **THEN** stderr holds the line that starts with `mu server: serving the API on`
 
 ### Requirement: Each field of server.toml is known
-`server.toml` SHALL hold only the table `telemetry`, and that table SHALL hold only `endpoint`, `protocol` and `certificate`. An unknown table or field SHALL stop the start. So SHALL a value of the wrong type, an endpoint that is not a URL, and a scheme other than `http` and `https`. The server SHALL write an error that names `server.toml` and the field, and exit with status 1.
+`server.toml` SHALL hold only the table `telemetry`, and that table SHALL hold only `endpoint`, `protocol` and `certificate`. An unknown table or field SHALL stop the start. So SHALL a value of the wrong type, an endpoint that is not a URL, and a scheme other than `http` and `https`. So SHALL an endpoint with a query or a fragment. The server SHALL write an error that names `server.toml` and the field, and exit with status 1.
 
 #### Scenario: An unknown field
 - **GIVEN** `server.toml` sets `[telemetry] endpont = "http://127.0.0.1:4318"`
@@ -57,6 +57,12 @@ The table `[telemetry]` of `server.toml` SHALL accept the field `endpoint`, the 
 
 #### Scenario: An endpoint that is not a URL
 - **GIVEN** `server.toml` sets `[telemetry] endpoint = "not a url"`
+- **WHEN** the user runs `mu server`
+- **THEN** stderr names `server.toml` and `telemetry.endpoint`
+- **AND** the exit status is 1
+
+#### Scenario: An endpoint with a query
+- **GIVEN** `server.toml` sets `[telemetry] endpoint = "http://127.0.0.1:4318?tenant=a"`
 - **WHEN** the user runs `mu server`
 - **THEN** stderr names `server.toml` and `telemetry.endpoint`
 - **AND** the exit status is 1
@@ -109,13 +115,18 @@ Each of the three endpoint variables SHALL pass the check of the field `endpoint
 - **AND** the exit status is 1
 
 ### Requirement: The variables that turn the export off and name the service
-`OTEL_SDK_DISABLED` with the value `true`, in any case, SHALL turn the export off, whatever the endpoint. The resource of each export SHALL carry `service.name`. If `OTEL_SERVICE_NAME` is set and not empty, its value SHALL be that variable. Otherwise, its value SHALL be `mu`.
+`OTEL_SDK_DISABLED` with the value `true`, in any case, SHALL turn the export off, whatever the endpoint. The server SHALL then read and check no other telemetry variable or field. The resource of each export SHALL carry `service.name`. If `OTEL_SERVICE_NAME` is set and not empty, its value SHALL be that variable. Otherwise, its value SHALL be `mu`.
 
 #### Scenario: The export is off
 - **GIVEN** a fake collector, `server.toml` names it, and `OTEL_SDK_DISABLED` is `TRUE`
 - **WHEN** a server starts, serves one `Send`, and gets SIGTERM
 - **THEN** the collector got no request
 - **AND** the exit status is 0
+
+#### Scenario: The export is off with a bad variable
+- **GIVEN** `OTEL_SDK_DISABLED` is `true`, and `OTEL_EXPORTER_OTLP_ENDPOINT` is `ftp://collector.example:4318`
+- **WHEN** a server starts and gets SIGTERM
+- **THEN** the exit status is 0
 
 #### Scenario: The default service name
 - **GIVEN** a fake collector that `server.toml` names, and no `OTEL_SERVICE_NAME`
@@ -205,22 +216,23 @@ An endpoint with the scheme `https` SHALL use TLS, for both protocols. The serve
 - **THEN** stderr names `OTEL_EXPORTER_OTLP_CERTIFICATE`
 - **AND** the exit status is 1
 ### Requirement: A span for each API call
-The server SHALL make one span for each call of the API, named `PortalService/<method>`, for example `PortalService/Send`. A call that names a world SHALL carry the attribute `mu.world` with the world id. A call that fails SHALL have the status `error`. The span of `Subscribe` SHALL cover the call up to the return of its stream. It SHALL NOT cover the life of the stream.
+The server SHALL make one span for each call of the API, named `mu.v1.PortalService/<method>`. It SHALL carry `rpc.system` (`connect_rpc`), `rpc.service` and `rpc.method`. A call that names a world SHALL carry `mu.world` with the world id. A call that fails SHALL have the status `error`. The span of `Subscribe` SHALL cover the call up to the return of its stream. It SHALL NOT cover the life of the stream.
 
 #### Scenario: The span of a Send
 - **GIVEN** a server with the fake world `alpha/aria` that exports to a fake collector
 - **WHEN** a client calls `Send` for `alpha/aria`, and the server gets SIGTERM
-- **THEN** the collector got a span named `PortalService/Send` with `mu.world` equal to `alpha/aria`
+- **THEN** the collector got a span named `mu.v1.PortalService/Send` with `mu.world` equal to `alpha/aria`
+- **AND** that span has `rpc.system` equal to `connect_rpc`, `rpc.service` equal to `mu.v1.PortalService` and `rpc.method` equal to `Send`
 
 #### Scenario: The span of a Subscribe
 - **GIVEN** a server with the fake world `alpha/aria` that exports to a fake collector
 - **WHEN** a client subscribes, then calls `Send` for `alpha/aria`, reads the event of that `Send` on the stream, and the server gets SIGTERM
-- **THEN** the span named `PortalService/Subscribe` ends before the span named `PortalService/Send` starts
+- **THEN** the span named `mu.v1.PortalService/Subscribe` ends before the span named `mu.v1.PortalService/Send` starts
 
 #### Scenario: A failed call
 - **GIVEN** a server that exports to a fake collector
 - **WHEN** a client calls `Connect` for the unknown world `zeta/zed`, and the server gets SIGTERM
-- **THEN** the collector got a span named `PortalService/Connect` with the status `error`
+- **THEN** the collector got a span named `mu.v1.PortalService/Connect` with the status `error`
 
 ### Requirement: A span for each command of a world
 The server SHALL make one span named `command` for each command that a world handles. It SHALL carry `mu.world`, `mu.command`, `mu.origin` and `mu.depth`. The values of `mu.command` SHALL be `send`, `connect`, `disconnect`, `login`, `echo` and `emit`. The values of `mu.origin` SHALL be `player`, `script` and `system`. The span of a command from the API SHALL be a child of the span of that call.
@@ -229,7 +241,7 @@ The server SHALL make one span named `command` for each command that a world han
 - **GIVEN** a server with the fake world `alpha/aria` that exports to a fake collector
 - **WHEN** a client calls `Send` for `alpha/aria`, and the server gets SIGTERM
 - **THEN** the collector got a span named `command` with `mu.world` equal to `alpha/aria`, `mu.command` equal to `send` and `mu.origin` equal to `player`
-- **AND** its parent is the span named `PortalService/Send`
+- **AND** its parent is the span named `mu.v1.PortalService/Send`
 
 #### Scenario: A command of the server
 - **GIVEN** a server with the fake world `alpha/aria` that exports to a fake collector
@@ -258,16 +270,17 @@ The server SHALL count each event of the journal in the sum `mu.journal.events`,
 - **THEN** the last export of `mu.subscriber.lag` has a count of at least 3
 
 #### Scenario: A stream that a lag ended
-- **GIVEN** a journal that holds four events, and a stream of the API that falls more than four events behind
-- **WHEN** the stream ends with `resource_exhausted`
-- **THEN** the server records 1 in `mu.subscriber.lagged`
+- **GIVEN** a journal whose live channel holds four events, and a stream of the API that read its `Hello` and no event
+- **WHEN** five events are appended before the stream reads again
+- **THEN** the stream ends with `resource_exhausted`
+- **AND** the server records 1 in `mu.subscriber.lagged`
 
 ### Requirement: Metrics of the worlds
 The server SHALL count each dropped command in the sum `mu.commands.dropped`. Its attributes SHALL be `mu.world` and `mu.drop.reason`, `depth` or `rate`. It SHALL count each script error in the sum `mu.script.errors`, with `mu.world`. The gauge `mu.world.state` SHALL carry `mu.world` and `mu.world.state.name`. Its value SHALL be 1 for the current state of the world, and 0 for each state that it left. A world SHALL report `disconnected` from the start of the server.
 
 #### Scenario: A command past the depth limit
-- **GIVEN** a world with a handler that sends a command for each event, past the depth limit
-- **WHEN** the engine drops the command
+- **GIVEN** a world with the depth limit of 8, and a handler that answers each event of the world with one `Echo`
+- **WHEN** a client sends one line, so that the chain of `Echo` commands passes the depth 8
 - **THEN** the server records 1 in `mu.commands.dropped` with `mu.drop.reason` equal to `depth`
 - **AND** it records 1 in `mu.script.errors` for that world
 
@@ -276,6 +289,12 @@ The server SHALL count each dropped command in the sum `mu.commands.dropped`. It
 - **AND** a handler that sends 25 commands for one event
 - **WHEN** the engine handles the 25 commands
 - **THEN** the server records 5 in `mu.commands.dropped` for that world, with `mu.drop.reason` equal to `rate`
+
+#### Scenario: Commands at the rate
+- **GIVEN** a world with a paused clock and the rate limit of 20 commands in each second
+- **AND** a handler that sends 20 commands for one event
+- **WHEN** the engine handles the 20 commands
+- **THEN** the server records no value of `mu.commands.dropped` for that world
 
 #### Scenario: A world that never connects
 - **GIVEN** a server that exports to a fake collector, and a configuration that holds the world `alpha/aria`

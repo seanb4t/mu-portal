@@ -60,7 +60,7 @@ Alternatives: an `opentelemetry` dependency in `mu-core`, with direct calls to a
 
 | Name | Kind | Attributes | Where |
 |---|---|---|---|
-| `PortalService/<method>` | span | `mu.world` (only in a call that names a world) | each method of `PortalApi` |
+| `mu.v1.PortalService/<method>` | span | `rpc.system`, `rpc.service`, `rpc.method`, and `mu.world` (only in a call that names a world) | each method of `PortalApi` |
 | `command` | span | `mu.world`, `mu.command`, `mu.origin`, `mu.depth` | `Session::handle` |
 | `world.connection` | span | `mu.world` | from the start of a connect to `down` |
 | `mu.journal.events` | sum | `mu.world`, `mu.event.kind` | `Session::record` |
@@ -70,7 +70,7 @@ Alternatives: an `opentelemetry` dependency in `mu-core`, with direct calls to a
 | `mu.script.errors` | sum | `mu.world` | `Session::script_error` |
 | `mu.world.state` | gauge | `mu.world`, `mu.world.state.name` | `Session::set_state` |
 
-A new function, `EventKind::name`, in `crates/mu-core/src/event.rs`, gives the snake-case name of each kind: `connected`, `disconnected`, `line`, `prompt`, `message`, `input`, `echo`, `login`, `custom` and `script_error`. The value of `mu.event.kind` is that name. A new function, `Command::name`, gives the lower-case name of each variant: `send`, `connect`, `disconnect`, `login`, `echo` and `emit`. The value of `mu.command` is that name. `Origin::name` gives `player`, `script` and `system` for `mu.origin`. A unit test of each function lists every variant, so a new variant fails to compile until it has a name. A failed call sets `otel.status_code = "ERROR"` on its span. `tracing-opentelemetry` reads that field as the status. The span of a world connection lives in the `Conn` state of the session. It opens at the start of a connect, and it closes in `down`.
+A new function, `EventKind::name`, in `crates/mu-core/src/event.rs`, gives the snake-case name of each kind: `connected`, `disconnected`, `line`, `prompt`, `message`, `input`, `echo`, `login`, `custom` and `script_error`. The value of `mu.event.kind` is that name. A new function, `Command::name`, gives the lower-case name of each variant: `send`, `connect`, `disconnect`, `login`, `echo` and `emit`. The value of `mu.command` is that name. `Origin::name` gives `player`, `script` and `system` for `mu.origin`. `WorldState::name` gives `connecting`, `connected` and `disconnected` for `mu.world.state.name`. A unit test of each function lists every variant, so a new variant fails to compile until it has a name. A failed call sets `otel.status_code = "ERROR"` on its span. `tracing-opentelemetry` reads that field as the status. The span of a world connection lives in the `Conn` state of the session. It opens at the start of a connect, and it closes in `down`.
 
 For the gauge, `session::run` emits the value 1 for `disconnected` at the start of the session. Then `set_state` emits the value 0 for the old state and 1 for the new state. Thus the last export holds one 1 for each world, a world with no transport too.
 
@@ -82,7 +82,7 @@ Alternative: a live `last()` on `Subscription`. That gives the subscription a ha
 
 ### The span of a command follows it across the queue
 
-`Request::Command` gains the field `span: tracing::Span`. A new constructor, `Request::command(envelope, reply)`, fills it with `Span::current()`. `Portal::submit`, `Portal::stop`, `Portal::connect_all` and `route` each use it. In `route`, the current span is the `command` span of the event that the handler got. `Session::handle` makes the `command` span with that span as its parent. `Envelope` stays as it is, because it is public and it is data, not context.
+`Request::Command` gains the field `span: tracing::Span`. A new constructor, `Request::command(envelope, reply)`, fills it with `Span::current()`. `Portal::submit`, `Portal::stop`, `Portal::connect_all` and `route` each use it. In `route`, the current span is the span of the code that recorded the event. Inside `Session::handle`, it is the `command` span. For a line of the game, it is the `world.connection` span. In `run_server_handlers`, which runs in its own task, there is no current span, so the `command` span starts a new trace. `Session::handle` makes the `command` span with that span as its parent. `Envelope` stays as it is, because it is public and it is data, not context.
 
 Alternative: put the span in `Envelope`. That makes a public type carry a runtime handle, and each test that builds an `Envelope` must build a span.
 
@@ -99,7 +99,7 @@ Alternative: a filter layer that masks each field. A mask needs the password in 
 
 ### Where the endpoint comes from
 
-`crates/mu-cli/src/server_config.rs` reads `server.toml` from the configuration directory of `ConfigArgs` into a struct with `deny_unknown_fields`, on the outer struct and on `[telemetry]`. It reads the text with `world::parse` of `mu-core`, which this change makes public as `mu_core::world::parse_toml`. Thus the error names `server.toml`, the field path, the line and the column, as for a layer. One function, `check_endpoint`, checks a URL with `http::Uri`: it needs the scheme `http` or `https`, and a host. The file and each of the three endpoint variables go through it, and its error names the file and field, or the variable.
+`crates/mu-cli/src/server_config.rs` reads `server.toml` from the configuration directory of `ConfigArgs` into a struct with `deny_unknown_fields`, on the outer struct and on `[telemetry]`. It reads the text with `world::parse` of `mu-core`, which this change makes public as `mu_core::world::parse_toml`. Thus the error names `server.toml`, the field path, the line and the column, as for a layer. One function, `check_endpoint`, checks a URL with `http::Uri`. It needs the scheme `http` or `https`, and a host. A base URL, the field or `OTEL_EXPORTER_OTLP_ENDPOINT`, can hold no query and no fragment, because the join adds the path at its end. A signal variable can hold a query, because the server uses it as it is. The file and each of the three endpoint variables go through it, and its error names the file and field, or the variable.
 
 The server then picks the endpoint of each signal in this order:
 
@@ -109,9 +109,9 @@ The server then picks the endpoint of each signal in this order:
 4. The `endpoint` of `server.toml`, with the same path added.
 5. None. If neither signal has an endpoint, the export is off.
 
-An empty variable counts as unset. `OTEL_SDK_DISABLED` turns the export off only for `true` in any case. Any other value, `false`, `1` or empty among them, leaves the order as it is.
+An empty variable counts as unset. `OTEL_SDK_DISABLED` turns the export off only for `true` in any case. Then the function returns at once, and it reads and checks no other variable and no field of `[telemetry]`. Any other value, `false`, `1` or empty among them, leaves the order as it is.
 
-To add the path to a base URL, the function removes one trailing slash, then adds `/v1/traces` or `/v1/metrics`. Thus `http://h:4318/` gives `http://h:4318/v1/traces`, and `http://h:4318/otel` gives `http://h:4318/otel/v1/traces`.
+To add the path to a base URL, the function removes each trailing slash, then adds `/v1/traces` or `/v1/metrics`. Thus `http://h:4318/` gives `http://h:4318/v1/traces`, and `http://h:4318/otel` gives `http://h:4318/otel/v1/traces`.
 
 The server passes the full URL of each signal to the exporter builder with `with_endpoint`. Thus the order is ours, and it does not depend on how the SDK reads the variables. The protocol of each signal follows the same shape: the signal variable, then `OTEL_EXPORTER_OTLP_PROTOCOL`, then the field `protocol`, then `http/protobuf`. The protocol is read only while at least one signal has an endpoint. Any value but `http/protobuf` and `grpc` then stops the start, and the error names the variable or the field. An empty value counts as unset. With the export off, the protocol is not read.
 
@@ -131,13 +131,13 @@ The HTTP exporter uses `reqwest-blocking-client`. `server::run` builds the `reqw
 
 The scheme decides TLS. `https` uses TLS, and `http` does not. A collector whose certificate the server does not trust gets no export. The SDK logs the failure at `WARN`, and the engine goes on.
 
-Alternative: the root store that the crates embed, `tls-webpki-roots`. It cannot trust the authority of a private network, and the certificate file covers that case only together with the system roots.
+Alternative: the root store that the crates embed, `tls-webpki-roots`, with the certificate file. It covers a private authority too. But it ignores an authority that the owner already installed in the system, and its list changes only with a new build of `mu`.
 
 ### The exporter has its own threads and a bounded stop
 
 The default `BatchSpanProcessor` and the `PeriodicReader` each run on a dedicated thread. A full queue drops the span, and `on_end` never waits. So a slow collector does not touch a task of tokio.
 
-The blocking HTTP client is built before the runtime of the engine. The build of the gRPC exporter needs a tokio runtime, and its channel runs its tasks on that runtime. The telemetry therefore gets a runtime of its own. `telemetry.rs` starts one thread, `mu-telemetry`, with a current-thread tokio runtime. It builds the gRPC exporters inside the `enter` of that runtime. Thus no telemetry task runs on a worker of the engine, for both protocols.
+The blocking HTTP client is built before the runtime of the engine. The build of the gRPC exporter needs a tokio runtime, and its channel runs its tasks on that runtime. The telemetry therefore gets a runtime of its own. `telemetry.rs` starts one thread, `mu-telemetry`, with a current-thread tokio runtime. The thread runs `block_on` of a future that ends at the stop, so the runtime drives the tasks of the gRPC channel. `server::run` builds the gRPC exporters inside the `enter` of that runtime. Thus no telemetry task runs on a worker of the engine, for both protocols.
 
 The engine keeps the multi-thread runtime of `Runtime::new` in `server::run`. The sessions are I/O tasks, and that runtime is the usual one for them. The rule "a slow collector does not slow a world" depends only on the telemetry staying off it.
 
@@ -169,7 +169,7 @@ The engine tests of the metrics, in `crates/mu-cli/tests/telemetry_engine.rs`, i
 ## Risks / Trade-offs
 
 - [A blocking reqwest client that is built inside a tokio runtime can panic.] → `server::run` builds the exporters before it builds the runtime. Task 1.1 reads the current documentation of this point.
-- [`deny.toml` can refuse the TLS stack of `reqwest`, `tonic` and `rustls`.] → The change turns off the default features where it can. Task 1.2 runs `cargo deny check`.
+- [`deny.toml` can refuse the TLS stack of `reqwest`, `tonic` and `rustls`.] → The change turns off the default features where it can. Task 1.2 runs `mise run deny`.
 - [A later change can build a gRPC client on the runtime of the engine by mistake.] → The decision page names the `mu-telemetry` runtime. The silent-collector test runs with each protocol.
 - [A dead collector can write warning lines on stderr.] → The SDK logs through `tracing`. The `fmt` layer keeps its lines at `WARN`. The SDK logs the first drop only once. A warning about a dead collector is useful to the owner. The OpenTelemetry layers filter out the targets of the SDK, so its logs do not loop back into the export.
 - [A later change can add a field with a text.] → The scanning tests run on each change. The decision page states the rule.

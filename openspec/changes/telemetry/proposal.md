@@ -13,7 +13,7 @@ The server writes only warning lines to stderr. It has no spans across the API, 
 - Metrics of the journal: its events, the lag of the subscribers, and the streams that a lag ended.
 - Metrics of the worlds: the dropped commands of the depth limit and the rate limit, the script errors, and the state of each world.
 - The engine emits spans and metrics through `tracing` alone. The `tracing-opentelemetry` layers turn them into OpenTelemetry data. `mu-core` and `mu-server` take no OpenTelemetry crate.
-- The stderr log lines stay as they are, at the level `WARN`.
+- The stderr log lines stay, at the level `WARN`. The one existing warning names the world with the field `mu.world` in place of `world`.
 - No password, and no text of a line, goes into a span, an attribute, a metric or a log line. A test reads each byte that the collector receives.
 - The exporter runs on its own thread with a bounded queue. A slow or absent collector drops data. It does not slow a world. At the stop, the server flushes for a bounded time, then exits.
 
