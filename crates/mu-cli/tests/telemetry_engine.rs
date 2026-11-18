@@ -254,11 +254,7 @@ async fn lag_is_read_once_per_event_with_the_export() {
 
 #[tokio::test]
 async fn lag_is_not_read_with_only_the_traces() {
-    let providers = Providers::with_exporters(
-        Some(InMemorySpanExporter::default()),
-        None::<InMemoryMetricExporter>,
-        "mu",
-    );
+    let providers = traces_only();
     let _default = tracing::subscriber::set_default(providers.subscriber());
     assert_eq!(lasts_for_one_event().await, 0);
 }
@@ -270,22 +266,41 @@ async fn lag_is_not_read_with_the_export_off() {
     assert_eq!(lasts_for_one_event().await, 0);
 }
 
-#[test]
-fn warn_lines_stay_with_the_export_off() {
-    let providers = Providers::none();
-    let _default = tracing::subscriber::set_default(providers.subscriber());
-    assert!(tracing::enabled!(target: "mu_core", tracing::Level::WARN));
-}
-
-#[test]
-fn warn_lines_stay_with_only_the_traces() {
-    let providers = Providers::with_exporters(
+/// The providers of an export of the traces alone, to memory.
+fn traces_only() -> Providers {
+    Providers::with_exporters(
         Some(InMemorySpanExporter::default()),
         None::<InMemoryMetricExporter>,
         "mu",
-    );
-    let _default = tracing::subscriber::set_default(providers.subscriber());
-    assert!(tracing::enabled!(target: "mu_core", tracing::Level::WARN));
+    )
+}
+
+/// The stderr lines keep `WARN` of every target, also of a target that no export layer takes.
+#[test]
+fn warn_lines_stay_with_any_set_of_layers() {
+    let cases = [
+        ("the export off", Providers::none()),
+        ("only the traces", traces_only()),
+        (
+            "only the metrics",
+            Providers::with_exporters(
+                None::<InMemorySpanExporter>,
+                Some(InMemoryMetricExporter::default()),
+                "mu",
+            ),
+        ),
+    ];
+    for (case, providers) in cases {
+        let _default = tracing::subscriber::set_default(providers.subscriber());
+        assert!(
+            tracing::enabled!(target: "mu_core", tracing::Level::WARN),
+            "{case}"
+        );
+        assert!(
+            tracing::enabled!(target: "opentelemetry_sdk", tracing::Level::WARN),
+            "{case}"
+        );
+    }
 }
 
 #[tokio::test]
