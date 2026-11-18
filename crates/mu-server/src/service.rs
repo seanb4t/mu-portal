@@ -1,17 +1,18 @@
 //! The `PortalService` of the schema over the `Portal` of the engine.
 
-use std::future::{Ready, ready};
+use std::future::{Future, Ready, ready};
 use std::sync::Arc;
 
 use connectrpc::{
     ConnectError, RequestContext, Response, Router, ServiceRequest, ServiceResult, ServiceStream,
 };
 use futures::StreamExt as _;
-use mu_core::{Lagged, Portal, PortalError, Seq, Subscription, WorldId};
+use mu_core::{Journal, Lagged, Portal, PortalError, Seq, Subscription, WorldId};
 use mu_proto as proto;
 use proto::__buffa::oneof::subscribe_response::Message;
 use proto::PortalServiceExt as _;
 use tokio::sync::watch;
+use tracing::{Instrument as _, Span};
 
 use crate::convert;
 
@@ -58,18 +59,39 @@ fn event_message(event: &mu_core::Event) -> proto::SubscribeResponse {
 }
 
 /// The stream of one subscriber: the `Hello`, then each event. A lag ends it with
-/// `resource_exhausted`, and `stopping` ends it with no error.
+/// `resource_exhausted`, and `stopping` ends it with no error. For each event, it records the
+/// gap to the last event of `journal` in `mu.subscriber.lag`, and it counts each lag in
+/// `mu.subscriber.lagged`. Without a metrics layer, it reads no gap, because the read locks the
+/// journal.
 pub fn event_stream(
     subscription: Subscription,
+    journal: Arc<dyn Journal>,
     instance_id: &str,
     stopping: watch::Receiver<bool>,
 ) -> ServiceStream<proto::SubscribeResponse> {
     let head = futures::stream::once(ready(Ok(hello(instance_id, subscription.last()))));
-    let events = subscription.into_stream().map(|item| match item {
-        Ok(event) => Ok(event_message(&event)),
-        Err(Lagged(n)) => Err(ConnectError::resource_exhausted(format!(
-            "the subscriber fell {n} events behind; subscribe again from the next number"
-        ))),
+    let events = subscription.into_stream().map(move |item| match item {
+        Ok(event) => {
+            if tracing::enabled!(target: mu_core::METRICS_TARGET, tracing::Level::INFO) {
+                let lag = journal.last().0.saturating_sub(event.seq.0);
+                tracing::event!(
+                    target: mu_core::METRICS_TARGET,
+                    tracing::Level::INFO,
+                    "histogram.mu.subscriber.lag" = lag,
+                );
+            }
+            Ok(event_message(&event))
+        }
+        Err(Lagged(n)) => {
+            tracing::event!(
+                target: mu_core::METRICS_TARGET,
+                tracing::Level::INFO,
+                "monotonic_counter.mu.subscriber.lagged" = 1_u64,
+            );
+            Err(ConnectError::resource_exhausted(format!(
+                "the subscriber fell {n} events behind; subscribe again from the next number"
+            )))
+        }
     });
     // The stop ends the stream only when no event is ready, so the events that the server
     // recorded before the stop, for example the disconnect of each world, still go out.
@@ -88,6 +110,53 @@ pub fn event_stream(
     Box::pin(head.chain(events))
 }
 
+/// The span of one call of `method`. The caller records `mu.world` and the status where they
+/// apply. A failed call also records the name of its Connect error code, never its message.
+fn call_span(method: &'static str) -> Span {
+    let service = proto::PORTAL_SERVICE_SERVICE_NAME;
+    tracing::info_span!(
+        "rpc",
+        otel.name = format!("{service}/{method}"),
+        rpc.system = "connect_rpc",
+        rpc.service = service,
+        rpc.method = method,
+        mu.world = tracing::field::Empty,
+        otel.status_code = tracing::field::Empty,
+        rpc.connect_rpc.error_code = tracing::field::Empty,
+    )
+}
+
+/// Marks `span` as failed with `error`.
+fn failed(span: &Span, error: &ConnectError) {
+    span.record("otel.status_code", "ERROR");
+    span.record("rpc.connect_rpc.error_code", error.code.as_str());
+}
+
+/// Marks `span` as failed if `result` is an error.
+fn ended<T>(span: &Span, result: ServiceResult<T>) -> ServiceResult<T> {
+    if let Err(error) = &result {
+        failed(span, error);
+    }
+    result
+}
+
+/// Runs `call` in the span of one call of `method`.
+async fn traced<T>(
+    method: &'static str,
+    call: impl Future<Output = ServiceResult<T>>,
+) -> ServiceResult<T> {
+    let span = call_span(method);
+    let result = call.instrument(span.clone()).await;
+    ended(&span, result)
+}
+
+/// The world of a request, recorded in the current span.
+fn named_world(text: &str) -> Result<WorldId, ConnectError> {
+    let world = world(text)?;
+    Span::current().record("mu.world", tracing::field::display(&world));
+    Ok(world)
+}
+
 /// The world of a request. A text that is not an id names no world, so it is `not_found` too.
 fn world(text: &str) -> Result<WorldId, ConnectError> {
     text.parse()
@@ -104,21 +173,27 @@ impl proto::PortalService for PortalApi {
         _ctx: RequestContext,
         request: ServiceRequest<'_, proto::SubscribeRequest>,
     ) -> Ready<ServiceResult<ServiceStream<proto::SubscribeResponse>>> {
-        ready(match self.portal.subscribe(Seq(request.from_seq)) {
-            Ok(subscription) => Response::stream_ok(event_stream(
-                subscription,
-                &self.instance_id,
-                self.stopping.clone(),
-            )),
-            Err(error @ PortalError::PastEnd { last, .. }) => {
-                let items = [
-                    Ok(hello(&self.instance_id, last)),
-                    Err(convert::status(&error)),
-                ];
-                Response::stream_ok(Box::pin(futures::stream::iter(items)))
-            }
-            Err(error) => Err(convert::status(&error)),
-        })
+        // The span ends when this method returns, not with the stream.
+        let span = call_span("Subscribe");
+        let _entered = span.enter();
+        ready(ended(
+            &span,
+            match self.portal.subscribe(Seq(request.from_seq)) {
+                Ok(subscription) => Response::stream_ok(event_stream(
+                    subscription,
+                    Arc::clone(self.portal.journal()),
+                    &self.instance_id,
+                    self.stopping.clone(),
+                )),
+                Err(error @ PortalError::PastEnd { last, .. }) => {
+                    let status = convert::status(&error);
+                    failed(&span, &status);
+                    let items = [Ok(hello(&self.instance_id, last)), Err(status)];
+                    Response::stream_ok(Box::pin(futures::stream::iter(items)))
+                }
+                Err(error) => Err(convert::status(&error)),
+            },
+        ))
     }
 
     fn list_worlds(
@@ -126,6 +201,8 @@ impl proto::PortalService for PortalApi {
         _ctx: RequestContext,
         _request: ServiceRequest<'_, proto::ListWorldsRequest>,
     ) -> Ready<ServiceResult<proto::ListWorldsResponse>> {
+        let span = call_span("ListWorlds");
+        let _entered = span.enter();
         let worlds = self
             .portal
             .worlds()
@@ -147,16 +224,19 @@ impl proto::PortalService for PortalApi {
         _ctx: RequestContext,
         request: ServiceRequest<'_, proto::SendRequest>,
     ) -> ServiceResult<proto::SendResponse> {
-        let world = world(request.world)?;
-        let seq = self
-            .portal
-            .send(&world, request.text)
-            .await
-            .map_err(|error| convert::status(&error))?;
-        Response::ok(proto::SendResponse {
-            seq: seq.map(|seq| seq.0),
-            ..Default::default()
+        traced("Send", async {
+            let world = named_world(request.world)?;
+            let seq = self
+                .portal
+                .send(&world, request.text)
+                .await
+                .map_err(|error| convert::status(&error))?;
+            Response::ok(proto::SendResponse {
+                seq: seq.map(|seq| seq.0),
+                ..Default::default()
+            })
         })
+        .await
     }
 
     async fn connect(
@@ -164,12 +244,15 @@ impl proto::PortalService for PortalApi {
         _ctx: RequestContext,
         request: ServiceRequest<'_, proto::ConnectRequest>,
     ) -> ServiceResult<proto::ConnectResponse> {
-        let world = world(request.world)?;
-        self.portal
-            .connect(&world)
-            .await
-            .map_err(|error| convert::status(&error))?;
-        Response::ok(proto::ConnectResponse::default())
+        traced("Connect", async {
+            let world = named_world(request.world)?;
+            self.portal
+                .connect(&world)
+                .await
+                .map_err(|error| convert::status(&error))?;
+            Response::ok(proto::ConnectResponse::default())
+        })
+        .await
     }
 
     async fn disconnect(
@@ -177,19 +260,22 @@ impl proto::PortalService for PortalApi {
         _ctx: RequestContext,
         request: ServiceRequest<'_, proto::DisconnectRequest>,
     ) -> ServiceResult<proto::DisconnectResponse> {
-        let world = world(request.world)?;
-        self.portal
-            .disconnect(&world)
-            .await
-            .map_err(|error| convert::status(&error))?;
-        Response::ok(proto::DisconnectResponse::default())
+        traced("Disconnect", async {
+            let world = named_world(request.world)?;
+            self.portal
+                .disconnect(&world)
+                .await
+                .map_err(|error| convert::status(&error))?;
+            Response::ok(proto::DisconnectResponse::default())
+        })
+        .await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use connectrpc::ErrorCode;
-    use mu_core::{EventKind, Journal as _, MemoryJournal, NewEvent, Source};
+    use mu_core::{EventKind, MemoryJournal, NewEvent, Source};
 
     use super::*;
 
@@ -212,10 +298,20 @@ mod tests {
 
     #[tokio::test]
     async fn lagged_stream_ends_with_resource_exhausted() {
-        let journal = MemoryJournal::new(4).unwrap();
+        let journal = Arc::new(MemoryJournal::new(4).unwrap());
         let (_stop, stopping) = watch::channel(false);
-        let mut slow = event_stream(journal.subscribe(Seq(1)).unwrap(), "id", stopping.clone());
-        let mut fast = event_stream(journal.subscribe(Seq(1)).unwrap(), "id", stopping);
+        let mut slow = event_stream(
+            journal.subscribe(Seq(1)).unwrap(),
+            journal.clone(),
+            "id",
+            stopping.clone(),
+        );
+        let mut fast = event_stream(
+            journal.subscribe(Seq(1)).unwrap(),
+            journal.clone(),
+            "id",
+            stopping,
+        );
         assert!(matches!(
             slow.next().await.unwrap().unwrap().message,
             Some(Message::Hello(_))
@@ -235,9 +331,14 @@ mod tests {
 
     #[tokio::test]
     async fn stop_sends_the_ready_events_first() {
-        let journal = MemoryJournal::new(4).unwrap();
+        let journal = Arc::new(MemoryJournal::new(4).unwrap());
         let (stop, stopping) = watch::channel(false);
-        let mut stream = event_stream(journal.subscribe(Seq(1)).unwrap(), "id", stopping);
+        let mut stream = event_stream(
+            journal.subscribe(Seq(1)).unwrap(),
+            journal.clone(),
+            "id",
+            stopping,
+        );
         assert!(stream.next().await.is_some());
         append(&journal, "the last line");
         stop.send_replace(true);
@@ -247,9 +348,14 @@ mod tests {
 
     #[tokio::test]
     async fn stopping_ends_the_stream() {
-        let journal = MemoryJournal::new(4).unwrap();
+        let journal = Arc::new(MemoryJournal::new(4).unwrap());
         let (stop, stopping) = watch::channel(false);
-        let mut stream = event_stream(journal.subscribe(Seq(1)).unwrap(), "id", stopping);
+        let mut stream = event_stream(
+            journal.subscribe(Seq(1)).unwrap(),
+            journal.clone(),
+            "id",
+            stopping,
+        );
         assert!(stream.next().await.is_some());
         stop.send_replace(true);
         assert!(stream.next().await.is_none());

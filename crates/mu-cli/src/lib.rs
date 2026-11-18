@@ -4,7 +4,9 @@ pub mod client;
 pub mod config;
 pub mod env_path;
 pub mod server;
+pub mod server_config;
 pub mod socket;
+pub mod telemetry;
 pub mod world;
 
 use std::io::Write;

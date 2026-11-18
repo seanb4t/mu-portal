@@ -7,6 +7,10 @@ model {
     description 'PennMUSH, TinyMUX, RhostMUSH, AresMUSH and Evennia servers, reached by telnet.'
   }
 
+  collector = externalSystem 'OpenTelemetry collector' {
+    description 'An optional collector that the owner runs. It gets traces and metrics over OTLP.'
+  }
+
   mu = system 'mu-portal' {
     description 'One server and zero to many clients for one person.'
 
@@ -43,6 +47,7 @@ model {
   player -> mu.terminal 'plays in'
   player -> mu.devices 'plays on'
   mu.server.sessions -> games 'telnet'
+  mu.server -> collector 'OTLP traces and metrics, when an endpoint is set'
 
   workspace = system 'Cargo workspace' {
     description 'The crates behind the mu binary.'

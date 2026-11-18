@@ -2,8 +2,8 @@
 //!
 //! An error names the file, the line and the column, and the path of the field. It never
 //! holds the `Display` of a `toml` error, because that text quotes the line of the file, and
-//! the line can hold a password. Under `login` it also drops the message, because a message of
-//! `serde` can quote the value.
+//! the line can hold a password. Under each table that the caller hides, or in the whole file,
+//! it also drops the message, because a message of `serde` can quote the value.
 
 use std::fmt;
 
@@ -11,10 +11,39 @@ use serde::de::DeserializeOwned;
 
 use super::error::ConfigError;
 
-/// Parses `text`, the file at `place`, into `T`.
-pub(crate) fn parse<T: DeserializeOwned>(
+/// The values whose errors hold no message of `serde`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hidden<'a> {
+    /// The values under these tables.
+    Tables(&'a [&'a str]),
+    /// Every value of the file.
+    All,
+}
+
+impl Hidden<'_> {
+    /// Whether the field at `path` is hidden.
+    fn covers(self, path: &str) -> bool {
+        match self {
+            Self::Tables(tables) => tables.iter().any(|table| under(path, table)),
+            Self::All => true,
+        }
+    }
+}
+
+/// The tables of a world layer whose values can hold a password.
+pub const LAYER_HIDDEN: Hidden<'static> = Hidden::Tables(&["login"]);
+
+/// Parses `text`, the file at `place`, into `T`. For a field that `hidden` covers, an error
+/// holds no message of `serde`.
+///
+/// # Errors
+///
+/// A [`ConfigError`] that names `place`, the line and the column. An error in a value also names
+/// the path of the field.
+pub fn parse<T: DeserializeOwned>(
     place: &impl fmt::Display,
     text: &str,
+    hidden: Hidden<'_>,
 ) -> Result<T, ConfigError> {
     let deserializer = toml::Deserializer::parse(text)
         .map_err(|error| ConfigError::new(at(place, text, error.span()), error.message()))?;
@@ -23,12 +52,18 @@ pub(crate) fn parse<T: DeserializeOwned>(
         let place = at(place, text, error.inner().span());
         if path.is_empty() || path == "." {
             ConfigError::new(place, error.inner().message())
-        } else if path == "login" || path.starts_with("login.") || path.starts_with("login[") {
+        } else if hidden.covers(&path) {
             ConfigError::field(place, path, "is not a valid field or value")
         } else {
             ConfigError::field(place, path, error.inner().message())
         }
     })
+}
+
+/// Whether `path` is `table` or a path inside it.
+fn under(path: &str, table: &str) -> bool {
+    path.strip_prefix(table)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('.') || rest.starts_with('['))
 }
 
 /// `place` with the line and the column of the start of `span` in `text`.
@@ -64,7 +99,7 @@ mod tests {
     }
 
     fn error(text: &str) -> String {
-        parse::<File>(&"games/alpha.toml", text)
+        parse::<File>(&"games/alpha.toml", text, LAYER_HIDDEN)
             .unwrap_err()
             .to_string()
     }
@@ -79,6 +114,17 @@ mod tests {
         assert_eq!(
             error("[login]\nsecret = 5\n"),
             "games/alpha.toml:2:10: login.secret: is not a valid field or value"
+        );
+    }
+
+    #[test]
+    fn all_hidden_drops_the_message_of_each_field() {
+        let error = parse::<File>(&"server.toml", "port = \"hunter2\"\n", Hidden::All)
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            error,
+            "server.toml:1:8: port: is not a valid field or value"
         );
     }
 

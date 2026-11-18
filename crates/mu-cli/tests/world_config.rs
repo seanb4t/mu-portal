@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
-use support::{BASE_GAME, ConfigDir as Config, mu_command, mu_with, stderr, stdout};
+use support::{BASE_GAME, ConfigDir as Config, fails_naming, mu_command, mu_with, stderr, stdout};
 
 mod support;
 
@@ -35,16 +35,6 @@ fn game(drop: &[&str], extra: &str) -> String {
     }
     text.push_str(extra);
     text
-}
-
-/// Asserts that `output` failed with status 1, and that stderr holds each of `names`.
-#[track_caller]
-fn fails_naming(output: &Output, names: &[&str]) {
-    let error = stderr(output);
-    assert_eq!(output.status.code(), Some(1), "stderr: {error}");
-    for name in names {
-        assert!(error.contains(name), "stderr names {name}: {error}");
-    }
 }
 
 /// Asserts that `output` succeeded, and returns its stdout.
@@ -267,6 +257,78 @@ fn stray_file() {
         let config = Config::base().file(path, "");
         fails_naming(&config.list(), &[path]);
     }
+}
+
+#[test]
+fn server_file_makes_no_world() {
+    let config = Config::base().file(
+        "server.toml",
+        "[telemetry]\nendpoint = \"http://127.0.0.1:4318\"\n",
+    );
+    has_line(&succeeds(&config.list()), "alpha/aria");
+}
+
+#[test]
+fn server_file_in_another_case() {
+    let config = Config::base().file("SERVER.toml", "");
+    let output = config.list();
+    // On a file system that ignores case, the server reads this file as `server.toml`.
+    if config.path().join("server.toml").exists() {
+        has_line(&succeeds(&output), "alpha/aria");
+    } else {
+        fails_naming(&output, &["SERVER.toml"]);
+    }
+}
+
+#[test]
+fn unreadable_server_file_makes_no_world() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let config = Config::base().file("server.toml", "");
+    fs::set_permissions(
+        config.path().join("server.toml"),
+        fs::Permissions::from_mode(0o000),
+    )
+    .unwrap();
+    has_line(&succeeds(&config.list()), "alpha/aria");
+}
+
+#[test]
+fn unreadable_server_file_in_another_case_names_the_error() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let config = Config::base().file("SERVER.toml", "");
+    let path = config.path().join("SERVER.toml");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+    // A user who can read every file, such as root, gets no read error to name.
+    if fs::File::open(&path).is_ok() {
+        return;
+    }
+    fails_naming(&config.list(), &["SERVER.toml", "Permission denied"]);
+}
+
+#[test]
+fn hard_link_to_the_server_file_is_an_error() {
+    let config = Config::base().file("server.toml", "");
+    std::fs::hard_link(
+        config.path().join("server.toml"),
+        config.path().join("worlds.toml"),
+    )
+    .unwrap();
+    fails_naming(&config.list(), &["worlds.toml"]);
+}
+
+#[test]
+fn server_file_that_links_to_global_keeps_the_layer() {
+    let config = Config::base().file("global.toml", "rows = 50\n");
+    std::os::unix::fs::symlink("global.toml", config.path().join("server.toml")).unwrap();
+    has_line(&succeeds(&config.show("alpha/aria")), "rows = 50");
+}
+
+#[test]
+fn character_named_server_is_a_world() {
+    let config = Config::empty()
+        .file("games/alpha.toml", BASE_GAME)
+        .file("characters/alpha/server.toml", "");
+    has_line(&succeeds(&config.list()), "alpha/server");
 }
 
 #[test]

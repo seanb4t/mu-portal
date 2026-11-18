@@ -20,6 +20,8 @@ This guide shows how to configure your worlds. A world is one character on one g
 
 If the directory does not exist, there are no configured worlds.
 
+The directory can also hold `server.toml`, the configuration of the server. It makes no world. The guide [The server file and telemetry](/guides/telemetry/) describes it.
+
 ## The layout
 
 The directory holds four kinds of files:
@@ -31,7 +33,7 @@ The directory holds four kinds of files:
 | `games/<game>.toml` | One game: the host, the port and the type |
 | `characters/<game>/<character>.toml` | One world: a character on the game |
 
-Each character file makes one world. Its id is `<game>/<character>`. A name holds only `a` to `z`, `0` to `9` and `-`, and starts with a letter. Any other file that ends in `.toml` is an error.
+Each character file makes one world. Its id is `<game>/<character>`. A name holds only `a` to `z`, `0` to `9` and `-`, and starts with a letter. Any other file that ends in `.toml` is an error. The one exception is `server.toml` at the top of the directory. If the file system ignores case, the same name in another case is that file too.
 
 This example configures the world `alpha/aria`:
 

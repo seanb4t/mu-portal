@@ -195,9 +195,12 @@ impl ServerBuilder {
         ServerProcess { socket, ..process }
     }
 
-    /// Runs the server to its exit, for a server that refuses to start.
+    /// Runs the server to its exit, for a server that refuses to start. A server that still
+    /// runs after [`BOUND`] fails the test.
     pub async fn output(self) -> Output {
-        self.command().output().await.expect("the mu binary runs")
+        wait_until(BOUND, "exit of the server", self.command().output())
+            .await
+            .expect("the mu binary runs")
     }
 
     /// Starts the server and does not wait.

@@ -67,6 +67,34 @@ impl Command {
             | Self::Emit { world, .. } => world,
         }
     }
+
+    /// The lower-case name of the variant, for the telemetry. It never holds the text.
+    #[must_use]
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Send { .. } => "send",
+            Self::Connect { .. } => "connect",
+            Self::Disconnect { .. } => "disconnect",
+            Self::Login { .. } => "login",
+            Self::Echo { .. } => "echo",
+            Self::Emit { .. } => "emit",
+        }
+    }
+}
+
+impl Origin {
+    /// Every origin.
+    pub const ALL: [Self; 3] = [Self::Player, Self::Script, Self::System];
+
+    /// The lower-case name of the origin, for the telemetry.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Player => "player",
+            Self::Script => "script",
+            Self::System => "system",
+        }
+    }
 }
 
 /// A command with its origin and its depth.
@@ -99,5 +127,48 @@ impl Envelope {
             origin: Origin::System,
             depth: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_command_has_a_name() {
+        let world: WorldId = "alpha/aria".parse().unwrap();
+        let text = String::new();
+        let commands = [
+            Command::Send {
+                world: world.clone(),
+                text: text.clone(),
+            },
+            Command::Connect {
+                world: world.clone(),
+            },
+            Command::Disconnect {
+                world: world.clone(),
+            },
+            Command::Login {
+                world: world.clone(),
+            },
+            Command::Echo {
+                world: world.clone(),
+                text: text.clone(),
+            },
+            Command::Emit { world, text },
+        ];
+        // A new variant of `Command` belongs in `commands` too.
+        let names: Vec<_> = commands.iter().map(Command::name).collect();
+        assert_eq!(
+            names,
+            ["send", "connect", "disconnect", "login", "echo", "emit"]
+        );
+    }
+
+    #[test]
+    fn each_origin_has_a_name() {
+        let names: Vec<_> = Origin::ALL.into_iter().map(Origin::name).collect();
+        assert_eq!(names, ["player", "script", "system"]);
     }
 }
