@@ -22,7 +22,7 @@ pub use error::{ConfigError, FieldError};
 pub use layer::{
     KeepaliveFields, Layer, LayerFields, LayerKey, LayerOrigin, LayerSource, LoginFields, Trust,
 };
-pub use parse::parse as parse_toml;
+pub use parse::{Hidden, parse as parse_toml};
 pub use resolve::{FIELD_PATHS, resolve};
 
 /// The login template of a world whose layers set none.

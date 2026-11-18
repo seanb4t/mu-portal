@@ -2,8 +2,8 @@
 //!
 //! An error names the file, the line and the column, and the path of the field. It never
 //! holds the `Display` of a `toml` error, because that text quotes the line of the file, and
-//! the line can hold a password. Under each table that the caller names as hidden, it also
-//! drops the message, because a message of `serde` can quote the value.
+//! the line can hold a password. Under each table that the caller hides, or in the whole file,
+//! it also drops the message, because a message of `serde` can quote the value.
 
 use std::fmt;
 
@@ -11,11 +11,30 @@ use serde::de::DeserializeOwned;
 
 use super::error::ConfigError;
 
-/// The tables of a world layer whose values can hold a password.
-pub const LAYER_HIDDEN: &[&str] = &["login"];
+/// The values whose errors hold no message of `serde`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hidden<'a> {
+    /// The values under these tables.
+    Tables(&'a [&'a str]),
+    /// Every value of the file.
+    All,
+}
 
-/// Parses `text`, the file at `place`, into `T`. Under each table of `hidden`, an error holds no
-/// message of `serde`.
+impl Hidden<'_> {
+    /// Whether the field at `path` is hidden.
+    fn covers(self, path: &str) -> bool {
+        match self {
+            Self::Tables(tables) => tables.iter().any(|table| under(path, table)),
+            Self::All => true,
+        }
+    }
+}
+
+/// The tables of a world layer whose values can hold a password.
+pub const LAYER_HIDDEN: Hidden<'static> = Hidden::Tables(&["login"]);
+
+/// Parses `text`, the file at `place`, into `T`. For a field that `hidden` covers, an error
+/// holds no message of `serde`.
 ///
 /// # Errors
 ///
@@ -23,7 +42,7 @@ pub const LAYER_HIDDEN: &[&str] = &["login"];
 pub fn parse<T: DeserializeOwned>(
     place: &impl fmt::Display,
     text: &str,
-    hidden: &[&str],
+    hidden: Hidden<'_>,
 ) -> Result<T, ConfigError> {
     let deserializer = toml::Deserializer::parse(text)
         .map_err(|error| ConfigError::new(at(place, text, error.span()), error.message()))?;
@@ -32,7 +51,7 @@ pub fn parse<T: DeserializeOwned>(
         let place = at(place, text, error.inner().span());
         if path.is_empty() || path == "." {
             ConfigError::new(place, error.inner().message())
-        } else if hidden.iter().any(|table| under(&path, table)) {
+        } else if hidden.covers(&path) {
             ConfigError::field(place, path, "is not a valid field or value")
         } else {
             ConfigError::field(place, path, error.inner().message())
@@ -94,6 +113,17 @@ mod tests {
         assert_eq!(
             error("[login]\nsecret = 5\n"),
             "games/alpha.toml:2:10: login.secret: is not a valid field or value"
+        );
+    }
+
+    #[test]
+    fn all_hidden_drops_the_message_of_each_field() {
+        let error = parse::<File>(&"server.toml", "port = \"hunter2\"\n", Hidden::All)
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            error,
+            "server.toml:1:8: port: is not a valid field or value"
         );
     }
 

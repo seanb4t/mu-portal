@@ -5,10 +5,11 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 pub use mu_core::world::SERVER_FILE;
-use mu_core::world::{ConfigError, parse_toml};
+use mu_core::world::{ConfigError, Hidden, parse_toml};
 use serde::Deserialize;
 
-/// The content of `server.toml`. A missing file is the default.
+/// The content of `server.toml`. A missing file is the default. An error of the file quotes no
+/// value, because a value such as an endpoint URL can hold a password.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ServerFile {
@@ -35,9 +36,6 @@ pub struct TelemetryTable {
     /// configuration directory does.
     pub certificate: Option<PathBuf>,
 }
-
-/// The tables of `server.toml` whose values can hold a password: an endpoint URL can.
-const HIDDEN: &[&str] = &["telemetry"];
 
 /// An error of `server.toml`.
 #[derive(Debug, thiserror::Error)]
@@ -69,7 +67,7 @@ pub fn read(dir: Option<&Path>) -> Result<ServerFile, ServerFileError> {
     let path = dir.join(SERVER_FILE);
     match fs::read_to_string(&path) {
         Ok(text) => {
-            let mut file: ServerFile = parse_toml(&SERVER_FILE, &text, HIDDEN)?;
+            let mut file: ServerFile = parse_toml(&SERVER_FILE, &text, Hidden::All)?;
             if let Some(path) = file
                 .telemetry
                 .certificate
