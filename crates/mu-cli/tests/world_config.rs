@@ -281,6 +281,18 @@ fn server_file_in_another_case() {
 }
 
 #[test]
+fn unreadable_server_file_makes_no_world() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let config = Config::base().file("server.toml", "");
+    fs::set_permissions(
+        config.path().join("server.toml"),
+        fs::Permissions::from_mode(0o000),
+    )
+    .unwrap();
+    has_line(&succeeds(&config.list()), "alpha/aria");
+}
+
+#[test]
 fn hard_link_to_the_server_file_is_an_error() {
     let config = Config::base().file("server.toml", "");
     std::fs::hard_link(

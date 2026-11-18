@@ -94,10 +94,13 @@ impl TomlDirSource {
 pub const SERVER_FILE: &str = "server.toml";
 
 /// Whether the top-level entry `name` is [`SERVER_FILE`]: the same name in any case, and the
-/// same file. On a file system that ignores case, `Server.toml` is that file.
+/// same file. On a file system that ignores case, `Server.toml` is that file. If the compare
+/// cannot open the files, only the exact name is that file, so an unreadable `server.toml` is
+/// left to the server, which reports the read error.
 fn is_server_file(root: &Path, name: &str) -> bool {
     name.eq_ignore_ascii_case(SERVER_FILE)
-        && same_file::is_same_file(root.join(name), root.join(SERVER_FILE)).unwrap_or(false)
+        && same_file::is_same_file(root.join(name), root.join(SERVER_FILE))
+            .unwrap_or(name == SERVER_FILE)
 }
 
 /// Adds to `files` the path of each file under `directory` whose name ends in `.toml`, in any
