@@ -46,6 +46,11 @@ struct Setup {
 impl Setup {
     /// A server whose `server.toml` holds `[telemetry]` with `lines`. No lines means no file.
     fn new(lines: &[String]) -> Self {
+        Self::with_password_variable(lines, "PW_0")
+    }
+
+    /// A server like [`Setup::new`], whose fake world `alpha/aria` reads [`PW`] from `variable`.
+    fn with_password_variable(lines: &[String], variable: &str) -> Self {
         let config = if lines.is_empty() {
             ConfigDir::empty()
         } else {
@@ -56,7 +61,7 @@ impl Setup {
         };
         let builder = ServerBuilder::new()
             .env("MU_CONFIG", Some(config.path()))
-            .fake_worlds(&["alpha/aria"]);
+            .fake_world("alpha/aria", variable, PW);
         Self { builder, config }
     }
 
@@ -183,6 +188,15 @@ fn last_metric(collector: &Collector, name: &str) -> Option<Metric> {
 
 /// The value of the point of the sum or gauge `name`, in its last export, whose attributes
 /// hold each pair of `attributes`.
+/// The last value of `mu.world.state` for `alpha/aria` in the state `name`.
+fn world_state(collector: &Collector, name: &str) -> Option<f64> {
+    last_value(
+        collector,
+        "mu.world.state",
+        &[("mu.world", "alpha/aria"), ("mu.world.state.name", name)],
+    )
+}
+
 fn last_value(collector: &Collector, name: &str, attributes: &[(&str, &str)]) -> Option<f64> {
     let points: Vec<NumberDataPoint> = match last_metric(collector, name)?.data? {
         Data::Sum(sum) => sum.data_points,
@@ -542,46 +556,36 @@ async fn sdk_disabled_with_an_unknown_field() {
     fails_naming(&output, &["server.toml", "telemetry.endpont"]);
 }
 
-#[tokio::test]
-async fn default_service_name() {
+/// Runs a server with `OTEL_SERVICE_NAME` set to `variable`, or not set, and asserts that each
+/// export names `expected`.
+async fn exports_service_name(variable: Option<&str>, expected: &str) {
     let collector = Collector::start(Mode::Http).await;
-    Setup::endpoint(&collector.url()).run(&[]).await;
+    let mut setup = Setup::endpoint(&collector.url());
+    if let Some(value) = variable {
+        setup = setup.env(SERVICE_NAME, value);
+    }
+    setup.run(&[]).await;
     let names = service_names(&collector);
     assert_ne!(names, Vec::<Option<String>>::new());
     assert!(
-        names.iter().all(|name| name.as_deref() == Some("mu")),
+        names.iter().all(|name| name.as_deref() == Some(expected)),
         "{names:?}"
     );
+}
+
+#[tokio::test]
+async fn default_service_name() {
+    exports_service_name(None, "mu").await;
 }
 
 #[tokio::test]
 async fn empty_service_name() {
-    let collector = Collector::start(Mode::Http).await;
-    Setup::endpoint(&collector.url())
-        .env(SERVICE_NAME, "")
-        .run(&[])
-        .await;
-    let names = service_names(&collector);
-    assert_ne!(names, Vec::<Option<String>>::new());
-    assert!(
-        names.iter().all(|name| name.as_deref() == Some("mu")),
-        "{names:?}"
-    );
+    exports_service_name(Some(""), "mu").await;
 }
 
 #[tokio::test]
 async fn service_name_from_the_variable() {
-    let collector = Collector::start(Mode::Http).await;
-    Setup::endpoint(&collector.url())
-        .env(SERVICE_NAME, "mu-desk")
-        .run(&[])
-        .await;
-    let names = service_names(&collector);
-    assert_ne!(names, Vec::<Option<String>>::new());
-    assert!(
-        names.iter().all(|name| name.as_deref() == Some("mu-desk")),
-        "{names:?}"
-    );
+    exports_service_name(Some("mu-desk"), "mu-desk").await;
 }
 
 #[tokio::test]
@@ -994,29 +998,16 @@ async fn world_that_never_connects() {
         .start()
         .await;
     stop(server).await;
-    let state = |name| {
-        last_value(
-            &collector,
-            "mu.world.state",
-            &[("mu.world", "alpha/aria"), ("mu.world.state.name", name)],
-        )
-    };
-    assert_eq!(state("disconnected"), Some(1.0));
+    assert_eq!(world_state(&collector, "disconnected"), Some(1.0));
 }
 
 #[tokio::test]
 async fn state_at_the_stop() {
     let collector = Collector::start(Mode::Http).await;
     Setup::endpoint(&collector.url()).run(&[]).await;
-    let state = |name| {
-        last_value(
-            &collector,
-            "mu.world.state",
-            &[("mu.world", "alpha/aria"), ("mu.world.state.name", name)],
-        )
-    };
-    assert_eq!(state("disconnected"), Some(1.0));
-    assert_eq!(state("connected"), Some(0.0));
+    assert_eq!(world_state(&collector, "disconnected"), Some(1.0));
+    assert_eq!(world_state(&collector, "connected"), Some(0.0));
+    assert_eq!(world_state(&collector, "connecting"), Some(0.0));
 }
 
 /// Whether `text` occurs in a body that `collector` got.
@@ -1032,15 +1023,10 @@ fn in_a_body(collector: &Collector, text: &str) -> bool {
 #[tokio::test]
 async fn password_stays_out() {
     let collector = Collector::start(Mode::Http).await;
-    let config = ConfigDir::empty().file(
-        "server.toml",
-        &format!("[telemetry]\nendpoint = \"{}\"\n", collector.url()),
-    );
-    let builder = ServerBuilder::new()
-        .env("MU_CONFIG", Some(config.path()))
-        .fake_world("alpha/aria", "ALPHA_PW", PW);
-    let mut session = Session::start(builder).await;
-    session.welcome("alpha/aria").await;
+    let session =
+        Setup::with_password_variable(&[format!("endpoint = \"{}\"", collector.url())], "ALPHA_PW")
+            .start()
+            .await;
     let text = format!("say {PW}");
     session.client.send("alpha/aria", &text).await.unwrap();
     let run = stop(session.server).await;
