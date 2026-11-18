@@ -269,6 +269,18 @@ fn server_file_makes_no_world() {
 }
 
 #[test]
+fn server_file_in_another_case() {
+    let config = Config::base().file("SERVER.toml", "");
+    let output = config.list();
+    // On a file system that ignores case, the server reads this file as `server.toml`.
+    if config.path().join("server.toml").exists() {
+        has_line(&succeeds(&output), "alpha/aria");
+    } else {
+        fails_naming(&output, &["SERVER.toml"]);
+    }
+}
+
+#[test]
 fn character_named_server_is_a_world() {
     let config = Config::empty()
         .file("games/alpha.toml", BASE_GAME)

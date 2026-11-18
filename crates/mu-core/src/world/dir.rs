@@ -13,8 +13,8 @@ use super::parse::parse;
 /// The layers of a configuration directory.
 ///
 /// The directory holds `global.toml`, `types/<name>.toml`, `games/<game>.toml` and
-/// `characters/<game>/<character>.toml`. Any other file whose name ends in `.toml`, in any
-/// case, is an error. So is an entry that cannot be read, such as a link to nothing.
+/// `characters/<game>/<character>.toml`, and [`SERVER_FILE`] at the top, which holds no layer.
+/// Any other file whose name ends in `.toml`, in any case, is an error. So is an entry that cannot be read, such as a link to nothing.
 /// A missing directory holds no layers.
 #[derive(Clone, Debug)]
 pub struct TomlDirSource {
@@ -37,7 +37,11 @@ impl LayerSource for TomlDirSource {
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(ConfigError::new(self.root.display(), error.to_string())),
         }
-        files.retain(|parts| parts != &[SERVER_FILE]);
+        let server = fs::metadata(self.root.join(SERVER_FILE)).ok();
+        files.retain(|parts| match (parts.as_slice(), &server) {
+            ([name], Some(server)) => !is_server_file(&self.root.join(name), server),
+            _ => true,
+        });
         files.sort();
         let keys = files
             .iter()
@@ -90,6 +94,22 @@ impl TomlDirSource {
 
 /// The file of the server at the top of the directory. It holds no layer.
 pub const SERVER_FILE: &str = "server.toml";
+
+/// Whether `path` is the file of `server`, the metadata of [`SERVER_FILE`]. On a file system
+/// that ignores case, `Server.toml` is that file too.
+fn is_server_file(path: &Path, server: &fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        fs::metadata(path)
+            .is_ok_and(|file| (file.dev(), file.ino()) == (server.dev(), server.ino()))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = server;
+        path.file_name().is_some_and(|name| name == SERVER_FILE)
+    }
+}
 
 /// Adds to `files` the path of each file under `directory` whose name ends in `.toml`, in any
 /// case, as its parts relative to the root. `prefix` holds the parts of `directory`.

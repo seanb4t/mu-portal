@@ -2,8 +2,8 @@
 //!
 //! An error names the file, the line and the column, and the path of the field. It never
 //! holds the `Display` of a `toml` error, because that text quotes the line of the file, and
-//! the line can hold a password. Under `login` it also drops the message, because a message of
-//! `serde` can quote the value.
+//! the line can hold a password. Under `login` and `telemetry` it also drops the message,
+//! because a message of `serde` can quote the value, and a value there can hold a password.
 
 use std::fmt;
 
@@ -24,12 +24,22 @@ pub fn parse<T: DeserializeOwned>(place: &impl fmt::Display, text: &str) -> Resu
         let place = at(place, text, error.inner().span());
         if path.is_empty() || path == "." {
             ConfigError::new(place, error.inner().message())
-        } else if path == "login" || path.starts_with("login.") || path.starts_with("login[") {
+        } else if HIDDEN.iter().any(|table| under(&path, table)) {
             ConfigError::field(place, path, "is not a valid field or value")
         } else {
             ConfigError::field(place, path, error.inner().message())
         }
     })
+}
+
+/// The tables whose values can hold a password: the login of a world, and the endpoint of the
+/// export in `server.toml`.
+const HIDDEN: [&str; 2] = ["login", "telemetry"];
+
+/// Whether `path` is `table` or a path inside it.
+fn under(path: &str, table: &str) -> bool {
+    path.strip_prefix(table)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('.') || rest.starts_with('['))
 }
 
 /// `place` with the line and the column of the start of `span` in `text`.
@@ -73,6 +83,22 @@ mod tests {
     #[test]
     fn error_names_the_line_and_the_field() {
         assert!(error("\nport = 70000\n").starts_with("games/alpha.toml:2:8: port: "));
+    }
+
+    #[test]
+    fn error_under_telemetry_drops_the_message() {
+        #[derive(Debug, Deserialize)]
+        #[expect(dead_code, reason = "the test reads only the error")]
+        struct Server {
+            telemetry: Option<Table>,
+        }
+        #[derive(Debug, Deserialize)]
+        struct Table {}
+        let error = parse::<Server>(&"server.toml", "telemetry = \"https://u:hunter2@h\"\n")
+            .unwrap_err()
+            .to_string();
+        assert!(!error.contains("hunter2"), "{error}");
+        assert!(error.contains("telemetry"), "{error}");
     }
 
     #[test]
