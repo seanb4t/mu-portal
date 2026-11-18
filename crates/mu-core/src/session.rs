@@ -244,7 +244,8 @@ pub(crate) async fn run(parts: SessionParts) {
         limiter: RateLimiter::direct_with_clock(Quota::per_second(RATE), TokioClock),
         last_script_error: None,
     };
-    state_gauge(&session.parts.world, WorldState::Disconnected, 1);
+    let start = *session.parts.state.borrow();
+    state_gauge(&session.parts.world, start, 1);
     let mut buffer = vec![0_u8; 4096];
     loop {
         let step = tokio::select! {

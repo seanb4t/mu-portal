@@ -74,7 +74,7 @@ A new function, `EventKind::name`, in `crates/mu-core/src/event.rs`, gives the s
 
 The span of `Subscribe` ends at the return of its stream, not at the end of the stream. A stream can live for the whole evening, and a span that stays open that long reaches the collector only at its end. The method returns a ready future, so the span covers the check of `from_seq` and the build of the stream. A `Subscribe` from past the end of the journal returns a stream that sends a `Hello` and then `out_of_range`. Its span gets the status `ERROR` before the method returns.
 
-For the gauge, `session::run` emits the value 1 for `disconnected` at the start of the session. Then `set_state` emits the value 0 for the old state and 1 for the new state. Thus the last export holds one 1 for each world, a world with no transport too.
+For the gauge, `session::run` emits the value 1 for the state of the watch channel at the start of the session, which is `disconnected`. Then `set_state` emits the value 0 for the old state and 1 for the new state. Thus the last export holds one 1 for each world, a world with no transport too.
 
 ### The lag of a subscriber reads the live journal
 
