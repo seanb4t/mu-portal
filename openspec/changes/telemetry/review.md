@@ -1,10 +1,10 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-18T02:03:10+00:00
-head: bd78e021d40ef560f025ad64dd9e082ccc6d8964
-round: 4
-next_id: 66
+reviewed_at: 2026-11-18T02:56:57+00:00
+head: 8a22dd1a0635fa61dd433559500c058ab11b6043
+round: 5
+next_id: 80
 lenses:
   spec-lint: not-applicable
   approach: ok
@@ -19,10 +19,20 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge |
 |---|---|---|---|---|---|---|---|---|
-| R-62 | approach,invariants | should-fix | in-change | app-1: The design says the exporter logs a failed export at WARN. In opentelemetry-otlp 0.33.1 both transports log the failure at DEBUG, on purpose, because the batch processor and the reader already log it at ERROR. The WARN filter of the fmt layer drops the exporter line.; inv-1: The design says the exporter logs a failed export at WARN. In opentelemetry-otlp 0.33.1 both exporters log the failure only at DEBUG, which the WARN filter drops; only the processor's ERROR line reaches stderr. | design.md > Two transports and one TLS stack — "The exporter logs the failure at `WARN`, the batch processor or the reader logs it at `ERROR`, and the engine goes on." | app-1: State that the exporter logs the failure at DEBUG, which the WARN filter drops, and that the ERROR line of the batch processor or the reader is the one line of each failed export.; inv-1: Edit the TLS section of design.md: the exporter logs the failure at DEBUG, and the batch processor or the reader gives the one ERROR line that stderr shows. |  |  |
-| R-63 | invariants | should-fix | in-change | The fmt layer must pass SDK lines at WARN and above, and the first drop of a full queue gives one WARN line. The only stderr test passes an ERROR line, so a filter raised to ERROR drops the promised drop line and every test still passes. | design.md > Risks / Trade-offs — "The `fmt` layer keeps the lines at `WARN` and above. Each failed export gives one line. The first drop of a full queue g" | In silent_collector_with for http/protobuf, where 2100 calls overfill the queue of 2048, collect stderr and assert exactly one line holding SpanDroppingStarted (the WARN edge and the once rule). |  |  |
-| R-64 | fit | suggestion | in-change | Six metric events repeat the same shape: tracing::event! with target METRICS_TARGET and Level::INFO, then the metric field and its attributes. Four are in session.rs and two in service.rs. Two use a local helper (state_gauge, dropped), and four are inline. Only the metric field and the attributes vary, and they vary on purpose. | crates/mu-core/src/session.rs:312 — "target: crate::METRICS_TARGET," | Add an exported macro in mu-core next to METRICS_TARGET, for example metric!, that fixes the target and the level and takes the metric field and its attributes as the parameter. Use it at the six sites. Then a metric event cannot lose the target that the filter in pipeline.rs needs. |  |  |
-| R-65 | fit | suggestion | in-change | The new test lag_behind_the_head repeats the setup of lagged_stream_is_counted and lag_at_the_head_is_zero line for line: the in-memory subscriber, a MemoryJournal, a watch channel, a subscription from Seq(1), event_stream, and the read of the Hello. Only the capacity of the journal varies (4 or 8). | crates/mu-cli/tests/telemetry_engine.rs:167 — "let journal = Arc::new(MemoryJournal::new(8).unwrap());" | Add one helper in telemetry_engine.rs that takes the capacity of the journal as its parameter and returns the journal, the stream after its Hello, and the stop sender. Use it in the three lag tests. |  |  |
+| R-66 | approach,invariants | should-fix | in-change | app-1: The walk skips each top-level entry that is the same file (device and inode) as server.toml, so another case of the name, a hard link or a symlink to it is skipped. design.md still says the check compares the whole relative path, and records no deviation.; inv-1: The walk now skips any top-level file with the inode of server.toml. A hard link worlds.toml lists worlds with exit 0, and a link server.toml to global.toml drops the global layer with no error. | crates/mu-core/src/world/dir.rs:42 — "([name], Some(server)) => !is_server_file(&self.root.join(name), server)," | app-1: Rewrite the dir.rs sentence of 'Where the endpoint comes from' to say that the skip compares file identity at the top level, and give the reason: server_config reads the same file on a file system that ignores case. Also state what happens to a top-level link to server.toml.; inv-1: Skip a top-level entry only when its name equals server.toml ignoring ASCII case and its identity matches. Add a test with a hard link worlds.toml to server.toml (exit 1, names worlds.toml) and one with server.toml linked to global.toml (the global field stays in mu world show). |  |  |
+| R-67 | approach | should-fix | in-change | The guide and the Risks section say that each failed export gives one stderr line. At head a failed export gives two: the WARN of the OTLP retry (Export.Failed.Exhausted) and the ERROR of the batch processor or the reader. The design's TLS decision and collector_that_the_server_does_not_trust already expect both. | docs/src/content/docs/guides/telemetry.md:68 — "The server writes a line to stderr for each failed export, and one line at the first drop." | In the Risks bullet and in the guide (lines 64 and 68), say that each failed export gives two lines: a WARN from the exporter and an ERROR from the processor or the reader. |  |  |
+| R-68 | approach | should-fix | in-change | The design now stops each provider on a helper thread of its own, in parallel, so a slow trace export does not delay the last metrics, and the code does the same. The decision page of task 7.2 still says one helper thread shuts the providers down. | design.md > The exporter has its own threads and a bounded stop — "`server::run` calls `shutdown` of each provider on a helper thread of its own, so a slow trace export does not delay the" | Change line 24 of decisions/telemetry.md to say that each provider stops on its own helper thread, and that the server waits at most five seconds for both. |  |  |
+| R-69 | fit | should-fix | in-change | dir.rs hand-writes a file-identity compare (dev and ino, with a name fallback off unix) to skip server.toml. same_file::is_same_file does exactly this, and same-file is already in Cargo.lock through walkdir. The design names neither the library nor the identity check: it still says the skip compares the relative path. | crates/mu-core/src/world/dir.rs:105 — ".is_ok_and(\|file\| (file.dev(), file.ino()) == (server.dev(), server.ino()))" | Call same_file::is_same_file from is_server_file, with same-file added through [workspace.dependencies] and to ALLOWED_CRATES of mu-core. Or state in 'Where the endpoint comes from' that the skip compares file identity, and why a hand compare wins over same-file. |  |  |
+| R-70 | fit | should-fix | in-change | The span layer now filters with a hand matcher, in_crates, where tracing_subscriber::filter::Targets is the library filter for targets. The reason is real: Targets matches a bare prefix, so mu_cli would also take mu_client, a crate of the workspace. But only a test holds that reason. The design names neither Targets nor why it does not fit. | crates/mu-cli/src/telemetry/pipeline.rs:274 — ".is_some_and(\|rest\| rest.is_empty() \|\| rest.starts_with("::"))" | Keep in_crates. Add one sentence to the decision 'The engine speaks tracing, and mu-cli bridges it': Targets matches a bare prefix, so `mu_cli` would take `mu_client`, and the filter therefore needs the `::` boundary. |  |  |
+| R-71 | invariants | should-fix | in-change | A late or failed stop of a provider must write a WARN line, but no test reads stderr after a stop past the bound; the silent-collector test asserts only the status and the elapsed time. | design.md > The exporter has its own threads and a bounded stop — "A failed shutdown, or a wait that ends first, writes a line at `WARN` to stderr." | In silent_collector_with, also assert that stderr holds a WARN line with 'did not finish within'. A stop that ends in time must not write it: assert its absence in traces_and_metrics_reach_the_collector. |  |  |
+| R-72 | invariants | should-fix | in-change | The HTTP client must follow no redirect, but no test makes the collector answer with a redirect, so a removal of Policy::none passes every test. | design.md > Two transports and one TLS stack — "The client follows no redirect." | Add a collector mode or route that answers POST /v1/traces with 307 to /elsewhere, and assert that the collector got no request at /elsewhere. |  |  |
+| R-73 | invariants | should-fix | in-change | The metrics layer must take only the target mu::metrics, but no test emits a metric-prefixed field under another target such as mu_core, the side the filter must refuse. | design.md > The engine speaks tracing, and mu-cli bridges it — "It takes only the target `mu::metrics`." | Add to telemetry_engine.rs a test that emits monotonic_counter.mu.x with the target mu_core under the in-memory exporters and expects no metric, beside one with METRICS_TARGET that expects the value. |  |  |
+| R-74 | invariants | should-fix | in-change | check_endpoint now states that no URL can hold a fragment, the signal variables too, but the only fragment test passes # in OTEL_EXPORTER_OTLP_ENDPOINT, not in a signal variable or the field. | crates/mu-cli/src/telemetry.rs:249 — "/// Checks that `value` is a URL with the scheme `http` or `https` and a host. No URL can hold a" | Add http://t:1/x#top in OTEL_EXPORTER_OTLP_TRACES_ENDPOINT and OTEL_EXPORTER_OTLP_METRICS_ENDPOINT to a refusal test that expects the variable as the source. http::Uri drops a fragment, so only the raw check refuses it. |  |  |
+| R-76 | test-coverage | should-fix | in-change | covered row 'Worlds from character files' has no verification run | review > not-run — "Worlds from character files" | run the covering test and record it in verification-runs.txt |  |  |
+| R-77 | test-coverage | should-fix | in-change | covered row 'A character with no game' has no verification run | review > not-run — "A character with no game" | run the covering test and record it in verification-runs.txt |  |  |
+| R-78 | test-coverage | should-fix | in-change | covered row 'A file name outside the id rule' has no verification run | review > not-run — "A file name outside the id rule" | run the covering test and record it in verification-runs.txt |  |  |
+| R-79 | test-coverage | should-fix | in-change | covered row 'A link to nothing' has no verification run | review > not-run — "A link to nothing" | run the covering test and record it in verification-runs.txt |  |  |
+| R-75 | fit | suggestion | in-change | The shared TOML parse of mu-core hard-codes the hidden tables of both callers: login, a table of a world layer, and telemetry, a table of server.toml, which mu-cli owns. Which tables to hide differs by caller on purpose. Each later table of server.toml that holds a secret must edit mu-core, and each layer file gets telemetry hidden too. | crates/mu-core/src/world/parse.rs:37 — "const HIDDEN: [&str; 2] = ["login", "telemetry"];" | Give parse (parse_toml) a parameter `hidden: &[&str]`. dir.rs passes ["login"], and server_config.rs passes ["telemetry"]. |  |  |
 
 ## Repeats
 
@@ -30,9 +40,7 @@ None.
 
 ## Out of bound
 
-| lens | severity | claim | evidence |
-|---|---|---|---|
-| approach | should-fix | The spec says that with OTEL_SDK_DISABLED=true the server reads and checks no other telemetry field. The design applies that only to the export function. server::run parses server.toml into typed fields before export() runs, so with the export off, endpoint = 4318 still stops the start. No decision says which rule wins for the parse. | design.md > Where the endpoint comes from — "Then the function returns at once, and it reads and checks no other variable and no field of `[telemetry]`." |
+None.
 
 ## Accepted
 
@@ -48,10 +56,11 @@ None.
 | 2 | plan | follow-up | 54b5a2a6975e8d1dce256af0a1aba44e2097b395 | d83e961fa6800173c9ff0af3121c363a4fdae0af6584080f2ba292996bf2de13 | approve-with-notes | 15 | 0 | 0 | 0 |  |
 | 3 | implementation | full | 74942b0c11812f2f3e2184e0705c6a5df52a7991 | edba5d78053bcfb78a8ed98bf6877143508a1c966814b7c77e0b7d83656e8e52 | approve-with-notes | 17 | 0 | 1 | 0 |  |
 | 4 | implementation | follow-up | bd78e021d40ef560f025ad64dd9e082ccc6d8964 | 6c7fee037f8473d7861ff8a1d21785330070bc82764e55b1ec4bb7655fef01d0 | approve-with-notes | 4 | 0 | 0 | 1 |  |
+| 5 | implementation | follow-up | 8a22dd1a0635fa61dd433559500c058ab11b6043 | c02a832ad60eed7a2f566cbb7b23144c8efda88813a3ece30b7a631f4bc21700 | approve-with-notes | 14 | 0 | 0 | 0 |  |
 
 ## Judge
 
-judge: 8 questions, 0.000 USD
+judge: 20 questions, 0.001 USD
 
 ## Coverage matrix
 
@@ -106,17 +115,20 @@ judge: 8 questions, 0.000 USD
 | The password stays out | crates/mu-cli/tests/telemetry.rs: password_stays_out | covered | pass |
 | The line text stays out | crates/mu-cli/tests/telemetry.rs: line_text_stays_out | covered | pass |
 | A collector that never answers | crates/mu-cli/tests/telemetry.rs: silent_collector_does_not_delay_a_send | covered | pass |
-| Worlds from character files | crates/mu-cli/tests/world_config.rs: worlds_from_character_files | covered | pass |
-| A character with no game | crates/mu-cli/tests/world_config.rs: character_with_no_game | covered | pass |
-| A file name outside the id rule | crates/mu-cli/tests/world_config.rs: file_name_outside_the_id_rule | covered | pass |
+| Worlds from character files | existing world_config.rs tests (not in this change's diff) | covered | not-run |
+| A character with no game | existing world_config.rs tests (not in this change's diff) | covered | not-run |
+| A file name outside the id rule | existing world_config.rs tests (not in this change's diff) | covered | not-run |
 | A stray file | crates/mu-cli/tests/world_config.rs: stray_file | covered | pass |
-| A link to nothing | crates/mu-cli/tests/world_config.rs: link_to_nothing_is_an_error | covered | pass |
+| A link to nothing | existing world_config.rs tests (not in this change's diff) | covered | not-run |
 | The file of the server | crates/mu-cli/tests/world_config.rs: server_file_makes_no_world | covered | pass |
 | A character named server | crates/mu-cli/tests/world_config.rs: character_named_server_is_a_world | covered | pass |
 
 ### Not run
 
-None.
+- Worlds from character files: no verification run names this row
+- A character with no game: no verification run names this row
+- A file name outside the id rule: no verification run names this row
+- A link to nothing: no verification run names this row
 
 ## Verification runs
 
@@ -170,12 +182,8 @@ None.
 - exit 0: `cargo nextest run -p mu-cli --test telemetry_engine --locked -E 'test(=commands_at_the_rate)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry_engine --locked -E 'test(=lagged_stream_is_counted)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=character_named_server_is_a_world)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=character_with_no_game)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=file_name_outside_the_id_rule)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=link_to_nothing_is_an_error)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=server_file_makes_no_world)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=stray_file)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=worlds_from_character_files)'`
 
 ## Dropped
 
@@ -183,29 +191,33 @@ None.
 
 ## Lens notes
 
-- approach: Follow-up round with no Bash tool: the changed lines since 74942b0 were inferred from diff-files.txt and the fixed rows of prior.json, so the merge must place each finding inside or outside the bound.
-- approach: The fixes of R-45, R-46, R-47, R-48, R-50, R-51, R-52, R-53, R-54 and R-60 hold at head: the field is checked under a set variable, the Subscribe past the end marks its span ERROR, internal-logs is on in the three OpenTelemetry crates, METRICS_TARGET and SERVER_FILE have one definition each, the service name comes from PORTAL_SERVICE_SERVICE_NAME, is_https reads the scheme with http::Uri, and server::run installs ring before it builds any client.
-- approach: The test rows R-55 to R-59 and R-61 belong to other lenses and were not judged here.
-- approach: crates/mu-core/src/portal.rs is outside diff-files.txt, so the four call sites of Request::command were not read again.
-- fit: The handoff has no diff text, and this lens has no git. The bound of the follow-up round is inferred: findings cite code that the fixes of R-50 and R-56 changed (the METRICS_TARGET lines and the new test lag_behind_the_head).
-- fit: The earlier fit rows are fixed at head: R-8 (server_config.rs reads through mu_core::world::parse_toml), R-30 (telemetry_engine.rs includes the mu-core test support, and mu-cli has hex and tokio test-util), R-50 (one METRICS_TARGET in mu-core/src/lib.rs), R-51 (one SERVER_FILE in dir.rs, re-exported), R-52 (PORTAL_SERVICE_SERVICE_NAME), R-53 (shared grpc and http builder helpers in pipeline.rs), R-54 (is_https reads the scheme with http::Uri), R-55 (fails_naming in tests/support/mod.rs), R-60 (ring installed in server::run) and R-61 (the traced helper in service.rs).
-- fit: tests/telemetry.rs repeats the OTEL_* variable names as literals while mu_cli::telemetry exports them. This is not reported: a test that states the names of the spec on purpose is the excluded case of fixtures that repeat production shapes.
-- invariants: I1: The endpoint field of server.toml is always checked, even when OTEL_EXPORTER_OTLP_ENDPOINT wins \| enforced at crates/mu-cli/src/telemetry.rs:176 (loop over variable and field) \| boundary test bad_file_endpoint_under_a_set_variable_is_refused (R-45 fixed, holds)
-- invariants: I2: An endpoint with the scheme https in any case gets TLS on gRPC \| enforced at crates/mu-cli/src/telemetry/pipeline.rs:232 is_https via http::Uri \| boundary test grpc_with_tls_and_an_upper_case_scheme. Probe under the handoff directory (probe-is-https) on HTTPS://, hTtPs://, HTTP://, a query, and empty: true, true, false, true, false (R-54 fixed, holds)
-- invariants: I3: The joined URL is the base with each trailing slash removed plus /v1/traces or /v1/metrics \| enforced at telemetry.rs:290 join \| boundary: base_strategy yields 0, 1 and 2 trailing slashes, and the oracle is now independent of join (R-59 fixed, holds)
-- invariants: I4: A failed Subscribe span has the status ERROR, a successful one has none \| enforced at crates/mu-server/src/service.rs:182 failed(&span) in the PastEnd arm \| boundary test subscribe_past_the_end counts exactly one ERROR among the Subscribe spans, so the session's own Subscribe stays unmarked (R-57 fixed, holds)
-- invariants: I5: mu.subscriber.lag = last - seq, never negative \| enforced at service.rs:73 saturating_sub \| boundary tests lag_at_the_head_is_zero (0) and lag_behind_the_head (2, 1, 0 gives sum 3); a reversed subtraction gives 0 and fails (R-56 fixed, holds)
-- invariants: I6: A lagged stream ends with resource_exhausted \| enforced in event_stream \| boundary test lagged_stream_is_counted now asserts ResourceExhausted (R-58 fixed, holds)
-- invariants: I7: The metric target is one constant that the layer filter and every emitter share \| enforced by mu_core::METRICS_TARGET, used in session.rs, service.rs and TARGETS \| boundary test: the engine metric tests through the real layers (R-50 fixed, holds)
-- invariants: I8: server.toml is one name for the walk skip and the reader \| enforced by mu_core::world::SERVER_FILE re-exported in server_config.rs \| boundary tests of the world-config scenarios (R-51 fixed, holds)
-- invariants: I9: The OpenTelemetry layers never get an SDK event, now that internal-logs emits them \| enforced by the Targets filter of pipeline.rs:226 \| boundary: the target-filter test of design.md (unchanged in this round)
-- invariants: I10: The process installs ring before any client is built \| enforced at crates/mu-cli/src/server.rs:60, now outside the export (R-60 fixed, holds)
-- invariants: The SDK logs SpansDropped at the start of shutdown_with_timeout, before the five-second wait, so the stop-count line of the Risks section holds even when the flush times out.
-- test-coverage: Tests subscribe_past_the_end, lag_behind_the_head and grpc_with_tls_and_an_upper_case_scheme have no scenario; each answers a fixed row of prior.json (R-46, R-56, R-54) and is explained by it.
-- test-honesty: Read telemetry.rs, telemetry_engine.rs and src/telemetry/tests.rs in full. No test is disabled, assertion-free, a tautology or a constant. The earlier tautology (R-59) and weak-assertion (R-58) findings are fixed: the proptest computes its expected URL apart from join, and lagged_stream_is_counted asserts ResourceExhausted.
-- test-honesty: Not read in full: tests/support/mod.rs and tests/world_config.rs; a grep found no ignore, todo or vacuous gate in mu-cli.
-- test-coverage gap: The test bodies of the pre-existing world_config scenarios other than the two new ones were graded by name and a glance at stray_file only.
-- test-coverage gap: The unit tests of crates/mu-cli/src/telemetry/tests.rs were not read; no scenario depends on them.
+- approach: The approach lens has no Bash tool, so it could not diff against since bd78e021. It placed the changed text by the commit subjects after the base: identity skip of server.toml, hidden telemetry values, request limit, parallel stop and layer filters. The merge should check the bound of each finding against the real diff.
+- approach: server_config.rs resolves a relative certificate field against the configuration directory, and the guide documents it. design.md names no rule for a relative path, and OTEL_EXPORTER_OTLP_CERTIFICATE is resolved against the working directory. Not raised: no decision is departed from.
+- approach: parse.rs now drops the serde message under the telemetry table, and check_endpoint keeps the URL out of its message. design.md records neither rule. Both go beyond the spec, which names only the password of a world. Not raised.
+- approach: The other decisions checked against head hold: the per-layer target filters, the ten-second EXPORT_TIMEOUT (with_timeout wins over the variables in resolve_timeout of opentelemetry-otlp 0.33.1), the ring install in server::run, internal-logs on the three OpenTelemetry crates, Request::command at the four sites, the command and world.connection spans, the lag from Journal::last, the gauge at the start of session::run, and the Subscribe past-the-end status.
+- fit: Follow-up round from bd78e021. Every file of diff-files.txt was read or searched. The two docs guides were only searched for server.toml and OTEL_ names. They hold no component that the fit lens judges.
+- fit: Fixed rows checked at head and still fixed: R-50 (one METRICS_TARGET in mu-core), R-51 (one SERVER_FILE, re-exported by mu-cli), R-52 (PORTAL_SERVICE_SERVICE_NAME), R-53 (shared grpc and http helpers), R-54 (is_https parses with http::Uri), R-55 (fails_naming in tests/support), R-60 (ring installed in server::run), R-61 (traced helper), R-65 (subscriber setup helper).
+- fit: R-64 (accepted) still holds in service.rs and session.rs. It is not raised again, because there is no new evidence.
+- fit: The OTEL_* name constants at the top of tests/telemetry.rs repeat the public constants of mu_cli::telemetry. This is not reported: test literals that restate spec names on purpose are excluded.
+- fit: The library rows came from openspec/config.yaml context. The row for test helpers (tests/support/mod.rs) is followed: fails_naming, ConfigDir and stdout come from there.
+- invariants: I1: The walk skips only the top-level server.toml, and each other top-level .toml file is an error \| enforced at crates/mu-core/src/world/dir.rs:40 by inode identity \| boundary test server_file_makes_no_world, server_file_in_another_case, character_named_server_is_a_world; none for an alias (see inv-1).
+- invariants: I2: An error under [telemetry] of server.toml never quotes a value \| enforced at crates/mu-core/src/world/parse.rs HIDDEN and under \| boundary test error_under_telemetry_drops_the_message (path telemetry); the dot and bracket branches of under are shared with login and its test.
+- invariants: I3: A relative certificate of server.toml starts at the configuration directory, and an absolute one is kept \| enforced at crates/mu-cli/src/server_config.rs read \| boundary test relative_certificate_starts_at_the_directory and absolute_certificate_is_kept.
+- invariants: I4: The span layer takes a target only when it is a crate of CRATES or starts with that crate and :: \| enforced at pipeline.rs in_crates \| boundary test crate_with_a_longer_name_makes_no_span (mu_client refused, mu_cli::server taken) and metric_event_makes_no_span_event.
+- invariants: I5: The metrics layer takes only mu::metrics \| enforced at pipeline.rs:191 \| boundary test none for the refused side (see inv-4).
+- invariants: I6: The stop waits at most the bound for both providers together, each on its own thread \| enforced at pipeline.rs shutdown with one deadline and a break on the first timeout \| boundary test silent_collector_does_not_delay_a_send (elapsed within seven seconds) and silent_traces_collector_does_not_stop_the_metrics (a late traces stop does not cost the metrics).
+- invariants: I7: A late or failed stop writes a WARN line \| enforced at pipeline.rs:249 and :254 \| boundary test none (see inv-2).
+- invariants: I8: The HTTP client follows no redirect \| enforced at pipeline.rs:294 \| boundary test none (see inv-3).
+- invariants: I9: No URL of the export holds a fragment, and a base holds no query \| enforced at telemetry.rs:257 and :269 \| boundary test query_or_fragment_in_the_base_is_refused for the base only (see inv-5).
+- invariants: I10: A gRPC signal always has the telemetry runtime \| enforced at pipeline.rs Providers::start, which starts it when any signal is gRPC; NoRuntime is unreachable by construction \| boundary test the gRPC tests of telemetry.rs.
+- invariants: I11: A failed export logs at WARN, so the fmt filter must pass WARN \| enforced at the fmt filter and the internal-logs feature \| boundary test collector_that_the_server_does_not_trust now asserts a WARN line with Export.Failed.Exhausted (R-63 stays fixed).
+- invariants: I12: The fake collector serves until the test reads it \| enforced at support/collector.rs requests() with assert of !task.is_finished() \| test-support invariant, no product boundary.
+- invariants: I13: Each Command variant has a name \| enforced at compile time by the exhaustive match of Command::name \| boundary test each_command_has_a_name lists six variants; the changed comment at command.rs:158 says the list itself is kept by hand, so a seventh variant compiles with no asserted name.
+- invariants: Probe: target/debug/mu, built at 21:47 before commit 1fa4e80 at 21:48:58 (the dir.rs code matches), ran mu world list and show on three directories under probe/ of the handoff directory. A separate worlds.toml exits 1; a hard link worlds.toml to server.toml exits 0 with alpha/aria; server.toml linked to global.toml shows columns = 120 # default in place of columns = 99 # global.toml.
+- test-coverage: Round 5 diff text checked: tests in telemetry.rs and telemetry_engine.rs assert each THEN condition. Prior rows R-56, R-57, R-58 are closed by lag_behind_the_head, subscribe_past_the_end and the ResourceExhausted assertion.
+- test-honesty: Follow-up round: read telemetry_engine.rs in full for the changed tests (lag_behind_the_head, commands_at_the_rate, lagged_stream_is_counted) and scanned telemetry.rs assertions. Each asserts a specific value tied to its scenario; no ignored tests, no tautologies found.
+- test-honesty: The test lag_of_a_subscriber in telemetry.rs asserts count >= 3 only, but the exact lag value is covered by lag_behind_the_head in telemetry_engine.rs.
+- test-coverage gap: Bodies of world_config.rs tests and the unmodified world-config scenarios were matched by name only.
 
 ## Ledger
 
@@ -276,6 +288,20 @@ None.
 | R-63 | 4 | 4 | should-fix | in-change | ["artifact",["design.md","Risks / Trade-offs"],"The `fmt` layer keeps the lines at `WARN` and above. Each failed export gives one line. The first drop of a full queue gives one line"] | fixed | 1fabd2108de7440bddd490cc7c2f72e70481c7ef |  | The fmt layer must pass SDK lines at WARN and above, and the first drop of a full queue gives one WARN line. The only stderr test passes an ERROR line, so a filter raised to ERROR drops the promised drop line and every test still passes. |
 | R-64 | 4 | 4 | suggestion | in-change | ["path","crates/mu-core/src/session.rs",312] | accepted | ticket: none; reason: Only the metric name and the attributes vary between the six events, so a macro adds a layer of indirection for little gain. |  | Six metric events repeat the same shape: tracing::event! with target METRICS_TARGET and Level::INFO, then the metric field and its attributes. Four are in session.rs and two in service.rs. Two use a local helper (state_gauge, dropped), and four are inline. Only the metric field and the attributes vary, and they vary on purpose. |
 | R-65 | 4 | 4 | suggestion | in-change | ["path","crates/mu-cli/tests/telemetry_engine.rs",167] | fixed | 1fabd2108de7440bddd490cc7c2f72e70481c7ef |  | The new test lag_behind_the_head repeats the setup of lagged_stream_is_counted and lag_at_the_head_is_zero line for line: the in-memory subscriber, a MemoryJournal, a watch channel, a subscription from Seq(1), event_stream, and the read of the Hello. Only the capacity of the journal varies (4 or 8). |
+| R-66 | 5 | 5 | should-fix | in-change | ["path","crates/mu-core/src/world/dir.rs",42] | fixed | 932cf8e9ed3f9d99bf0b00294c1f85cbacb4d586 |  | app-1: The walk skips each top-level entry that is the same file (device and inode) as server.toml, so another case of the name, a hard link or a symlink to it is skipped. design.md still says the check compares the whole relative path, and records no deviation.; inv-1: The walk now skips any top-level file with the inode of server.toml. A hard link worlds.toml lists worlds with exit 0, and a link server.toml to global.toml drops the global layer with no error. |
+| R-67 | 5 | 5 | should-fix | in-change | ["path","docs/src/content/docs/guides/telemetry.md",68] | fixed | 32ce627e788bbd7450f95a46f0cc98ac8e274b2f |  | The guide and the Risks section say that each failed export gives one stderr line. At head a failed export gives two: the WARN of the OTLP retry (Export.Failed.Exhausted) and the ERROR of the batch processor or the reader. The design's TLS decision and collector_that_the_server_does_not_trust already expect both. |
+| R-68 | 5 | 5 | should-fix | in-change | ["artifact",["design.md","The exporter has its own threads and a bounded stop"],"`server::run` calls `shutdown` of each provider on a helper thread of its own, so a slow trace export does not delay the last metrics."] | fixed | 32ce627e788bbd7450f95a46f0cc98ac8e274b2f |  | The design now stops each provider on a helper thread of its own, in parallel, so a slow trace export does not delay the last metrics, and the code does the same. The decision page of task 7.2 still says one helper thread shuts the providers down. |
+| R-69 | 5 | 5 | should-fix | in-change | ["path","crates/mu-core/src/world/dir.rs",105] | fixed | 932cf8e9ed3f9d99bf0b00294c1f85cbacb4d586 |  | dir.rs hand-writes a file-identity compare (dev and ino, with a name fallback off unix) to skip server.toml. same_file::is_same_file does exactly this, and same-file is already in Cargo.lock through walkdir. The design names neither the library nor the identity check: it still says the skip compares the relative path. |
+| R-70 | 5 | 5 | should-fix | in-change | ["path","crates/mu-cli/src/telemetry/pipeline.rs",274] | fixed | 32ce627e788bbd7450f95a46f0cc98ac8e274b2f |  | The span layer now filters with a hand matcher, in_crates, where tracing_subscriber::filter::Targets is the library filter for targets. The reason is real: Targets matches a bare prefix, so mu_cli would also take mu_client, a crate of the workspace. But only a test holds that reason. The design names neither Targets nor why it does not fit. |
+| R-71 | 5 | 5 | should-fix | in-change | ["artifact",["design.md","The exporter has its own threads and a bounded stop"],"A failed shutdown, or a wait that ends first, writes a line at `WARN` to stderr."] | fixed | c22866f902161138d61acf6e770782924c1b5e6e |  | A late or failed stop of a provider must write a WARN line, but no test reads stderr after a stop past the bound; the silent-collector test asserts only the status and the elapsed time. |
+| R-72 | 5 | 5 | should-fix | in-change | ["artifact",["design.md","Two transports and one TLS stack"],"The client follows no redirect."] | fixed | c22866f902161138d61acf6e770782924c1b5e6e |  | The HTTP client must follow no redirect, but no test makes the collector answer with a redirect, so a removal of Policy::none passes every test. |
+| R-73 | 5 | 5 | should-fix | in-change | ["artifact",["design.md","The engine speaks tracing, and mu-cli bridges it"],"It takes only the target `mu::metrics`."] | fixed | c22866f902161138d61acf6e770782924c1b5e6e |  | The metrics layer must take only the target mu::metrics, but no test emits a metric-prefixed field under another target such as mu_core, the side the filter must refuse. |
+| R-74 | 5 | 5 | should-fix | in-change | ["path","crates/mu-cli/src/telemetry.rs",249] | fixed | c22866f902161138d61acf6e770782924c1b5e6e |  | check_endpoint now states that no URL can hold a fragment, the signal variables too, but the only fragment test passes # in OTEL_EXPORTER_OTLP_ENDPOINT, not in a signal variable or the field. |
+| R-75 | 5 | 5 | suggestion | in-change | ["path","crates/mu-core/src/world/parse.rs",37] | fixed | 932cf8e9ed3f9d99bf0b00294c1f85cbacb4d586 |  | The shared TOML parse of mu-core hard-codes the hidden tables of both callers: login, a table of a world layer, and telemetry, a table of server.toml, which mu-cli owns. Which tables to hide differs by caller on purpose. Each later table of server.toml that holds a secret must edit mu-core, and each layer file gets telemetry hidden too. |
+| R-76 | 5 | 5 | should-fix | in-change | ["artifact",["review","not-run"],"Worlds from character files"] | refuted | The matrix row names the unchanged world-config tests as a group, not one test id, so no one-test run can match it. Those tests pass in the full workspace run of 541 tests at this head. |  | covered row 'Worlds from character files' has no verification run |
+| R-77 | 5 | 5 | should-fix | in-change | ["artifact",["review","not-run"],"A character with no game"] | refuted | The matrix row names the unchanged world-config tests as a group, not one test id, so no one-test run can match it. Those tests pass in the full workspace run of 541 tests at this head. |  | covered row 'A character with no game' has no verification run |
+| R-78 | 5 | 5 | should-fix | in-change | ["artifact",["review","not-run"],"A file name outside the id rule"] | refuted | The matrix row names the unchanged world-config tests as a group, not one test id, so no one-test run can match it. Those tests pass in the full workspace run of 541 tests at this head. |  | covered row 'A file name outside the id rule' has no verification run |
+| R-79 | 5 | 5 | should-fix | in-change | ["artifact",["review","not-run"],"A link to nothing"] | refuted | The matrix row names the unchanged world-config tests as a group, not one test id, so no one-test run can match it. Those tests pass in the full workspace run of 541 tests at this head. |  | covered row 'A link to nothing' has no verification run |
 
 ## Reviewed files
 
@@ -286,33 +312,33 @@ None.
 | crates/mu-cli/Cargo.toml | 46dc4d3d4bf57e9dea427aa7571b430a897ba200 |
 | crates/mu-cli/src/config.rs | e3e19c68331635350b58bc047e585effe7066532 |
 | crates/mu-cli/src/lib.rs | 7184de55452e03f00b1d4b6a3d4d7ef638800c0d |
-| crates/mu-cli/src/server.rs | 979aaffa3ad5e188f0e35682feea4df18ee3189f |
-| crates/mu-cli/src/server_config.rs | 25d666a82967a20a3e40e7aaf1d9e03aebdf9de1 |
-| crates/mu-cli/src/telemetry.rs | b07248ff392025577de3c29a0d276b4ea659e871 |
-| crates/mu-cli/src/telemetry/pipeline.rs | 3d797f9556a71a87c9f816aca895be8882e6ae3f |
+| crates/mu-cli/src/server.rs | 15bc40e8a2cc2f6b482f8c1a4aa17b577e9c9de6 |
+| crates/mu-cli/src/server_config.rs | 19bcdf04a0a0b8fd5bcb233dbe72727894bc1290 |
+| crates/mu-cli/src/telemetry.rs | 6eb92aaa455f7773e16ba81cf45efbfbb56f0323 |
+| crates/mu-cli/src/telemetry/pipeline.rs | 5c604cb106d3c5a4ef2dc4a492a98abf29988fa3 |
 | crates/mu-cli/src/telemetry/tests.rs | a661258c2c9ad75bc1c7d7d82c309efdea7ce7f1 |
-| crates/mu-cli/tests/support/collector.rs | c165bc81c82d6e76b86d0f124dbf1bd46ac4f5c6 |
+| crates/mu-cli/tests/support/collector.rs | 259c007c8030fbd9403da947efd93cdcba20ad3f |
 | crates/mu-cli/tests/support/mod.rs | 25e00f84aca56cf2686f4c0f88f55c51a01c47fb |
 | crates/mu-cli/tests/support/process.rs | f6657e1fe453b23671b07de4842f1eccfc64ef86 |
-| crates/mu-cli/tests/telemetry.rs | 8310d72a38be31b5d236635e57ca406611b61aa2 |
-| crates/mu-cli/tests/telemetry_engine.rs | 9d42882006d2a173d793eaffc573fbbf69a46fb2 |
+| crates/mu-cli/tests/telemetry.rs | f845de4a1a579e51973a79b13329ec724321a5b1 |
+| crates/mu-cli/tests/telemetry_engine.rs | 6947254d12341662742bde4183cd3b27fcdff574 |
 | crates/mu-cli/tests/workspace_boundary.rs | 33b366a4d09f3fdd5829bfe1bcd37436b2a39494 |
-| crates/mu-cli/tests/world_config.rs | 0449b1f6b0efc8ec2afef344f1f2dca0988c413c |
-| crates/mu-core/src/command.rs | d3d66b3681ee0574a3705b80af61dd0deba13642 |
+| crates/mu-cli/tests/world_config.rs | 2ff361a7f34d3e22629884240fe6b76cf5f3a385 |
+| crates/mu-core/src/command.rs | 7f54da87e5740d44fb453487dcc54394896a00ed |
 | crates/mu-core/src/event.rs | 1de0c7515daf1c69c9e3038c89de64e2875b013e |
 | crates/mu-core/src/lib.rs | 8c507cc99ac198430e949d8366bd4f27405dde83 |
 | crates/mu-core/src/portal.rs | 8ac1ed6006a7b2095b07e17fbd31eaa26b95be64 |
-| crates/mu-core/src/session.rs | b328bbc4e887e5c2d36cd2a07b701310a1f63aa4 |
-| crates/mu-core/src/world/dir.rs | cc469e8beffc61bd5e5b25c3d8b991ba3740ce73 |
+| crates/mu-core/src/session.rs | 3674a062429699f28c9d6fdb8492ebd99a701ed6 |
+| crates/mu-core/src/world/dir.rs | aeefea1cd1e9b641c9c70e716b4279f428af2aa9 |
 | crates/mu-core/src/world/mod.rs | d63b19cc922fc0d0b1b45c4cfa2d0e6fb64af247 |
-| crates/mu-core/src/world/parse.rs | 826a3d310899ee99f1ec79669c740ad43781487e |
-| crates/mu-server/src/service.rs | c41a8221f40d512c50e001464a4df169fef479a0 |
+| crates/mu-core/src/world/parse.rs | 5fe1be09434b05c6e2a0fce1f1b13b170b5bd24a |
+| crates/mu-server/src/service.rs | b8f9efa9cf89e4699f799a6b8eee8adc85022db8 |
 | deny.toml | 6d67b5264909c485fbe050fe1d657258be4747de |
 | docs/src/content/docs/decisions/telemetry.md | 7d7f9b233354714a84eba262e8a7fb0b92cef4c6 |
-| docs/src/content/docs/guides/configuration.md | e5e6478a67631174365beedfed1e9c5bd8cc9bcc |
-| docs/src/content/docs/guides/telemetry.md | 3ca45765fed205ac0890890c1a57eec680890389 |
+| docs/src/content/docs/guides/configuration.md | 2acfbf5eb084781003533329a8fcbcccc8056604 |
+| docs/src/content/docs/guides/telemetry.md | 2d86d78e3a26db3dbcc32afeda5fbf742832c1a5 |
 | openspec/changes/telemetry/.openspec.yaml | 578c89ac91eda0589930783c384ddbe6201a0568 |
-| openspec/changes/telemetry/design.md | 0a32368340b3f2dbfbead5cf9d470ad2f1225cb2 |
+| openspec/changes/telemetry/design.md | 55e11fb2b02784a7aad659b5c750c241b1c267aa |
 | openspec/changes/telemetry/proposal.md | 09698870137709423e65935a81326ce42d8f4ac0 |
 | openspec/changes/telemetry/specs/telemetry/spec.md | 6d47d6345ea97917b6f06dedc5d4e52aa7807f85 |
 | openspec/changes/telemetry/specs/world-config/spec.md | ae472d6ae06864b5462314cc111c3028330c76f2 |
