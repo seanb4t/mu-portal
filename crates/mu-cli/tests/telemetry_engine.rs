@@ -117,6 +117,38 @@ fn other_targets_make_no_span_event() {
     assert!(spans[0].events.is_empty(), "{:?}", spans[0].events);
 }
 
+#[test]
+fn metric_event_makes_no_span_event() {
+    let memory = Memory::new();
+    tracing::subscriber::with_default(memory.subscriber(), || {
+        let span = tracing::info_span!(target: "mu_core", "work");
+        let _entered = span.enter();
+        tracing::event!(
+            target: mu_core::METRICS_TARGET,
+            tracing::Level::INFO,
+            "monotonic_counter.mu.journal.events" = 1_u64,
+        );
+    });
+    let spans = memory.finished_spans();
+    assert_eq!(spans.len(), 1, "{spans:?}");
+    assert!(spans[0].events.is_empty(), "{:?}", spans[0].events);
+}
+
+#[test]
+fn crate_with_a_longer_name_makes_no_span() {
+    let memory = Memory::new();
+    tracing::subscriber::with_default(memory.subscriber(), || {
+        tracing::info_span!(target: "mu_client", "call").in_scope(|| {});
+        tracing::info_span!(target: "mu_cli::server", "run").in_scope(|| {});
+    });
+    let names: Vec<_> = memory
+        .finished_spans()
+        .into_iter()
+        .map(|span| span.name.into_owned())
+        .collect();
+    assert_eq!(names, ["run"]);
+}
+
 fn line(journal: &MemoryJournal, text: &str) -> Event {
     journal.append(NewEvent {
         world: id("alpha/aria"),
@@ -127,7 +159,7 @@ fn line(journal: &MemoryJournal, text: &str) -> Event {
     })
 }
 
-/// The memory of the metrics as the default subscriber, a journal of `capacity` events, the
+/// The in-memory exporters as the default subscriber, a journal of `capacity` events, the
 /// sender of the stop, and an event stream from the first event, past its `Hello`.
 async fn subscriber(
     capacity: usize,

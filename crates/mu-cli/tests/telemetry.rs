@@ -21,7 +21,7 @@ mod support;
 #[path = "support/collector.rs"]
 mod collector;
 
-/// The variables of the export.
+// The variables of the export.
 const ENDPOINT: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
 const TRACES_ENDPOINT: &str = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT";
 const METRICS_ENDPOINT: &str = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT";
@@ -591,6 +591,18 @@ async fn grpc_with_tls_and_an_upper_case_scheme() {
 }
 
 #[tokio::test]
+async fn silent_traces_collector_does_not_stop_the_metrics() {
+    let silent = Collector::start(Mode::Silent).await;
+    let collector = Collector::start(Mode::Http).await;
+    Setup::new(&[])
+        .env(TRACES_ENDPOINT, &format!("{}/v1/traces", silent.url()))
+        .env(METRICS_ENDPOINT, &format!("{}/v1/metrics", collector.url()))
+        .one_send()
+        .await;
+    assert!(collector.got("/v1/metrics"), "{:?}", collector.paths());
+}
+
+#[tokio::test]
 async fn collector_that_the_server_does_not_trust() {
     let collector = Collector::start(Mode::Https).await;
     let run = Setup::endpoint(&collector.url()).one_send().await;
@@ -858,7 +870,8 @@ async fn line_text_stays_out() {
     );
 }
 
-/// The number of calls that fill the queue of 2048 spans twice, at two spans each.
+/// The number of calls that fill the default queue of the batch span processor, 2048 spans,
+/// twice. Each call makes two spans: `rpc` and `command`.
 const CALLS: usize = 2100;
 
 /// The longest time from SIGTERM to the exit: the bound of the stop and a margin.

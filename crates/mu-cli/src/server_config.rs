@@ -16,7 +16,8 @@ pub struct ServerFile {
     pub telemetry: Option<TelemetryTable>,
 }
 
-/// The table `[telemetry]`. Its values are checked when the export is on.
+/// The table `[telemetry]`. Its values are checked when the export is on, but `certificate`
+/// only when `OTEL_EXPORTER_OTLP_CERTIFICATE` is unset.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TelemetryTable {
@@ -24,7 +25,8 @@ pub struct TelemetryTable {
     pub endpoint: Option<String>,
     /// `http/protobuf` or `grpc`.
     pub protocol: Option<String>,
-    /// A PEM file of the authorities to trust beside the roots of the system.
+    /// A PEM file of the authorities to trust beside the roots of the system. A relative path
+    /// starts at the configuration directory.
     pub certificate: Option<PathBuf>,
 }
 
@@ -39,7 +41,8 @@ pub enum ServerFileError {
     Read(#[source] io::Error),
 }
 
-/// Reads `server.toml` from `dir`. With no directory, or no file, it is the default.
+/// Reads `server.toml` from `dir`. With no directory, or no file, it is the default. A relative
+/// `certificate` becomes a path under `dir`.
 ///
 /// # Errors
 ///
@@ -49,8 +52,52 @@ pub fn read(dir: Option<&Path>) -> Result<ServerFile, ServerFileError> {
         return Ok(ServerFile::default());
     };
     match fs::read_to_string(dir.join(SERVER_FILE)) {
-        Ok(text) => Ok(parse_toml(&SERVER_FILE, &text)?),
+        Ok(text) => {
+            let mut file: ServerFile = parse_toml(&SERVER_FILE, &text)?;
+            if let Some(path) = file
+                .telemetry
+                .as_mut()
+                .and_then(|table| table.certificate.as_mut())
+                .filter(|path| path.is_relative())
+            {
+                *path = dir.join(&*path);
+            }
+            Ok(file)
+        }
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(ServerFile::default()),
         Err(error) => Err(ServerFileError::Read(error)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn read_text(text: &str) -> (tempfile::TempDir, ServerFile) {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join(SERVER_FILE), text).unwrap();
+        let file = read(Some(dir.path())).unwrap();
+        (dir, file)
+    }
+
+    fn certificate(file: &ServerFile) -> &Path {
+        file.telemetry
+            .as_ref()
+            .unwrap()
+            .certificate
+            .as_deref()
+            .unwrap()
+    }
+
+    #[test]
+    fn relative_certificate_starts_at_the_directory() {
+        let (dir, file) = read_text("[telemetry]\ncertificate = \"certs/ca.pem\"\n");
+        assert_eq!(certificate(&file), dir.path().join("certs/ca.pem"));
+    }
+
+    #[test]
+    fn absolute_certificate_is_kept() {
+        let (_dir, file) = read_text("[telemetry]\ncertificate = \"/etc/mu/ca.pem\"\n");
+        assert_eq!(certificate(&file), Path::new("/etc/mu/ca.pem"));
     }
 }

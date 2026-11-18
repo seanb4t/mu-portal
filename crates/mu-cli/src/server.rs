@@ -7,6 +7,7 @@ use clap::Args;
 use mu_core::{
     EnvSecretStore, FakeTransport, ResolvedWorld, SecretRef, WorldId, WorldSetup, load_password,
 };
+use tracing_subscriber::util::SubscriberInitExt as _;
 
 use crate::config::ConfigArgs;
 use crate::server_config;
@@ -55,8 +56,7 @@ fn fail(error: &dyn std::fmt::Display) -> ExitCode {
 
 /// Runs the server until a signal stops it.
 pub fn run(args: &ServerArgs) -> ExitCode {
-    // One crypto provider for the process: reqwest and tonic use it. A second call finds it
-    // installed.
+    // The crypto provider of the process, for reqwest and tonic. A second call finds it installed.
     let _ = rustls::crypto::ring::default_provider().install_default();
     // `server.toml` and the variables decide the export before the socket opens. The HTTP
     // exporters are built here, outside the runtime of the engine.
@@ -73,7 +73,10 @@ pub fn run(args: &ServerArgs) -> ExitCode {
         Err(error) => return fail(&error),
     };
     // Only the server logs: the lines would break the screen of the client.
-    let _ = tracing::subscriber::set_global_default(providers.subscriber());
+    // `try_init` also sends the records of the `log` crate to the subscriber.
+    if let Err(error) = providers.subscriber().try_init() {
+        return fail(&format!("the log of the server: {error}"));
+    }
     let code = serve_worlds(args);
     providers.shutdown(STOP_BOUND);
     code

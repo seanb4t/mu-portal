@@ -2,8 +2,9 @@
 
 use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use mu_core::METRICS_TARGET;
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_otlp::tonic_types::transport::{Certificate, ClientTlsConfig};
 use opentelemetry_otlp::{
@@ -11,13 +12,14 @@ use opentelemetry_otlp::{
     WithExportConfig, WithHttpConfig, WithTonicConfig,
 };
 use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
 use opentelemetry_sdk::trace::{SdkTracerProvider, SpanExporter};
 use tokio::sync::oneshot;
 use tracing::Subscriber;
 use tracing_subscriber::Layer;
-use tracing_subscriber::filter::{LevelFilter, Targets};
+use tracing_subscriber::filter::{LevelFilter, filter_fn};
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::registry::LookupSpan;
 
@@ -29,8 +31,12 @@ pub const STOP_BOUND: Duration = Duration::from_secs(5);
 /// The longest wait for one export request.
 const EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The targets that reach the OpenTelemetry layers: the workspace, and its metric events.
-pub const TARGETS: [&str; 4] = ["mu_core", "mu_server", "mu_cli", mu_core::METRICS_TARGET];
+/// The crates whose spans and events reach the span layer. A target matches a crate when it is
+/// the crate name or starts with the crate name and `::`.
+pub const CRATES: [&str; 3] = ["mu_core", "mu_server", "mu_cli"];
+
+/// The stop of one provider.
+type Stop = Box<dyn FnOnce() -> OTelSdkResult + Send>;
 
 /// The name of the thread of the telemetry runtime.
 const RUNTIME_THREAD: &str = "mu-telemetry";
@@ -44,9 +50,12 @@ pub enum PipelineError {
     /// The HTTP client cannot be built, or a certificate is bad.
     #[error("the export: {0}")]
     Client(#[from] reqwest::Error),
-    /// The thread of the telemetry runtime cannot start.
+    /// The telemetry runtime or its thread cannot start.
     #[error("the export: {0}")]
-    Runtime(#[from] std::io::Error),
+    Runtime(#[source] std::io::Error),
+    /// A gRPC signal has no telemetry runtime.
+    #[error("the export: a gRPC signal has no telemetry runtime")]
+    NoRuntime,
 }
 
 /// The current-thread tokio runtime of the gRPC exporters, on its own thread.
@@ -134,7 +143,10 @@ impl Providers {
             .into_iter()
             .flatten()
             .any(|signal| signal.protocol == Protocol::Grpc);
-        let runtime = grpc.then(TelemetryRuntime::start).transpose()?;
+        let runtime = grpc
+            .then(TelemetryRuntime::start)
+            .transpose()
+            .map_err(PipelineError::Runtime)?;
         let handle = runtime.as_ref().map(|runtime| runtime.handle.clone());
         let spans = export
             .traces
@@ -163,7 +175,8 @@ impl Providers {
         self.meter.as_ref()
     }
 
-    /// The two OpenTelemetry layers, each behind the filter of [`TARGETS`].
+    /// The two OpenTelemetry layers. The span layer takes the targets of [`CRATES`], and the
+    /// metrics layer takes only [`mu_core::METRICS_TARGET`].
     #[must_use]
     pub fn layers<S>(&self) -> impl Layer<S> + Send + Sync + use<S>
     where
@@ -171,10 +184,11 @@ impl Providers {
     {
         let spans = self.tracer.as_ref().map(|provider| {
             tracing_opentelemetry::OpenTelemetryLayer::new(provider.tracer("mu"))
-                .with_filter(targets())
+                .with_filter(filter_fn(|metadata| in_crates(metadata.target())))
         });
         let metrics = self.meter.as_ref().map(|provider| {
-            tracing_opentelemetry::MetricsLayer::new(provider.clone()).with_filter(targets())
+            tracing_opentelemetry::MetricsLayer::new(provider.clone())
+                .with_filter(filter_fn(|metadata| metadata.target() == METRICS_TARGET))
         });
         tracing_subscriber::layer::Identity::new()
             .and_then(spans)
@@ -192,39 +206,72 @@ impl Providers {
             .with(self.layers())
     }
 
-    /// Flushes and stops the providers on a helper thread, and waits for it at most `bound`.
-    /// Then it stops the telemetry runtime.
+    /// Flushes and stops the two providers at the same time, each on its own helper thread, and
+    /// waits for both at most `bound`. A failed or late stop writes a `WARN` line. Then it sends
+    /// the stop to the telemetry runtime, and joins its thread only if both stops finished in time.
     pub fn shutdown(self, bound: Duration) {
         let Self {
             tracer,
             meter,
             runtime,
         } = self;
+        let deadline = Instant::now() + bound;
         let (done, finished) = mpsc::channel();
-        let flush = thread::Builder::new()
-            .name("mu-telemetry-stop".to_owned())
-            .spawn(move || {
-                if let Some(tracer) = tracer {
-                    let _ = tracer.shutdown();
+        let mut started = 0;
+        let stops: [(&str, Option<Stop>); 2] = [
+            (
+                "traces",
+                tracer.map(|tracer| Box::new(move || tracer.shutdown()) as _),
+            ),
+            (
+                "metrics",
+                meter.map(|meter| Box::new(move || meter.shutdown()) as _),
+            ),
+        ];
+        for (signal, stop) in stops {
+            let Some(stop) = stop else { continue };
+            let done = done.clone();
+            let spawned = thread::Builder::new()
+                .name(format!("mu-telemetry-stop-{signal}"))
+                .spawn(move || {
+                    let _ = done.send((signal, stop()));
+                });
+            match spawned {
+                Ok(_) => started += 1,
+                Err(error) => tracing::warn!(signal, %error, "the stop of the export cannot start"),
+            }
+        }
+        let mut in_time = true;
+        for _ in 0..started {
+            match finished.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+                Ok((_, Ok(()))) => {}
+                Ok((signal, Err(error))) => {
+                    tracing::warn!(signal, %error, "the stop of the export failed");
                 }
-                if let Some(meter) = meter {
-                    let _ = meter.shutdown();
+                Err(_) => {
+                    in_time = false;
+                    tracing::warn!(
+                        "the export did not finish within {bound:?}; the rest of the telemetry is lost"
+                    );
+                    break;
                 }
-                let _ = done.send(());
-            });
-        let in_time = flush.is_ok() && finished.recv_timeout(bound).is_ok();
+            }
+        }
         if let Some(runtime) = runtime {
             let _ = runtime.stop.send(());
-            if in_time {
-                let _ = runtime.thread.join();
+            if in_time && runtime.thread.join().is_err() {
+                tracing::warn!("the thread of the telemetry runtime panicked");
             }
         }
     }
 }
 
-fn targets() -> Targets {
-    TARGETS.into_iter().fold(Targets::new(), |filter, target| {
-        filter.with_target(target, LevelFilter::TRACE)
+/// Whether `target` is one of [`CRATES`] or a module of one.
+fn in_crates(target: &str) -> bool {
+    CRATES.iter().any(|name| {
+        target
+            .strip_prefix(name)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with("::"))
     })
 }
 
@@ -244,6 +291,7 @@ fn http_client(trust: &Trust) -> Result<reqwest::blocking::Client, PipelineError
         .collect::<Result<Vec<_>, _>>()?;
     Ok(reqwest::blocking::Client::builder()
         .timeout(EXPORT_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
         .tls_certs_merge(certificates)
         .build()?)
 }
@@ -293,7 +341,8 @@ fn span_exporter(
             let _entered = runtime.enter();
             grpc(builder.with_tonic(), signal, trust).build()?
         }
-        _ => http(builder.with_http(), signal, trust)?.build()?,
+        (Protocol::HttpProtobuf, _) => http(builder.with_http(), signal, trust)?.build()?,
+        (Protocol::Grpc, None) => return Err(PipelineError::NoRuntime),
     })
 }
 
@@ -308,6 +357,7 @@ fn metric_exporter(
             let _entered = runtime.enter();
             grpc(builder.with_tonic(), signal, trust).build()?
         }
-        _ => http(builder.with_http(), signal, trust)?.build()?,
+        (Protocol::HttpProtobuf, _) => http(builder.with_http(), signal, trust)?.build()?,
+        (Protocol::Grpc, None) => return Err(PipelineError::NoRuntime),
     })
 }

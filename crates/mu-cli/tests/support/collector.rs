@@ -115,7 +115,7 @@ impl Collector {
             Mode::Http => {
                 let app = http_app(Arc::clone(&log));
                 tokio::spawn(async move {
-                    let _ = axum::serve(listener, app).await;
+                    axum::serve(listener, app).await.unwrap();
                 })
             }
             Mode::Https => {
@@ -129,7 +129,7 @@ impl Collector {
                 let listener = listener.into_std().unwrap();
                 let server = axum_server::tls_rustls::from_tcp_rustls(listener, config).unwrap();
                 tokio::spawn(async move {
-                    let _ = server.serve(app.into_make_service()).await;
+                    server.serve(app.into_make_service()).await.unwrap();
                 })
             }
             Mode::Grpc | Mode::GrpcTls => {
@@ -145,7 +145,7 @@ impl Collector {
                     .add_service(MetricsServiceServer::new(Grpc(Arc::clone(&log))));
                 let incoming = tonic::transport::server::TcpIncoming::from(listener);
                 tokio::spawn(async move {
-                    let _ = router.serve_with_incoming(incoming).await;
+                    router.serve_with_incoming(incoming).await.unwrap();
                 })
             }
             Mode::Silent => tokio::spawn(async move {
@@ -184,7 +184,15 @@ impl Collector {
     }
 
     /// Each request so far.
+    ///
+    /// # Panics
+    ///
+    /// If the collector stopped serving: its task ends only on an error.
     pub fn requests(&self) -> Vec<Request> {
+        assert!(
+            !self.task.is_finished(),
+            "the fake collector stopped serving"
+        );
         self.log.lock().unwrap().clone()
     }
 
@@ -201,7 +209,7 @@ impl Collector {
         self.requests().iter().any(|request| request.path == path)
     }
 
-    /// The trace requests, at `/v1/traces` or the gRPC call, decoded.
+    /// The trace requests, at a path that ends in `traces` or the gRPC call, decoded.
     pub fn traces(&self) -> Vec<ExportTraceServiceRequest> {
         self.requests()
             .iter()
@@ -210,7 +218,7 @@ impl Collector {
             .collect()
     }
 
-    /// The metric requests, at `/v1/metrics` or the gRPC call, decoded.
+    /// The metric requests, at a path that ends in `metrics` or the gRPC call, decoded.
     pub fn metrics(&self) -> Vec<ExportMetricsServiceRequest> {
         self.requests()
             .iter()

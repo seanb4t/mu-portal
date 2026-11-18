@@ -1,7 +1,7 @@
 //! The telemetry of `mu server`: where it sends traces and metrics, and its subscriber.
 
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rustls::pki_types::CertificateDer;
 use rustls::pki_types::pem::PemObject as _;
@@ -10,7 +10,7 @@ use crate::server_config::{SERVER_FILE, TelemetryTable};
 
 mod pipeline;
 
-pub use pipeline::{PipelineError, Providers, STOP_BOUND, TARGETS};
+pub use pipeline::{CRATES, PipelineError, Providers, STOP_BOUND};
 
 /// Turns the export off with the value `true`, in any case.
 pub const SDK_DISABLED: &str = "OTEL_SDK_DISABLED";
@@ -225,15 +225,15 @@ pub fn export(
     let [traces, metrics] = signals;
 
     let certificate = var(CERTIFICATE)
-        .map(|path| (path, Source::Variable(CERTIFICATE)))
+        .map(|path| (PathBuf::from(path), Source::Variable(CERTIFICATE)))
         .or_else(|| {
             file.certificate
-                .as_ref()
-                .map(|path| (path.display().to_string(), Source::Field("certificate")))
+                .clone()
+                .map(|path| (path, Source::Field("certificate")))
         });
     let trust = match certificate {
         Some((path, place)) => {
-            read_trust(Path::new(&path)).map_err(|message| SettingError::new(place, message))?
+            read_trust(&path).map_err(|message| SettingError::new(place, message))?
         }
         None => Trust::default(),
     };
@@ -246,9 +246,9 @@ pub fn export(
     }))
 }
 
-/// Checks that `value` is a URL with the scheme `http` or `https` and a host. A `base` URL can
-/// hold no query and no fragment, because a path follows it. The message never holds the value,
-/// because a URL can hold a password.
+/// Checks that `value` is a URL with the scheme `http` or `https` and a host. No URL can hold a
+/// fragment. A `base` URL can also hold no query, because a path follows it. The message never
+/// holds the value, because a URL can hold a password.
 ///
 /// # Errors
 ///
