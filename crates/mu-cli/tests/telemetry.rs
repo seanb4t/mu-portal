@@ -603,6 +603,13 @@ async fn collector_that_the_server_does_not_trust() {
         "{:#?}",
         run.stderr
     );
+    assert!(
+        run.stderr
+            .iter()
+            .any(|line| line.contains("WARN") && line.contains("Export.Failed.Exhausted")),
+        "{:#?}",
+        run.stderr
+    );
 }
 
 #[tokio::test]

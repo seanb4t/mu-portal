@@ -127,16 +127,31 @@ fn line(journal: &MemoryJournal, text: &str) -> Event {
     })
 }
 
-#[tokio::test]
-async fn lagged_stream_is_counted() {
+/// The memory of the metrics as the default subscriber, a journal of `capacity` events, the
+/// sender of the stop, and an event stream from the first event, past its `Hello`.
+async fn subscriber(
+    capacity: usize,
+) -> (
+    Memory,
+    tracing::subscriber::DefaultGuard,
+    Arc<MemoryJournal>,
+    watch::Sender<bool>,
+    connectrpc::ServiceStream<mu_proto::SubscribeResponse>,
+) {
     let memory = Memory::new();
-    let _default = tracing::subscriber::set_default(memory.subscriber());
-    let journal = Arc::new(MemoryJournal::new(4).unwrap());
-    let (_stop, stopping) = watch::channel(false);
+    let default = tracing::subscriber::set_default(memory.subscriber());
+    let journal = Arc::new(MemoryJournal::new(capacity).unwrap());
+    let (stop, stopping) = watch::channel(false);
     let subscription = journal.subscribe(Seq(1)).unwrap();
     let mut stream =
         mu_server::service::event_stream(subscription, journal.clone(), "id", stopping);
     stream.next().await.unwrap().unwrap();
+    (memory, default, journal, stop, stream)
+}
+
+#[tokio::test]
+async fn lagged_stream_is_counted() {
+    let (memory, _default, journal, _stop, mut stream) = subscriber(4).await;
     for n in 1..=5 {
         line(&journal, &format!("line {n}"));
     }
@@ -147,14 +162,7 @@ async fn lagged_stream_is_counted() {
 
 #[tokio::test]
 async fn lag_at_the_head_is_zero() {
-    let memory = Memory::new();
-    let _default = tracing::subscriber::set_default(memory.subscriber());
-    let journal = Arc::new(MemoryJournal::new(4).unwrap());
-    let (_stop, stopping) = watch::channel(false);
-    let subscription = journal.subscribe(Seq(1)).unwrap();
-    let mut stream =
-        mu_server::service::event_stream(subscription, journal.clone(), "id", stopping);
-    stream.next().await.unwrap().unwrap();
+    let (memory, _default, journal, _stop, mut stream) = subscriber(4).await;
     line(&journal, "the head");
     stream.next().await.unwrap().unwrap();
     assert_eq!(memory.histogram("mu.subscriber.lag"), Some((1, 0)));
@@ -162,14 +170,7 @@ async fn lag_at_the_head_is_zero() {
 
 #[tokio::test]
 async fn lag_behind_the_head() {
-    let memory = Memory::new();
-    let _default = tracing::subscriber::set_default(memory.subscriber());
-    let journal = Arc::new(MemoryJournal::new(8).unwrap());
-    let (_stop, stopping) = watch::channel(false);
-    let subscription = journal.subscribe(Seq(1)).unwrap();
-    let mut stream =
-        mu_server::service::event_stream(subscription, journal.clone(), "id", stopping);
-    stream.next().await.unwrap().unwrap();
+    let (memory, _default, journal, _stop, mut stream) = subscriber(8).await;
     for n in 1..=3 {
         line(&journal, &format!("line {n}"));
     }
