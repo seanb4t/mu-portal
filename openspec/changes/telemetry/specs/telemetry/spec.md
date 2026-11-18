@@ -100,7 +100,7 @@ The server SHALL read `OTEL_EXPORTER_OTLP_ENDPOINT` as a base URL, the same as t
 - **THEN** the collector got `POST /v1/traces`
 
 ### Requirement: Each endpoint variable is checked
-Each of the three endpoint variables SHALL pass the check of the field `endpoint`: a URL with the scheme `http` or `https`, and a host. A bad value SHALL stop the start with an error that names the variable, and the exit status SHALL be 1.
+Each of the three endpoint variables SHALL pass the check of the field `endpoint`: a URL with the scheme `http` or `https`, and a host. A bad value SHALL stop the start with an error that names the variable, and the exit status SHALL be 1. Each telemetry variable that the server reads SHALL be UTF-8, except `OTEL_EXPORTER_OTLP_CERTIFICATE`, which is a path. A value that is not UTF-8 SHALL stop the start with an error that names the variable.
 
 #### Scenario: A bad variable
 - **GIVEN** `OTEL_EXPORTER_OTLP_ENDPOINT` is `ftp://collector.example:4318`
@@ -112,6 +112,12 @@ Each of the three endpoint variables SHALL pass the check of the field `endpoint
 - **GIVEN** one of `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` is `ftp://collector.example:4318/v1/x`, or is `not a url`
 - **WHEN** the user runs `mu server`
 - **THEN** stderr names that variable
+- **AND** the exit status is 1
+
+#### Scenario: A variable that is not UTF-8
+- **GIVEN** `OTEL_EXPORTER_OTLP_ENDPOINT` holds the byte `0xff`
+- **WHEN** the user runs `mu server`
+- **THEN** stderr names `OTEL_EXPORTER_OTLP_ENDPOINT` and `UTF-8`
 - **AND** the exit status is 1
 
 ### Requirement: The variables that turn the export off and name the service
@@ -163,12 +169,13 @@ The protocol SHALL be `http/protobuf` or `grpc`, and `http/protobuf` by default.
 - **AND** the gRPC collector got a call of `MetricsService/Export`
 
 ### Requirement: An unknown protocol is refused
-While a signal has an endpoint, a protocol other than `http/protobuf` and `grpc` SHALL stop the start. The error SHALL name its source, the field or the variable, and the exit status SHALL be 1. With the export off, the server SHALL NOT read the protocol.
+While a signal has an endpoint, a protocol other than `http/protobuf` and `grpc` SHALL stop the start. The error SHALL name its source, the field or the variable, and the exit status SHALL be 1. The error SHALL NOT hold the value, because a URL in the wrong place can hold a password. With the export off, the server SHALL NOT read the protocol.
 
 #### Scenario: The protocol http/json
 - **GIVEN** a fake collector that `server.toml` names, and `OTEL_EXPORTER_OTLP_PROTOCOL` is `http/json`
 - **WHEN** the user runs `mu server`
-- **THEN** stderr names `OTEL_EXPORTER_OTLP_PROTOCOL` and `http/json`
+- **THEN** stderr names `OTEL_EXPORTER_OTLP_PROTOCOL`
+- **AND** stderr does not hold `http/json`
 - **AND** the exit status is 1
 
 #### Scenario: An unknown protocol in the file
@@ -182,14 +189,29 @@ While a signal has an endpoint, a protocol other than `http/protobuf` and `grpc`
 - **WHEN** a server starts and gets SIGTERM
 - **THEN** the exit status is 0
 
+### Requirement: A gRPC endpoint holds no path
+With the protocol `grpc`, an endpoint SHALL hold no path other than `/`, and no query. The gRPC client sends only the scheme and the host. Such an endpoint SHALL stop the start with an error that names its source, and the exit status SHALL be 1.
+
+#### Scenario: A gRPC endpoint with a path
+- **GIVEN** `server.toml` sets `endpoint = "http://127.0.0.1:4317/otel"` and `protocol = "grpc"`
+- **WHEN** the user runs `mu server`
+- **THEN** stderr names `server.toml` and `telemetry.endpoint`
+- **AND** the exit status is 1
+
 ### Requirement: TLS for an https endpoint
-An endpoint with the scheme `https` SHALL use TLS, for both protocols. The server SHALL trust the root certificates of the system. It SHALL also trust the PEM certificates of the file that the field `certificate` names. `OTEL_EXPORTER_OTLP_CERTIFICATE` SHALL win over the field. The server SHALL NOT export to a collector whose certificate it does not trust.
+An endpoint with the scheme `https` SHALL use TLS, for both protocols. The server SHALL trust the root certificates of the system. It SHALL also trust the PEM certificates of the file that the field `certificate` names. `OTEL_EXPORTER_OTLP_CERTIFICATE` SHALL win over the field. A relative path in the field SHALL start at the configuration directory. The server SHALL NOT export to a collector whose certificate it does not trust.
 
 #### Scenario: HTTPS with a certificate file
 - **GIVEN** a fake HTTPS collector with a certificate from a test authority
 - **AND** `server.toml` sets its `https://` endpoint, and `certificate` names the file of that authority
 - **WHEN** a server starts, serves one `Send`, and gets SIGTERM
 - **THEN** the collector got `POST /v1/traces` and `POST /v1/metrics`
+
+#### Scenario: A relative certificate path
+- **GIVEN** a fake HTTPS collector with a certificate from a test authority
+- **AND** `server.toml` sets its `https://` endpoint and `certificate = "certs/ca.pem"`, and `certs/ca.pem` in the configuration directory is the file of that authority
+- **WHEN** a server starts, serves one `Send`, and gets SIGTERM
+- **THEN** the collector got `POST /v1/traces`
 
 #### Scenario: gRPC with TLS
 - **GIVEN** a fake gRPC collector over TLS with a certificate from a test authority
@@ -216,7 +238,7 @@ An endpoint with the scheme `https` SHALL use TLS, for both protocols. The serve
 - **THEN** stderr names `OTEL_EXPORTER_OTLP_CERTIFICATE`
 - **AND** the exit status is 1
 ### Requirement: A span for each API call
-The server SHALL make one span for each call of the API, named `mu.v1.PortalService/<method>`. It SHALL carry `rpc.system` (`connect_rpc`), `rpc.service` and `rpc.method`. A call that names a world SHALL carry `mu.world` with the world id. A call that fails SHALL have the status `error`. The span of `Subscribe` SHALL cover the call up to the return of its stream. It SHALL NOT cover the life of the stream.
+The server SHALL make one span for each call of the API, named `mu.v1.PortalService/<method>`. It SHALL carry `rpc.system` (`connect_rpc`), `rpc.service` and `rpc.method`. A call that names a world SHALL carry `mu.world` with the world id. A call that fails SHALL have the status `error`, and SHALL carry `rpc.connect_rpc.error_code` with the name of its Connect error code. The span of `Subscribe` SHALL cover the call up to the return of its stream. It SHALL NOT cover the life of the stream.
 
 #### Scenario: The span of a Send
 - **GIVEN** a server with the fake world `alpha/aria` that exports to a fake collector
@@ -233,6 +255,7 @@ The server SHALL make one span for each call of the API, named `mu.v1.PortalServ
 - **GIVEN** a server that exports to a fake collector
 - **WHEN** a client calls `Connect` for the unknown world `zeta/zed`, and the server gets SIGTERM
 - **THEN** the collector got a span named `mu.v1.PortalService/Connect` with the status `error`
+- **AND** that span has `rpc.connect_rpc.error_code` equal to `not_found`
 
 ### Requirement: A span for each command of a world
 The server SHALL make one span named `command` for each command that a world handles. It SHALL carry `mu.world`, `mu.command`, `mu.origin` and `mu.depth`. The values of `mu.command` SHALL be `send`, `connect`, `disconnect`, `login`, `echo` and `emit`. The values of `mu.origin` SHALL be `player`, `script` and `system`. The span of a command from the API SHALL be a child of the span of that call.
