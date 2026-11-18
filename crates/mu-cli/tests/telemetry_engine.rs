@@ -5,7 +5,7 @@ use std::sync::Arc;
 use futures::StreamExt as _;
 use mu_cli::telemetry::Providers;
 use mu_core::{
-    Command, Event, EventKind, Journal as _, MemoryJournal, NewEvent, ResolvedWorld, Seq, Source,
+    Command, Event, EventKind, Journal, MemoryJournal, NewEvent, ResolvedWorld, Seq, Source,
     WorldSetup,
 };
 use opentelemetry::KeyValue;
@@ -192,12 +192,76 @@ async fn subscriber(
     let memory = Memory::new();
     let default = tracing::subscriber::set_default(memory.subscriber());
     let journal = Arc::new(MemoryJournal::new(capacity).unwrap());
+    let (stop, stream) = stream_of(journal.clone()).await;
+    (memory, default, journal, stop, stream)
+}
+
+/// The sender of the stop, and an event stream of `journal` from the first event, past its
+/// `Hello`.
+async fn stream_of(
+    journal: Arc<dyn Journal>,
+) -> (
+    watch::Sender<bool>,
+    connectrpc::ServiceStream<mu_proto::SubscribeResponse>,
+) {
     let (stop, stopping) = watch::channel(false);
     let subscription = journal.subscribe(Seq(1)).unwrap();
-    let mut stream =
-        mu_server::service::event_stream(subscription, journal.clone(), "id", stopping);
+    let mut stream = mu_server::service::event_stream(subscription, journal, "id", stopping);
     stream.next().await.unwrap().unwrap();
-    (memory, default, journal, stop, stream)
+    (stop, stream)
+}
+
+/// A journal that counts the calls of `last`.
+struct Counted {
+    journal: MemoryJournal,
+    lasts: std::sync::atomic::AtomicUsize,
+}
+
+impl Journal for Counted {
+    fn append(&self, event: NewEvent) -> Event {
+        self.journal.append(event)
+    }
+
+    fn subscribe(&self, from: Seq) -> Result<mu_core::Subscription, mu_core::PortalError> {
+        self.journal.subscribe(from)
+    }
+
+    fn last(&self) -> Seq {
+        self.lasts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.journal.last()
+    }
+}
+
+/// The number of reads of the journal head while a stream sends one event, under the default
+/// subscriber.
+async fn lasts_for_one_event() -> usize {
+    let journal = Arc::new(Counted {
+        journal: MemoryJournal::new(4).unwrap(),
+        lasts: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let (_stop, mut stream) = stream_of(journal.clone()).await;
+    line(&journal.journal, "a line");
+    stream.next().await.unwrap().unwrap();
+    journal.lasts.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+#[tokio::test]
+async fn lag_is_read_once_per_event_with_the_export() {
+    let memory = Memory::new();
+    let _default = tracing::subscriber::set_default(memory.subscriber());
+    assert_eq!(lasts_for_one_event().await, 1);
+}
+
+#[tokio::test]
+async fn lag_is_not_read_with_the_export_off() {
+    let providers = Providers::none();
+    let _default = tracing::subscriber::set_default(providers.subscriber());
+    assert_eq!(lasts_for_one_event().await, 0);
+}
+
+#[tokio::test]
+async fn lag_is_not_read_without_a_subscriber() {
+    assert_eq!(lasts_for_one_event().await, 0);
 }
 
 #[tokio::test]

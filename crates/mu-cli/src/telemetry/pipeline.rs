@@ -232,9 +232,9 @@ impl Providers {
             tracing_opentelemetry::MetricsLayer::new(provider.clone())
                 .with_filter(filter_fn(|metadata| metadata.target() == METRICS_TARGET))
         });
-        tracing_subscriber::layer::Identity::new()
-            .and_then(spans)
-            .and_then(metrics)
+        // No base layer: a layer that takes every callsite would enable the metrics target
+        // with no metrics layer, and `event_stream` would then read the lag for nothing.
+        Layer::<S>::and_then(spans, metrics)
     }
 
     /// The subscriber of `mu server`: the stderr lines at `WARN`, and the layers of the export.
