@@ -270,6 +270,23 @@ fn stray_file() {
 }
 
 #[test]
+fn server_file_makes_no_world() {
+    let config = Config::base().file(
+        "server.toml",
+        "[telemetry]\nendpoint = \"http://127.0.0.1:4318\"\n",
+    );
+    has_line(&succeeds(&config.list()), "alpha/aria");
+}
+
+#[test]
+fn character_named_server_is_a_world() {
+    let config = Config::empty()
+        .file("games/alpha.toml", BASE_GAME)
+        .file("characters/alpha/server.toml", "");
+    has_line(&succeeds(&config.list()), "alpha/server");
+}
+
+#[test]
 fn link_to_nothing_is_an_error() {
     let config = Config::base();
     std::os::unix::fs::symlink(config.path().join("none"), config.path().join("games/beta"))

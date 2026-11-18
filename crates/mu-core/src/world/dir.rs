@@ -37,6 +37,7 @@ impl LayerSource for TomlDirSource {
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(ConfigError::new(self.root.display(), error.to_string())),
         }
+        files.retain(|parts| parts != &[SERVER_FILE]);
         files.sort();
         let keys = files
             .iter()
@@ -86,6 +87,9 @@ impl TomlDirSource {
         })
     }
 }
+
+/// The file of the server at the top of the directory. It holds no layer.
+const SERVER_FILE: &str = "server.toml";
 
 /// Adds to `files` the path of each file under `directory` whose name ends in `.toml`, in any
 /// case, as its parts relative to the root. `prefix` holds the parts of `directory`.
