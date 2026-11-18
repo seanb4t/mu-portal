@@ -1,6 +1,6 @@
 //! The telemetry of the engine under the layers of `mu server`, with in-memory exporters.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use futures::StreamExt as _;
 use mu_cli::telemetry::Providers;
@@ -12,7 +12,9 @@ use opentelemetry::KeyValue;
 use opentelemetry_sdk::metrics::InMemoryMetricExporter;
 use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
 use opentelemetry_sdk::trace::{InMemorySpanExporter, SpanData};
+use tokio::runtime::Builder;
 use tokio::sync::watch;
+use tracing::{Dispatch, Subscriber};
 use tracing_subscriber::layer::SubscriberExt as _;
 
 use engine::{id, idle, on, portal, started, wait_event, world};
@@ -21,6 +23,51 @@ use engine::{id, idle, on, portal, started, wait_event, world};
 mod engine;
 
 const PW: &str = "s3cret-pw";
+
+/// The lock that runs the tests of this file one at a time. tracing builds the interest of each
+/// callsite for the whole process from each subscriber that is alive, so the subscriber of one
+/// test can change what `enabled!` returns in another. A span holds its subscriber, so the
+/// subscriber of a test stays alive until its runtime drops the tasks that hold its spans.
+static SERIAL: Mutex<()> = Mutex::new(());
+
+/// Runs `body` under [`SERIAL`], with `subscriber` as the default of this thread, on a runtime of
+/// its own.
+fn run<T>(subscriber: impl Subscriber + Send + Sync + 'static, body: impl Future<Output = T>) -> T {
+    run_on(
+        Builder::new_current_thread(),
+        Some(Box::new(subscriber)),
+        body,
+    )
+}
+
+/// [`run`] on a runtime whose clock is paused.
+fn run_paused<T>(
+    subscriber: impl Subscriber + Send + Sync + 'static,
+    body: impl Future<Output = T>,
+) -> T {
+    let mut builder = Builder::new_current_thread();
+    builder.start_paused(true);
+    run_on(builder, Some(Box::new(subscriber)), body)
+}
+
+/// [`run`] with no default subscriber.
+fn run_without<T>(body: impl Future<Output = T>) -> T {
+    run_on(Builder::new_current_thread(), None, body)
+}
+
+/// Makes the subscriber and the runtime, and ends them, while this thread holds [`SERIAL`]: the
+/// runtime ends first, then the subscriber, then the lock.
+fn run_on<T>(
+    mut builder: Builder,
+    subscriber: Option<Box<dyn Subscriber + Send + Sync>>,
+    body: impl Future<Output = T>,
+) -> T {
+    let _lock = SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
+    let dispatch = subscriber.map(Dispatch::new);
+    let _default = dispatch.as_ref().map(tracing::dispatcher::set_default);
+    let runtime = builder.enable_all().build().unwrap();
+    runtime.block_on(body)
+}
 
 /// The providers of the in-memory exporters, and the exporters.
 struct Memory {
@@ -105,7 +152,7 @@ impl Memory {
 #[test]
 fn other_targets_make_no_span_event() {
     let memory = Memory::new();
-    tracing::subscriber::with_default(memory.subscriber(), || {
+    run(memory.subscriber(), async {
         let span = tracing::info_span!(target: "mu_server", "call");
         let _entered = span.enter();
         tracing::info!(target: "h2", "a frame");
@@ -118,7 +165,7 @@ fn other_targets_make_no_span_event() {
 #[test]
 fn metric_event_makes_no_span_event() {
     let memory = Memory::new();
-    tracing::subscriber::with_default(memory.subscriber(), || {
+    run(memory.subscriber(), async {
         let span = tracing::info_span!(target: "mu_core", "work");
         let _entered = span.enter();
         tracing::event!(
@@ -135,7 +182,7 @@ fn metric_event_makes_no_span_event() {
 #[test]
 fn metric_field_under_another_target_makes_no_metric() {
     let memory = Memory::new();
-    tracing::subscriber::with_default(memory.subscriber(), || {
+    run(memory.subscriber(), async {
         tracing::event!(
             target: "mu_core",
             tracing::Level::INFO,
@@ -154,7 +201,7 @@ fn metric_field_under_another_target_makes_no_metric() {
 #[test]
 fn crate_with_a_longer_name_makes_no_span() {
     let memory = Memory::new();
-    tracing::subscriber::with_default(memory.subscriber(), || {
+    run(memory.subscriber(), async {
         tracing::info_span!(target: "mu_client", "call").in_scope(|| {});
         tracing::info_span!(target: "mu_cli::server", "run").in_scope(|| {});
     });
@@ -176,22 +223,18 @@ fn line(journal: &MemoryJournal, text: &str) -> Event {
     })
 }
 
-/// The in-memory exporters as the default subscriber, a journal of `capacity` events, the
-/// sender of the stop, and an event stream from the first event, past its `Hello`.
-async fn subscriber(
+/// A journal of `capacity` events, the sender of the stop, and an event stream from the first
+/// event, past its `Hello`.
+async fn journal_stream(
     capacity: usize,
 ) -> (
-    Memory,
-    tracing::subscriber::DefaultGuard,
     Arc<MemoryJournal>,
     watch::Sender<bool>,
     connectrpc::ServiceStream<mu_proto::SubscribeResponse>,
 ) {
-    let memory = Memory::new();
-    let default = tracing::subscriber::set_default(memory.subscriber());
     let journal = Arc::new(MemoryJournal::new(capacity).unwrap());
     let (stop, stream) = stream_of(journal.clone()).await;
-    (memory, default, journal, stop, stream)
+    (journal, stop, stream)
 }
 
 /// The sender of the stop, and an event stream of `journal` from the first event, past its
@@ -230,8 +273,7 @@ impl Journal for Counted {
     }
 }
 
-/// The number of reads of the journal head while a stream sends one event, under the default
-/// subscriber.
+/// The number of reads of the journal head while a stream sends one event.
 async fn lasts_for_one_event() -> usize {
     let journal = Arc::new(Counted {
         journal: MemoryJournal::new(4).unwrap(),
@@ -243,25 +285,28 @@ async fn lasts_for_one_event() -> usize {
     journal.lasts.load(std::sync::atomic::Ordering::SeqCst)
 }
 
-#[tokio::test]
-async fn lag_is_read_once_per_event_with_the_export() {
+#[test]
+fn lag_is_read_once_per_event_with_the_export() {
     let memory = Memory::new();
-    let _default = tracing::subscriber::set_default(memory.subscriber());
-    assert_eq!(lasts_for_one_event().await, 1);
+    run(memory.subscriber(), async {
+        assert_eq!(lasts_for_one_event().await, 1);
+    });
 }
 
-#[tokio::test]
-async fn lag_is_not_read_with_only_the_traces() {
+#[test]
+fn lag_is_not_read_with_only_the_traces() {
     let providers = traces_only();
-    let _default = tracing::subscriber::set_default(providers.subscriber());
-    assert_eq!(lasts_for_one_event().await, 0);
+    run(providers.subscriber(), async {
+        assert_eq!(lasts_for_one_event().await, 0);
+    });
 }
 
-#[tokio::test]
-async fn lag_is_not_read_with_the_export_off() {
+#[test]
+fn lag_is_not_read_with_the_export_off() {
     let providers = Providers::none();
-    let _default = tracing::subscriber::set_default(providers.subscriber());
-    assert_eq!(lasts_for_one_event().await, 0);
+    run(providers.subscriber(), async {
+        assert_eq!(lasts_for_one_event().await, 0);
+    });
 }
 
 /// The providers of an export of the traces alone, to memory.
@@ -289,53 +334,65 @@ fn warn_lines_stay_with_any_set_of_layers() {
         ),
     ];
     for (case, providers) in cases {
-        let _default = tracing::subscriber::set_default(providers.subscriber());
-        assert!(
-            tracing::enabled!(target: "mu_core", tracing::Level::WARN),
-            "{case}"
-        );
-        assert!(
-            tracing::enabled!(target: "opentelemetry_sdk", tracing::Level::WARN),
-            "{case}"
-        );
+        run(providers.subscriber(), async {
+            assert!(
+                tracing::enabled!(target: "mu_core", tracing::Level::WARN),
+                "{case}"
+            );
+            assert!(
+                tracing::enabled!(target: "opentelemetry_sdk", tracing::Level::WARN),
+                "{case}"
+            );
+        });
     }
 }
 
-#[tokio::test]
-async fn lag_is_not_read_without_a_subscriber() {
-    assert_eq!(lasts_for_one_event().await, 0);
+#[test]
+fn lag_is_not_read_without_a_subscriber() {
+    run_without(async {
+        assert_eq!(lasts_for_one_event().await, 0);
+    });
 }
 
-#[tokio::test]
-async fn lagged_stream_is_counted() {
-    let (memory, _default, journal, _stop, mut stream) = subscriber(4).await;
-    for n in 1..=5 {
-        line(&journal, &format!("line {n}"));
-    }
-    let error = stream.next().await.unwrap().unwrap_err();
-    assert_eq!(error.code, connectrpc::ErrorCode::ResourceExhausted);
-    assert_eq!(memory.value("mu.subscriber.lagged", &[]), Some(1));
+#[test]
+fn lagged_stream_is_counted() {
+    let memory = Memory::new();
+    run(memory.subscriber(), async {
+        let (journal, _stop, mut stream) = journal_stream(4).await;
+        for n in 1..=5 {
+            line(&journal, &format!("line {n}"));
+        }
+        let error = stream.next().await.unwrap().unwrap_err();
+        assert_eq!(error.code, connectrpc::ErrorCode::ResourceExhausted);
+        assert_eq!(memory.value("mu.subscriber.lagged", &[]), Some(1));
+    });
 }
 
-#[tokio::test]
-async fn lag_at_the_head_is_zero() {
-    let (memory, _default, journal, _stop, mut stream) = subscriber(4).await;
-    line(&journal, "the head");
-    stream.next().await.unwrap().unwrap();
-    assert_eq!(memory.histogram("mu.subscriber.lag"), Some((1, 0)));
-}
-
-#[tokio::test]
-async fn lag_behind_the_head() {
-    let (memory, _default, journal, _stop, mut stream) = subscriber(8).await;
-    for n in 1..=3 {
-        line(&journal, &format!("line {n}"));
-    }
-    for _ in 1..=3 {
+#[test]
+fn lag_at_the_head_is_zero() {
+    let memory = Memory::new();
+    run(memory.subscriber(), async {
+        let (journal, _stop, mut stream) = journal_stream(4).await;
+        line(&journal, "the head");
         stream.next().await.unwrap().unwrap();
-    }
-    // The three events are 2, 1 and 0 behind the head.
-    assert_eq!(memory.histogram("mu.subscriber.lag"), Some((3, 3)));
+        assert_eq!(memory.histogram("mu.subscriber.lag"), Some((1, 0)));
+    });
+}
+
+#[test]
+fn lag_behind_the_head() {
+    let memory = Memory::new();
+    run(memory.subscriber(), async {
+        let (journal, _stop, mut stream) = journal_stream(8).await;
+        for n in 1..=3 {
+            line(&journal, &format!("line {n}"));
+        }
+        for _ in 1..=3 {
+            stream.next().await.unwrap().unwrap();
+        }
+        // The three events are 2, 1 and 0 behind the head.
+        assert_eq!(memory.histogram("mu.subscriber.lag"), Some((3, 3)));
+    });
 }
 
 /// A world on a fake game whose handler answers `go` from the game with `count` echoes.
@@ -356,85 +413,90 @@ fn burst(count: usize) -> (WorldSetup, mu_core::FakeGame) {
     (aria.with_handler(handler), game)
 }
 
-#[tokio::test(start_paused = true)]
-async fn command_past_the_depth_limit() {
+#[test]
+fn command_past_the_depth_limit() {
     let memory = Memory::new();
-    let _default = tracing::subscriber::set_default(memory.subscriber());
-    let echo = on(|event| {
-        if matches!(event.kind, EventKind::Input | EventKind::Echo) {
-            vec![Command::Echo {
-                world: event.world.clone(),
-                text: "again".to_owned(),
-            }]
-        } else {
-            Vec::new()
-        }
+    run_paused(memory.subscriber(), async {
+        let echo = on(|event| {
+            if matches!(event.kind, EventKind::Input | EventKind::Echo) {
+                vec![Command::Echo {
+                    world: event.world.clone(),
+                    text: "again".to_owned(),
+                }]
+            } else {
+                Vec::new()
+            }
+        });
+        let (aria, _game) = world("alpha/aria", PW);
+        let portal = started(vec![aria.with_handler(echo)]).await;
+        portal.send(&id("alpha/aria"), "start").await.unwrap();
+        wait_event(&portal, |event| event.kind == EventKind::ScriptError).await;
+        idle(&portal).await;
+        let world = ("mu.world", "alpha/aria");
+        assert_eq!(
+            memory.value("mu.commands.dropped", &[world, ("mu.drop.reason", "depth")]),
+            Some(1)
+        );
+        assert_eq!(memory.value("mu.script.errors", &[world]), Some(1));
     });
-    let (aria, _game) = world("alpha/aria", PW);
-    let portal = started(vec![aria.with_handler(echo)]).await;
-    portal.send(&id("alpha/aria"), "start").await.unwrap();
-    wait_event(&portal, |event| event.kind == EventKind::ScriptError).await;
-    idle(&portal).await;
-    let world = ("mu.world", "alpha/aria");
-    assert_eq!(
-        memory.value("mu.commands.dropped", &[world, ("mu.drop.reason", "depth")]),
-        Some(1)
-    );
-    assert_eq!(memory.value("mu.script.errors", &[world]), Some(1));
 }
 
-#[tokio::test(start_paused = true)]
-async fn command_over_the_rate() {
+#[test]
+fn command_over_the_rate() {
     let memory = Memory::new();
-    let _default = tracing::subscriber::set_default(memory.subscriber());
-    let (aria, game) = burst(25);
-    let portal = started(vec![aria]).await;
-    assert!(game.say("go"));
-    wait_event(&portal, |event| event.kind == EventKind::ScriptError).await;
-    idle(&portal).await;
-    assert_eq!(
-        memory.value(
-            "mu.commands.dropped",
-            &[("mu.world", "alpha/aria"), ("mu.drop.reason", "rate")]
-        ),
-        Some(5)
-    );
+    run_paused(memory.subscriber(), async {
+        let (aria, game) = burst(25);
+        let portal = started(vec![aria]).await;
+        assert!(game.say("go"));
+        wait_event(&portal, |event| event.kind == EventKind::ScriptError).await;
+        idle(&portal).await;
+        assert_eq!(
+            memory.value(
+                "mu.commands.dropped",
+                &[("mu.world", "alpha/aria"), ("mu.drop.reason", "rate")]
+            ),
+            Some(5)
+        );
+    });
 }
 
-#[tokio::test(start_paused = true)]
-async fn commands_at_the_rate() {
+#[test]
+fn commands_at_the_rate() {
     let memory = Memory::new();
-    let _default = tracing::subscriber::set_default(memory.subscriber());
-    let (aria, game) = burst(20);
-    let portal = started(vec![aria]).await;
-    assert!(game.say("go"));
-    wait_event(&portal, |event| {
-        event.kind == EventKind::Line && event.text == "go"
-    })
-    .await;
-    idle(&portal).await;
-    assert_eq!(engine::of_kind(&portal, EventKind::Echo).len(), 20);
-    assert_eq!(
-        memory.value("mu.commands.dropped", &[("mu.world", "alpha/aria")]),
-        None
-    );
+    run_paused(memory.subscriber(), async {
+        let (aria, game) = burst(20);
+        let portal = started(vec![aria]).await;
+        assert!(game.say("go"));
+        wait_event(&portal, |event| {
+            event.kind == EventKind::Line && event.text == "go"
+        })
+        .await;
+        idle(&portal).await;
+        assert_eq!(engine::of_kind(&portal, EventKind::Echo).len(), 20);
+        assert_eq!(
+            memory.value("mu.commands.dropped", &[("mu.world", "alpha/aria")]),
+            None
+        );
+    });
 }
 
-#[tokio::test(start_paused = true)]
-async fn world_without_transport_is_disconnected() {
+#[test]
+fn world_without_transport_is_disconnected() {
     let memory = Memory::new();
-    let _default = tracing::subscriber::set_default(memory.subscriber());
-    let resolved = ResolvedWorld::with_default_login(id("alpha/aria"), "env:PW".parse().unwrap());
-    let portal = portal(vec![WorldSetup::without_transport(resolved)], Vec::new());
-    idle(&portal).await;
-    assert_eq!(
-        memory.value(
-            "mu.world.state",
-            &[
-                ("mu.world", "alpha/aria"),
-                ("mu.world.state.name", "disconnected")
-            ]
-        ),
-        Some(1)
-    );
+    run_paused(memory.subscriber(), async {
+        let resolved =
+            ResolvedWorld::with_default_login(id("alpha/aria"), "env:PW".parse().unwrap());
+        let portal = portal(vec![WorldSetup::without_transport(resolved)], Vec::new());
+        idle(&portal).await;
+        assert_eq!(
+            memory.value(
+                "mu.world.state",
+                &[
+                    ("mu.world", "alpha/aria"),
+                    ("mu.world.state.name", "disconnected")
+                ]
+            ),
+            Some(1)
+        );
+    });
 }
