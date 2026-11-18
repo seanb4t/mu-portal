@@ -60,7 +60,9 @@ fn event_message(event: &mu_core::Event) -> proto::SubscribeResponse {
 
 /// The stream of one subscriber: the `Hello`, then each event. A lag ends it with
 /// `resource_exhausted`, and `stopping` ends it with no error. For each event, it records the
-/// gap to the last event of `journal` in `mu.subscriber.lag`.
+/// gap to the last event of `journal` in `mu.subscriber.lag`, and it counts each lag in
+/// `mu.subscriber.lagged`. Without a metrics layer, it reads no gap, because the read locks the
+/// journal.
 pub fn event_stream(
     subscription: Subscription,
     journal: Arc<dyn Journal>,
@@ -70,12 +72,14 @@ pub fn event_stream(
     let head = futures::stream::once(ready(Ok(hello(instance_id, subscription.last()))));
     let events = subscription.into_stream().map(move |item| match item {
         Ok(event) => {
-            let lag = journal.last().0.saturating_sub(event.seq.0);
-            tracing::event!(
-                target: mu_core::METRICS_TARGET,
-                tracing::Level::INFO,
-                "histogram.mu.subscriber.lag" = lag,
-            );
+            if tracing::enabled!(target: mu_core::METRICS_TARGET, tracing::Level::INFO) {
+                let lag = journal.last().0.saturating_sub(event.seq.0);
+                tracing::event!(
+                    target: mu_core::METRICS_TARGET,
+                    tracing::Level::INFO,
+                    "histogram.mu.subscriber.lag" = lag,
+                );
+            }
             Ok(event_message(&event))
         }
         Err(Lagged(n)) => {
@@ -107,7 +111,7 @@ pub fn event_stream(
 }
 
 /// The span of one call of `method`. The caller records `mu.world` and the status where they
-/// apply.
+/// apply. A failed call also records the name of its Connect error code, never its message.
 fn call_span(method: &'static str) -> Span {
     let service = proto::PORTAL_SERVICE_SERVICE_NAME;
     tracing::info_span!(
@@ -118,18 +122,20 @@ fn call_span(method: &'static str) -> Span {
         rpc.method = method,
         mu.world = tracing::field::Empty,
         otel.status_code = tracing::field::Empty,
+        rpc.connect_rpc.error_code = tracing::field::Empty,
     )
 }
 
-/// Marks `span` as failed.
-fn failed(span: &Span) {
+/// Marks `span` as failed with `error`.
+fn failed(span: &Span, error: &ConnectError) {
     span.record("otel.status_code", "ERROR");
+    span.record("rpc.connect_rpc.error_code", error.code.as_str());
 }
 
 /// Marks `span` as failed if `result` is an error.
 fn ended<T>(span: &Span, result: ServiceResult<T>) -> ServiceResult<T> {
-    if result.is_err() {
-        failed(span);
+    if let Err(error) = &result {
+        failed(span, error);
     }
     result
 }
@@ -180,11 +186,9 @@ impl proto::PortalService for PortalApi {
                     self.stopping.clone(),
                 )),
                 Err(error @ PortalError::PastEnd { last, .. }) => {
-                    failed(&span);
-                    let items = [
-                        Ok(hello(&self.instance_id, last)),
-                        Err(convert::status(&error)),
-                    ];
+                    let status = convert::status(&error);
+                    failed(&span, &status);
+                    let items = [Ok(hello(&self.instance_id, last)), Err(status)];
                     Response::stream_ok(Box::pin(futures::stream::iter(items)))
                 }
                 Err(error) => Err(convert::status(&error)),
