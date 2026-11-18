@@ -220,21 +220,28 @@ impl Providers {
     /// The two OpenTelemetry layers. The span layer takes the targets of [`CRATES`], and the
     /// metrics layer takes only [`mu_core::METRICS_TARGET`].
     #[must_use]
-    pub fn layers<S>(&self) -> impl Layer<S> + Send + Sync + use<S>
+    pub fn layers<S>(&self) -> Vec<Box<dyn Layer<S> + Send + Sync>>
     where
         S: Subscriber + for<'span> LookupSpan<'span> + Send + Sync,
     {
-        let spans = self.tracer.as_ref().map(|provider| {
-            tracing_opentelemetry::OpenTelemetryLayer::new(provider.tracer("mu"))
-                .with_filter(filter_fn(|metadata| in_crates(metadata.target())))
-        });
-        let metrics = self.meter.as_ref().map(|provider| {
-            tracing_opentelemetry::MetricsLayer::new(provider.clone())
-                .with_filter(filter_fn(|metadata| metadata.target() == METRICS_TARGET))
-        });
-        // No base layer: a layer that takes every callsite would enable the metrics target
-        // with no metrics layer, and `event_stream` would then read the lag for nothing.
-        Layer::<S>::and_then(spans, metrics)
+        // Only the layers that are present: an absent layer in the stack still enables its
+        // targets, and `event_stream` then reads the lag with no metrics layer.
+        let mut layers = Vec::new();
+        if let Some(provider) = &self.tracer {
+            layers.push(
+                tracing_opentelemetry::OpenTelemetryLayer::new(provider.tracer("mu"))
+                    .with_filter(filter_fn(|metadata| in_crates(metadata.target())))
+                    .boxed(),
+            );
+        }
+        if let Some(provider) = &self.meter {
+            layers.push(
+                tracing_opentelemetry::MetricsLayer::new(provider.clone())
+                    .with_filter(filter_fn(|metadata| metadata.target() == METRICS_TARGET))
+                    .boxed(),
+            );
+        }
+        layers
     }
 
     /// The subscriber of `mu server`: the stderr lines at `WARN`, and the layers of the export.

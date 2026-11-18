@@ -253,6 +253,17 @@ async fn lag_is_read_once_per_event_with_the_export() {
 }
 
 #[tokio::test]
+async fn lag_is_not_read_with_only_the_traces() {
+    let providers = Providers::with_exporters(
+        Some(InMemorySpanExporter::default()),
+        None::<InMemoryMetricExporter>,
+        "mu",
+    );
+    let _default = tracing::subscriber::set_default(providers.subscriber());
+    assert_eq!(lasts_for_one_event().await, 0);
+}
+
+#[tokio::test]
 async fn lag_is_not_read_with_the_export_off() {
     let providers = Providers::none();
     let _default = tracing::subscriber::set_default(providers.subscriber());
