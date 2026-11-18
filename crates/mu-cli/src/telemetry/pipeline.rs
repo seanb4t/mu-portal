@@ -1,5 +1,6 @@
 //! The pipeline of the export: the exporters, the providers, the layers and the bounded stop.
 
+use std::panic::{self, AssertUnwindSafe};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -348,46 +349,21 @@ impl Drop for Providers {
     }
 }
 
-/// The report of one helper thread. A drop before [`Report::send`] sends [`Outcome::Panicked`],
-/// so a stop that panics is reported while the other stop still runs.
-struct Report {
-    signal: SignalKind,
-    done: Option<mpsc::Sender<(SignalKind, Outcome)>>,
-}
-
-impl Report {
-    fn send(mut self, outcome: Outcome) {
-        if let Some(done) = self.done.take() {
-            let _ = done.send((self.signal, outcome));
-        }
-    }
-}
-
-impl Drop for Report {
-    fn drop(&mut self) {
-        if let Some(done) = self.done.take() {
-            let _ = done.send((self.signal, Outcome::Panicked));
-        }
-    }
-}
-
-/// The body of the helper thread that runs `stop`. Its [`Report`] starts when the body runs, so a
-/// body that never runs, because its thread cannot start, sends nothing.
+/// The body of the helper thread that runs `stop`. It sends one outcome when it runs: a stop that
+/// panics gives [`Outcome::Panicked`]. A body that never runs, because its thread cannot start,
+/// sends nothing.
 fn helper(
     signal: SignalKind,
     stop: Stop,
     done: mpsc::Sender<(SignalKind, Outcome)>,
 ) -> impl FnOnce() + Send + 'static {
     move || {
-        let report = Report {
-            signal,
-            done: Some(done),
+        let outcome = match panic::catch_unwind(AssertUnwindSafe(stop)) {
+            Ok(Ok(())) => Outcome::Done,
+            Ok(Err(error)) => Outcome::Failed(error.to_string()),
+            Err(_) => Outcome::Panicked,
         };
-        let outcome = match stop() {
-            Ok(()) => Outcome::Done,
-            Err(error) => Outcome::Failed(error.to_string()),
-        };
-        report.send(outcome);
+        let _ = done.send((signal, outcome));
     }
 }
 
@@ -406,8 +382,8 @@ fn stop_all(stops: Vec<(SignalKind, Stop)>, bound: Duration) -> Vec<(SignalKind,
             Err(error) => outcomes.push((signal, Outcome::CannotStart(error.to_string()))),
         }
     }
-    // Each helper thread holds the only other sender, so the channel disconnects when every
-    // helper thread ended.
+    // Each helper thread holds the only other sender. Each one sends before it ends, so the
+    // channel cannot disconnect while a stop is pending.
     drop(done);
     while !pending.is_empty() {
         match finished.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
@@ -637,14 +613,20 @@ mod tests {
     fn helper_that_panics_is_panicked() {
         let (done, finished) = mpsc::channel();
         let stop: Stop = Box::new(|| panic!("a stop that panics"));
-        assert!(
-            thread::spawn(helper(SignalKind::Traces, stop, done))
-                .join()
-                .is_err()
-        );
+        helper(SignalKind::Traces, stop, done)();
         assert_eq!(
-            finished.try_recv(),
-            Ok((SignalKind::Traces, Outcome::Panicked))
+            finished.try_iter().collect::<Vec<_>>(),
+            vec![(SignalKind::Traces, Outcome::Panicked)]
+        );
+    }
+
+    #[test]
+    fn helper_sends_one_outcome() {
+        let (done, finished) = mpsc::channel();
+        helper(SignalKind::Metrics, Box::new(|| Ok(())), done)();
+        assert_eq!(
+            finished.try_iter().collect::<Vec<_>>(),
+            vec![(SignalKind::Metrics, Outcome::Done)]
         );
     }
 
@@ -653,20 +635,6 @@ mod tests {
         let (done, finished) = mpsc::channel();
         drop(helper(SignalKind::Metrics, Box::new(|| Ok(())), done));
         assert_eq!(finished.try_recv(), Err(mpsc::TryRecvError::Disconnected));
-    }
-
-    #[test]
-    fn sent_report_sends_once() {
-        let (done, finished) = mpsc::channel();
-        Report {
-            signal: SignalKind::Metrics,
-            done: Some(done),
-        }
-        .send(Outcome::Done);
-        assert_eq!(
-            finished.try_iter().collect::<Vec<_>>(),
-            vec![(SignalKind::Metrics, Outcome::Done)]
-        );
     }
 
     #[test]
