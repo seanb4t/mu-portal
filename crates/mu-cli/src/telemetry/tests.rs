@@ -635,6 +635,26 @@ fn service_name_unset_empty_and_set() {
     );
 }
 
+/// A refused endpoint that holds a secret past its scheme: in the user part, in the password, or
+/// in a fragment.
+fn secret_endpoint_strategy() -> impl Strategy<Value = (String, String)> {
+    (
+        proptest::sample::select(vec!["http", "https", "HTTP", "ftp"]),
+        "S3cr[a-z0-9]{6,12}",
+        "[a-z]{1,8}(:[0-9]{1,5})?",
+        "(/[a-z@]{1,6}){0,3}",
+        0..3usize,
+    )
+        .prop_map(|(scheme, secret, host, path, shape)| {
+            let value = match shape {
+                0 => format!("{scheme}://u:{secret}@{host}{path}"),
+                1 => format!("{scheme}://{secret}@{host}{path}"),
+                _ => format!("{scheme}://{host}{path}#{secret}"),
+            };
+            (value, secret)
+        })
+}
+
 fn base_strategy() -> impl Strategy<Value = String> {
     (
         "[a-z]{1,8}",
@@ -657,6 +677,12 @@ proptest! {
         let trimmed = base.trim_end_matches('/');
         prop_assert_eq!(export.traces.unwrap().endpoint, format!("{trimmed}/v1/traces"));
         prop_assert_eq!(export.metrics.unwrap().endpoint, format!("{trimmed}/v1/metrics"));
+    }
+
+    #[test]
+    fn refused_endpoint_never_echoes_its_secret((value, secret) in secret_endpoint_strategy()) {
+        let error = run(&[(ENDPOINT, &value)], None).unwrap_err().to_string();
+        prop_assert!(!error.contains(&secret), "{}", error);
     }
 
     #[test]
