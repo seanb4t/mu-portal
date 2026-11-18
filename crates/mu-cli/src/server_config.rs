@@ -44,9 +44,14 @@ pub enum ServerFileError {
     /// The file holds a bad table, field or value.
     #[error(transparent)]
     Parse(#[from] ConfigError),
-    /// The file cannot be read.
-    #[error("{SERVER_FILE}: {0}")]
-    Read(io::Error),
+    /// The file at `path` cannot be read.
+    #[error("{}: {source}", path.display())]
+    Read {
+        /// The path of `server.toml` in the configuration directory.
+        path: PathBuf,
+        /// The error of the read.
+        source: io::Error,
+    },
 }
 
 /// Reads `server.toml` from `dir`. With no directory, or no file, it is the default. A relative
@@ -54,12 +59,14 @@ pub enum ServerFileError {
 ///
 /// # Errors
 ///
-/// A [`ServerFileError`] that names `server.toml`, and the field when there is one.
+/// A [`ServerFileError`] that names `server.toml`, and the field when there is one. An error of
+/// the read names the path of the file, which holds the directory.
 pub fn read(dir: Option<&Path>) -> Result<ServerFile, ServerFileError> {
     let Some(dir) = dir else {
         return Ok(ServerFile::default());
     };
-    match fs::read_to_string(dir.join(SERVER_FILE)) {
+    let path = dir.join(SERVER_FILE);
+    match fs::read_to_string(&path) {
         Ok(text) => {
             let mut file: ServerFile = parse_toml(&SERVER_FILE, &text, HIDDEN)?;
             if let Some(path) = file
@@ -73,7 +80,7 @@ pub fn read(dir: Option<&Path>) -> Result<ServerFile, ServerFileError> {
             Ok(file)
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(ServerFile::default()),
-        Err(error) => Err(ServerFileError::Read(error)),
+        Err(source) => Err(ServerFileError::Read { path, source }),
     }
 }
 
@@ -103,6 +110,18 @@ mod tests {
         let error = read(Some(dir.path())).unwrap_err().to_string();
         assert!(!error.contains("hunter2"), "{error}");
         assert!(error.contains("telemetry"), "{error}");
+    }
+
+    #[test]
+    fn read_error_names_the_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("not-a-directory");
+        fs::write(&file, "").unwrap();
+        let error = read(Some(&file)).unwrap_err().to_string();
+        assert!(
+            error.contains(&file.join(SERVER_FILE).display().to_string()),
+            "{error}"
+        );
     }
 
     #[test]

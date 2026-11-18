@@ -35,12 +35,18 @@ The table `[telemetry]` of `server.toml` SHALL accept the field `endpoint`, the 
 - **THEN** stderr holds the line that starts with `mu server: serving the API on`
 
 ### Requirement: Each field of server.toml is known
-`server.toml` SHALL hold only the table `telemetry`, and that table SHALL hold only `endpoint`, `protocol` and `certificate`. An unknown table or field SHALL stop the start. So SHALL a value of the wrong type, an endpoint that is not a URL, and a scheme other than `http` and `https`. So SHALL an endpoint with a query or a fragment. The server SHALL write an error that names `server.toml` and the field, and exit with status 1.
+`server.toml` SHALL hold only the table `telemetry`, and that table SHALL hold only `endpoint`, `protocol` and `certificate`. An unknown table or field SHALL stop the start. So SHALL a value of the wrong type, an endpoint that is not a URL, and a scheme other than `http` and `https`. So SHALL an endpoint with a query or a fragment. The server SHALL write an error that names `server.toml` and the field, and exit with status 1. A `server.toml` that cannot be read SHALL stop the start with an error that names its path.
 
 #### Scenario: An unknown field
 - **GIVEN** `server.toml` sets `[telemetry] endpont = "http://127.0.0.1:4318"`
 - **WHEN** the user runs `mu server`
 - **THEN** stderr names `server.toml` and `telemetry.endpont`
+- **AND** the exit status is 1
+
+#### Scenario: A configuration directory that is a file
+- **GIVEN** `MU_CONFIG` names a regular file
+- **WHEN** the user runs `mu server`
+- **THEN** stderr names the path of that file
 - **AND** the exit status is 1
 
 #### Scenario: An unknown table

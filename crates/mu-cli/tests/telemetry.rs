@@ -769,6 +769,19 @@ async fn file_with_no_certificate() {
 }
 
 #[tokio::test]
+async fn configuration_directory_that_is_a_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("not-a-directory");
+    std::fs::write(&file, "").unwrap();
+    let output = ServerBuilder::new()
+        .env("MU_CONFIG", Some(&file))
+        .fake_worlds(&["alpha/aria"])
+        .output()
+        .await;
+    fails_naming(&output, &[file.to_str().unwrap()]);
+}
+
+#[tokio::test]
 async fn certificate_that_does_not_parse() {
     for protocol in ["http/protobuf", "grpc"] {
         let dir = tempfile::tempdir().unwrap();
