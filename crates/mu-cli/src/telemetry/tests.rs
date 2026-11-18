@@ -468,6 +468,7 @@ fn user_or_password_in_an_endpoint_is_refused_and_not_echoed() {
         (ENDPOINT, "https://u:hunter2@h:4318"),
         (TRACES_ENDPOINT, "https://hunter2@h:4318/v1/traces"),
         (METRICS_ENDPOINT, "http://u:hunter2@h:4318/v1/metrics"),
+        (ENDPOINT, "http://@h:4318"),
     ] {
         let error = run(&[(name, value)], None).unwrap_err();
         assert_eq!(error.place(), SettingSource::Variable(name));
@@ -477,6 +478,16 @@ fn user_or_password_in_an_endpoint_is_refused_and_not_echoed() {
         refused_by(&[], Some(&table(Some("https://u:hunter2@h:4318")))),
         SettingSource::Field(TableField::Endpoint)
     );
+}
+
+#[test]
+fn at_sign_in_the_path_or_the_query_is_accepted() {
+    for value in [
+        "http://h:4318/v1/traces?tenant=a@b",
+        "http://h:4318/a@b/v1/traces",
+    ] {
+        assert!(run(&[(TRACES_ENDPOINT, value)], None).is_ok(), "{value}");
+    }
 }
 
 #[test]
@@ -587,6 +598,18 @@ fn certificate_that_does_not_parse_is_refused_and_named() {
     assert!(message.contains(CERTIFICATE), "{message}");
     assert!(message.contains(path.to_str().unwrap()), "{message}");
     assert!(message.contains("certificate 1 is not valid"), "{message}");
+}
+
+#[test]
+fn bad_certificate_after_a_good_one_is_refused_and_named() {
+    let (_dir, path) = pem_file(&(authority_pem() + BAD_DER_PEM));
+    let message = run(
+        &[(CERTIFICATE, path.to_str().unwrap())],
+        Some(&table(Some(BASE))),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(message.contains("certificate 2 is not valid"), "{message}");
 }
 
 #[test]

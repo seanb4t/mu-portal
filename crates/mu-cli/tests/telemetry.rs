@@ -830,7 +830,7 @@ async fn certificate_that_does_not_parse() {
         )
         .unwrap();
         let output = Setup::endpoint("https://127.0.0.1:4318")
-            .env("OTEL_EXPORTER_OTLP_PROTOCOL", protocol)
+            .env(PROTOCOL, protocol)
             .env(CERTIFICATE, bad.to_str().unwrap())
             .output()
             .await;
