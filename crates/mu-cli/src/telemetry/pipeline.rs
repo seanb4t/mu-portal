@@ -289,7 +289,8 @@ impl Providers {
         let tracer = self.tracer.take();
         let meter = self.meter.take();
         // Each helper thread gets a clone, so a thread that cannot start drops no last reference
-        // here: the drop of the last reference stops a provider with no bound.
+        // here: the drop of the last reference stops a provider on this thread, with the wait of
+        // the SDK and not within `bound`.
         let mut stops: Vec<(SignalKind, Stop)> = Vec::new();
         if let Some(tracer) = tracer.clone() {
             stops.push((SignalKind::Traces, Box::new(move || tracer.shutdown())));
