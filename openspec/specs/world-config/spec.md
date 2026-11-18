@@ -56,7 +56,7 @@ The flag `--config <dir>` of `mu server` and `mu world` SHALL name the configura
 - **AND** the exit status is 0
 
 ### Requirement: Each character file makes one world
-The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml` and `characters/<game>/<character>.toml`, and each file SHALL be optional. Each character file SHALL make the world `<game>/<character>`, and its game SHALL be `games/<game>.toml`. A file name that is not a part of a world id SHALL be an error that names the file. So SHALL a character with no game file, and any other file that ends in `.toml`. So SHALL an entry that cannot be read, such as a link to nothing.
+The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml` and `characters/<game>/<character>.toml`, and each file SHALL be optional. It can also hold `server.toml` at its top level, the configuration of the server. That file SHALL make no world and no layer. Each character file SHALL make the world `<game>/<character>`, and its game SHALL be `games/<game>.toml`. A file name that is not a part of a world id SHALL be an error that names the file. So SHALL a character with no game file, and any other file that ends in `.toml`. So SHALL an entry that cannot be read, such as a link to nothing.
 
 #### Scenario: Worlds from character files
 - **GIVEN** a directory with `games/alpha.toml`, `games/beta.toml`, `characters/alpha/aria.toml`, `characters/alpha/ann.toml` and `characters/beta/bryn.toml`
@@ -86,6 +86,18 @@ The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml`
 - **WHEN** the user runs `mu world list --config <dir>`
 - **THEN** stderr names `games/beta`
 - **AND** the exit status is 1
+
+#### Scenario: The file of the server
+- **GIVEN** a directory with `games/alpha.toml`, `characters/alpha/aria.toml` and a `server.toml` that sets `[telemetry] endpoint = "http://127.0.0.1:4318"`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stdout holds the line `alpha/aria`
+- **AND** the exit status is 0
+
+#### Scenario: A character named server
+- **GIVEN** a directory with `games/alpha.toml` and `characters/alpha/server.toml`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stdout holds the line `alpha/server`
+- **AND** the exit status is 0
 
 ### Requirement: Layers merge from global to character
 The layers of a world SHALL merge in this order: the defaults, `global.toml`, the type chain from the most general type to the most specific, the game and the character. A field SHALL take its value from the last layer that sets it. A table SHALL merge field by field.
