@@ -266,6 +266,7 @@ impl Providers {
     }
 
     /// The subscriber of `mu server`: the stderr lines at `WARN`, and the layers of the export.
+    #[must_use]
     pub fn subscriber(&self) -> impl Subscriber + Send + Sync + use<> {
         tracing_subscriber::registry()
             .with(stderr_layer())
