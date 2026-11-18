@@ -1,37 +1,51 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-18T03:08:19+00:00
-head: 0870d11168b544ad5c71983d6c1dd038d3fff652
-round: 6
-next_id: 84
+reviewed_at: 2026-11-18T13:23:26+00:00
+head: bc67f3d1be9cb4d6eaf33bb30ca45ccbce11c535
+round: 7
+next_id: 91
 lenses:
   spec-lint: not-applicable
   approach: ok
   fit: ok
   test-coverage: ok
-  test-honesty: ok
+  test-honesty: partial
   invariants: ok
 ---
 # Review
+
+## Incomplete lenses
+
+- test-honesty: partial, gaps: 2
+  - Not read: crates/mu-cli/tests/telemetry.rs lines 1-230 and 360-585 and 760-985 in detail; tests/world_config.rs; mu-core and mu-server unit tests; collector.rs support.
+  - Change artifacts (spec, design, tasks) not read in full; judged by test names and assertions only.
+
+The verdict covers only what the lenses checked. While the `ctl-lens` row of an incomplete lens is open, the verdict cannot be `approve`.
 
 ## Findings
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge |
 |---|---|---|---|---|---|---|---|---|
-| R-80 | approach | should-fix | in-change | The design refuses a fragment only in a base URL, because the join adds the path, and uses a signal variable as it is. The code and the new test refuse a fragment in the two signal variables too, and design.md records no deviation. | crates/mu-cli/src/telemetry/tests.rs:297 — "fn fragment_in_a_signal_variable_is_refused() {" | State in 'Where the endpoint comes from' that no endpoint, a signal variable too, can hold a fragment, and give the reason; or let a signal variable keep its fragment. |  |  |
-| R-81 | fit | should-fix | in-change | The new pin same-file sits between tokio and toml in [workspace.dependencies], where every other entry is in alphabetical order; ALLOWED_CRATES of the boundary test puts it in order, after proptest and before secrecy. | Cargo.toml:68 — "same-file = "1.0.6"" | Move the line same-file = "1.0.6" up between rustls and secrecy in [workspace.dependencies]. |  |  |
-| R-71 | invariants | should-fix | in-change | The new tests cover the late stop on both sides, but the other branch of the same rule, a failed shutdown that writes 'the stop of the export failed' at WARN, still has no test. | crates/mu-cli/tests/telemetry.rs:941 — ".any(\|line\| line.contains("WARN") && line.contains(LATE_STOP))," | Add a test whose final export fails fast inside the bound, such as an endpoint on a closed port. Assert a WARN line with 'the stop of the export failed' and no LATE_STOP line. If shutdown cannot return an error there, record that in design.md and drop the branch's claim. | regression |  |
-| R-82 | invariants | should-fix | in-change | is_server_file now opens both files for read, so a top-level server.toml that the user cannot read is no longer skipped; mu world then names it as a stray file. At the base, a stat-only compare skipped it. No test passes this edge. | crates/mu-core/src/world/dir.rs:100 — "&& same_file::is_same_file(root.join(name), root.join(SERVER_FILE)).unwrap_or(false)" | Decide the result for an unreadable server.toml and state it in design.md. The design can skip it, as the base did, by keeping an exact-name match when is_same_file returns an error. Or it can refuse it with the read error, not 'not a file of the configuration'. Add a world_config test with a mode-000 server.toml that asserts the chosen result. A probe under the handoff directory (probe/, inputs e1 and e2) shows head_skip=false and base_skip=true for a mode-000 file. |  |  |
-| R-83 | invariants | should-fix | in-change | The changed design and guide say that each failed export gives two lines, a WARN and an ERROR. The untrusted-collector test asserts only the WARN line and a line that holds ExportError at any level, so a missing ERROR line, or a third line, passes. | design.md > Risks / Trade-offs — "Each failed export gives two lines: a `WARN` from the exporter and an `ERROR` from the batch processor or the reader." | In collector_that_the_server_does_not_trust, assert a line that holds ERROR and comes from the processor or reader target. Also assert that the number of Export.Failed.Exhausted WARN lines equals the number of ERROR export lines. |  |  |
+| R-84 | approach | should-fix | in-change | The design says each variable that the export reads must be UTF-8, with only OTEL_EXPORTER_OTLP_CERTIFICATE exempt. The code reads OTEL_SDK_DISABLED as an OsString and compares it with true, so a value that is not UTF-8 counts as not true and the export goes on with no error. design.md records no exemption for it, and the unit test of the rule leaves it out. | design.md > Where the endpoint comes from — "A variable that the export reads must be UTF-8. A value that is not UTF-8 stops the start, and the error names the varia" | Read OTEL_SDK_DISABLED through the UTF-8 check of `var`, refuse a value that is not UTF-8, and add SDK_DISABLED to the unit test. Otherwise, record in design.md that OTEL_SDK_DISABLED is exempt, and narrow the spec sentence and the guide to match. |  |  |
+| R-85 | approach | should-fix | in-change | The spec says that with OTEL_SDK_DISABLED true the server reads and checks no other telemetry field. The design produces this only inside the export function. server::run parses server.toml first, with deny_unknown_fields and typed fields, so endpoint = 4318 or an unknown field under [telemetry] still stops the start with the export off. No decision says which rule wins over the other: the schema check of server.toml or the off switch. | design.md > Where the endpoint comes from — "Then the function returns at once, and it reads and checks no other variable and no field of `[telemetry]`." | Add a sentence to design.md that settles the case. Either the schema of server.toml (unknown table or field, wrong type) is always checked, and the spec sentence and the guide row then name only the values (URL, scheme, protocol, certificate). Or the parse skips [telemetry] while OTEL_SDK_DISABLED is true. Add a test of the chosen side. |  |  |
+| R-86 | fit | should-fix | in-change | The bounded stop names the two signals with the strings traces and metrics, and matches them by text in cannot_start, while the same module tree already has SignalKind with Traces, Metrics and ALL for exactly these two signals. A typo in one string makes cannot_start miss its provider with no compile error, and the drop of that provider then runs the unbounded shutdown. | crates/mu-cli/src/telemetry/pipeline.rs:298 — "if cannot_start("traces") {" | Key the stops and the outcomes by SignalKind, give SignalKind a name() for the WARN line, and match cannot_start on the variant instead of the string. |  | severity? blocker 0.76 |
+| R-87 | invariants | should-fix | in-change | Each telemetry variable that the server reads must be UTF-8, the certificate variable excepted, but OTEL_SDK_DISABLED is read with var_os and compared as bytes. A value that is not UTF-8 is not refused: it reads as not true, and the server starts with the export on. | crates/mu-cli/src/telemetry.rs:280 — "if var_os(SDK_DISABLED).is_some_and(\|value\| value.eq_ignore_ascii_case("true")) {" | Read OTEL_SDK_DISABLED through the UTF-8 closure var and refuse a non-UTF-8 value with an error that names it, or name it in spec.md and design.md as a second exception. Add OTEL_SDK_DISABLED to variable_that_is_not_utf8_is_refused_and_named. |  |  |
+| R-88 | invariants | should-fix | in-change | The gRPC rule (no path, no query) runs only on the endpoint that a signal uses. A server.toml endpoint with a path under protocol grpc starts the server while OTEL_EXPORTER_OTLP_ENDPOINT wins over it, though the field is said to be checked even when a variable wins. | crates/mu-cli/src/telemetry.rs:366 — "let Some(source) = own.or(base) else {" | Apply the gRPC path and query check to the field (and to the base variable) under the protocol each signal would use, even when a higher source wins, or narrow the doc comment of TelemetryTable and the design to the endpoint in use. Add a unit test with the field http://h:4317/otel, protocol grpc, and a set OTEL_EXPORTER_OTLP_ENDPOINT. |  |  |
+| R-89 | invariants | should-fix | in-change | event_stream must read Journal::last only while a layer takes the metrics target, because the read locks the journal. No test runs event_stream without a metrics layer and counts the reads, so a removal of the enabled! guard passes every test. | crates/mu-server/src/service.rs:75 — "if tracing::enabled!(target: mu_core::METRICS_TARGET, tracing::Level::INFO) {" | Add a test in service.rs with a Journal wrapper that counts calls of last: under no subscriber (or the fmt layer alone) the count stays 0 after an event, and under the metrics layer it is 1 per event. |  |  |
+| R-90 | test-honesty | should-fix | in-change | lens test-honesty reported partial, gaps: 2 | review > lens-status — "test-honesty partial" | rerun the lens or accept the gap in the review |  |  |
 
 ## Repeats
 
-None.
+| id | lens | severity | claim | evidence |
+|---|---|---|---|---|
+| R-76 | test-coverage | should-fix | covered row 'Worlds from character files' has no verification run | review > not-run — "Worlds from character files" |
 
 ## Out of bound
 
-None.
+| lens | severity | claim | evidence |
+|---|---|---|---|
+| fit | should-fix | Two helpers in telemetry.rs write server.toml and run mu server to its exit: refused_with_file and Setup::new(..).output(). The new refusal tests use refused_with_file with a hand-written [telemetry] header, while unknown_protocol_in_the_file and missing_certificate_file do the same job through Setup. | crates/mu-cli/tests/telemetry.rs:302 — "refused_with_file("[telemetry]\\nendpoint = \\"http://127.0.0.1:4318?tenant=a\\"\\n").await;" |
 
 ## Accepted
 
@@ -49,10 +63,11 @@ None.
 | 4 | implementation | follow-up | bd78e021d40ef560f025ad64dd9e082ccc6d8964 | 6c7fee037f8473d7861ff8a1d21785330070bc82764e55b1ec4bb7655fef01d0 | approve-with-notes | 4 | 0 | 0 | 1 |  |
 | 5 | implementation | follow-up | 8a22dd1a0635fa61dd433559500c058ab11b6043 | c02a832ad60eed7a2f566cbb7b23144c8efda88813a3ece30b7a631f4bc21700 | approve-with-notes | 14 | 0 | 0 | 0 |  |
 | 6 | implementation | follow-up | 0870d11168b544ad5c71983d6c1dd038d3fff652 | 7e994c7fcffa966ddce64f549f10258ce737de1f6e29a32cbe8b4a72ec689572 | approve-with-notes | 4 | 0 | 1 | 0 | operator decision |
+| 7 | implementation | follow-up | bc67f3d1be9cb4d6eaf33bb30ca45ccbce11c535 | 57820490af4e131ec1c8eb56b448aaf0267798b0dd7032b3efde500a0e024f26 | approve-with-notes | 7 | 1 | 0 | 1 | operator decision |
 
 ## Judge
 
-judge: 10 questions, 0.000 USD
+judge: 12 questions, 0.001 USD
 
 ## Coverage matrix
 
@@ -74,6 +89,7 @@ judge: 10 questions, 0.000 USD
 | An empty variable | crates/mu-cli/tests/telemetry.rs: empty_variable_counts_as_unset | covered | pass |
 | A bad variable | crates/mu-cli/tests/telemetry.rs: bad_variable_is_refused | covered | pass |
 | A bad variable of one signal | crates/mu-cli/tests/telemetry.rs: bad_variable_of_one_signal_is_refused | covered | pass |
+| A variable that is not UTF-8 | crates/mu-cli/tests/telemetry.rs: variable_that_is_not_utf8 | covered | pass |
 | The export is off | crates/mu-cli/tests/telemetry.rs: sdk_disabled_turns_the_export_off | covered | pass |
 | The export is off with a bad variable | crates/mu-cli/tests/telemetry.rs: sdk_disabled_with_a_bad_variable | covered | pass |
 | The default service name | crates/mu-cli/tests/telemetry.rs: default_service_name | covered | pass |
@@ -85,7 +101,9 @@ judge: 10 questions, 0.000 USD
 | The protocol http/json | crates/mu-cli/tests/telemetry.rs: http_json_is_refused | covered | pass |
 | An unknown protocol in the file | crates/mu-cli/tests/telemetry.rs: unknown_protocol_in_the_file | covered | pass |
 | An unknown protocol with the export off | crates/mu-cli/tests/telemetry.rs: unknown_protocol_with_the_export_off | covered | pass |
+| A gRPC endpoint with a path | crates/mu-cli/tests/telemetry.rs: grpc_endpoint_with_a_path | covered | pass |
 | HTTPS with a certificate file | crates/mu-cli/tests/telemetry.rs: https_with_a_certificate_file | covered | pass |
+| A relative certificate path | crates/mu-cli/tests/telemetry.rs: relative_certificate_path | covered | pass |
 | gRPC with TLS | crates/mu-cli/tests/telemetry.rs: grpc_with_tls | covered | pass |
 | A collector that the server does not trust | crates/mu-cli/tests/telemetry.rs: collector_that_the_server_does_not_trust | covered | pass |
 | A missing certificate file | crates/mu-cli/tests/telemetry.rs: missing_certificate_file | covered | pass |
@@ -107,7 +125,7 @@ judge: 10 questions, 0.000 USD
 | The password stays out | crates/mu-cli/tests/telemetry.rs: password_stays_out | covered | pass |
 | The line text stays out | crates/mu-cli/tests/telemetry.rs: line_text_stays_out | covered | pass |
 | A collector that never answers | crates/mu-cli/tests/telemetry.rs: silent_collector_does_not_delay_a_send | covered | pass |
-| Worlds from character files | crates/mu-cli/tests/world_config.rs: worlds_from_character_files | covered | pass |
+| Worlds from character files | crates/mu-cli/tests/world_config.rs: worlds_from_character_files (test at line ~215, asserts alpha/ann, alpha/aria, beta/bryn) | covered | not-run |
 | A character with no game | crates/mu-cli/tests/world_config.rs: character_with_no_game | covered | pass |
 | A file name outside the id rule | crates/mu-cli/tests/world_config.rs: file_name_outside_the_id_rule | covered | pass |
 | A stray file | crates/mu-cli/tests/world_config.rs: stray_file | covered | pass |
@@ -117,7 +135,7 @@ judge: 10 questions, 0.000 USD
 
 ### Not run
 
-None.
+- Worlds from character files: no verification run names this row
 
 ## Verification runs
 
@@ -138,6 +156,7 @@ None.
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=endpoint_with_another_scheme)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=events_of_a_world)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=file_with_no_certificate)'`
+- exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=grpc_endpoint_with_a_path)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=grpc_from_the_file)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=grpc_with_tls)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=http_json_is_refused)'`
@@ -148,6 +167,7 @@ None.
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=missing_certificate_file)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=password_stays_out)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=protocol_of_one_signal)'`
+- exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=relative_certificate_path)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=sdk_disabled_turns_the_export_off)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=sdk_disabled_with_a_bad_variable)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=server_without_endpoint_writes_only_the_serving_line)'`
@@ -163,6 +183,7 @@ None.
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=unknown_protocol_with_the_export_off)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=unknown_table_in_server_toml)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=value_of_the_wrong_type)'`
+- exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=variable_that_is_not_utf8)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=variable_wins_over_the_file)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=variable_wins_over_the_protocol_of_the_file)'`
 - exit 0: `cargo nextest run -p mu-cli --test telemetry --locked -E 'test(=world_that_never_connects)'`
@@ -184,29 +205,37 @@ None.
 
 ## Lens notes
 
-- approach: Follow-up round since 8a22dd1: read the changed files of diff-files.txt (dir.rs, parse.rs, builtin.rs, server_config.rs, workspace_boundary.rs, the tests, collector.rs, both docs pages, Cargo.toml) and every decision of design.md. Files outside the list hold no changed text and were checked only where a changed design sentence cites them (pipeline.rs, server.rs, telemetry.rs).
-- approach: Checked at head and holding: same_file::is_same_file with the case-insensitive name in dir.rs; SERVER_FILE and parse_toml re-exported from mu_core::world; same-file in ALLOWED_CRATES of mu-core; in_crates with the :: boundary, and the bare-prefix match of Targets in tracing-subscriber 0.3.23 directive.rs; mu-client is a workspace crate; internal-logs on opentelemetry, opentelemetry_sdk and opentelemetry-otlp; the per-signal stop threads, the five-second bound and the WARN lines in Providers::shutdown; the first-drop WARN and the drop count at shutdown in opentelemetry_sdk 0.33.1 span_processor.rs; with_timeout winning over the timeout variables in resolve_timeout of opentelemetry-otlp 0.33.1; Policy::none and tls_certs_merge on the reqwest client.
-- approach: parse.rs at head: the doc comment above LAYER_HIDDEN begins with 'Parses `text`, the file at `place`, into `T`.' and an '# Errors' heading, text that belongs to parse. This is outside the approach lens, and is left to the other lenses.
-- approach: The design does not say that parse_toml now takes the hidden tables of each caller, or that server.toml hides the serde message under [telemetry]. No requirement needs that rule, so it is not reported.
-- fit: Follow-up round since 8a22dd1: the agent has no git access, so the changed lines were placed from the commit subjects (932cf8e, c22866f, 32ce627) and the content at head of each file in diff-files.txt.
-- fit: The changed components fit their patterns: dir.rs now uses same_file::is_same_file (R-69), parse.rs takes the hidden tables from each caller (R-75), server_config.rs reuses SERVER_FILE of mu-core (R-51), and telemetry.rs reuses fails_naming of the shared support (R-55). No fixed row of prior.json came back.
-- fit: The new tests (redirect_is_not_followed with the REDIRECT mode of the collector, metric_field_under_another_target_makes_no_metric, fragment_in_a_signal_variable_is_refused, and the server.toml tests of world_config.rs) reuse the existing helpers (Setup, Memory, refused_by, Config) and add no copy.
-- fit: Outside the fit lens, for the controller: in crates/mu-core/src/world/parse.rs lines 14-19, the doc comment of LAYER_HIDDEN still starts with the text of the parse function ('Parses `text`, the file at `place`, into `T`.' and '# Errors'), a leftover of the move.
-- fit: Outside the fit lens, for the controller: the guide says 'One trailing slash does not change the result', while design.md and the proptest remove each trailing slash.
-- invariants: I1: A top-level entry is skipped by the walk only if its name equals server.toml in any case and it is the same file as server.toml \| enforced at crates/mu-core/src/world/dir.rs:98 is_server_file \| boundary test world_config.rs hard_link_to_the_server_file_is_an_error, server_file_that_links_to_global_keeps_the_layer, server_file_in_another_case; the unreadable edge has none (inv-1)
-- invariants: I2: Under a hidden table, a parse error never holds a serde message (no value text) \| enforced at crates/mu-core/src/world/parse.rs:38 with hidden from the caller (LAYER_HIDDEN login, server_config HIDDEN telemetry) \| boundary test server_config.rs error_under_telemetry_holds_no_value (path equal to the table), parse.rs error_under_login_drops_the_message
-- invariants: I3: No signal endpoint variable holds a fragment, while a query in it is used as it is \| enforced at check_endpoint in crates/mu-cli/src/telemetry.rs \| boundary test telemetry/tests.rs fragment_in_a_signal_variable_is_refused and query_in_a_signal_variable_is_used_as_it_is (both sides)
-- invariants: I4: The HTTP client never follows a redirect \| enforced at the reqwest Policy::none of pipeline.rs \| boundary test telemetry.rs redirect_is_not_followed (307 that keeps POST, asserts /elsewhere never hit)
-- invariants: I5: The metrics layer takes only the target mu::metrics \| enforced at pipeline.rs:191 equality filter \| boundary test telemetry_engine.rs metric_field_under_another_target_makes_no_metric (both sides)
-- invariants: I6: A stop past the five-second bound writes one WARN line, and an in-time stop writes none \| enforced at pipeline.rs:251-256 \| boundary test telemetry.rs silent_collector_with and traces_and_metrics_reach_the_collector (both sides); the failed-shutdown branch has none (inv-2)
-- invariants: I7: The span layer takes a crate target only at a :: boundary \| enforced at pipeline.rs:270 in_crates \| boundary test telemetry_engine.rs crate_with_a_longer_name_makes_no_span (unchanged since the base)
-- invariants: Probe: a copy of is_server_file built against same-file 1.0.6 in the handoff directory, probe/. For a readable server.toml at head and at the base it skips both cases. For a mode-000 server.toml, head_skip=false (PermissionDenied) and base_skip=true.
-- invariants: Outside this lens: parse.rs lines 14-19 now attach the doc text of parse ('Parses `text`, the file at `place`, into `T`. # Errors') to the const LAYER_HIDDEN.
-- test-coverage: Every scenario row has a named test; the telemetry.rs and telemetry_engine.rs assertions read at head check the THEN conditions.
-- test-coverage: Tests with no scenario but with a task or a prior row: redirect_is_not_followed, subscribe_past_the_end, lag_behind_the_head, server_file_in_another_case, silent_traces_collector_does_not_stop_the_metrics.
-- test-honesty: Read telemetry_engine.rs, telemetry.rs, the proptest and endpoint tests of telemetry/tests.rs, and the server.toml tests of world_config.rs. No disabled test, no test without an assertion, no tautology found. The precedence proptest computes its expected URL by independent string logic.
-- test-honesty: Not read in full: tests/support/collector.rs and workspace_boundary.rs (support code and a boundary list, not scenario tests).
-- test-coverage gap: Test bodies of world_config.rs and the unit tests in telemetry/tests.rs were matched by name and not read in this follow-up round; design.md not read.
+- approach: No git diff was available to this lens, so the bound of each finding rests on the heading 'Where the endpoint comes from' of design.md, which is in diff-files.txt and holds the settings text that this round hardened.
+- approach: These rows were checked and hold at head: R-54 (scheme case, parsed once), R-57 and R-46 (Subscribe past the end marks ERROR with the error code), R-60 (ring installed in server::run), R-66 and R-69 (same_file with a case-insensitive name), R-70 (in_crates and the reason in design.md), R-80 (fragment refused in every URL, now in design.md).
+- approach: These cited facts were checked against the pinned sources and hold: resolve_timeout of opentelemetry-otlp 0.33.1 prefers with_timeout over the timeout variables; the HTTP exporter reads OTEL_EXPORTER_OTLP_HEADERS; reqwest 0.13.5 reads the proxy variables through Matcher::from_system; ExporterBuildError::InternalFailure texts quote no endpoint; connectrpc 0.9.1 ErrorCode::as_str gives not_found; BatchSpanProcessor logs the first drop and the count at shutdown.
+- approach: The tests crates/mu-cli/tests/support/collector.rs and crates/mu-cli/tests/world_config.rs were read only for their mode names and test names; their asserts belong to the test lenses.
+- fit: The lens has no git tool, so it could not list the changed lines since 0870d11. It placed the first evidence of each finding on the text that the commit messages since the base name as changed (the bounded stop, the new refusal tests). The merge decides the bound.
+- fit: Prior fit rows R-50, R-51, R-52, R-53, R-55, R-61, R-69, R-70 and R-75 were checked at head: METRICS_TARGET, SERVER_FILE, PORTAL_SERVICE_SERVICE_NAME, the grpc/http builder helpers, the shared fails_naming, the traced helper, same_file::is_same_file, the in_crates reason in design.md, and the caller-owned HIDDEN tables are in place. None is raised again.
+- fit: R-64 (accepted) is not raised again.
+- fit: The new error code on a failed span uses ConnectError code.as_str() of connectrpc, not a hand mapping.
+- fit: The decision page and the guide match the names table and the stop rules of design.md; no mirror drift found.
+- invariants: I1: Each telemetry variable that the server reads is UTF-8, except OTEL_EXPORTER_OTLP_CERTIFICATE \| enforced at the var closure of telemetry::export (telemetry.rs:271), not for OTEL_SDK_DISABLED \| boundary test variable_that_is_not_utf8_is_refused_and_named (ENDPOINT, TRACES_ENDPOINT, PROTOCOL, SERVICE_NAME) and variable_that_is_not_utf8 in tests/telemetry.rs; METRICS_ENDPOINT and the two signal protocol variables share the closure and have no own case
+- invariants: I2: A non-UTF-8 OTEL_EXPORTER_OTLP_CERTIFICATE is a path, never refused as UTF-8 \| enforced at var_os(CERTIFICATE) \| boundary test certificate_variable_that_is_not_utf8_is_a_path
+- invariants: I3: A gRPC endpoint holds no path other than / and no query \| enforced at telemetry::signal (telemetry.rs:369), only on the endpoint in use \| boundary test grpc_endpoint_with_a_path_or_a_query_is_refused_and_named, grpc_endpoint_with_a_slash_is_accepted (both sides of /), grpc_endpoint_with_a_path
+- invariants: I4: An unknown protocol error never holds the value \| enforced at parse_protocol (no format of the value) \| boundary test bad_protocol_is_not_echoed (PROTOCOL, TRACES_PROTOCOL) and http_json_is_refused
+- invariants: I5: https is found in any case of the scheme, once \| enforced at Signal.https from http::Uri scheme in signal() \| boundary test https_is_found_in_any_case (HTTPS:// and http://)
+- invariants: I6: The Debug of a signal holds no endpoint \| enforced at impl Debug for Signal \| boundary test debug_hides_the_endpoint
+- invariants: I7: An exporter build error names the setting, not its text \| enforced at From<ExporterBuildError> for PipelineError (split at the first colon; opentelemetry-otlp 0.33.1 builds the text as name: reason) \| boundary test exporter_error_names_the_setting_and_not_the_value
+- invariants: I8: A failed API call carries rpc.connect_rpc.error_code from the fixed set of ErrorCode::as_str, never the message \| enforced at failed() in service.rs, also on the PastEnd stream of Subscribe \| boundary test span_of_a_failed_call (not_found); connectrpc 0.9.1 as_str is a closed match
+- invariants: I9: event_stream reads Journal::last only while a layer takes mu::metrics \| enforced at tracing::enabled! in service.rs:75 \| boundary test none (inv-3)
+- invariants: I10: The stop waits at most the bound for the stops that start, and reports Done, Failed, Panicked, Late or CannotStart \| enforced at stop_all \| boundary test done_and_failed_stops_are_reported, panicked_stop_is_reported_without_the_bound, late_stop_is_named (bound zero), collector_on_a_closed_port; CannotStart has no test, as a spawn failure is hard to force
+- invariants: I11: The stop is idempotent: shutdown then Drop runs one stop \| enforced at Option::take of tracer, meter and runtime in Providers::stop \| boundary test none of its own; the second pass has nothing to stop by construction
+- invariants: I12: The walk skips the exact name server.toml with no compare, and another case only when same_file finds the same file; a failed compare names the entry \| enforced at is_server_file in dir.rs \| boundary test unreadable_server_file_makes_no_world, unreadable_server_file_in_another_case_names_the_error, server_file_in_another_case, hard_link_to_the_server_file_is_an_error
+- invariants: I13: A missing [telemetry] table equals an empty one \| enforced at #[serde(default)] on ServerFile.telemetry \| boundary test the no-file and no-endpoint server tests
+- invariants: I14: A relative certificate path in the field starts at the configuration directory \| enforced at server_config::read \| boundary test relative_certificate_path and the unit test of server_config
+- invariants: A thread that panics while the other stop is late is reported as Late, not Panicked, because the channel disconnects only when every sender drops. The wait stays bounded, so this is no finding.
+- invariants: No enforcement point in this round is a script; every one is Rust, so no edge input was run. The cited behaviour comes from reading the code and the pinned crates connectrpc 0.9.1 and opentelemetry-otlp 0.33.1.
+- test-coverage: No BREAKING requirement in the change.
+- test-coverage: Extra tests such as redirect_is_not_followed, collector_on_a_closed_port and subscribe_past_the_end are explained by design decisions and earlier findings, so they are not orphans.
+- test-honesty: No disabled, ignored or skipped test was added (only an existing should_panic in repo_config.rs, outside the diff).
+- test-honesty: Read tests in telemetry/tests.rs, and the refusal, certificate, stop-bound and silent-collector tests of tests/telemetry.rs: each asserts a specific source, message part, exit status 1 or elapsed bound. No tautology or no-assertion found.
+- test-coverage gap: Follow-up round: assertions were read in telemetry.rs, telemetry_engine.rs and world_config.rs; tests/telemetry/tests.rs unit tests and the collector support were not read.
+- test-coverage gap: The covering tests were not run; the controller records results.
 
 ## Ledger
 
@@ -287,7 +316,7 @@ None.
 | R-73 | 5 | 5 | should-fix | in-change | ["artifact",["design.md","The engine speaks tracing, and mu-cli bridges it"],"It takes only the target `mu::metrics`."] | fixed | c22866f902161138d61acf6e770782924c1b5e6e |  | The metrics layer must take only the target mu::metrics, but no test emits a metric-prefixed field under another target such as mu_core, the side the filter must refuse. |
 | R-74 | 5 | 5 | should-fix | in-change | ["path","crates/mu-cli/src/telemetry.rs",249] | fixed | c22866f902161138d61acf6e770782924c1b5e6e |  | check_endpoint now states that no URL can hold a fragment, the signal variables too, but the only fragment test passes # in OTEL_EXPORTER_OTLP_ENDPOINT, not in a signal variable or the field. |
 | R-75 | 5 | 5 | suggestion | in-change | ["path","crates/mu-core/src/world/parse.rs",37] | fixed | 932cf8e9ed3f9d99bf0b00294c1f85cbacb4d586 |  | The shared TOML parse of mu-core hard-codes the hidden tables of both callers: login, a table of a world layer, and telemetry, a table of server.toml, which mu-cli owns. Which tables to hide differs by caller on purpose. Each later table of server.toml that holds a secret must edit mu-core, and each layer file gets telemetry hidden too. |
-| R-76 | 5 | 5 | should-fix | in-change | ["artifact",["review","not-run"],"Worlds from character files"] | refuted | The matrix row names the unchanged world-config tests as a group, not one test id, so no one-test run can match it. Those tests pass in the full workspace run of 541 tests at this head. |  | covered row 'Worlds from character files' has no verification run |
+| R-76 | 5 | 7 | should-fix | in-change | ["artifact",["review","not-run"],"Worlds from character files"] | refuted | The matrix row names the unchanged world-config tests as a group, not one test id, so no one-test run can match it. Those tests pass in the full workspace run of 541 tests at this head. |  | covered row 'Worlds from character files' has no verification run |
 | R-77 | 5 | 5 | should-fix | in-change | ["artifact",["review","not-run"],"A character with no game"] | refuted | The matrix row names the unchanged world-config tests as a group, not one test id, so no one-test run can match it. Those tests pass in the full workspace run of 541 tests at this head. |  | covered row 'A character with no game' has no verification run |
 | R-78 | 5 | 5 | should-fix | in-change | ["artifact",["review","not-run"],"A file name outside the id rule"] | refuted | The matrix row names the unchanged world-config tests as a group, not one test id, so no one-test run can match it. Those tests pass in the full workspace run of 541 tests at this head. |  | covered row 'A file name outside the id rule' has no verification run |
 | R-79 | 5 | 5 | should-fix | in-change | ["artifact",["review","not-run"],"A link to nothing"] | refuted | The matrix row names the unchanged world-config tests as a group, not one test id, so no one-test run can match it. Those tests pass in the full workspace run of 541 tests at this head. |  | covered row 'A link to nothing' has no verification run |
@@ -295,47 +324,54 @@ None.
 | R-81 | 6 | 6 | should-fix | in-change | ["path","Cargo.toml",68] | fixed | 70437a3a54c7d926b791369f7054caba2bfa8977 |  | The new pin same-file sits between tokio and toml in [workspace.dependencies], where every other entry is in alphabetical order; ALLOWED_CRATES of the boundary test puts it in order, after proptest and before secrecy. |
 | R-82 | 6 | 6 | should-fix | in-change | ["path","crates/mu-core/src/world/dir.rs",100] | fixed | 1fba2f7edb7b2ef0e3be6dd829a5a70f39e386c1 |  | is_server_file now opens both files for read, so a top-level server.toml that the user cannot read is no longer skipped; mu world then names it as a stray file. At the base, a stat-only compare skipped it. No test passes this edge. |
 | R-83 | 6 | 6 | should-fix | in-change | ["artifact",["design.md","Risks / Trade-offs"],"Each failed export gives two lines: a `WARN` from the exporter and an `ERROR` from the batch processor or the reader."] | fixed | 933b35f17f15027bcdccb2c0c776fc3a7e8e91ad |  | The changed design and guide say that each failed export gives two lines, a WARN and an ERROR. The untrusted-collector test asserts only the WARN line and a line that holds ExportError at any level, so a missing ERROR line, or a third line, passes. |
+| R-84 | 7 | 7 | should-fix | in-change | ["artifact",["design.md","Where the endpoint comes from"],"A variable that the export reads must be UTF-8. A value that is not UTF-8 stops the start, and the error names the variable."] | fixed | 1b175c4e2689f2faea653fb387bc156762f6034f |  | The design says each variable that the export reads must be UTF-8, with only OTEL_EXPORTER_OTLP_CERTIFICATE exempt. The code reads OTEL_SDK_DISABLED as an OsString and compares it with true, so a value that is not UTF-8 counts as not true and the export goes on with no error. design.md records no exemption for it, and the unit test of the rule leaves it out. |
+| R-85 | 7 | 7 | should-fix | in-change | ["artifact",["design.md","Where the endpoint comes from"],"Then the function returns at once, and it reads and checks no other variable and no field of `[telemetry]`."] | fixed | 4756ab8ab2706d7c442ec82563747b9c3a7be6cc |  | The spec says that with OTEL_SDK_DISABLED true the server reads and checks no other telemetry field. The design produces this only inside the export function. server::run parses server.toml first, with deny_unknown_fields and typed fields, so endpoint = 4318 or an unknown field under [telemetry] still stops the start with the export off. No decision says which rule wins over the other: the schema check of server.toml or the off switch. |
+| R-86 | 7 | 7 | should-fix | in-change | ["path","crates/mu-cli/src/telemetry/pipeline.rs",298] | fixed | 1b175c4e2689f2faea653fb387bc156762f6034f |  | The bounded stop names the two signals with the strings traces and metrics, and matches them by text in cannot_start, while the same module tree already has SignalKind with Traces, Metrics and ALL for exactly these two signals. A typo in one string makes cannot_start miss its provider with no compile error, and the drop of that provider then runs the unbounded shutdown. |
+| R-87 | 7 | 7 | should-fix | in-change | ["path","crates/mu-cli/src/telemetry.rs",280] | duplicate | R-84 |  | Each telemetry variable that the server reads must be UTF-8, the certificate variable excepted, but OTEL_SDK_DISABLED is read with var_os and compared as bytes. A value that is not UTF-8 is not refused: it reads as not true, and the server starts with the export on. |
+| R-88 | 7 | 7 | should-fix | in-change | ["path","crates/mu-cli/src/telemetry.rs",366] | fixed | 4756ab8ab2706d7c442ec82563747b9c3a7be6cc |  | The gRPC rule (no path, no query) runs only on the endpoint that a signal uses. A server.toml endpoint with a path under protocol grpc starts the server while OTEL_EXPORTER_OTLP_ENDPOINT wins over it, though the field is said to be checked even when a variable wins. |
+| R-89 | 7 | 7 | should-fix | in-change | ["path","crates/mu-server/src/service.rs",75] | fixed | cd0541ee1ce7083b9ab34f69f2014da22af42fb7 |  | event_stream must read Journal::last only while a layer takes the metrics target, because the read locks the journal. No test runs event_stream without a metrics layer and counts the reads, so a removal of the enabled! guard passes every test. |
+| R-90 | 7 | 7 | should-fix | in-change | ["artifact",["review","lens-status"],"test-honesty partial"] |  |  |  | lens test-honesty reported partial, gaps: 2 |
 
 ## Reviewed files
 
 | path | content |
 |---|---|
 | Cargo.lock | 1d327a8bd3b1a910f98bf8a76c19fb6b15d42145 |
-| Cargo.toml | 9a94617e3428c1ad54cbcf70472d8617ebcdbccc |
+| Cargo.toml | ea9821f8ecc71341fbb37fff08733db8a6ddd3e3 |
 | crates/mu-cli/Cargo.toml | 46dc4d3d4bf57e9dea427aa7571b430a897ba200 |
 | crates/mu-cli/src/config.rs | e3e19c68331635350b58bc047e585effe7066532 |
 | crates/mu-cli/src/lib.rs | 7184de55452e03f00b1d4b6a3d4d7ef638800c0d |
-| crates/mu-cli/src/server.rs | 15bc40e8a2cc2f6b482f8c1a4aa17b577e9c9de6 |
-| crates/mu-cli/src/server_config.rs | 75f5d989ba432e02f69292ef99d9fc17e9bd7e52 |
-| crates/mu-cli/src/telemetry.rs | 6eb92aaa455f7773e16ba81cf45efbfbb56f0323 |
-| crates/mu-cli/src/telemetry/pipeline.rs | 5c604cb106d3c5a4ef2dc4a492a98abf29988fa3 |
-| crates/mu-cli/src/telemetry/tests.rs | 0ea6f40779b534f5d2fe58516310a7da4771d158 |
-| crates/mu-cli/tests/support/collector.rs | d791d89b45b6ef1d7912cbc2e49753d293e30676 |
+| crates/mu-cli/src/server.rs | 9404897440ed73d7a82ea0363ea4a2251a4ab7fd |
+| crates/mu-cli/src/server_config.rs | f1a1d97efffdac48b591ffc9dc64487b554cc7bf |
+| crates/mu-cli/src/telemetry.rs | 4b01d5f2372db88d03d8e1434cfbdaca050e31c1 |
+| crates/mu-cli/src/telemetry/pipeline.rs | f29850c94ee86056baf340fce66622575e09b141 |
+| crates/mu-cli/src/telemetry/tests.rs | 1912e8dc9940027f62ac39580c5e214e82b21e96 |
+| crates/mu-cli/tests/support/collector.rs | cede1e2c60a34f823ff09e8f3e36e9732aa004da |
 | crates/mu-cli/tests/support/mod.rs | 25e00f84aca56cf2686f4c0f88f55c51a01c47fb |
 | crates/mu-cli/tests/support/process.rs | f6657e1fe453b23671b07de4842f1eccfc64ef86 |
-| crates/mu-cli/tests/telemetry.rs | 7d5aa93c7bbaca326edb893213ff1a5da4c04d5c |
+| crates/mu-cli/tests/telemetry.rs | 0bd085c10a17745c1927bc04bd781f9e2e2b9f52 |
 | crates/mu-cli/tests/telemetry_engine.rs | bab82a6a6fd6dd02edffcbc6072ec0706bedf27c |
 | crates/mu-cli/tests/workspace_boundary.rs | 93d09024c15aedc8061c5b5852dd1234e249ac52 |
-| crates/mu-cli/tests/world_config.rs | 3818beb77ee12945cc8ef23c9194506f10febcbb |
+| crates/mu-cli/tests/world_config.rs | e99d2d6ff30036052cc14aa28e782c4006df5567 |
 | crates/mu-core/Cargo.toml | 4512c53aaa6e65e74ca5f28aef694171efa7d1c4 |
-| crates/mu-core/src/command.rs | 7f54da87e5740d44fb453487dcc54394896a00ed |
+| crates/mu-core/src/command.rs | 85799a997d0265b46be22bde1d2bbc8c8f577700 |
 | crates/mu-core/src/event.rs | 1de0c7515daf1c69c9e3038c89de64e2875b013e |
 | crates/mu-core/src/lib.rs | 8c507cc99ac198430e949d8366bd4f27405dde83 |
 | crates/mu-core/src/portal.rs | 8ac1ed6006a7b2095b07e17fbd31eaa26b95be64 |
-| crates/mu-core/src/session.rs | 3674a062429699f28c9d6fdb8492ebd99a701ed6 |
+| crates/mu-core/src/session.rs | 125182610729d1978b20ae4d57d16254116a3967 |
 | crates/mu-core/src/world/builtin.rs | 8b7141aa17fed91b8e851315a8672dc98e0b40d0 |
-| crates/mu-core/src/world/dir.rs | 09479085d67cebfa3d7e5c9b71468d4bc96e4bf0 |
+| crates/mu-core/src/world/dir.rs | eed8740a1ff6a0f2d5deeda25ae11c3ff2ad903e |
 | crates/mu-core/src/world/mod.rs | d63b19cc922fc0d0b1b45c4cfa2d0e6fb64af247 |
-| crates/mu-core/src/world/parse.rs | 9b99f4ffadc0f3f0d7ffa44624617644a71e12e8 |
-| crates/mu-server/src/service.rs | b8f9efa9cf89e4699f799a6b8eee8adc85022db8 |
+| crates/mu-core/src/world/parse.rs | 664d3b6848974525c507c03fbcf5bcd0159cafc9 |
+| crates/mu-server/src/service.rs | 45eba1fba92bfebf016ff5e0c23d3cc7998ca224 |
 | deny.toml | 6d67b5264909c485fbe050fe1d657258be4747de |
-| docs/src/content/docs/decisions/telemetry.md | b16c23dc6cfee0ee0068be3c162b9ce1dc5b977e |
+| docs/src/content/docs/decisions/telemetry.md | 4d3d100da2e724023b183e8abc5e6719485918b6 |
 | docs/src/content/docs/guides/configuration.md | 2acfbf5eb084781003533329a8fcbcccc8056604 |
-| docs/src/content/docs/guides/telemetry.md | 1cce3e6a7b6b2968fb3cafb58f70e53e1c6b8de9 |
+| docs/src/content/docs/guides/telemetry.md | 2e7cd7bcdd4a1dc809b2ce81e0bfdb473a799b0b |
 | openspec/changes/telemetry/.openspec.yaml | 578c89ac91eda0589930783c384ddbe6201a0568 |
-| openspec/changes/telemetry/design.md | 6d7f8b12d5ec0448c3355943ab58da3da976d4a8 |
+| openspec/changes/telemetry/design.md | 185a43180ddf5ffd508132ad0cbdbc1e568d9997 |
 | openspec/changes/telemetry/proposal.md | 09698870137709423e65935a81326ce42d8f4ac0 |
-| openspec/changes/telemetry/specs/telemetry/spec.md | 6d47d6345ea97917b6f06dedc5d4e52aa7807f85 |
+| openspec/changes/telemetry/specs/telemetry/spec.md | c0e60732bd18b046ebfd85bc899d57003699714d |
 | openspec/changes/telemetry/specs/world-config/spec.md | ae472d6ae06864b5462314cc111c3028330c76f2 |
 | openspec/changes/telemetry/tasks.md | sha256:6f67e3f6a75d46c4f715775025e540034487fb63bc52ea1de8ac605d81bee060 |
 
