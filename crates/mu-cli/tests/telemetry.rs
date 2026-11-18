@@ -1068,7 +1068,8 @@ async fn line_text_stays_out() {
 
 /// The number of calls that make more than twice the spans of the default queue of the batch
 /// span processor. Each call makes two spans: `rpc` and `command`.
-const CALLS: usize = opentelemetry_sdk::trace::OTEL_BSP_MAX_QUEUE_SIZE_DEFAULT + 100;
+const CALLS: usize = 2100;
+const _: () = assert!(CALLS > opentelemetry_sdk::trace::OTEL_BSP_MAX_QUEUE_SIZE_DEFAULT);
 
 /// The longest time from SIGTERM to the exit: the bound of the stop and a margin.
 const EXIT_BOUND: std::time::Duration = std::time::Duration::from_secs(7);

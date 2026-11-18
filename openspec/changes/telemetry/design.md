@@ -61,7 +61,7 @@ Alternatives: an `opentelemetry` dependency in `mu-core`, with direct calls to a
 | Name | Kind | Attributes | Where |
 |---|---|---|---|
 | `mu.v1.PortalService/<method>` | span | `rpc.system`, `rpc.service`, `rpc.method`, `mu.world` (only in a call that names a world), and `rpc.connect_rpc.error_code` (only in a failed call) | each method of `PortalApi` |
-| `command` | span | `mu.world`, `mu.command`, `mu.origin`, `mu.depth` | `Session::handle` |
+| `command` | span | `mu.world`, `mu.command`, `mu.origin`, `mu.depth` | `session::run` |
 | `world.connection` | span | `mu.world` | from the start of a connect to the drop of its last clone |
 | `mu.journal.events` | sum | `mu.world`, `mu.event.kind` | `Session::record` |
 | `mu.subscriber.lag` | histogram | none | `event_stream`, for each event that it sends, as described below |
@@ -84,7 +84,7 @@ Alternative: a live `last()` on `Subscription`. That gives the subscription a ha
 
 ### The span of a command follows it across the queue
 
-`Request::Command` gains the field `span: tracing::Span`. A new constructor, `Request::command(envelope, reply)`, fills it with `Span::current()`. `Portal::submit`, `Portal::stop`, `Portal::connect_all` and `route` each use it. In `route`, the current span is the span of the code that recorded the event. Inside `Session::handle`, it is the `command` span. For a line of the game, it is the `world.connection` span. In `run_server_handlers`, which runs in its own task, there is no current span, so the `command` span starts a new trace. `Session::handle` makes the `command` span with that span as its parent. `Envelope` stays as it is, because it is public and it is data, not context.
+`Request::Command` gains the field `span: tracing::Span`. A new constructor, `Request::command(envelope, reply)`, fills it with `Span::current()`. `Portal::submit`, `Portal::stop`, `Portal::connect_all` and `route` each use it. In `route`, the current span is the span of the code that recorded the event. Inside `Session::handle`, it is the `command` span. For a line of the game, it is the `world.connection` span. In `run_server_handlers`, which runs in its own task, there is no current span, so the `command` span starts a new trace. `session::run` makes the `command` span with that span as its parent, and runs `Session::handle` in it. `Envelope` stays as it is, because it is public and it is data, not context.
 
 Alternative: put the span in `Envelope`. That makes a public type carry a runtime handle, and each test that builds an `Envelope` must build a span.
 
@@ -131,7 +131,7 @@ Alternative: a `[telemetry]` table in `global.toml`. The operator chose `server.
 
 The HTTP exporter uses `reqwest-blocking-client`. `server::run` builds the `reqwest::blocking::Client` itself, with the feature `rustls-no-provider` of `reqwest`. Its verifier is `rustls-platform-verifier`, which trusts the roots of the system. `tls_certs_merge` adds the certificates of the file. The client follows no redirect. It uses the proxy variables `HTTP_PROXY`, `HTTPS_PROXY` and `ALL_PROXY`, as `reqwest` does by default, and the gRPC exporter does not. It passes the client with `with_http_client`. The SDK reads the header variables, for example `OTEL_EXPORTER_OTLP_HEADERS`, itself, and it sends the headers with each export. Over `http`, they travel in clear text. The guide says so.
 
-The gRPC exporter uses `grpc-tonic` and the feature `tls-ring` of `opentelemetry-otlp`. Its `ClientTlsConfig` calls `with_native_roots`, a feature of `tonic`, and `ca_certificate` for each certificate of the file.
+The gRPC exporter uses `grpc-tonic` and the feature `tls-ring` of `opentelemetry-otlp`. Its `ClientTlsConfig` calls `with_native_roots`, a feature of `tonic`, and `ca_certificate` once, with the PEM text of the whole file. tonic then reads each certificate of that text.
 
 Both use rustls with the crypto provider `ring`. `server::run` installs `ring` as the default provider of the process before it builds a client. `aws-lc-rs` is not used, because the license of `aws-lc-sys` is outside the list of `deny.toml`. The decision page names the provider, so that the tls change (#58) uses the same one.
 
@@ -200,7 +200,7 @@ Task 1.1 read each fact in the source of the released crates: `opentelemetry-otl
 - [A later change can build a gRPC client on the runtime of the engine by mistake.] → The decision page names the `mu-telemetry` runtime. The silent-collector test runs with each protocol.
 - [A dead collector can write warning lines on stderr.] → The SDK logs through `tracing`, because the build turns on its feature `internal-logs`. The `fmt` layer keeps the lines at `WARN` and above. Each failed export gives two lines: a `WARN` from the exporter and an `ERROR` from the batch processor or the reader. The first drop of a full queue gives one line, and the stop gives the count of the drops. A warning about a dead collector is useful to the owner. The OpenTelemetry layers filter out the targets of the SDK, so its logs do not loop back into the export.
 - [A later change can add a field with a text.] → The scanning tests run on each change. The decision page states the rule.
-- [The full-queue test depends on the default queue size of the SDK.] → Task 1.1 records the size. The test sends 2100 calls, which make two spans each, about twice the default size of 2048.
+- [The full-queue test depends on the default queue size of the SDK.] → Task 1.1 records the size. The test sends 2100 calls, which make two spans each, about twice the default size of 2048. A constant assertion against `OTEL_BSP_MAX_QUEUE_SIZE_DEFAULT` of the SDK stops the build of the test if that size reaches 2100.
 - [Up to five seconds more at the stop with a dead collector.] → It is the bound of the spec. `mu server` stops at the end of an evening, not in a loop.
 
 ## Migration Plan
