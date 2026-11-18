@@ -155,7 +155,8 @@ mod tests {
             },
             Command::Emit { world, text },
         ];
-        // The match has no wildcard, so a new variant fails to compile until the list holds it.
+        // The match has no wildcard, so a new variant fails to compile until it has an arm here.
+        // Add the variant to `commands` too.
         for command in &commands {
             match command {
                 Command::Send { .. }

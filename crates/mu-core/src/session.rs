@@ -201,6 +201,7 @@ enum Conn {
         write: WriteHalf<Box<dyn ByteStream>>,
         framer: Box<dyn Framer>,
         frames: WaitingFrames,
+        /// The `world.connection` span. The drop in `down` closes it.
         span: Span,
     },
 }

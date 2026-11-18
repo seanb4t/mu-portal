@@ -106,7 +106,8 @@ pub fn event_stream(
     Box::pin(head.chain(events))
 }
 
-/// The span of one call of `method`. `mu.world` and the status come later.
+/// The span of one call of `method`. The caller records `mu.world` and the status where they
+/// apply.
 fn call_span(method: &'static str) -> Span {
     let service = proto::PORTAL_SERVICE_SERVICE_NAME;
     tracing::info_span!(
