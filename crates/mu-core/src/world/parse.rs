@@ -11,14 +11,11 @@ use serde::de::DeserializeOwned;
 
 use super::error::ConfigError;
 
-/// Parses `text`, the file at `place`, into `T`.
-///
-/// # Errors
-///
 /// The tables of a world layer whose values can hold a password.
 pub const LAYER_HIDDEN: &[&str] = &["login"];
 
-/// Parses `text`. Under each table of `hidden`, an error holds no message of `serde`.
+/// Parses `text`, the file at `place`, into `T`. Under each table of `hidden`, an error holds no
+/// message of `serde`.
 ///
 /// # Errors
 ///

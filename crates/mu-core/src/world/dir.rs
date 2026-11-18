@@ -14,7 +14,8 @@ use super::parse::{LAYER_HIDDEN, parse};
 ///
 /// The directory holds `global.toml`, `types/<name>.toml`, `games/<game>.toml` and
 /// `characters/<game>/<character>.toml`, and [`SERVER_FILE`] at the top, which holds no layer.
-/// Any other file whose name ends in `.toml`, in any case, is an error. So is an entry that cannot be read, such as a link to nothing.
+/// Any other file whose name ends in `.toml`, in any case, is an error. So is an entry that
+/// cannot be read, such as a link to nothing.
 /// A missing directory holds no layers.
 #[derive(Clone, Debug)]
 pub struct TomlDirSource {
@@ -37,9 +38,16 @@ impl LayerSource for TomlDirSource {
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(ConfigError::new(self.root.display(), error.to_string())),
         }
-        files.retain(
-            |parts| !matches!(parts.as_slice(), [name] if is_server_file(&self.root, name)),
-        );
+        let mut kept = Vec::with_capacity(files.len());
+        for parts in files {
+            if let [name] = parts.as_slice()
+                && is_server_file(&self.root, name)?
+            {
+                continue;
+            }
+            kept.push(parts);
+        }
+        let mut files = kept;
         files.sort();
         let keys = files
             .iter()
@@ -94,13 +102,25 @@ impl TomlDirSource {
 pub const SERVER_FILE: &str = "server.toml";
 
 /// Whether the top-level entry `name` is [`SERVER_FILE`]: the same name in any case, and the
-/// same file. On a file system that ignores case, `Server.toml` is that file. If the compare
-/// cannot open the files, only the exact name is that file, so an unreadable `server.toml` is
-/// left to the server, which reports the read error.
-fn is_server_file(root: &Path, name: &str) -> bool {
-    name.eq_ignore_ascii_case(SERVER_FILE)
-        && same_file::is_same_file(root.join(name), root.join(SERVER_FILE))
-            .unwrap_or(name == SERVER_FILE)
+/// same file. The exact name is that file with no compare, so an unreadable `server.toml` is
+/// left to the server, which reports the read error. On a file system that ignores case,
+/// `Server.toml` is that file. Another name is not that file when `server.toml` does not exist.
+///
+/// # Errors
+///
+/// A [`ConfigError`] that names the entry, when the compare cannot open the files.
+fn is_server_file(root: &Path, name: &str) -> Result<bool, ConfigError> {
+    if !name.eq_ignore_ascii_case(SERVER_FILE) {
+        return Ok(false);
+    }
+    if name == SERVER_FILE {
+        return Ok(true);
+    }
+    match same_file::is_same_file(root.join(name), root.join(SERVER_FILE)) {
+        Ok(same) => Ok(same),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(ConfigError::new(name, error.to_string())),
+    }
 }
 
 /// Adds to `files` the path of each file under `directory` whose name ends in `.toml`, in any

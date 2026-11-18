@@ -83,6 +83,9 @@ impl Command {
 }
 
 impl Origin {
+    /// Every origin.
+    pub const ALL: [Self; 3] = [Self::Player, Self::Script, Self::System];
+
     /// The lower-case name of the origin, for the telemetry.
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -155,18 +158,7 @@ mod tests {
             },
             Command::Emit { world, text },
         ];
-        // The match has no wildcard, so a new variant fails to compile until it has an arm here.
-        // Add the variant to `commands` too.
-        for command in &commands {
-            match command {
-                Command::Send { .. }
-                | Command::Connect { .. }
-                | Command::Disconnect { .. }
-                | Command::Login { .. }
-                | Command::Echo { .. }
-                | Command::Emit { .. } => {}
-            }
-        }
+        // A new variant of `Command` belongs in `commands` too.
         let names: Vec<_> = commands.iter().map(Command::name).collect();
         assert_eq!(
             names,
@@ -176,13 +168,7 @@ mod tests {
 
     #[test]
     fn each_origin_has_a_name() {
-        let origins = [Origin::Player, Origin::Script, Origin::System];
-        for origin in origins {
-            match origin {
-                Origin::Player | Origin::Script | Origin::System => {}
-            }
-        }
-        let names: Vec<_> = origins.into_iter().map(Origin::name).collect();
+        let names: Vec<_> = Origin::ALL.into_iter().map(Origin::name).collect();
         assert_eq!(names, ["player", "script", "system"]);
     }
 }

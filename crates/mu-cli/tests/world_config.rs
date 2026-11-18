@@ -293,6 +293,19 @@ fn unreadable_server_file_makes_no_world() {
 }
 
 #[test]
+fn unreadable_server_file_in_another_case_names_the_error() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let config = Config::base().file("SERVER.toml", "");
+    let path = config.path().join("SERVER.toml");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+    // A user who can read every file, such as root, gets no read error to name.
+    if fs::File::open(&path).is_ok() {
+        return;
+    }
+    fails_naming(&config.list(), &["SERVER.toml", "Permission denied"]);
+}
+
+#[test]
 fn hard_link_to_the_server_file_is_an_error() {
     let config = Config::base().file("server.toml", "");
     std::fs::hard_link(

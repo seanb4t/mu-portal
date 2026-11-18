@@ -37,6 +37,9 @@ pub enum WorldState {
 }
 
 impl WorldState {
+    /// Every state.
+    pub const ALL: [Self; 3] = [Self::Connecting, Self::Connected, Self::Disconnected];
+
     /// The lower-case name of the state, for the telemetry.
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -193,7 +196,9 @@ enum Conn {
         connect: BoxFuture<'static, io::Result<Box<dyn ByteStream>>>,
         depth: u8,
         frames: WaitingFrames,
-        /// The `world.connection` span. The drop in `down` closes it.
+        /// The `world.connection` span. It closes when its last clone drops: `down` drops this
+        /// one, a step that runs in the span holds a clone until the step ends, and the end of
+        /// the session drops the rest.
         span: Span,
     },
     Up {
@@ -201,7 +206,9 @@ enum Conn {
         write: WriteHalf<Box<dyn ByteStream>>,
         framer: Box<dyn Framer>,
         frames: WaitingFrames,
-        /// The `world.connection` span. The drop in `down` closes it.
+        /// The `world.connection` span. It closes when its last clone drops: `down` drops this
+        /// one, a step that runs in the span holds a clone until the step ends, and the end of
+        /// the session drops the rest.
         span: Span,
     },
 }
@@ -592,17 +599,7 @@ mod tests {
 
     #[test]
     fn each_state_has_a_name() {
-        let states = [
-            WorldState::Connecting,
-            WorldState::Connected,
-            WorldState::Disconnected,
-        ];
-        for state in states {
-            match state {
-                WorldState::Connecting | WorldState::Connected | WorldState::Disconnected => {}
-            }
-        }
-        let names: Vec<_> = states.into_iter().map(WorldState::name).collect();
+        let names: Vec<_> = WorldState::ALL.into_iter().map(WorldState::name).collect();
         assert_eq!(names, ["connecting", "connected", "disconnected"]);
     }
 
