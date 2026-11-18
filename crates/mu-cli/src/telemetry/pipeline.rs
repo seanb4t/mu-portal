@@ -371,6 +371,26 @@ impl Drop for Report {
     }
 }
 
+/// The body of the helper thread that runs `stop`. Its [`Report`] starts when the body runs, so a
+/// body that never runs, because its thread cannot start, sends nothing.
+fn helper(
+    signal: SignalKind,
+    stop: Stop,
+    done: mpsc::Sender<(SignalKind, Outcome)>,
+) -> impl FnOnce() + Send + 'static {
+    move || {
+        let report = Report {
+            signal,
+            done: Some(done),
+        };
+        let outcome = match stop() {
+            Ok(()) => Outcome::Done,
+            Err(error) => Outcome::Failed(error.to_string()),
+        };
+        report.send(outcome);
+    }
+}
+
 /// Runs each stop on its own helper thread, and waits at most `bound` for the stops that start.
 fn stop_all(stops: Vec<(SignalKind, Stop)>, bound: Duration) -> Vec<(SignalKind, Outcome)> {
     let deadline = Instant::now() + bound;
@@ -378,19 +398,9 @@ fn stop_all(stops: Vec<(SignalKind, Stop)>, bound: Duration) -> Vec<(SignalKind,
     let mut outcomes = Vec::new();
     let mut pending = Vec::new();
     for (signal, stop) in stops {
-        let report = Report {
-            signal,
-            done: Some(done.clone()),
-        };
         let spawned = thread::Builder::new()
             .name(format!("mu-telemetry-stop-{}", signal.name()))
-            .spawn(move || {
-                let outcome = match stop() {
-                    Ok(()) => Outcome::Done,
-                    Err(error) => Outcome::Failed(error.to_string()),
-                };
-                report.send(outcome);
-            });
+            .spawn(helper(signal, stop, done.clone()));
         match spawned {
             Ok(_) => pending.push(signal),
             Err(error) => outcomes.push((signal, Outcome::CannotStart(error.to_string()))),
@@ -624,21 +634,25 @@ mod tests {
     }
 
     #[test]
-    fn report_of_a_helper_that_panics_is_panicked() {
+    fn helper_that_panics_is_panicked() {
         let (done, finished) = mpsc::channel();
-        let report = Report {
-            signal: SignalKind::Traces,
-            done: Some(done),
-        };
-        let helper = thread::spawn(move || {
-            let _report = report;
-            panic!("a stop that panics");
-        });
-        assert!(helper.join().is_err());
+        let stop: Stop = Box::new(|| panic!("a stop that panics"));
+        assert!(
+            thread::spawn(helper(SignalKind::Traces, stop, done))
+                .join()
+                .is_err()
+        );
         assert_eq!(
             finished.try_recv(),
             Ok((SignalKind::Traces, Outcome::Panicked))
         );
+    }
+
+    #[test]
+    fn helper_that_never_runs_sends_nothing() {
+        let (done, finished) = mpsc::channel();
+        drop(helper(SignalKind::Metrics, Box::new(|| Ok(())), done));
+        assert_eq!(finished.try_recv(), Err(mpsc::TryRecvError::Disconnected));
     }
 
     #[test]
