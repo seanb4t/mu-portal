@@ -528,6 +528,35 @@ fn file_with_no_certificate_is_refused() {
     );
 }
 
+/// A PEM file whose `CERTIFICATE` section holds bytes that are not a certificate.
+const BAD_DER_PEM: &str = "-----BEGIN CERTIFICATE-----\nAAECAwQF\n-----END CERTIFICATE-----\n";
+
+#[test]
+fn certificate_that_does_not_parse_is_refused_and_named() {
+    let (_dir, path) = pem_file(BAD_DER_PEM);
+    let message = run(
+        &[(CERTIFICATE, path.to_str().unwrap())],
+        Some(&table(Some(BASE))),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(message.contains(CERTIFICATE), "{message}");
+    assert!(message.contains(path.to_str().unwrap()), "{message}");
+    assert!(message.contains("certificate 1 is not valid"), "{message}");
+}
+
+#[test]
+fn debug_hides_the_certificate_file() {
+    let (_dir, path) = pem_file(&authority_pem());
+    let export = on(
+        &[(CERTIFICATE, path.to_str().unwrap())],
+        Some(&table(Some(BASE))),
+    );
+    let shown = format!("{:?}", export.authorities);
+    assert!(!shown.contains("BEGIN"), "{shown}");
+    assert!(shown.contains("certificates: 1"), "{shown}");
+}
+
 #[test]
 fn no_certificate_means_the_system_roots_only() {
     assert_eq!(

@@ -59,7 +59,7 @@ Each endpoint variable follows the rules of the field. A bad value stops the sta
 
 ## TLS
 
-The scheme decides TLS. `https` uses TLS, and `http` does not. The server trusts the roots of the system and the authorities of the certificate file. A certificate file that cannot be read, or that holds no PEM certificate, stops the start.
+The scheme decides TLS. `https` uses TLS, and `http` does not. The server trusts the roots of the system and the authorities of the certificate file. A certificate file that cannot be read, that holds no PEM certificate, or that holds a certificate that does not parse stops the start.
 
 If the server does not trust the certificate of the collector, it exports nothing and serves as usual. It writes two lines to stderr for each failed export: a warning from the exporter and an error from the processor of the signal.
 

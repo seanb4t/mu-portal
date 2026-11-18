@@ -129,10 +129,10 @@ impl fmt::Debug for Signal {
     }
 }
 
-/// The authorities that the export trusts beside the roots of the system. `pem` and
-/// `certificates` hold the same set, because `read_authorities` is the only constructor that
-/// fills them.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// The authorities that the export trusts beside the roots of the system. `pem` is the whole
+/// file, and `certificates` holds its `CERTIFICATE` sections, each one a certificate that
+/// rustls can parse.
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct Authorities {
     pem: Vec<u8>,
     certificates: Vec<CertificateDer<'static>>,
@@ -149,6 +149,15 @@ impl Authorities {
     #[must_use]
     pub fn pem(&self) -> &[u8] {
         &self.pem
+    }
+}
+
+/// The file is hidden, because it can also hold a private key.
+impl fmt::Debug for Authorities {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Authorities")
+            .field("certificates", &self.certificates.len())
+            .finish_non_exhaustive()
     }
 }
 
@@ -439,7 +448,8 @@ fn join(base: &str, kind: SignalKind, protocol: Protocol) -> String {
     }
 }
 
-/// The certificates of the PEM file at `path`.
+/// The certificates of the PEM file at `path`. Each one must parse as a certificate, because
+/// over gRPC a certificate that does not parse is dropped without an error.
 fn read_authorities(path: &Path) -> Result<Authorities, String> {
     let shown = path.display();
     let pem = std::fs::read(path).map_err(|error| format!("{shown}: {error}"))?;
@@ -448,6 +458,12 @@ fn read_authorities(path: &Path) -> Result<Authorities, String> {
         .map_err(|error| format!("{shown}: {error}"))?;
     if certificates.is_empty() {
         return Err(format!("{shown}: the file holds no PEM certificate"));
+    }
+    let mut roots = rustls::RootCertStore::empty();
+    for (number, certificate) in certificates.iter().enumerate() {
+        roots.add(certificate.clone()).map_err(|error| {
+            format!("{shown}: certificate {} is not valid: {error}", number + 1)
+        })?;
     }
     Ok(Authorities { pem, certificates })
 }

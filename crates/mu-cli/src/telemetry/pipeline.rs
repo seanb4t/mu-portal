@@ -48,8 +48,9 @@ pub enum PipelineError {
     /// An exporter refused its configuration. The text names the setting, never its value.
     #[error("the export: {0}")]
     Exporter(String),
-    /// The HTTP client cannot be built, or a certificate is bad.
-    #[error("the export: {0}")]
+    /// The HTTP client cannot be built, or a certificate is bad. The message holds each
+    /// source of the error, because the text of a reqwest build error names no cause.
+    #[error("the export: {}", with_sources(.0))]
     Client(reqwest::Error),
     /// The telemetry runtime or its thread cannot start.
     #[error("the export: {0}")]
@@ -69,6 +70,18 @@ impl From<ExporterBuildError> for PipelineError {
             }
         })
     }
+}
+
+/// `error` and each of its sources, joined with `: `.
+fn with_sources(error: &dyn std::error::Error) -> String {
+    let mut text = error.to_string();
+    let mut source = error.source();
+    while let Some(error) = source {
+        text.push_str(": ");
+        text.push_str(&error.to_string());
+        source = error.source();
+    }
+    text
 }
 
 impl From<reqwest::Error> for PipelineError {
@@ -579,6 +592,17 @@ mod tests {
         );
         drop(open);
         assert_eq!(outcomes, vec![(SignalKind::Metrics, Outcome::Late)]);
+    }
+
+    #[test]
+    fn message_holds_each_source() {
+        #[derive(Debug, thiserror::Error)]
+        #[error("no client")]
+        struct Outer(#[source] Inner);
+        #[derive(Debug, thiserror::Error)]
+        #[error("bad certificate")]
+        struct Inner;
+        assert_eq!(with_sources(&Outer(Inner)), "no client: bad certificate");
     }
 
     #[test]

@@ -205,7 +205,7 @@ With the protocol `grpc`, the endpoint that a signal uses SHALL hold no path oth
 - **AND** the exit status is 1
 
 ### Requirement: TLS for an https endpoint
-An endpoint with the scheme `https` SHALL use TLS, for both protocols. The server SHALL trust the root certificates of the system. It SHALL also trust the PEM certificates of the file that the field `certificate` names. `OTEL_EXPORTER_OTLP_CERTIFICATE` SHALL win over the field. A relative path in the field SHALL start at the configuration directory. The server SHALL NOT export to a collector whose certificate it does not trust.
+An endpoint with the scheme `https` SHALL use TLS, for both protocols. The server SHALL trust the root certificates of the system. It SHALL also trust the PEM certificates of the file that the field `certificate` names. `OTEL_EXPORTER_OTLP_CERTIFICATE` SHALL win over the field. A relative path in the field SHALL start at the configuration directory. A certificate of the file that does not parse SHALL stop the start, for both protocols. The server SHALL NOT export to a collector whose certificate it does not trust.
 
 #### Scenario: HTTPS with a certificate file
 - **GIVEN** a fake HTTPS collector with a certificate from a test authority
@@ -243,6 +243,14 @@ An endpoint with the scheme `https` SHALL use TLS, for both protocols. The serve
 - **WHEN** the user runs `mu server`
 - **THEN** stderr names `OTEL_EXPORTER_OTLP_CERTIFICATE`
 - **AND** the exit status is 1
+
+#### Scenario: A certificate that does not parse
+- **GIVEN** an `https` endpoint, with `http/protobuf` and then with `grpc`
+- **AND** `OTEL_EXPORTER_OTLP_CERTIFICATE` names a file with a `CERTIFICATE` section whose bytes are not a certificate
+- **WHEN** the user runs `mu server`
+- **THEN** stderr names `OTEL_EXPORTER_OTLP_CERTIFICATE` and the path of the file
+- **AND** the exit status is 1
+
 ### Requirement: A span for each API call
 The server SHALL make one span for each call of the API, named `mu.v1.PortalService/<method>`. It SHALL carry `rpc.system` (`connect_rpc`), `rpc.service` and `rpc.method`. A call that names a world SHALL carry `mu.world` with the world id. A call that fails SHALL have the status `error`, and SHALL carry `rpc.connect_rpc.error_code` with the name of its Connect error code. The span of `Subscribe` SHALL cover the call up to the return of its stream. It SHALL NOT cover the life of the stream.
 

@@ -769,6 +769,25 @@ async fn file_with_no_certificate() {
 }
 
 #[tokio::test]
+async fn certificate_that_does_not_parse() {
+    for protocol in ["http/protobuf", "grpc"] {
+        let dir = tempfile::tempdir().unwrap();
+        let bad = dir.path().join("bad.pem");
+        std::fs::write(
+            &bad,
+            "-----BEGIN CERTIFICATE-----\nAAECAwQF\n-----END CERTIFICATE-----\n",
+        )
+        .unwrap();
+        let output = Setup::endpoint("https://127.0.0.1:4318")
+            .env("OTEL_EXPORTER_OTLP_PROTOCOL", protocol)
+            .env(CERTIFICATE, bad.to_str().unwrap())
+            .output()
+            .await;
+        fails_naming(&output, &[CERTIFICATE, bad.to_str().unwrap()]);
+    }
+}
+
+#[tokio::test]
 async fn span_of_a_send() {
     let collector = Collector::start(Mode::Http).await;
     Setup::endpoint(&collector.url()).one_send().await;
