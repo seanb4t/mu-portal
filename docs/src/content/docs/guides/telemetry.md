@@ -27,7 +27,7 @@ certificate = "/etc/mu/collector-ca.pem"
 | `protocol` | `http/protobuf` or `grpc`. The default is `http/protobuf` |
 | `certificate` | A PEM file of the authorities to trust beside the roots of the system. A relative path starts at the configuration directory |
 
-Each field is optional. The server reads the file once, at the start, before it opens its socket. An unknown table, an unknown field, or a value of the wrong type stops the start. So does an endpoint that is not a URL, or a scheme other than `http` and `https`. So does a base URL with a query, or any endpoint with a fragment. The error names `server.toml` and the field, and the exit status is 1.
+Each field is optional. The server reads the file once, at the start, before it opens its socket. An unknown table, an unknown field, or a value of the wrong type stops the start. So does an endpoint that is not a URL, or a scheme other than `http` and `https`. So does a base URL with a query, or any endpoint with a fragment, a user or a password. The error names `server.toml` and the field, and the exit status is 1.
 
 With `http/protobuf`, the server sends the traces to `v1/traces` and the metrics to `v1/metrics` under the base URL. One trailing slash does not change the result. With `grpc`, the base URL is the address of the gRPC services, and the server adds no path. A gRPC endpoint that a signal uses can hold no path other than `/`, and no query. Such an endpoint stops the start.
 
@@ -80,7 +80,7 @@ The server does not support these features. Some of them can have an effect thro
 
 The OpenTelemetry library can ignore the value of a variable at the start, for example `OTEL_EXPORTER_OTLP_COMPRESSION=gzip`. Then the server writes a warning to stderr that names the variable and the value.
 
-The OpenTelemetry library reads the header variables itself, for example `OTEL_EXPORTER_OTLP_HEADERS`, and it sends the headers with each export. Over `http`, the headers travel in clear text. If a header holds a token, use an `https` endpoint. Put a token in a header, not in the URL.
+The OpenTelemetry library reads the header variables itself, for example `OTEL_EXPORTER_OTLP_HEADERS`, and it sends the headers with each export. Over `http`, the headers travel in clear text. If a header holds a token, use an `https` endpoint. The server refuses a URL with a user or a password, so put a token in a header.
 
 The HTTP exporter uses the proxy variables `HTTP_PROXY`, `HTTPS_PROXY` and `ALL_PROXY`. To send the export past the proxy, add the host of the collector to `NO_PROXY`. The gRPC exporter uses no proxy.
 

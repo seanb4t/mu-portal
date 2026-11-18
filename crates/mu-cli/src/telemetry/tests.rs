@@ -451,8 +451,28 @@ fn https_is_found_in_any_case() {
 }
 
 #[test]
+fn user_or_password_in_an_endpoint_is_refused_and_not_echoed() {
+    for (name, value) in [
+        (ENDPOINT, "https://u:hunter2@h:4318"),
+        (TRACES_ENDPOINT, "https://hunter2@h:4318/v1/traces"),
+        (METRICS_ENDPOINT, "http://u:hunter2@h:4318/v1/metrics"),
+    ] {
+        let error = run(&[(name, value)], None).unwrap_err();
+        assert_eq!(error.place(), SettingSource::Variable(name));
+        assert!(!error.to_string().contains("hunter2"), "{error}");
+    }
+    assert_eq!(
+        refused_by(&[], Some(&table(Some("https://u:hunter2@h:4318")))),
+        SettingSource::Field(TableField::Endpoint)
+    );
+}
+
+#[test]
 fn debug_hides_the_endpoint() {
-    let export = on(&[(ENDPOINT, "https://u:hunter2@h:4318")], None);
+    let export = on(
+        &[(TRACES_ENDPOINT, "https://h:4318/v1/traces?token=hunter2")],
+        None,
+    );
     let shown = format!("{export:?}");
     assert!(!shown.contains("hunter2"), "{shown}");
 }

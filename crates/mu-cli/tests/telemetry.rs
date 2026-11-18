@@ -304,6 +304,14 @@ async fn endpoint_with_a_query() {
 }
 
 #[tokio::test]
+async fn endpoint_with_a_password() {
+    let output =
+        refused_with_file("[telemetry]\nendpoint = \"https://u:hunter2@127.0.0.1:4318\"\n").await;
+    fails_naming(&output, &["server.toml", "telemetry.endpoint"]);
+    assert!(!support::stderr(&output).contains("hunter2"));
+}
+
+#[tokio::test]
 async fn grpc_endpoint_with_a_path() {
     let output = refused_with_file(
         "[telemetry]\nendpoint = \"http://127.0.0.1:4317/otel\"\nprotocol = \"grpc\"\n",

@@ -417,8 +417,8 @@ fn signal(
 }
 
 /// Checks that `value` is a URL with the scheme `http` or `https` and a host, and returns it
-/// parsed. No URL can hold a fragment. A base URL can also hold no query, with either protocol.
-/// The message holds no more of the value than its scheme, because a URL can hold a password.
+/// parsed. No URL can hold a fragment, a user or a password. A base URL can also hold no query,
+/// with either protocol. The message holds no more of the value than its scheme.
 fn check_endpoint(value: &str, kind: EndpointKind) -> Result<http::Uri, String> {
     if value.contains('#') {
         return Err("a URL of the export can hold no fragment".to_owned());
@@ -431,6 +431,15 @@ fn check_endpoint(value: &str, kind: EndpointKind) -> Result<http::Uri, String> 
     }
     if uri.host().is_none_or(str::is_empty) {
         return Err("has no host".to_owned());
+    }
+    if uri
+        .authority()
+        .is_some_and(|authority| authority.as_str().contains('@'))
+    {
+        return Err(
+            "a URL of the export can hold no user and no password: put a token in a header"
+                .to_owned(),
+        );
     }
     if kind == EndpointKind::Base && uri.query().is_some() {
         return Err("a base URL can hold no query".to_owned());
