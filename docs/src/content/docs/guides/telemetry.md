@@ -37,7 +37,7 @@ The server also reads these standard variables. A variable that is set wins over
 
 | Variable | Meaning |
 |---|---|
-| `OTEL_SDK_DISABLED` | `true`, in any case, turns the export off. Then the server reads no other telemetry variable and no value of `server.toml`. An unknown field still stops the start. A value other than `true`, `false` or empty changes nothing, and the server writes a warning that names the variable |
+| `OTEL_SDK_DISABLED` | `true`, in any case, turns the export off. Then the server reads no other telemetry variable and no value of `server.toml`. An unknown field still stops the start. A value other than `true`, `false` or empty changes nothing. If the server exports a signal, it writes a warning that names the variable |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | The base URL of both signals, the same as `endpoint` |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | The full URL of the traces. The server adds no path |
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | The full URL of the metrics. The server adds no path |

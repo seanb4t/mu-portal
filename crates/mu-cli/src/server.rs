@@ -64,8 +64,14 @@ pub fn run(args: &ServerArgs) -> ExitCode {
         Ok(file) => file,
         Err(error) => return fail(&error),
     };
-    // A value that is not UTF-8 gets no warning here: `export` refuses it below.
-    if telemetry::sdk_disabled(|name| std::env::var_os(name)) == Ok(SdkDisabled::Ignored) {
+    let export = match telemetry::export(|name| std::env::var_os(name), &file.telemetry) {
+        Ok(export) => export,
+        Err(error) => return fail(&error),
+    };
+    // With no export, the server writes no line about telemetry, so this warning too needs one.
+    if export.is_some()
+        && telemetry::sdk_disabled(|name| std::env::var_os(name)) == Ok(SdkDisabled::Ignored)
+    {
         crate::warn(
             "server",
             &format_args!(
@@ -74,10 +80,6 @@ pub fn run(args: &ServerArgs) -> ExitCode {
             ),
         );
     }
-    let export = match telemetry::export(|name| std::env::var_os(name), &file.telemetry) {
-        Ok(export) => export,
-        Err(error) => return fail(&error),
-    };
     let providers = match export.as_ref().map(Providers::start).transpose() {
         Ok(providers) => providers.unwrap_or_else(Providers::none),
         Err(error) => return fail(&error),

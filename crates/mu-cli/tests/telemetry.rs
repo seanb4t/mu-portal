@@ -516,6 +516,14 @@ async fn sdk_disabled_with_another_value_is_named() {
 }
 
 #[tokio::test]
+async fn sdk_disabled_with_another_value_and_no_endpoint_writes_only_the_serving_line() {
+    let run = Setup::new(&[]).env(SDK_DISABLED, "1").one_send().await;
+    assert!(run.status.success());
+    assert_eq!(run.stderr.len(), 1, "{:?}", run.stderr);
+    assert!(run.stderr[0].starts_with(SERVING), "{:?}", run.stderr);
+}
+
+#[tokio::test]
 async fn sdk_disabled_with_a_bad_variable() {
     let run = Setup::new(&[])
         .env(SDK_DISABLED, "true")
