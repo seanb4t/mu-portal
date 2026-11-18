@@ -225,16 +225,20 @@ impl Providers {
         Ok(providers)
     }
 
-    /// The tracer provider, if the traces have an endpoint.
-    #[must_use]
-    pub fn tracer_provider(&self) -> Option<&SdkTracerProvider> {
-        self.tracer.as_ref()
-    }
-
-    /// The meter provider, if the metrics have an endpoint.
-    #[must_use]
-    pub fn meter_provider(&self) -> Option<&SdkMeterProvider> {
-        self.meter.as_ref()
+    /// Exports the spans and the metrics that the providers hold now. Only [`Providers::shutdown`]
+    /// and the drop stop a provider, so each stop has its bound.
+    ///
+    /// # Errors
+    ///
+    /// The first error of a flush.
+    pub fn force_flush(&self) -> OTelSdkResult {
+        if let Some(tracer) = &self.tracer {
+            tracer.force_flush()?;
+        }
+        if let Some(meter) = &self.meter {
+            meter.force_flush()?;
+        }
+        Ok(())
     }
 
     /// The two OpenTelemetry layers. The span layer takes the targets of [`CRATES`], and the

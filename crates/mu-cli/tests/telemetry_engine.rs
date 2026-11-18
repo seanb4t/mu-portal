@@ -48,8 +48,7 @@ impl Memory {
 
     /// Runs `read` on the last export of the metric `name`, after a flush.
     fn last_metric<R>(&self, name: &str, read: impl FnOnce(&MetricData<u64>) -> R) -> Option<R> {
-        let provider = self.providers.meter_provider().unwrap();
-        provider.force_flush().unwrap();
+        self.providers.force_flush().unwrap();
         let exports = self.metrics.get_finished_metrics().unwrap();
         let metric = exports
             .iter()
@@ -98,8 +97,7 @@ impl Memory {
 
     /// Each span that ended so far.
     fn finished_spans(&self) -> Vec<SpanData> {
-        let provider = self.providers.tracer_provider().unwrap();
-        provider.force_flush().unwrap();
+        self.providers.force_flush().unwrap();
         self.spans.get_finished_spans().unwrap()
     }
 }
