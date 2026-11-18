@@ -503,6 +503,15 @@ async fn sdk_disabled_with_a_bad_variable() {
 }
 
 #[tokio::test]
+async fn sdk_disabled_with_an_unknown_field() {
+    let output = Setup::new(&["endpont = \"http://127.0.0.1:4318\"".to_owned()])
+        .env(SDK_DISABLED, "true")
+        .output()
+        .await;
+    fails_naming(&output, &["server.toml", "telemetry.endpont"]);
+}
+
+#[tokio::test]
 async fn default_service_name() {
     let collector = Collector::start(Mode::Http).await;
     Setup::endpoint(&collector.url()).run(&[]).await;

@@ -121,7 +121,7 @@ Each of the three endpoint variables SHALL pass the check of the field `endpoint
 - **AND** the exit status is 1
 
 ### Requirement: The variables that turn the export off and name the service
-`OTEL_SDK_DISABLED` with the value `true`, in any case, SHALL turn the export off, whatever the endpoint. The server SHALL then read and check no other telemetry variable or field. The resource of each export SHALL carry `service.name`. If `OTEL_SERVICE_NAME` is set and not empty, its value SHALL be that variable. Otherwise, its value SHALL be `mu`.
+`OTEL_SDK_DISABLED` with the value `true`, in any case, SHALL turn the export off, whatever the endpoint. The server SHALL then read and check no other telemetry variable and no value of `[telemetry]`. An unknown table or field, or a value of the wrong type, in `server.toml` SHALL still stop the start. The resource of each export SHALL carry `service.name`. If `OTEL_SERVICE_NAME` is set and not empty, its value SHALL be that variable. Otherwise, its value SHALL be `mu`.
 
 #### Scenario: The export is off
 - **GIVEN** a fake collector, `server.toml` names it, and `OTEL_SDK_DISABLED` is `TRUE`
@@ -133,6 +133,12 @@ Each of the three endpoint variables SHALL pass the check of the field `endpoint
 - **GIVEN** `OTEL_SDK_DISABLED` is `true`, and `OTEL_EXPORTER_OTLP_ENDPOINT` is `ftp://collector.example:4318`
 - **WHEN** a server starts and gets SIGTERM
 - **THEN** the exit status is 0
+
+#### Scenario: The export is off with an unknown field
+- **GIVEN** `OTEL_SDK_DISABLED` is `true`, and `server.toml` sets `[telemetry] endpont = "http://127.0.0.1:4318"`
+- **WHEN** the user runs `mu server`
+- **THEN** stderr names `server.toml` and `telemetry.endpont`
+- **AND** the exit status is 1
 
 #### Scenario: The default service name
 - **GIVEN** a fake collector that `server.toml` names, and no `OTEL_SERVICE_NAME`
@@ -190,7 +196,7 @@ While a signal has an endpoint, a protocol other than `http/protobuf` and `grpc`
 - **THEN** the exit status is 0
 
 ### Requirement: A gRPC endpoint holds no path
-With the protocol `grpc`, an endpoint SHALL hold no path other than `/`, and no query. The gRPC client sends only the scheme and the host. Such an endpoint SHALL stop the start with an error that names its source, and the exit status SHALL be 1.
+With the protocol `grpc`, the endpoint that a signal uses SHALL hold no path other than `/`, and no query. The gRPC client sends only the scheme and the host. Such an endpoint SHALL stop the start with an error that names its source, and the exit status SHALL be 1.
 
 #### Scenario: A gRPC endpoint with a path
 - **GIVEN** `server.toml` sets `endpoint = "http://127.0.0.1:4317/otel"` and `protocol = "grpc"`
