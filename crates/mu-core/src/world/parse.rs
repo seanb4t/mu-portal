@@ -38,7 +38,8 @@ pub const LAYER_HIDDEN: Hidden<'static> = Hidden::Tables(&["login"]);
 ///
 /// # Errors
 ///
-/// A [`ConfigError`] that names `place`, the line, the column and the path of the field.
+/// A [`ConfigError`] that names `place`, the line and the column. An error in a value also names
+/// the path of the field.
 pub fn parse<T: DeserializeOwned>(
     place: &impl fmt::Display,
     text: &str,

@@ -387,7 +387,8 @@ pub fn export(
 }
 
 /// The signal `kind` over `protocol`, from its own endpoint or else from the base URL. A gRPC
-/// endpoint can hold no path and no query, because tonic sends only its scheme and its host.
+/// endpoint can hold no path and no query: tonic sends its scheme and its authority, and drops the
+/// path and the query.
 fn signal(
     kind: SignalKind,
     protocol: Protocol,

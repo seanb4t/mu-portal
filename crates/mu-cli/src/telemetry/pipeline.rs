@@ -45,7 +45,8 @@ const RUNTIME_THREAD: &str = "mu-telemetry";
 /// variant also exposes it as a source.
 #[derive(Debug, thiserror::Error)]
 pub enum PipelineError {
-    /// An exporter refused its configuration. The text names the setting, never its value.
+    /// An exporter cannot be built. For a refused setting, the text names the setting, never its
+    /// value. For an internal failure, it holds the text of the exporter.
     #[error("the export: {0}")]
     Exporter(String),
     /// The HTTP client cannot be built, or a certificate is bad. The message holds each

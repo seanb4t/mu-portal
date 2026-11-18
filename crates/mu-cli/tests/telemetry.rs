@@ -244,9 +244,9 @@ async fn refused_with_file(text: &str) -> Output {
 /// Set in the child test process of `helper_removes_the_otel_variables`.
 const PROBE: &str = "MU_TEST_OTEL_PROBE";
 
-/// Runs itself again as a child with the variable set, because `set_var` needs `unsafe`. The
-/// child starts a process with the test environment, and checks that the process does not see
-/// the variable.
+/// Runs itself again as a child with the variable set, so the test sets no variable in its own
+/// process. The child starts a process with the test environment, and checks that the process
+/// does not see the variable.
 #[test]
 fn helper_removes_the_otel_variables() {
     if std::env::var_os(PROBE).is_some() {
@@ -1058,9 +1058,9 @@ async fn line_text_stays_out() {
     );
 }
 
-/// The number of calls that make more than twice the 2048 spans of the default queue of the
-/// batch span processor. Each call makes two spans: `rpc` and `command`.
-const CALLS: usize = 2100;
+/// The number of calls that make more than twice the spans of the default queue of the batch
+/// span processor. Each call makes two spans: `rpc` and `command`.
+const CALLS: usize = opentelemetry_sdk::trace::OTEL_BSP_MAX_QUEUE_SIZE_DEFAULT + 100;
 
 /// The longest time from SIGTERM to the exit: the bound of the stop and a margin.
 const EXIT_BOUND: std::time::Duration = std::time::Duration::from_secs(7);

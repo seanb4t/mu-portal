@@ -104,7 +104,8 @@ pub const SERVER_FILE: &str = "server.toml";
 /// Whether the top-level entry `name` is [`SERVER_FILE`]: the same name in any case, and the
 /// same file. The exact name is that file with no compare, so an unreadable `server.toml` is
 /// left to the server, which reports the read error. On a file system that ignores case,
-/// `Server.toml` is that file. Another name is not that file when `server.toml` does not exist.
+/// `Server.toml` is that file. When `server.toml` does not exist, another name is not that file,
+/// but an entry of that name that cannot be opened is still an error.
 ///
 /// # Errors
 ///

@@ -353,7 +353,7 @@ impl Session {
         }
     }
 
-    /// Records `reason` in `mu.commands.dropped`.
+    /// Adds 1 to `mu.commands.dropped` of this world, with `reason` as `mu.drop.reason`.
     fn dropped(&self, reason: &'static str) {
         tracing::event!(
             target: crate::METRICS_TARGET,
