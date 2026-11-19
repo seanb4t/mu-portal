@@ -48,6 +48,7 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
     (
         "mu-core",
         &[
+            "fastrand",
             "figment2",
             "futures",
             "governor",

@@ -1848,6 +1848,7 @@ dependencies = [
 name = "mu-core"
 version = "0.1.0"
 dependencies = [
+ "fastrand",
  "figment2",
  "futures",
  "governor",

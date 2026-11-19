@@ -4,7 +4,9 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::Args;
-use mu_core::{EnvSecretStore, ResolvedWorld, SecretRef, WorldId, WorldSetup, load_password};
+use mu_core::{
+    EnvSecretStore, Reconnect, ResolvedWorld, SecretRef, WorldId, WorldSetup, load_password,
+};
 use mu_fake_server::FakeTransport;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
@@ -121,7 +123,10 @@ fn serve_worlds(args: &ServerArgs) -> ExitCode {
             Err(error) => return fail(&format!("{}: {error}", fake.id)),
         };
         let transport = FakeTransport::with_secret(fake.id.character(), &password);
-        let world = ResolvedWorld::with_default_login(fake.id.clone(), fake.secret.clone());
+        let world = ResolvedWorld {
+            reconnect: Reconnect::Off,
+            ..ResolvedWorld::with_default_login(fake.id.clone(), fake.secret.clone())
+        };
         worlds.push(WorldSetup::new(world, Some(password), Arc::new(transport)));
     }
 

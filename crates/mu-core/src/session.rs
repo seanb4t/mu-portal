@@ -25,7 +25,7 @@ use crate::journal::Journal;
 use crate::script::{DEPTH_LIMIT, Handler, Hook, RATE_PER_SECOND, run_hooks};
 use crate::secret::{MASK, Secret, SecretSource};
 use crate::transport::{ByteStream, Transport};
-use crate::world::{Keepalive, Login};
+use crate::world::{Keepalive, Login, Reconnect};
 
 /// The state of a world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -36,11 +36,18 @@ pub enum WorldState {
     Connected,
     /// The world has no connection.
     Disconnected,
+    /// The world waits for its next attempt to connect.
+    Reconnecting,
 }
 
 impl WorldState {
     /// Every state.
-    pub const ALL: [Self; 3] = [Self::Connecting, Self::Connected, Self::Disconnected];
+    pub const ALL: [Self; 4] = [
+        Self::Connecting,
+        Self::Connected,
+        Self::Disconnected,
+        Self::Reconnecting,
+    ];
 
     /// The lower-case name of the state, for the telemetry.
     #[must_use]
@@ -49,6 +56,7 @@ impl WorldState {
             Self::Connecting => "connecting",
             Self::Connected => "connected",
             Self::Disconnected => "disconnected",
+            Self::Reconnecting => "reconnecting",
         }
     }
 }
@@ -175,6 +183,24 @@ type Limiter = RateLimiter<
 
 const RATE: NonZeroU32 = NonZeroU32::new(RATE_PER_SECOND).expect("the rate is not 0");
 
+/// What a world does after a drop.
+enum AfterDrop {
+    /// It stays down.
+    Rest,
+    /// It waits this long for its next attempt.
+    Wait(Duration),
+    /// It stops after this count of failed attempts in a row.
+    GiveUp(u32),
+}
+
+/// Records the end of a connection for `cause` on its span.
+fn end_span(span: &Span, cause: Cause) {
+    span.record("mu.connection.end", cause.end());
+    if cause.is_error() {
+        span.record("otel.status_code", "ERROR");
+    }
+}
+
 /// Everything a session needs, given by the `Portal`.
 pub(crate) struct SessionParts {
     pub(crate) world: WorldId,
@@ -187,6 +213,8 @@ pub(crate) struct SessionParts {
     pub(crate) login_moment: Arc<dyn LoginMoment>,
     /// The keepalive, or none for a world with no keepalive.
     pub(crate) keepalive: Option<Keepalive>,
+    /// Whether and when the world connects again after a drop.
+    pub(crate) reconnect: Reconnect,
     pub(crate) hooks: Vec<Arc<dyn Hook>>,
     pub(crate) handlers: Vec<Arc<dyn Handler>>,
     pub(crate) journal: Arc<dyn Journal>,
@@ -223,12 +251,18 @@ enum Conn {
         read: ReadHalf<Box<dyn ByteStream>>,
         write: WriteHalf<Box<dyn ByteStream>>,
         framer: Box<dyn Framer>,
+        /// The open of the stream.
+        opened: Instant,
         phase: Phase,
         frames: WaitingFrames,
         /// The `world.connection` span. It closes when its last clone drops: `down` drops this
         /// one, a step that runs in the span holds a clone until the step ends, and the end of
         /// the session drops the rest.
         span: Span,
+    },
+    /// The world waits for its next attempt, which starts at `until`.
+    Waiting {
+        until: Instant,
     },
 }
 
@@ -257,12 +291,12 @@ enum Timer {
     Login,
     /// The next keepalive line.
     Keepalive,
+    /// The next attempt to connect.
+    Attempt,
 }
 
 /// A login that waits for the moment of its [`LoginMoment`].
 struct PendingLogin {
-    /// The open of the stream.
-    connect: Instant,
     /// The last byte from the game, or none before the first.
     last_byte: Option<Instant>,
     /// The depth of the command that started the connect.
@@ -287,14 +321,15 @@ impl Conn {
         moment: &dyn LoginMoment,
         keepalive: Option<&Keepalive>,
     ) -> Option<(Instant, Timer)> {
-        let Self::Up { phase, .. } = self else {
-            return None;
+        let (opened, phase) = match self {
+            Self::Up { opened, phase, .. } => (*opened, phase),
+            Self::Waiting { until } => return Some((*until, Timer::Attempt)),
+            Self::Down | Self::Connecting { .. } => return None,
         };
         match phase {
-            Phase::Login(pending) => Some((
-                moment.deadline(pending.connect, pending.last_byte),
-                Timer::Login,
-            )),
+            Phase::Login(pending) => {
+                Some((moment.deadline(opened, pending.last_byte), Timer::Login))
+            }
             Phase::Live(live) => keepalive?
                 .deadline(live.connected, live.last_write, live.last_keepalive)
                 .map(|deadline| (deadline, Timer::Keepalive)),
@@ -304,7 +339,7 @@ impl Conn {
     /// The `world.connection` span, or a disabled span with no connection.
     fn span(&self) -> Span {
         match self {
-            Self::Down => Span::none(),
+            Self::Down | Self::Waiting { .. } => Span::none(),
             Self::Connecting { span, .. } | Self::Up { span, .. } => span.clone(),
         }
     }
@@ -326,6 +361,10 @@ struct Session {
     /// The password of the last connect, which masks each event. A fixed source gives it at
     /// the start.
     password: Option<Secret>,
+    /// The failed attempts in a row since the last `Connect` call or stable connection.
+    failed: u32,
+    /// Whether the last connect was an attempt of the reconnect, not a `Connect` call.
+    attempt: bool,
 }
 
 /// Runs the session of one world until the `Portal` drops its channel.
@@ -336,6 +375,8 @@ pub(crate) async fn run(parts: SessionParts) {
         limiter: RateLimiter::direct_with_clock(Quota::per_second(RATE), TokioClock),
         last_script_error: None,
         password: None,
+        failed: 0,
+        attempt: false,
     };
     if let Some(SecretSource::Fixed(password)) = &session.parts.secret {
         session.password = Some(password.clone());
@@ -395,6 +436,7 @@ pub(crate) async fn run(parts: SessionParts) {
                 let span = session.conn.span();
                 session.on_keepalive(at).instrument(span).await;
             }
+            Step::Timer(Timer::Attempt, _) => session.on_attempt(),
         }
     }
 }
@@ -412,7 +454,7 @@ async fn progress(
         match conn {
             Conn::Connecting { connect, depth, .. } => Step::Connected(connect.await, *depth),
             Conn::Up { read, .. } => Step::Read(read.read(buffer).await),
-            Conn::Down => std::future::pending().await,
+            Conn::Down | Conn::Waiting { .. } => std::future::pending().await,
         }
     };
     let Some((deadline, timer)) = timer else {
@@ -496,22 +538,84 @@ impl Session {
         state_gauge(self.world(), state, 1);
     }
 
-    /// Ends the connection or the connect for `cause`, records it on the span of the connection
-    /// and in the journal, and answers each waiting frame.
+    /// Ends the connection, the connect or the wait for `cause`, records it on the span of the
+    /// connection and in the journal, and answers each waiting frame. Then the world waits for
+    /// its next attempt, or stays down.
     fn down(&mut self, cause: Cause, reason: &str, depth: u8) {
-        let mut frames = match std::mem::replace(&mut self.conn, Conn::Down) {
-            Conn::Connecting { frames, span, .. } | Conn::Up { frames, span, .. } => {
-                span.record("mu.connection.end", cause.end());
-                if cause.is_error() {
-                    span.record("otel.status_code", "ERROR");
-                }
-                frames
+        let (mut frames, opened) = match std::mem::replace(&mut self.conn, Conn::Down) {
+            Conn::Connecting { frames, span, .. } => {
+                end_span(&span, cause);
+                (frames, None)
             }
-            Conn::Down => WaitingFrames::default(),
+            Conn::Up {
+                frames,
+                span,
+                opened,
+                ..
+            } => {
+                end_span(&span, cause);
+                (frames, Some(opened))
+            }
+            Conn::Down | Conn::Waiting { .. } => (WaitingFrames::default(), None),
         };
-        self.set_state(WorldState::Disconnected);
-        self.record(EventKind::Disconnected, Origin::System, reason, depth);
+        let text = match self.after_drop(cause, opened) {
+            AfterDrop::Wait(wait) => {
+                self.conn = Conn::Waiting {
+                    until: Instant::now() + wait,
+                };
+                self.set_state(WorldState::Reconnecting);
+                reason.to_owned()
+            }
+            AfterDrop::GiveUp(count) => {
+                self.set_state(WorldState::Disconnected);
+                format!("{reason}, and the world stops after {count} attempts")
+            }
+            AfterDrop::Rest => {
+                self.set_state(WorldState::Disconnected);
+                reason.to_owned()
+            }
+        };
+        self.record(EventKind::Disconnected, Origin::System, &text, depth);
         frames.answer_all();
+    }
+
+    /// What the world does after a drop for `cause` of a stream that opened at `opened`. It also
+    /// counts the drop as a failed attempt, or starts the count again after a stable connection.
+    fn after_drop(&mut self, cause: Cause, opened: Option<Instant>) -> AfterDrop {
+        let Reconnect::Backoff(backoff) = self.parts.reconnect else {
+            return AfterDrop::Rest;
+        };
+        if !cause.reconnects() || self.parts.stopped.load(Ordering::Acquire) {
+            return AfterDrop::Rest;
+        }
+        if opened.is_some_and(|opened| backoff.resets(opened.elapsed())) {
+            self.failed = 0;
+        } else if self.attempt {
+            self.failed = self.failed.saturating_add(1);
+        }
+        if backoff.stops(self.failed) {
+            return AfterDrop::GiveUp(self.failed);
+        }
+        AfterDrop::Wait(backoff.wait(self.failed.saturating_add(1), fastrand::u32(..)))
+    }
+
+    /// Starts the next attempt to connect. A failed read of the secret ends the wait in `Down`.
+    fn on_attempt(&mut self) {
+        let started = if self.parts.stopped.load(Ordering::Acquire) {
+            Err(PortalError::Stopped)
+        } else {
+            self.connect(0, true)
+        };
+        if let Err(error) = started {
+            self.conn = Conn::Down;
+            self.set_state(WorldState::Disconnected);
+            self.record(
+                EventKind::Disconnected,
+                Origin::System,
+                &error.to_string(),
+                0,
+            );
+        }
     }
 
     async fn write_bytes(&mut self, bytes: &[u8], depth: u8) -> Result<(), PortalError> {
@@ -557,7 +661,7 @@ impl Session {
 
     async fn on_frame(&mut self, frame: oneshot::Sender<Reply>) {
         match &mut self.conn {
-            Conn::Down => answer(frame),
+            Conn::Down | Conn::Waiting { .. } => answer(frame),
             Conn::Connecting { frames, .. }
             | Conn::Up {
                 frames,
@@ -574,13 +678,17 @@ impl Session {
 
     /// Starts each connect of the world: reads the secret, opens the `world.connection` span, and
     /// starts the connect of the transport under [`CONNECT_TIMEOUT`]. A failed read starts
-    /// nothing.
-    fn connect(&mut self, depth: u8) -> Result<(), PortalError> {
+    /// nothing. A connect that is not an `attempt` sets the count of failed attempts to 0.
+    fn connect(&mut self, depth: u8, attempt: bool) -> Result<(), PortalError> {
         let Some(transport) = self.parts.transport.clone() else {
             return Err(PortalError::TlsNotSupported(self.world().clone()));
         };
         if let Some(password) = self.read_secret()? {
             self.password = Some(password);
+        }
+        self.attempt = attempt;
+        if !attempt {
+            self.failed = 0;
         }
         let span = tracing::info_span!(
             parent: None,
@@ -643,7 +751,9 @@ impl Session {
                 let (read, write) = tokio::io::split(stream);
                 let (frames, span) = match &mut self.conn {
                     Conn::Connecting { frames, span, .. } => (std::mem::take(frames), span.clone()),
-                    Conn::Down | Conn::Up { .. } => (WaitingFrames::default(), Span::current()),
+                    Conn::Down | Conn::Up { .. } | Conn::Waiting { .. } => {
+                        (WaitingFrames::default(), Span::current())
+                    }
                 };
                 let connect = Instant::now();
                 let waits = self.parts.login.is_some()
@@ -652,8 +762,8 @@ impl Session {
                     read,
                     write,
                     framer: (self.parts.framer)(),
+                    opened: connect,
                     phase: Phase::Login(PendingLogin {
-                        connect,
                         last_byte: None,
                         depth,
                     }),
@@ -819,8 +929,8 @@ impl Session {
                 if self.parts.transport.is_none() {
                     return Err(PortalError::TlsNotSupported(self.world().clone()));
                 }
-                if matches!(self.conn, Conn::Down) {
-                    self.connect(depth)?;
+                if matches!(self.conn, Conn::Down | Conn::Waiting { .. }) {
+                    self.connect(depth, false)?;
                 }
                 Ok(None)
             }
@@ -854,7 +964,10 @@ mod tests {
     #[test]
     fn each_state_has_a_name() {
         let names: Vec<_> = WorldState::ALL.into_iter().map(WorldState::name).collect();
-        assert_eq!(names, ["connecting", "connected", "disconnected"]);
+        assert_eq!(
+            names,
+            ["connecting", "connected", "disconnected", "reconnecting"]
+        );
     }
 
     #[test]

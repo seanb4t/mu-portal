@@ -183,6 +183,13 @@ impl ScriptedGame {
             .await;
     }
 
+    /// Waits until the game refused `count` connects in all.
+    pub async fn wait_for_refused(&self, count: usize) {
+        let mut receiver = self.shared.refused.subscribe();
+        // The sender lives in `self`, so the channel stays open.
+        let _ = receiver.wait_for(|refused| *refused >= count).await;
+    }
+
     /// Waits until `done` holds for the reads of the game, as [`ScriptedGame::reads`] gives them.
     pub async fn wait_reads(&self, done: impl Fn(&[Vec<(Instant, Vec<u8>)>]) -> bool) {
         let mut receiver = self.shared.connections.subscribe();

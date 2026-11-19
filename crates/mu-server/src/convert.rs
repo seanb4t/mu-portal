@@ -52,7 +52,9 @@ pub fn state(state: WorldState) -> proto::WorldState {
     match state {
         WorldState::Connecting => proto::WorldState::WORLD_STATE_CONNECTING,
         WorldState::Connected => proto::WorldState::WORLD_STATE_CONNECTED,
-        WorldState::Disconnected => proto::WorldState::WORLD_STATE_DISCONNECTED,
+        WorldState::Disconnected | WorldState::Reconnecting => {
+            proto::WorldState::WORLD_STATE_DISCONNECTED
+        }
     }
 }
 

@@ -58,6 +58,14 @@ impl WorldSetup {
         }
     }
 
+    /// Reads the password from `source` at each connect, instead of the password of
+    /// [`WorldSetup::new`].
+    #[must_use]
+    pub fn with_secret_source(mut self, source: SecretSource) -> Self {
+        self.secret = Some(source);
+        self
+    }
+
     /// Sends the login at the moment that `moment` gives, instead of at the connect.
     #[must_use]
     pub fn with_login_moment(mut self, moment: Arc<dyn LoginMoment>) -> Self {
@@ -136,6 +144,7 @@ impl Portal {
                 framer: setup.framer,
                 login_moment: setup.login_moment,
                 keepalive: setup.world.keepalive,
+                reconnect: setup.world.reconnect,
                 hooks: setup.hooks,
                 handlers: setup.handlers,
                 journal: Arc::clone(&journal),

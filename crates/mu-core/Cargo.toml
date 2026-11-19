@@ -12,6 +12,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+fastrand = { workspace = true }
 figment2 = { workspace = true }
 futures = { workspace = true }
 governor = { workspace = true }

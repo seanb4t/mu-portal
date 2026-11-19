@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use mu_core::{
-    ByteStream, Command, Event, EventKind, Handler, MemoryJournal, Portal, PortalError,
+    ByteStream, Command, Event, EventKind, Handler, MemoryJournal, Portal, PortalError, Reconnect,
     ResolvedWorld, Secret, Seq, Transport, WorldId, WorldSetup, WorldState,
 };
 use mu_fake_server::{FakeGame, FakeTransport};
@@ -35,7 +35,10 @@ pub fn world(text: &str, password: &str) -> (WorldSetup, FakeGame) {
 
 pub fn world_on(text: &str, password: &str, transport: FakeTransport) -> (WorldSetup, FakeGame) {
     let game = transport.game();
-    let resolved = ResolvedWorld::with_default_login(id(text), "env:PW".parse().unwrap());
+    let resolved = ResolvedWorld {
+        reconnect: Reconnect::Off,
+        ..ResolvedWorld::with_default_login(id(text), "env:PW".parse().unwrap())
+    };
     let setup = WorldSetup::new(
         resolved,
         Some(Secret::new(password.to_owned())),
@@ -227,7 +230,10 @@ impl AsyncWrite for BrokenStream {
 
 /// The world `alpha/aria` on `transport`, with no login and no password.
 pub fn bare_world(transport: impl Transport) -> WorldSetup {
-    let world = ResolvedWorld::new(id("alpha/aria"));
+    let world = ResolvedWorld {
+        reconnect: Reconnect::Off,
+        ..ResolvedWorld::new(id("alpha/aria"))
+    };
     WorldSetup::new(world, None, Arc::new(transport))
 }
 
