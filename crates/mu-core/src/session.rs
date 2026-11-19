@@ -637,12 +637,7 @@ impl Session {
 
     /// Starts the next attempt to connect. A failed read of the secret ends the wait in `Down`.
     fn on_attempt(&mut self) {
-        let started = if self.parts.stopped.load(Ordering::Acquire) {
-            Err(PortalError::Stopped)
-        } else {
-            self.connect(0, true)
-        };
-        if let Err(error) = started {
+        if let Err(error) = self.connect(0, true) {
             self.conn = Conn::Down;
             self.set_state(WorldState::Disconnected);
             self.record(
@@ -712,10 +707,14 @@ impl Session {
         }
     }
 
-    /// Starts each connect of the world: reads the secret, opens the `world.connection` span, and
-    /// starts the connect of the transport under [`CONNECT_TIMEOUT`]. A failed read starts
-    /// nothing. A connect that is not an `attempt` sets the count of failed attempts to 0.
+    /// Starts each connect of the world: refuses a stopped server and a world with no
+    /// transport, reads the secret, opens the `world.connection` span, and starts the connect of
+    /// the transport under [`CONNECT_TIMEOUT`]. A refusal or a failed read starts nothing. A
+    /// connect that is not an `attempt` sets the count of failed attempts to 0.
     fn connect(&mut self, depth: u8, attempt: bool) -> Result<(), PortalError> {
+        if self.parts.stopped.load(Ordering::Acquire) {
+            return Err(PortalError::Stopped);
+        }
         let Some(transport) = self.parts.transport.clone() else {
             return Err(PortalError::TlsNotSupported(self.world().clone()));
         };
@@ -980,12 +979,6 @@ impl Session {
                 ))
             }
             Command::Connect { .. } => {
-                if self.parts.stopped.load(Ordering::Acquire) {
-                    return Err(PortalError::Stopped);
-                }
-                if self.parts.transport.is_none() {
-                    return Err(PortalError::TlsNotSupported(self.world().clone()));
-                }
                 if matches!(self.conn, Conn::Down | Conn::Waiting { .. }) {
                     self.connect(depth, false)?;
                 }
