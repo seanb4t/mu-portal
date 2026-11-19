@@ -1,13 +1,15 @@
 //! The telemetry of the engine under the layers of `mu server`, with in-memory exporters.
 
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use futures::StreamExt as _;
 use mu_cli::telemetry::Providers;
 use mu_core::{
-    Command, Event, EventKind, Journal, MemoryJournal, NewEvent, ResolvedWorld, Seq, Source,
-    WorldSetup,
+    Backoff, Command, Event, EventKind, Journal, Keepalive, KeepaliveMode, MemoryJournal, NewEvent,
+    Portal, Reconnect, ResolvedWorld, Seq, Source, WorldSetup, WorldState,
 };
+use mu_fake_server::{Script, ScriptedGame};
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::metrics::InMemoryMetricExporter;
 use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
@@ -17,7 +19,10 @@ use tokio::sync::watch;
 use tracing::{Dispatch, Subscriber};
 use tracing_subscriber::layer::SubscriberExt as _;
 
-use engine::{id, idle, on, portal, started, wait_event, world};
+use engine::{
+    BrokenTransport, bare_world, broken_world, id, idle, on, portal, started, wait_event,
+    wait_state, world,
+};
 
 #[path = "../../mu-core/tests/support/mod.rs"]
 mod engine;
@@ -396,7 +401,7 @@ fn lag_behind_the_head() {
 }
 
 /// A world on a fake game whose handler answers `go` from the game with `count` echoes.
-fn burst(count: usize) -> (WorldSetup, mu_core::FakeGame) {
+fn burst(count: usize) -> (WorldSetup, mu_fake_server::FakeGame) {
     let handler = on(move |event| {
         if event.kind == EventKind::Line && event.text == "go" {
             (0..count)
@@ -499,4 +504,87 @@ fn world_without_transport_is_disconnected() {
             Some(1)
         );
     });
+}
+
+/// A portal with `alpha/aria` on `game`, with no login and the default reconnect, changed by
+/// `change`.
+fn world_on_game(game: &ScriptedGame, change: impl FnOnce(&mut ResolvedWorld)) -> Portal {
+    let mut world = ResolvedWorld::new(id("alpha/aria"));
+    change(&mut world);
+    portal(
+        vec![WorldSetup::new(world, None, Arc::new(game.clone()))],
+        Vec::new(),
+    )
+}
+
+#[test]
+fn keepalive_lines_are_counted() {
+    let memory = Memory::new();
+    run_paused(memory.subscriber(), async {
+        let game = ScriptedGame::new(Script::new());
+        let portal = world_on_game(&game, |world| {
+            let keepalive = Keepalive::new("IDLE", 60).unwrap();
+            world.keepalive = keepalive.with_mode(KeepaliveMode::Interval);
+        });
+        portal.connect(&id("alpha/aria")).await.unwrap();
+        wait_state(&portal, &id("alpha/aria"), WorldState::Connected).await;
+        // The paused clock moves to 130 seconds, through the keepalives at 60 and 120.
+        let until = tokio::time::timeout(Duration::from_secs(130), std::future::pending::<()>());
+        assert!(until.await.is_err());
+    });
+    assert_eq!(
+        memory.value("mu.keepalive.sent", &[("mu.world", "alpha/aria")]),
+        Some(2)
+    );
+}
+
+#[test]
+fn gauge_shows_reconnecting() {
+    let memory = Memory::new();
+    run_paused(memory.subscriber(), async {
+        let game = ScriptedGame::new(Script::new().close());
+        let portal = world_on_game(&game, |world| {
+            world.reconnect = Reconnect::Backoff(Backoff::new(1, 60, 30).unwrap());
+        });
+        portal.connect(&id("alpha/aria")).await.unwrap();
+        wait_state(&portal, &id("alpha/aria"), WorldState::Reconnecting).await;
+        let state = |name| {
+            memory.value(
+                "mu.world.state",
+                &[("mu.world", "alpha/aria"), ("mu.world.state.name", name)],
+            )
+        };
+        assert_eq!(
+            (state("reconnecting"), state("connected")),
+            (Some(1), Some(0))
+        );
+    });
+}
+
+#[test]
+fn lost_connection_span_is_error() {
+    let memory = Memory::new();
+    run_paused(memory.subscriber(), async {
+        let (portal, aria) = broken_world(bare_world(BrokenTransport::refusing_writes())).await;
+        // The write of the line fails, so the connection is lost.
+        let _ = portal.send(&aria, "hello").await;
+        wait_state(&portal, &aria, WorldState::Disconnected).await;
+    });
+    let spans: Vec<_> = memory
+        .finished_spans()
+        .into_iter()
+        .filter(|span| span.name == "world.connection")
+        .collect();
+    assert_eq!(spans.len(), 1, "{spans:?}");
+    let end = spans[0]
+        .attributes
+        .iter()
+        .find(|pair| pair.key.as_str() == "mu.connection.end")
+        .map(|pair| pair.value.to_string());
+    assert_eq!(end.as_deref(), Some("lost"));
+    assert!(
+        matches!(spans[0].status, opentelemetry::trace::Status::Error { .. }),
+        "{:?}",
+        spans[0].status
+    );
 }

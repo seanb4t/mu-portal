@@ -2,6 +2,8 @@
 
 use std::process::{Command, ExitStatus, Output};
 
+use mu_fake_server::{Script, ScriptedGame};
+use mu_proto::EventKind;
 use opentelemetry_proto::tonic::common::v1::KeyValue;
 use opentelemetry_proto::tonic::common::v1::any_value::Value;
 use opentelemetry_proto::tonic::metrics::v1::metric::Data;
@@ -908,11 +910,7 @@ async fn subscribe_past_the_end() {
     stop(session.server).await;
     let failed: Vec<_> = spans_named(&collector, "mu.v1.PortalService/Subscribe")
         .into_iter()
-        .filter(|span| {
-            span.status
-                .as_ref()
-                .is_some_and(|status| status.code == StatusCode::Error as i32)
-        })
+        .filter(is_error)
         .collect();
     assert_eq!(failed.len(), 1, "{failed:?}");
 }
@@ -958,6 +956,82 @@ async fn connection_of_a_fake_world() {
     Setup::endpoint(&collector.url()).run(&[]).await;
     let span = one_span(&collector, "world.connection");
     assert_eq!(attribute(&span, "mu.world").as_deref(), Some("alpha/aria"));
+    assert_eq!(
+        attribute(&span, "mu.connection.end").as_deref(),
+        Some("stopped")
+    );
+}
+
+/// Whether `span` has the status `error`.
+fn is_error(span: &Span) -> bool {
+    span.status
+        .as_ref()
+        .is_some_and(|status| status.code == StatusCode::Error as i32)
+}
+
+#[tokio::test]
+async fn failed_command_span_is_error() {
+    let collector = Collector::start(Mode::Http).await;
+    let mut session = Setup::endpoint(&collector.url()).start().await;
+    session.client.disconnect("alpha/aria").await.unwrap();
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    let error = session
+        .client
+        .send("alpha/aria", "hello")
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "failed_precondition");
+    stop(session.server).await;
+    let sends: Vec<_> = spans_named(&collector, "command")
+        .into_iter()
+        .filter(|span| attribute(span, "mu.command").as_deref() == Some("send"))
+        .collect();
+    assert_eq!(sends.len(), 1, "{sends:?}");
+    assert!(is_error(&sends[0]), "{:?}", sends[0]);
+}
+
+#[tokio::test]
+async fn failed_connect_span_is_error() {
+    let collector = Collector::start(Mode::Http).await;
+    let listening = ScriptedGame::new(Script::new()).listen().await.unwrap();
+    let port = listening.addr().port();
+    listening.stop().await;
+    let config = ConfigDir::tcp_world(port, "[reconnect]\nmode = \"off\"\n").file(
+        "server.toml",
+        &format!("[telemetry]\nendpoint = \"{}\"\n", collector.url()),
+    );
+    let builder = ServerBuilder::new().env("MU_CONFIG", Some(config.path()));
+    let mut session = Session::start(builder).await;
+    session.client.connect("alpha/aria").await.unwrap();
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    stop(session.server).await;
+    let span = one_span(&collector, "world.connection");
+    assert_eq!(
+        attribute(&span, "mu.connection.end").as_deref(),
+        Some("connect_failed")
+    );
+    assert!(is_error(&span), "{span:?}");
+}
+
+#[tokio::test]
+async fn closed_connection_span_is_not_error() {
+    let collector = Collector::start(Mode::Http).await;
+    let mut session = Setup::endpoint(&collector.url()).start().await;
+    session.client.send("alpha/aria", "@drop").await.unwrap();
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    stop(session.server).await;
+    let span = one_span(&collector, "world.connection");
+    assert_eq!(
+        attribute(&span, "mu.connection.end").as_deref(),
+        Some("closed")
+    );
+    assert!(!is_error(&span), "{span:?}");
 }
 
 #[tokio::test]

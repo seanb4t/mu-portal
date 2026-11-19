@@ -1,5 +1,8 @@
 //! The scenarios of the world-sessions capability, run on the built binary.
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use mu_fake_server::{Script, ScriptedGame};
 use mu_proto::{EventKind, Source, WorldState};
 
 use support::process::{PW, ServerBuilder, Session, TWO_WORLDS};
@@ -253,15 +256,6 @@ async fn configured_world_waits() {
 }
 
 #[tokio::test]
-async fn configured_world_cannot_connect_yet() {
-    let conf = ConfigDir::base();
-    let session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
-    let error = session.client.connect("alpha/aria").await.unwrap_err();
-    assert_eq!(error.code, "failed_precondition");
-    assert!(error.message.contains("alpha/aria"), "{}", error.message);
-}
-
-#[tokio::test]
 async fn bad_configuration_stops_the_start() {
     let conf = ConfigDir::base().file("games/alpha.toml", &BASE_GAME.replace("4201", "70000"));
     let builder = ServerBuilder::new().arg("--config").arg(conf.path());
@@ -298,4 +292,126 @@ async fn server_does_not_read_a_configured_secret() {
     let session = Session::start(builder).await;
     let worlds = session.client.list_worlds().await.unwrap();
     assert_eq!(worlds.len(), 1);
+}
+
+#[tokio::test]
+async fn autoconnect_world_with_a_missing_secret() {
+    let game = ScriptedGame::new(Script::new());
+    let listening = game.listen().await.unwrap();
+    let conf = ConfigDir::tcp_world(
+        listening.addr().port(),
+        "autoconnect = true\n[login]\nname = \"Aria\"\nsecret = \"env:ARIA_PW\"\n",
+    );
+    let builder = ServerBuilder::new()
+        .arg("--config")
+        .arg(conf.path())
+        .env("ARIA_PW", None::<&str>);
+    let session = Session::start(builder).await;
+    let worlds = session.client.list_worlds().await.unwrap();
+    let states: Vec<(&str, bool)> = worlds
+        .iter()
+        .map(|world| {
+            let down = world.state == WorldState::WORLD_STATE_DISCONNECTED;
+            (world.id.as_str(), down)
+        })
+        .collect();
+    assert_eq!(states, [("alpha/aria", true)]);
+    assert_eq!(game.connects(), 0);
+}
+
+#[tokio::test]
+async fn autoconnect_world_connects_at_start() {
+    let game = ScriptedGame::new(Script::new());
+    let listening = game.listen().await.unwrap();
+    let conf = ConfigDir::tcp_world(listening.addr().port(), "autoconnect = true\n");
+    let mut session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_CONNECTED, 0)
+        .await;
+    assert_eq!(game.connects(), 1);
+}
+
+#[tokio::test]
+async fn configured_world_connects_on_request() {
+    let game = ScriptedGame::new(Script::new());
+    let listening = game.listen().await.unwrap();
+    let conf = ConfigDir::tcp_world(listening.addr().port(), "");
+    let mut session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
+    session.client.connect("alpha/aria").await.unwrap();
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_CONNECTED, 0)
+        .await;
+}
+
+#[tokio::test]
+async fn failed_autoconnect_does_not_stop_start() {
+    let conf = ConfigDir::base().file(
+        "characters/alpha/aria.toml",
+        "tls = true\nautoconnect = true\n",
+    );
+    let builder = ServerBuilder::new()
+        .fake_world("beta/bryn", "PW", PW)
+        .arg("--config")
+        .arg(conf.path());
+    let mut session = Session::start(builder).await;
+    session
+        .kind("beta/bryn", EventKind::EVENT_KIND_CONNECTED, 0)
+        .await;
+    let worlds = session.client.list_worlds().await.unwrap();
+    let states: Vec<(&str, bool, bool)> = worlds
+        .iter()
+        .map(|world| {
+            (
+                world.id.as_str(),
+                world.state == WorldState::WORLD_STATE_DISCONNECTED,
+                world.state == WorldState::WORLD_STATE_CONNECTED,
+            )
+        })
+        .collect();
+    assert_eq!(
+        states,
+        [("alpha/aria", true, false), ("beta/bryn", false, true)]
+    );
+}
+
+#[tokio::test]
+async fn fake_world_does_not_reconnect() {
+    let mut session = Session::with_worlds(&["alpha/aria"]).await;
+    session.client.send("alpha/aria", "@drop").await.unwrap();
+    let gone = session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    let worlds = session.client.list_worlds().await.unwrap();
+    assert_eq!(worlds[0].state, WorldState::WORLD_STATE_DISCONNECTED);
+    session.no_connect_after("alpha/aria", gone.seq).await;
+}
+
+fn now_ms() -> i64 {
+    let since = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    i64::try_from(since.as_millis()).unwrap()
+}
+
+#[tokio::test]
+async fn list_worlds_shows_reconnecting() {
+    let game = ScriptedGame::new(Script::new().close());
+    let listening = game.listen().await.unwrap();
+    // A long first wait, so the call comes before the next attempt.
+    let conf = ConfigDir::tcp_world(
+        listening.addr().port(),
+        "[reconnect]\ninitial = 30\nmax = 60\n",
+    );
+    let mut session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
+    session.client.connect("alpha/aria").await.unwrap();
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    let called = now_ms();
+    let worlds = session.client.list_worlds().await.unwrap();
+    assert!(
+        worlds[0].state == WorldState::WORLD_STATE_RECONNECTING,
+        "{:?}",
+        worlds[0]
+    );
+    let next = worlds[0].next_attempt_ms.unwrap();
+    assert!(next > called, "{next} is not after {called}");
 }

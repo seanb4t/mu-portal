@@ -56,16 +56,62 @@ secret = "env:ARIA_PW"
 | Field | Meaning |
 |---|---|
 | `host`, `port`, `tls` | The place to connect |
+| `autoconnect` | Whether the world connects at the start of the server |
 | `charset` | The text encoding, `utf-8` or `iso-8859-1` |
 | `columns`, `rows` | The size of the window that the game sees |
 | `login.template` | The login line, with `{login}` and `{password}` in it |
 | `login.name` | The login name |
 | `login.secret` | A reference to the password, such as `env:ARIA_PW` |
-| `keepalive.command`, `keepalive.seconds` | A line to send, and the time between two sends |
+| `keepalive.mode`, `keepalive.command`, `keepalive.seconds` | When to send a line that keeps the connection open, the line, and its seconds |
+| `reconnect.mode`, `reconnect.initial`, `reconnect.max`, `reconnect.attempts` | Whether the world connects again after a drop, and how long it waits |
 | `rules`, `scripts` | Entries, each with an `id` |
 | `disable` | The ids of inherited rules and scripts to remove |
 
 A password is never a value in a file. `login.secret` names a place that holds it. Each world must set a host and a port. `login.name` and `login.secret` go together. A world with neither of them logs in by hand.
+
+## Connect, keepalive and reconnect
+
+Each of these fields has a default and a range:
+
+| Field | Default | Range |
+|---|---|---|
+| `autoconnect` | `false` | `true` or `false` |
+| `keepalive.mode` | `"idle"` | `"idle"`, `"interval"` or `"off"` |
+| `keepalive.seconds` | none | 1 to 86400 |
+| `reconnect.mode` | `"backoff"` | `"backoff"` or `"off"` |
+| `reconnect.initial` | `1` | 1 to 3600 |
+| `reconnect.max` | `60` | 1 to 86400 |
+| `reconnect.attempts` | `30` | 0 to 10000 |
+
+If no file sets one of these fields, `mu world show` names the source `default` for it.
+
+A world with `autoconnect = true` connects at the start of the server. Any other world waits for a client to ask it to connect.
+
+The connection is plain TCP. The login line goes to the game with no encryption, so a host on the network path can read the password. A wrong `host` or `port` sends the line to another service. A world with `tls = true` cannot connect yet. Use a password for the game that you use nowhere else.
+
+The keepalive sends `keepalive.command` to the game. In the mode `"idle"`, the server sends it after `keepalive.seconds` with no write to the game. In the mode `"interval"`, the server sends it every `keepalive.seconds`. In the mode `"off"`, the server sends nothing. Unless the mode is `"off"`, a world that sets the command or the seconds must set both. A world that sets neither has no keepalive.
+
+After a drop that the player did not ask for, the world connects again. The first wait is `reconnect.initial` seconds. Each next wait is twice as long, up to `reconnect.max` seconds. The server adds a random extra time of at most 20% of the wait. `reconnect.initial` must not be greater than `reconnect.max`.
+
+An attempt fails unless its connection stays up for `reconnect.max` seconds. After `reconnect.attempts` failed attempts in a row, the world stops. With `reconnect.attempts = 0`, the world never stops. With `reconnect.mode = "off"`, the world does not connect again.
+
+This game connects at the start of the server. It sends the keepalive line of `tinymux` every 60 seconds. Between two attempts, it waits from 5 to 300 seconds, with no limit on the attempts:
+
+```toml
+# games/alpha.toml
+extends = "tinymux"
+host = "mux.example.org"
+port = 4201
+autoconnect = true
+
+[keepalive]
+mode = "interval"
+
+[reconnect]
+initial = 5
+max = 300
+attempts = 0
+```
 
 ## The layers
 

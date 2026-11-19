@@ -35,6 +35,10 @@ pub const PW: &str = "s3cret-pw";
 /// The fake worlds `alpha/aria` and `beta/bryn`, each with [`PW`].
 pub const TWO_WORLDS: &[&str] = &["alpha/aria", "beta/bryn"];
 
+/// A time past the first attempt of the default reconnect, which comes 1 second after a drop,
+/// plus at most 5 percent.
+pub const PAST_FIRST_WAIT: Duration = Duration::from_secs(3);
+
 /// The socket path and the process id of a serving line.
 pub fn served(line: &str) -> Option<(PathBuf, u32)> {
     let rest = line.strip_prefix(SERVING)?.strip_prefix(' ')?;
@@ -470,6 +474,14 @@ impl Session {
     /// Every event that the stream gave so far.
     pub fn seen(&self) -> &[mu_proto::Event] {
         &self.seen
+    }
+
+    /// Checks that the stream gives no connect event of `world` after the number `after`
+    /// within [`PAST_FIRST_WAIT`].
+    pub async fn no_connect_after(&mut self, world: &str, after: u64) {
+        let connect = self.kind(world, mu_proto::EventKind::EVENT_KIND_CONNECTED, after);
+        let found = tokio::time::timeout(PAST_FIRST_WAIT, connect).await;
+        assert!(found.is_err(), "{world} connected again: {:?}", found.ok());
     }
 }
 

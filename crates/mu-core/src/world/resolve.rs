@@ -11,12 +11,16 @@ use crate::id::WorldId;
 use crate::secret::SecretRef;
 
 use super::builtin::built_in_layers;
-use super::check::check_layer;
+use super::check::{check_first_wait, check_layer};
 use super::error::ConfigError;
 use super::layer::{
     KeepaliveFields, Layer, LayerFields, LayerKey, LayerOrigin, LayerSource, LoginFields,
+    ReconnectFields,
 };
-use super::{Entry, EntryKind, Keepalive, Login, ResolvedWorld, WorldDefaults};
+use super::{
+    Backoff, Entry, EntryKind, Keepalive, KeepaliveMode, Login, Reconnect, ReconnectMode,
+    ResolvedWorld, WorldDefaults,
+};
 
 /// The paths of the fields that a resolved world can have, in the order of `mu world show`. A
 /// field of [`LayerFields`] that is not here gets no source.
@@ -24,14 +28,20 @@ pub const FIELD_PATHS: &[&str] = &[
     "host",
     "port",
     "tls",
+    "autoconnect",
     "charset",
     "columns",
     "rows",
     "login.template",
     "login.name",
     "login.secret",
+    "keepalive.mode",
     "keepalive.command",
     "keepalive.seconds",
+    "reconnect.mode",
+    "reconnect.initial",
+    "reconnect.max",
+    "reconnect.attempts",
 ];
 
 /// Resolves each world of the layers of `sources`, in the order of their ids.
@@ -174,6 +184,17 @@ fn defaults() -> LayerFields {
             template: Some(defaults.login_template.to_owned()),
             ..LoginFields::default()
         }),
+        autoconnect: Some(defaults.autoconnect),
+        keepalive: Some(KeepaliveFields {
+            mode: Some(defaults.keepalive_mode),
+            ..KeepaliveFields::default()
+        }),
+        reconnect: Some(ReconnectFields {
+            mode: Some(ReconnectMode::Backoff),
+            initial: Some(defaults.reconnect.initial()),
+            max: Some(defaults.reconnect.max()),
+            attempts: Some(defaults.reconnect.attempts()),
+        }),
         ..LayerFields::default()
     }
 }
@@ -294,27 +315,10 @@ fn finish(
         (None, Some(_)) => return Err(missing("login.name")),
         (None, None) => None,
     };
-    let keepalive = merged.keepalive.unwrap_or_default();
-    let keepalive = match keepalive {
-        KeepaliveFields {
-            command: Some(command),
-            seconds: Some(seconds),
-        } => Some(
-            Keepalive::new(command, seconds).map_err(|error| ConfigError::of_field(&id, &error))?,
-        ),
-        KeepaliveFields {
-            command: Some(_),
-            seconds: None,
-        } => return Err(missing("keepalive.seconds")),
-        KeepaliveFields {
-            command: None,
-            seconds: Some(_),
-        } => return Err(missing("keepalive.command")),
-        KeepaliveFields {
-            command: None,
-            seconds: None,
-        } => None,
-    };
+    let keepalive_fields = merged.keepalive.unwrap_or_default();
+    let keepalive_mode = keepalive_fields.mode.unwrap_or_default();
+    let keepalive = keepalive(&id, keepalive_fields)?;
+    let reconnect = reconnect(&id, &merged.reconnect.unwrap_or_default())?;
     let mut sources = sources;
     if login.is_none() {
         sources.retain(|path, _| !path.starts_with("login."));
@@ -325,15 +329,50 @@ fn finish(
         host,
         port,
         tls: merged.tls.unwrap_or(defaults.tls),
+        autoconnect: merged.autoconnect.unwrap_or(defaults.autoconnect),
         charset,
         columns: merged.columns.unwrap_or(defaults.columns),
         rows: merged.rows.unwrap_or(defaults.rows),
         login,
+        keepalive_mode,
         keepalive,
+        reconnect,
         rules,
         scripts,
         sources,
     })
+}
+
+/// The keepalive of the world `id` from its merged table. The mode `off` has no keepalive and
+/// needs neither half.
+fn keepalive(id: &WorldId, fields: KeepaliveFields) -> Result<Option<Keepalive>, ConfigError> {
+    if fields.mode == Some(KeepaliveMode::Off) {
+        return Ok(None);
+    }
+    let missing = |field: &str| ConfigError::field(id, field, "no layer sets it");
+    match (fields.command, fields.seconds) {
+        (Some(command), Some(seconds)) => Keepalive::new(command, seconds)
+            .map(|keepalive| keepalive.with_mode(fields.mode.unwrap_or_default()))
+            .map_err(|error| ConfigError::of_field(id, &error)),
+        (Some(_), None) => Err(missing("keepalive.seconds")),
+        (None, Some(_)) => Err(missing("keepalive.command")),
+        (None, None) => Ok(None),
+    }
+}
+
+/// The reconnect of the world `id` from its merged table.
+fn reconnect(id: &WorldId, fields: &ReconnectFields) -> Result<Reconnect, ConfigError> {
+    let defaults = WorldDefaults::default().reconnect;
+    let initial = fields.initial.unwrap_or(defaults.initial());
+    let max = fields.max.unwrap_or(defaults.max());
+    // The rule holds for the merged values whatever the mode.
+    check_first_wait(initial, max).map_err(|error| ConfigError::of_field(id, &error))?;
+    if fields.mode == Some(ReconnectMode::Off) {
+        return Ok(Reconnect::Off);
+    }
+    Backoff::new(initial, max, fields.attempts.unwrap_or(defaults.attempts()))
+        .map(Reconnect::Backoff)
+        .map_err(|error| ConfigError::of_field(id, &error))
 }
 
 #[cfg(test)]

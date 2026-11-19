@@ -80,6 +80,7 @@ enum WorldState {
   WORLD_STATE_CONNECTING = 1;
   WORLD_STATE_CONNECTED = 2;
   WORLD_STATE_DISCONNECTED = 3;
+  WORLD_STATE_RECONNECTING = 4;
 }
 
 message ListWorldsRequest {}
@@ -91,6 +92,9 @@ message ListWorldsResponse {
 message World {
   string id = 1;
   WorldState state = 2;
+  // In the state WORLD_STATE_RECONNECTING, the time of the next attempt, in milliseconds since
+  // the Unix epoch.
+  optional int64 next_attempt_ms = 3;
 }
 
 message SendRequest {

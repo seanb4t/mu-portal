@@ -1,4 +1,4 @@
-//! The fake game: a game in the process that stands in for a real one in tests and
+//! The in-memory fake game: a game in the process that stands in for a real one in tests and
 //! behind the `--fake-world` flag.
 
 use std::io;
@@ -9,9 +9,9 @@ use futures::future::BoxFuture;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _, DuplexStream};
 use tokio::sync::{mpsc, watch};
 
-use crate::framer::{Framer as _, Inbound, LineFramer};
-use crate::id::WorldId;
-use crate::transport::{ByteStream, Transport};
+use mu_core::framer::{Framer as _, Inbound, LineFramer};
+use mu_core::id::WorldId;
+use mu_core::transport::{ByteStream, Transport};
 
 /// The answer of the fake game to a wrong login.
 pub const WRONG_LOGIN: &str = "Either that player does not exist, or has a different password.";
@@ -156,7 +156,7 @@ impl FakeTransport {
 
     /// A fake game that accepts `login` with the password in `secret`.
     #[must_use]
-    pub fn with_secret(login: &str, secret: &crate::secret::Secret) -> Self {
+    pub fn with_secret(login: &str, secret: &mu_core::Secret) -> Self {
         Self::new(login, secret.expose())
     }
 
@@ -200,7 +200,7 @@ mod tests {
     use tokio::io::{AsyncBufReadExt as _, BufReader};
 
     use super::*;
-    use crate::telnet::{self, IAC, WILL, opt};
+    use mu_core::telnet::{self, IAC, WILL, opt};
 
     async fn open() -> (FakeGame, tokio::io::Lines<BufReader<Box<dyn ByteStream>>>) {
         let (game, stream) = open_raw().await;

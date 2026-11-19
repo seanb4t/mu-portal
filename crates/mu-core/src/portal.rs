@@ -7,55 +7,74 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::command::{Command, Envelope};
+use crate::connection::{Immediate, LoginMoment};
 use crate::error::PortalError;
 use crate::event::Seq;
 use crate::framer::{LineFramer, NewFramer};
 use crate::id::WorldId;
 use crate::journal::{Journal, Subscription};
 use crate::script::{Handler, Hook};
-use crate::secret::Secret;
-use crate::session::{self, Reply, Request, Router, SessionParts, WorldState};
+use crate::secret::{Secret, SecretSource};
+use crate::session::{self, Reply, Request, Router, SessionParts, WorldState, WorldStatus};
 use crate::transport::Transport;
 use crate::world::ResolvedWorld;
 
-/// One world with its password, its transport and its scripts.
+/// One world with the source of its password, its transport and its scripts.
 pub struct WorldSetup {
     world: ResolvedWorld,
-    password: Option<Secret>,
+    secret: Option<SecretSource>,
     transport: Option<Arc<dyn Transport>>,
     framer: NewFramer,
+    login_moment: Arc<dyn LoginMoment>,
     hooks: Vec<Arc<dyn Hook>>,
     handlers: Vec<Arc<dyn Handler>>,
 }
 
 impl WorldSetup {
-    /// A world with the [`LineFramer`], no hook and no handler.
+    /// A world with the [`LineFramer`], the login at the connect, no hook and no handler. Every
+    /// connect uses the same `password`.
     #[must_use]
     pub fn new(
         world: ResolvedWorld,
         password: Option<Secret>,
         transport: Arc<dyn Transport>,
     ) -> Self {
-        Self::with(world, password, Some(transport))
+        Self::with(world, password.map(SecretSource::Fixed), Some(transport))
     }
 
     fn with(
         world: ResolvedWorld,
-        password: Option<Secret>,
+        secret: Option<SecretSource>,
         transport: Option<Arc<dyn Transport>>,
     ) -> Self {
         Self {
             world,
-            password,
+            secret,
             transport,
             framer: Arc::new(|| Box::new(LineFramer::new())),
+            login_moment: Arc::new(Immediate),
             hooks: Vec::new(),
             handlers: Vec::new(),
         }
     }
 
-    /// A world with no transport and no password. It stays disconnected, and a connect of it
-    /// fails with [`PortalError::NoTransport`].
+    /// Reads the password from `source` at each connect, instead of the password of
+    /// [`WorldSetup::new`].
+    #[must_use]
+    pub fn with_secret_source(mut self, source: SecretSource) -> Self {
+        self.secret = Some(source);
+        self
+    }
+
+    /// Sends the login at the moment that `moment` gives, instead of at the connect.
+    #[must_use]
+    pub fn with_login_moment(mut self, moment: Arc<dyn LoginMoment>) -> Self {
+        self.login_moment = moment;
+        self
+    }
+
+    /// A world with no transport and no password: a TLS world. It stays disconnected, and a
+    /// connect of it fails with [`PortalError::TlsNotSupported`].
     #[must_use]
     pub fn without_transport(world: ResolvedWorld) -> Self {
         Self::with(world, None, None)
@@ -87,11 +106,13 @@ impl WorldSetup {
 #[derive(Clone)]
 pub struct Portal {
     router: Router,
-    states: Arc<BTreeMap<WorldId, watch::Receiver<WorldState>>>,
+    states: Arc<BTreeMap<WorldId, watch::Receiver<WorldStatus>>>,
     journal: Arc<dyn Journal>,
     stopped: Arc<AtomicBool>,
     /// The last event that the server handlers handled. None with no server handlers.
     handled: Option<watch::Receiver<Seq>>,
+    /// The worlds that connect at the start, in the order of the ids.
+    at_start: Arc<Vec<WorldId>>,
 }
 
 impl Portal {
@@ -107,9 +128,15 @@ impl Portal {
         let mut senders = BTreeMap::new();
         let mut receivers = Vec::new();
         let mut states = BTreeMap::new();
+        let mut at_start: Vec<WorldId> = worlds
+            .iter()
+            .filter(|setup| setup.world.autoconnect)
+            .map(|setup| setup.world.id.clone())
+            .collect();
+        at_start.sort();
         for setup in worlds {
             let (sender, requests) = mpsc::unbounded_channel();
-            let (state, state_receiver) = watch::channel(WorldState::Disconnected);
+            let (state, state_receiver) = watch::channel(WorldStatus::of(WorldState::Disconnected));
             senders.insert(setup.world.id.clone(), sender);
             states.insert(setup.world.id.clone(), state_receiver);
             receivers.push((setup, requests, state));
@@ -120,9 +147,12 @@ impl Portal {
             tokio::spawn(session::run(SessionParts {
                 world: setup.world.id,
                 login: setup.world.login,
-                password: setup.password,
+                secret: setup.secret,
                 transport: setup.transport,
                 framer: setup.framer,
+                login_moment: setup.login_moment,
+                keepalive: setup.world.keepalive,
+                reconnect: setup.world.reconnect,
                 hooks: setup.hooks,
                 handlers: setup.handlers,
                 journal: Arc::clone(&journal),
@@ -157,6 +187,7 @@ impl Portal {
             journal,
             stopped,
             handled,
+            at_start: Arc::new(at_start),
         }
     }
 
@@ -166,21 +197,21 @@ impl Portal {
         &self.journal
     }
 
-    /// Each world with its state, in the order of the ids.
+    /// Each world with its status, in the order of the ids.
     #[must_use]
-    pub fn worlds(&self) -> Vec<(WorldId, WorldState)> {
+    pub fn worlds(&self) -> Vec<(WorldId, WorldStatus)> {
         self.states
             .iter()
             .map(|(id, state)| (id.clone(), *state.borrow()))
             .collect()
     }
 
-    /// A receiver of the state of `world`.
+    /// A receiver of the status of `world`.
     ///
     /// # Errors
     ///
     /// [`PortalError::UnknownWorld`] for a world that does not exist.
-    pub fn state(&self, world: &WorldId) -> Result<watch::Receiver<WorldState>, PortalError> {
+    pub fn state(&self, world: &WorldId) -> Result<watch::Receiver<WorldStatus>, PortalError> {
         self.states
             .get(world)
             .cloned()
@@ -201,7 +232,7 @@ impl Portal {
     /// # Errors
     ///
     /// [`PortalError::UnknownWorld`], [`PortalError::NotConnected`],
-    /// [`PortalError::NoTransport`], [`PortalError::NoPassword`], [`PortalError::LineBreak`], or
+    /// [`PortalError::TlsNotSupported`], [`PortalError::NoSecret`], [`PortalError::LineBreak`], or
     /// [`PortalError::Stopped`].
     pub async fn submit(&self, envelope: Envelope) -> Result<Option<Seq>, PortalError> {
         let world = envelope.command.world().clone();
@@ -276,12 +307,23 @@ impl Portal {
         .await;
     }
 
-    /// Connects every world, as the server. Each world logs in when it connects.
-    pub async fn connect_all(&self) {
-        self.to_every_world(|world, reply| {
-            Request::command(Envelope::system(Command::Connect { world }), Some(reply))
-        })
-        .await;
+    /// Connects each world with `autoconnect`, as the server, in the order of the ids. A
+    /// connect that the world refuses goes to the log at `WARN`, and the next world still
+    /// connects. A connect that fails later records a disconnect event in its session.
+    pub async fn connect_at_start(&self) {
+        for world in self.at_start.iter() {
+            let connected = self
+                .ask(world, |reply| {
+                    let command = Command::Connect {
+                        world: world.clone(),
+                    };
+                    Request::command(Envelope::system(command), Some(reply))
+                })
+                .await;
+            if let Err(error) = connected {
+                tracing::warn!(mu.world = %world, "the connect at the start failed: {error}");
+            }
+        }
     }
 
     /// Waits until the engine has no work left: the server handlers handled each event, each

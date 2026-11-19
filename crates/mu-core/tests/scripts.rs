@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use mu_core::{
     Command, DEPTH_LIMIT, Envelope, Event, EventKind, Framer, Handler, Hook, HookAction, Inbound,
-    LineFramer, MemoryJournal, Origin, Portal, Source, WorldState,
+    LineFramer, MemoryJournal, Origin, Portal, Source, WorldState, WorldStatus,
 };
 
 use support::*;
@@ -192,7 +192,7 @@ async fn handler_on_every_event_stops() {
 }
 
 /// A world whose handler sends `again` for each echo of the game.
-fn again_loop() -> (mu_core::WorldSetup, mu_core::FakeGame) {
+fn again_loop() -> (mu_core::WorldSetup, mu_fake_server::FakeGame) {
     let handler = on(|event| {
         if event.kind == EventKind::Line && event.text.starts_with("You say") {
             vec![send("alpha/aria", "again")]
@@ -340,7 +340,7 @@ async fn world_uses_its_framer() {
         Box::new(Shout(LineFramer::new()))
     }));
     let portal = portal(vec![aria], Vec::new());
-    portal.connect_all().await;
+    portal.connect_at_start().await;
     let login = format!("CONNECT ARIA {}", PW.to_uppercase());
     assert_eq!(game.wait_for_lines(1).await[0], login);
     // A new connection gets a new framer from the same factory.
@@ -374,7 +374,7 @@ async fn server_handler_sees_every_world() {
     let (aria, _) = world("alpha/aria", PW);
     let (bryn, _) = world("beta/bryn", PW);
     let portal = portal(vec![aria, bryn], vec![handler]);
-    portal.connect_all().await;
+    portal.connect_at_start().await;
     for greeting in ["Welcome, aria.", "Welcome, bryn."] {
         wait_event(&portal, |event| event.text == greeting).await;
     }
@@ -438,7 +438,7 @@ async fn handler_cannot_connect_after_stop() {
     assert_eq!(connects, 1, "the handler brought the world back up");
     assert_eq!(
         portal.worlds(),
-        [(id("alpha/aria"), WorldState::Disconnected)]
+        [(id("alpha/aria"), WorldStatus::of(WorldState::Disconnected))]
     );
 }
 
@@ -453,7 +453,10 @@ async fn stray_mark_is_ignored() {
         event.kind == EventKind::Line && event.text == "after"
     })
     .await;
-    assert_eq!(portal.worlds(), [(id("alpha/aria"), WorldState::Connected)]);
+    assert_eq!(
+        portal.worlds(),
+        [(id("alpha/aria"), WorldStatus::of(WorldState::Connected))]
+    );
 }
 
 /// A line framer that gives `becomes` for the game line `trigger`.
@@ -506,21 +509,37 @@ async fn reply_of_the_framer_reaches_the_game() {
     assert_eq!(game.wait_for_lines(2).await[1], "reply");
     idle(&portal).await;
     assert!(events(&portal).iter().all(|event| event.text != "ask"));
-    assert_eq!(portal.worlds(), [(id("alpha/aria"), WorldState::Connected)]);
+    assert_eq!(
+        portal.worlds(),
+        [(id("alpha/aria"), WorldStatus::of(WorldState::Connected))]
+    );
 }
 
 #[tokio::test(start_paused = true)]
 async fn failed_reply_write_ends_the_connection() {
-    // The write of the mark gets through. Then the game says `ask` and `after`, and the
-    // write of the reply fails.
+    // The write of the mark gets through. Then the game says `ask` and `after` in one read, and
+    // the write of the reply fails. The line after the reply still counts, before the drop.
     let transport = BrokenTransport::after_writes(1, b"ask\nafter\n");
     let (portal, _) = broken_world(bare_world(transport).with_framer(reply_on_ask())).await;
     assert_eq!(try_idle(&portal).await, Ok(()));
-    assert_eq!(of_kind(&portal, EventKind::Disconnected).len(), 1);
-    assert_eq!(of_kind(&portal, EventKind::Line), []);
+    let tail: Vec<(EventKind, String)> = events(&portal)
+        .into_iter()
+        .filter(|event| matches!(event.kind, EventKind::Line | EventKind::Disconnected))
+        .map(|event| (event.kind, event.text))
+        .collect();
+    assert_eq!(
+        tail,
+        [
+            (EventKind::Line, "after".to_owned()),
+            (
+                EventKind::Disconnected,
+                "the connection failed: broken pipe".to_owned()
+            )
+        ]
+    );
     assert_eq!(
         portal.worlds(),
-        [(id("alpha/aria"), WorldState::Disconnected)]
+        [(id("alpha/aria"), WorldStatus::of(WorldState::Disconnected))]
     );
 }
 

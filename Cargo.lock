@@ -1798,6 +1798,7 @@ dependencies = [
  "http",
  "mu-client",
  "mu-core",
+ "mu-fake-server",
  "mu-proto",
  "mu-server",
  "mu-tui",
@@ -1847,11 +1848,13 @@ dependencies = [
 name = "mu-core"
 version = "0.1.0"
 dependencies = [
+ "fastrand",
  "figment2",
  "futures",
  "governor",
  "hex",
  "miniz_oxide",
+ "mu-fake-server",
  "proptest",
  "same-file",
  "secrecy",
@@ -1861,6 +1864,15 @@ dependencies = [
  "tokio",
  "toml",
  "tracing",
+]
+
+[[package]]
+name = "mu-fake-server"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "mu-core",
+ "tokio",
 ]
 
 [[package]]

@@ -50,6 +50,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn quirks_refuse_connection_fields() {
+        for (text, field) in [
+            ("[keepalive]\nmode = \"off\"\n", "keepalive.mode"),
+            ("autoconnect = true\n", "autoconnect"),
+            ("[reconnect]\nmode = \"off\"\n", "reconnect"),
+        ] {
+            let error = parse_quirks("bad", text).unwrap_err().to_string();
+            assert!(error.contains(field), "{text:?}: {error}");
+        }
+    }
+
+    #[test]
     fn bad_quirk_fails_the_value_checks() {
         let error = parse_quirks("bad", "[login]\ntemplate = \"connect {login}\"\n").unwrap_err();
         assert!(error.to_string().contains("login.template"), "{error}");

@@ -97,6 +97,13 @@ fn plugin_cannot_set_the_connection() {
             },
         ),
         (
+            "autoconnect",
+            LayerFields {
+                autoconnect: Some(true),
+                ..LayerFields::default()
+            },
+        ),
+        (
             "tls",
             LayerFields {
                 tls: Some(true),

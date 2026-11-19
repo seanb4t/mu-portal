@@ -387,6 +387,17 @@ fn charset_the_engine_cannot_read() {
     fails_naming(&config.list(), &["games/alpha.toml", "charset"]);
 }
 
+#[test]
+fn unknown_mode() {
+    for (field, text) in [
+        ("keepalive.mode", "[keepalive]\nmode = \"often\"\n"),
+        ("reconnect.mode", "[reconnect]\nmode = \"always\"\n"),
+    ] {
+        let config = Config::base().file("games/alpha.toml", &game(&[], text));
+        fails_naming(&config.list(), &["games/alpha.toml", field]);
+    }
+}
+
 // Each value is in its range.
 
 /// The text of the game file that sets `field` to `value`.
@@ -397,6 +408,12 @@ fn game_with(field: &str, value: u64) -> String {
             &format!("[keepalive]\ncommand = \"idle\"\nseconds = {value}\n"),
         ),
         "port" => game(&["port"], &format!("port = {value}\n")),
+        "reconnect.initial" => game(
+            &[],
+            &format!("[reconnect]\ninitial = {value}\nmax = 86400\n"),
+        ),
+        "reconnect.max" => game(&[], &format!("[reconnect]\nmax = {value}\n")),
+        "reconnect.attempts" => game(&[], &format!("[reconnect]\nattempts = {value}\n")),
         _ => game(&[], &format!("{field} = {value}\n")),
     }
 }
@@ -408,6 +425,8 @@ fn edges_of_each_range() {
         ("columns", 65_535),
         ("rows", 65_535),
         ("keepalive.seconds", 86_400),
+        ("reconnect.initial", 3_600),
+        ("reconnect.max", 86_400),
     ] {
         for value in [1, top] {
             let config = Config::base().file("games/alpha.toml", &game_with(field, value));
@@ -436,6 +455,53 @@ fn line_break_in_a_line_field() {
         let config = Config::base().file("games/alpha.toml", &game(&[], text));
         fails_naming(&config.list(), &["games/alpha.toml", field]);
     }
+}
+
+#[test]
+fn edges_of_the_attempts() {
+    for value in [0, 10_000] {
+        let config =
+            Config::base().file("games/alpha.toml", &game_with("reconnect.attempts", value));
+        succeeds(&config.list());
+    }
+    let config = Config::base().file("games/alpha.toml", &game_with("reconnect.attempts", 10_001));
+    fails_naming(&config.list(), &["games/alpha.toml", "reconnect.attempts"]);
+}
+
+#[test]
+fn first_wait_over_the_cap() {
+    let config = Config::base().file(
+        "games/alpha.toml",
+        &game(&[], "[reconnect]\ninitial = 120\nmax = 60\n"),
+    );
+    fails_naming(
+        &config.list(),
+        &["alpha/aria", "reconnect.initial", "reconnect.max", "120"],
+    );
+}
+
+#[test]
+fn first_wait_over_the_cap_with_reconnect_off() {
+    let config = Config::base().file(
+        "games/alpha.toml",
+        &game(
+            &[],
+            "[reconnect]\nmode = \"off\"\ninitial = 120\nmax = 60\n",
+        ),
+    );
+    fails_naming(
+        &config.list(),
+        &["alpha/aria", "reconnect.initial", "reconnect.max"],
+    );
+}
+
+#[test]
+fn first_wait_equal_to_the_cap() {
+    let config = Config::base().file(
+        "games/alpha.toml",
+        &game(&[], "[reconnect]\ninitial = 60\nmax = 60\n"),
+    );
+    succeeds(&config.list());
 }
 
 #[test]
@@ -512,6 +578,23 @@ fn show_does_not_read_the_secret() {
         &[("ARIA_PW", None)],
     );
     assert!(succeeds(&output).contains("env:ARIA_PW"));
+}
+
+#[test]
+fn show_spells_the_modes_as_the_configuration() {
+    for (table, mode) in [
+        ("keepalive", "interval"),
+        ("keepalive", "off"),
+        ("reconnect", "off"),
+    ] {
+        let config = Config::base().file(
+            "games/alpha.toml",
+            &game(&[], &format!("[{table}]\nmode = \"{mode}\"\n")),
+        );
+        let shown = succeeds(&config.show("alpha/aria"));
+        let parsed: toml::Table = shown.parse().unwrap();
+        assert_eq!(parsed[table]["mode"].as_str(), Some(mode), "{shown}");
+    }
 }
 
 // The merge.
@@ -662,6 +745,33 @@ fn half_a_keepalive() {
 }
 
 #[test]
+fn half_keepalive_that_is_off() {
+    let config = Config::base().file(
+        "games/alpha.toml",
+        &game(
+            &["extends"],
+            "extends = \"aresmush\"\n[keepalive]\nmode = \"off\"\ncommand = \"idle\"\n",
+        ),
+    );
+    succeeds(&config.list());
+}
+
+#[test]
+fn mode_with_no_keepalive() {
+    let config = Config::base().file(
+        "games/alpha.toml",
+        &game(
+            &["extends"],
+            "extends = \"aresmush\"\n[keepalive]\nmode = \"interval\"\n",
+        ),
+    );
+    let text = succeeds(&config.show("alpha/aria"));
+    let keepalive = lines_under(&text, "keepalive");
+    assert_eq!(keepalive.len(), 1, "{text}");
+    assert!(keepalive[0].starts_with("mode = \"interval\" "), "{text}");
+}
+
+#[test]
 fn world_that_logs_in_by_hand() {
     let text = succeeds(&Config::base().show("alpha/aria"));
     assert!(!text.contains("[login]"), "{text}");
@@ -683,6 +793,41 @@ fn sources_of_fields() {
             .find(|line| line.starts_with(field))
             .unwrap_or_else(|| panic!("show has {field}: {text}"));
         assert!(line.ends_with(source), "{line}");
+    }
+}
+
+/// The lines of `text` that are not blank, under the header `[table]`, or before the first
+/// header for `""`.
+fn lines_under<'a>(text: &'a str, table: &str) -> Vec<&'a str> {
+    let header = format!("[{table}]");
+    let mut current = "";
+    text.lines()
+        .filter(|line| !line.is_empty())
+        .filter(|line| {
+            if line.starts_with('[') {
+                current = line;
+                return false;
+            }
+            current == header || (table.is_empty() && current.is_empty())
+        })
+        .collect()
+}
+
+#[test]
+fn connection_defaults() {
+    let text = succeeds(&Config::base().show("alpha/aria"));
+    for (table, line) in [
+        ("", "autoconnect = false # default"),
+        ("keepalive", "mode = \"idle\" # default"),
+        ("reconnect", "mode = \"backoff\" # default"),
+        ("reconnect", "initial = 1 # default"),
+        ("reconnect", "max = 60 # default"),
+        ("reconnect", "attempts = 30 # default"),
+    ] {
+        assert!(
+            lines_under(&text, table).contains(&line),
+            "[{table}] has {line}: {text}"
+        );
     }
 }
 

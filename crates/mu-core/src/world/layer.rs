@@ -9,6 +9,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::id::WorldId;
 
 use super::error::ConfigError;
+use super::{KeepaliveMode, ReconnectMode};
 
 /// What a layer configures.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -99,6 +100,9 @@ pub struct LayerFields {
     /// Whether the connection uses TLS.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tls: Option<bool>,
+    /// Whether the world connects at the start of the server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub autoconnect: Option<bool>,
     /// The name of the character set, such as `iso-8859-1`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub charset: Option<String>,
@@ -114,6 +118,9 @@ pub struct LayerFields {
     /// The table `keepalive`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keepalive: Option<KeepaliveFields>,
+    /// The table `reconnect`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reconnect: Option<ReconnectFields>,
     /// The entries of `rules`.
     #[serde(skip)]
     pub rules: Vec<toml::Table>,
@@ -144,12 +151,33 @@ pub struct LoginFields {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KeepaliveFields {
+    /// When the keepalive sends its line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<KeepaliveMode>,
     /// The line to send.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
-    /// The seconds between two sends.
+    /// The seconds with no write (idle) or between two lines (interval).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seconds: Option<u32>,
+}
+
+/// The fields of the table `reconnect`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReconnectFields {
+    /// Whether the world reconnects.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<ReconnectMode>,
+    /// The first wait, in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initial: Option<u32>,
+    /// The cap of each wait, in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<u32>,
+    /// The number of failed attempts in a row before the world stops, or 0 for no limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempts: Option<u32>,
 }
 
 /// One file of the configuration directory, as the parse reads it.
@@ -160,6 +188,7 @@ pub(crate) struct LayerFile {
     host: Option<String>,
     port: Option<u16>,
     tls: Option<bool>,
+    autoconnect: Option<bool>,
     charset: Option<String>,
     columns: Option<u16>,
     rows: Option<u16>,
@@ -167,6 +196,8 @@ pub(crate) struct LayerFile {
     login: Option<LoginFields>,
     #[serde(default, deserialize_with = "table")]
     keepalive: Option<KeepaliveFields>,
+    #[serde(default, deserialize_with = "table")]
+    reconnect: Option<ReconnectFields>,
     #[serde(default)]
     rules: Vec<toml::Table>,
     #[serde(default)]
@@ -182,11 +213,13 @@ impl LayerFile {
             host: self.host,
             port: self.port,
             tls: self.tls,
+            autoconnect: self.autoconnect,
             charset: self.charset,
             columns: self.columns,
             rows: self.rows,
             login: self.login,
             keepalive: self.keepalive,
+            reconnect: self.reconnect,
             rules: self.rules,
             scripts: self.scripts,
             disable: self.disable,
@@ -203,7 +236,7 @@ pub(crate) struct Quirks {
     #[serde(default, deserialize_with = "table")]
     login: Option<QuirkLogin>,
     #[serde(default, deserialize_with = "table")]
-    keepalive: Option<KeepaliveFields>,
+    keepalive: Option<QuirkKeepalive>,
 }
 
 /// The table `login` of a built-in type.
@@ -211,6 +244,14 @@ pub(crate) struct Quirks {
 #[serde(deny_unknown_fields)]
 struct QuirkLogin {
     template: Option<String>,
+}
+
+/// The table `keepalive` of a built-in type: its command and seconds, and no mode.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct QuirkKeepalive {
+    command: Option<String>,
+    seconds: Option<u32>,
 }
 
 impl From<Quirks> for LayerFields {
@@ -221,7 +262,11 @@ impl From<Quirks> for LayerFields {
                 template: login.template,
                 ..LoginFields::default()
             }),
-            keepalive: quirks.keepalive,
+            keepalive: quirks.keepalive.map(|keepalive| KeepaliveFields {
+                command: keepalive.command,
+                seconds: keepalive.seconds,
+                ..KeepaliveFields::default()
+            }),
             ..Self::default()
         }
     }

@@ -4,9 +4,10 @@
 use std::sync::Arc;
 
 use mu_core::{
-    ConnectGate, EventKind, FakeTransport, Journal, MemoryJournal, NewEvent, Portal, PortalError,
-    ResolvedWorld, Source, WorldId, WorldSetup, WorldState,
+    EventKind, Journal, MemoryJournal, NewEvent, Portal, PortalError, ResolvedWorld, Source,
+    WorldId, WorldSetup, WorldState, WorldStatus,
 };
+use mu_fake_server::{ConnectGate, FakeTransport};
 
 use support::*;
 
@@ -65,7 +66,7 @@ async fn send_to_connecting_world() {
     let (transport, _gate) = FakeTransport::new("aria", PW).held();
     let (aria, _) = world_on("alpha/aria", PW, transport);
     let portal = portal(vec![aria], Vec::new());
-    portal.connect_all().await;
+    portal.connect_at_start().await;
     wait_state(&portal, &id("alpha/aria"), WorldState::Connecting).await;
     assert_eq!(
         portal.send(&id("alpha/aria"), "hello").await,
@@ -128,8 +129,8 @@ async fn one_world_drops() {
     assert_eq!(
         portal.worlds(),
         [
-            (id("alpha/aria"), WorldState::Disconnected),
-            (id("beta/bryn"), WorldState::Connected)
+            (id("alpha/aria"), WorldStatus::of(WorldState::Disconnected)),
+            (id("beta/bryn"), WorldStatus::of(WorldState::Connected))
         ]
     );
 }
@@ -253,7 +254,11 @@ async fn failed_write_records_disconnect() {
         portal.send(&aria, "hello").await,
         Err(PortalError::NotConnected(aria.clone()))
     );
-    assert_eq!(of_kind(&portal, EventKind::Disconnected).len(), 1);
+    let gone: Vec<String> = of_kind(&portal, EventKind::Disconnected)
+        .into_iter()
+        .map(|event| event.text)
+        .collect();
+    assert_eq!(gone, ["the connection failed: broken pipe"]);
     assert_eq!(of_kind(&portal, EventKind::Input), []);
     wait_state(&portal, &aria, WorldState::Disconnected).await;
 }
@@ -267,8 +272,8 @@ async fn stop_disconnects_every_world_and_refuses_connect() {
     assert_eq!(
         portal.worlds(),
         [
-            (id("alpha/aria"), WorldState::Disconnected),
-            (id("beta/bryn"), WorldState::Disconnected)
+            (id("alpha/aria"), WorldStatus::of(WorldState::Disconnected)),
+            (id("beta/bryn"), WorldStatus::of(WorldState::Disconnected))
         ]
     );
     let gone: Vec<(WorldId, Source)> = of_kind(&portal, EventKind::Disconnected)
@@ -293,12 +298,12 @@ async fn stop_disconnects_every_world_and_refuses_connect() {
     );
     assert_eq!(
         portal.worlds()[0],
-        (id("alpha/aria"), WorldState::Disconnected)
+        (id("alpha/aria"), WorldStatus::of(WorldState::Disconnected))
     );
 }
 
 #[tokio::test(start_paused = true)]
-async fn login_with_no_password_is_refused() {
+async fn login_with_no_secret_is_refused() {
     let transport = FakeTransport::new("aria", PW);
     let game = transport.game();
     let resolved = ResolvedWorld::with_default_login(id("alpha/aria"), "env:PW".parse().unwrap());
@@ -308,13 +313,13 @@ async fn login_with_no_password_is_refused() {
     );
     let refused = portal.connect(&id("alpha/aria")).await;
     assert!(
-        matches!(&refused, Err(PortalError::NoPassword(world)) if *world == id("alpha/aria")),
+        matches!(&refused, Err(PortalError::NoSecret(world, _)) if *world == id("alpha/aria")),
         "{refused:?}"
     );
     idle(&portal).await;
     assert_eq!(
         portal.worlds()[0],
-        (id("alpha/aria"), WorldState::Disconnected)
+        (id("alpha/aria"), WorldStatus::of(WorldState::Disconnected))
     );
     assert!(game.lines().is_empty(), "{:?}", game.lines());
 }
@@ -333,7 +338,7 @@ async fn world_in_held_connect() -> (Portal, ConnectGate) {
     let (transport, gate) = FakeTransport::new("aria", PW).held();
     let (aria, _) = world_on("alpha/aria", PW, transport);
     let portal = portal(vec![aria], Vec::new());
-    portal.connect_all().await;
+    portal.connect_at_start().await;
     (portal, gate)
 }
 

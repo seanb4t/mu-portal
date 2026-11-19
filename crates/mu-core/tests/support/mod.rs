@@ -11,9 +11,10 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use mu_core::{
-    ByteStream, Command, Event, EventKind, FakeGame, FakeTransport, Handler, MemoryJournal, Portal,
-    PortalError, ResolvedWorld, Secret, Seq, Transport, WorldId, WorldSetup, WorldState,
+    ByteStream, Command, Event, EventKind, Handler, MemoryJournal, Portal, PortalError, Reconnect,
+    ResolvedWorld, Secret, Seq, Transport, WorldId, WorldSetup, WorldState,
 };
+use mu_fake_server::{FakeGame, FakeTransport};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 /// The bound of each wait. On the paused clock it passes only when nothing else can run.
@@ -34,7 +35,11 @@ pub fn world(text: &str, password: &str) -> (WorldSetup, FakeGame) {
 
 pub fn world_on(text: &str, password: &str, transport: FakeTransport) -> (WorldSetup, FakeGame) {
     let game = transport.game();
-    let resolved = ResolvedWorld::with_default_login(id(text), "env:PW".parse().unwrap());
+    let resolved = ResolvedWorld {
+        autoconnect: true,
+        reconnect: Reconnect::Off,
+        ..ResolvedWorld::with_default_login(id(text), "env:PW".parse().unwrap())
+    };
     let setup = WorldSetup::new(
         resolved,
         Some(Secret::new(password.to_owned())),
@@ -54,7 +59,7 @@ pub fn portal(worlds: Vec<WorldSetup>, server_handlers: Vec<Arc<dyn Handler>>) -
 /// Starts the portal, connects each world and waits for each greeting.
 pub async fn started(worlds: Vec<WorldSetup>) -> Portal {
     let portal = portal(worlds, Vec::new());
-    portal.connect_all().await;
+    portal.connect_at_start().await;
     for (world, _) in portal.worlds() {
         let greeting = format!("Welcome, {}.", world.character());
         wait_event(&portal, |event| {
@@ -95,7 +100,7 @@ pub async fn wait_event(portal: &Portal, check: impl Fn(&Event) -> bool) -> Even
 /// Waits until `world` is in `state`.
 pub async fn wait_state(portal: &Portal, world: &WorldId, state: WorldState) {
     let mut receiver = portal.state(world).unwrap();
-    tokio::time::timeout(BOUND, receiver.wait_for(|now| *now == state))
+    tokio::time::timeout(BOUND, receiver.wait_for(|now| now.state == state))
         .await
         .unwrap_or_else(|_| panic!("{world} never got to {state:?}"))
         .unwrap();
@@ -149,6 +154,7 @@ pub fn on(f: impl Fn(&Event) -> Vec<Command> + Send + Sync + 'static) -> Arc<dyn
 pub struct BrokenTransport {
     writes_allowed: usize,
     incoming: &'static [u8],
+    stalls: bool,
 }
 
 impl BrokenTransport {
@@ -161,6 +167,15 @@ impl BrokenTransport {
         Self {
             writes_allowed,
             incoming,
+            stalls: false,
+        }
+    }
+
+    /// A stream that gives no byte, and whose writes never end: a game that reads nothing.
+    pub fn stalling_writes() -> Self {
+        Self {
+            stalls: true,
+            ..Self::refusing_writes()
         }
     }
 }
@@ -170,6 +185,7 @@ impl Transport for BrokenTransport {
         let stream = BrokenStream {
             writes_left: self.writes_allowed,
             incoming: self.incoming,
+            stalls: self.stalls,
             reader: None,
         };
         Box::pin(async move { Ok(Box::new(stream) as Box<dyn ByteStream>) })
@@ -179,6 +195,7 @@ impl Transport for BrokenTransport {
 struct BrokenStream {
     writes_left: usize,
     incoming: &'static [u8],
+    stalls: bool,
     reader: Option<Waker>,
 }
 
@@ -203,6 +220,9 @@ impl AsyncWrite for BrokenStream {
         _: &mut Context<'_>,
         bytes: &[u8],
     ) -> Poll<io::Result<usize>> {
+        if self.stalls {
+            return Poll::Pending;
+        }
         if self.writes_left == 0 {
             return Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()));
         }
@@ -224,9 +244,14 @@ impl AsyncWrite for BrokenStream {
     }
 }
 
-/// The world `alpha/aria` on `transport`, with no login and no password.
+/// The world `alpha/aria` on `transport`, with no login, no password, `autoconnect` and no
+/// reconnect.
 pub fn bare_world(transport: impl Transport) -> WorldSetup {
-    let world = ResolvedWorld::new(id("alpha/aria"));
+    let world = ResolvedWorld {
+        autoconnect: true,
+        reconnect: Reconnect::Off,
+        ..ResolvedWorld::new(id("alpha/aria"))
+    };
     WorldSetup::new(world, None, Arc::new(transport))
 }
 
@@ -234,7 +259,7 @@ pub fn bare_world(transport: impl Transport) -> WorldSetup {
 pub async fn broken_world(setup: WorldSetup) -> (Portal, WorldId) {
     let aria = id("alpha/aria");
     let portal = portal(vec![setup], Vec::new());
-    portal.connect_all().await;
+    portal.connect_at_start().await;
     wait_state(&portal, &aria, WorldState::Connected).await;
     (portal, aria)
 }

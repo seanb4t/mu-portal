@@ -207,11 +207,7 @@ impl proto::PortalService for PortalApi {
             .portal
             .worlds()
             .into_iter()
-            .map(|(id, state)| proto::World {
-                id: id.to_string(),
-                state: convert::state(state).into(),
-                ..Default::default()
-            })
+            .map(|(id, status)| convert::world(&id, status))
             .collect();
         ready(Response::ok(proto::ListWorldsResponse {
             worlds,

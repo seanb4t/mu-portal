@@ -9,7 +9,7 @@ sidebar:
 
 | Path | Holds |
 |---|---|
-| `crates/` | The six crates of the product |
+| `crates/` | The seven crates of the product |
 | `spikes/` | Time-limited experiments, in a separate Cargo workspace |
 | `docs/` | This documentation site |
 | `architecture/` | The LikeC4 architecture model |
@@ -25,18 +25,19 @@ sidebar:
 | `mu-client` | API client, with the resume of the event stream |
 | `mu-tui` | Terminal client |
 | `mu-cli` | The `mu` binary and its verbs |
+| `mu-fake-server` | Fake games for the tests and for the `--fake-world` flag |
 
 `mu-tui` cannot depend on `mu-core` or `mu-server`. The terminal client reaches the server only through the API. `mu-core` cannot depend on `mu-proto` or on a crate of the wire format. The [crate layout](/architecture/crate-layout/) view shows every allowed dependency.
 
 ## The boundary test
 
-The test file `crates/mu-cli/tests/workspace_boundary.rs` enforces the workspace rules. It has two allowlists. The first is the source of the dependency rule between crates. The second names the third-party crates that each crate can use. The [crate layout](/architecture/crate-layout/) view is a copy.
+The test file `crates/mu-cli/tests/workspace_boundary.rs` enforces the workspace rules. It has three allowlists. The first is the source of the dependency rule between crates. The second, `ALLOWED_DEV_EDGES`, names the edges that only a `[dev-dependencies]` table can use. The integration tests of `mu-core` use the fake games this way, although `mu-fake-server` depends on `mu-core`. The third names the third-party crates that each crate can use. The [crate layout](/architecture/crate-layout/) view is a copy.
 
 The test fails for each of these:
 
 - a crate that the allowlist does not name
 - a dependency between two crates that the allowlist does not list
-- a third-party crate that the second allowlist does not list for that crate
+- a third-party crate that the third allowlist does not list for that crate
 - a dependency on a crate in `spikes/`
 - a Rust file in which `include!`, `include_str!`, `include_bytes!` or a `path` attribute names a path with a component `spikes`. The test also looks inside other macros and `cfg_attr`, and it joins the parts that `concat!` joins.
 - a Rust file that the test cannot read as Rust tokens
@@ -51,7 +52,7 @@ The test fails for each of these:
 
 To add a crate or a dependency between crates, change these in the same change:
 
-1. The allowlist in `crates/mu-cli/tests/workspace_boundary.rs`.
+1. The allowlist in `crates/mu-cli/tests/workspace_boundary.rs`: `ALLOWED_EDGES`, or `ALLOWED_DEV_EDGES` for an edge that only the tests use.
 2. The crate layout view in `architecture/model.c4`.
 
-To add a third-party dependency, add it to `[workspace.dependencies]` in the root `Cargo.toml`. Then name it in the crate with `workspace = true`. Also add it to the second allowlist in `crates/mu-cli/tests/workspace_boundary.rs`, for each crate that uses it.
+To add a third-party dependency, add it to `[workspace.dependencies]` in the root `Cargo.toml`. Then name it in the crate with `workspace = true`. Also add it to the third allowlist, `ALLOWED_CRATES`, in `crates/mu-cli/tests/workspace_boundary.rs`, for each crate that uses it.

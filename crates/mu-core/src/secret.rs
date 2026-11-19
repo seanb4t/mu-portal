@@ -3,6 +3,7 @@
 use std::ffi::OsString;
 use std::fmt;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use secrecy::{ExposeSecret as _, SecretString};
 use thiserror::Error;
@@ -54,7 +55,9 @@ impl Secret {
         Self(SecretString::from(value))
     }
 
-    pub(crate) fn expose(&self) -> &str {
+    /// The value. Do not log it or write it into the journal.
+    #[must_use]
+    pub fn expose(&self) -> &str {
         self.0.expose_secret()
     }
 
@@ -171,6 +174,38 @@ pub fn load_password(
     Ok(secret)
 }
 
+/// Where a session reads the password of its login.
+#[derive(Clone)]
+pub enum SecretSource {
+    /// A password read once, at the start of the server: a fake world.
+    Fixed(Secret),
+    /// A password read through [`load_password`] at each connect: a configured world.
+    Store(SecretRef, Arc<dyn SecretStore + Send + Sync>),
+}
+
+impl SecretSource {
+    /// The password.
+    ///
+    /// # Errors
+    ///
+    /// A [`SecretError`] of [`load_password`] for [`SecretSource::Store`].
+    pub fn read(&self) -> Result<Secret, SecretError> {
+        match self {
+            Self::Fixed(secret) => Ok(secret.clone()),
+            Self::Store(reference, store) => load_password(store.as_ref(), reference),
+        }
+    }
+}
+
+impl fmt::Debug for SecretSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Fixed(secret) => f.debug_tuple("Fixed").field(secret).finish(),
+            Self::Store(reference, _) => f.debug_tuple("Store").field(reference).finish(),
+        }
+    }
+}
+
 fn check_password(password: &str, reference: &SecretRef) -> Result<(), SecretError> {
     if MASK.contains(password) {
         return Err(SecretError::Unmaskable(reference.clone()));
@@ -226,6 +261,24 @@ mod tests {
         use std::os::unix::ffi::OsStringExt as _;
         let store = EnvSecretStore::with_lookup(|_| Some(OsString::from_vec(vec![0x66, 0xff])));
         assert_eq!(store.get(&pw()).unwrap_err(), SecretError::NotUnicode(pw()));
+    }
+
+    #[test]
+    fn store_source_reads_at_each_call() {
+        let values = std::sync::Mutex::new(vec![None, Some(OsString::from("s3cret-pw"))]);
+        let store = EnvSecretStore::with_lookup(move |_| values.lock().unwrap().pop().flatten());
+        let source = SecretSource::Store(pw(), Arc::new(store));
+        assert_eq!(source.read().unwrap().expose(), "s3cret-pw");
+        assert_eq!(source.read().unwrap_err(), SecretError::Missing(pw()));
+    }
+
+    #[test]
+    fn source_debug_hides_value() {
+        let fixed = SecretSource::Fixed(Secret::new("s3cret-pw".to_owned()));
+        let store = SecretSource::Store(pw(), Arc::new(env(&[("ALPHA_PW", "s3cret-pw")])));
+        for source in [fixed, store] {
+            assert!(!format!("{source:?}").contains("s3cret-pw"));
+        }
     }
 
     #[test]

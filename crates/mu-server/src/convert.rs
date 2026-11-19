@@ -1,9 +1,9 @@
 //! Conversion between the types of the engine and the types of the schema.
 
-use std::time::UNIX_EPOCH;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use connectrpc::ConnectError;
-use mu_core::{Event, EventKind, PortalError, Source, WorldState};
+use mu_core::{Event, EventKind, PortalError, Source, WorldId, WorldState, WorldStatus};
 use mu_proto as proto;
 
 /// The code of each engine error. One function holds the whole map.
@@ -12,9 +12,9 @@ pub fn status(error: &PortalError) -> ConnectError {
     let message = error.to_string();
     match error {
         PortalError::UnknownWorld(_) => ConnectError::not_found(message),
-        PortalError::NotConnected(_) | PortalError::NoTransport(_) | PortalError::NoPassword(_) => {
-            ConnectError::failed_precondition(message)
-        }
+        PortalError::NotConnected(_)
+        | PortalError::TlsNotSupported(_)
+        | PortalError::NoSecret(..) => ConnectError::failed_precondition(message),
         PortalError::LineBreak => ConnectError::invalid_argument(message),
         PortalError::PastEnd { .. } => ConnectError::out_of_range(message),
         PortalError::Stopped => ConnectError::unavailable(message),
@@ -53,15 +53,33 @@ pub fn state(state: WorldState) -> proto::WorldState {
         WorldState::Connecting => proto::WorldState::WORLD_STATE_CONNECTING,
         WorldState::Connected => proto::WorldState::WORLD_STATE_CONNECTED,
         WorldState::Disconnected => proto::WorldState::WORLD_STATE_DISCONNECTED,
+        WorldState::Reconnecting => proto::WorldState::WORLD_STATE_RECONNECTING,
+    }
+}
+
+/// The milliseconds of `time` since the Unix epoch, as the schema gives a time.
+#[must_use]
+pub fn time_ms(time: SystemTime) -> i64 {
+    time.duration_since(UNIX_EPOCH).map_or(0, |since| {
+        i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
+    })
+}
+
+/// The schema message of a world and its status.
+#[must_use]
+pub fn world(id: &WorldId, status: WorldStatus) -> proto::World {
+    proto::World {
+        id: id.to_string(),
+        state: state(status.state).into(),
+        next_attempt_ms: status.next_attempt.map(time_ms),
+        ..Default::default()
     }
 }
 
 /// The schema message of an event.
 #[must_use]
 pub fn event(event: &Event) -> proto::Event {
-    let time_ms = event.time.duration_since(UNIX_EPOCH).map_or(0, |since| {
-        i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
-    });
+    let time_ms = time_ms(event.time);
     proto::Event {
         seq: event.seq.0,
         world: event.world.to_string(),
@@ -93,11 +111,11 @@ mod tests {
                 ErrorCode::FailedPrecondition,
             ),
             (
-                PortalError::NoTransport(world.clone()),
+                PortalError::TlsNotSupported(world.clone()),
                 ErrorCode::FailedPrecondition,
             ),
             (
-                PortalError::NoPassword(world),
+                PortalError::NoSecret(world, "env:PW is not set".to_owned()),
                 ErrorCode::FailedPrecondition,
             ),
             (PortalError::LineBreak, ErrorCode::InvalidArgument),

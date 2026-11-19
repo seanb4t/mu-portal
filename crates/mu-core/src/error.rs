@@ -11,15 +11,16 @@ pub enum PortalError {
     /// No world has this id.
     #[error("unknown world {0}")]
     UnknownWorld(WorldId),
-    /// The world is connecting or disconnected.
+    /// The world is connecting, reconnecting or disconnected.
     #[error("{0} is not connected")]
     NotConnected(WorldId),
-    /// The world has no transport, so a connect of it fails.
-    #[error("{0} has no transport: only fake worlds can connect in this version")]
-    NoTransport(WorldId),
-    /// The world has a login but no password, so it cannot log in.
-    #[error("{0} has a login but no password")]
-    NoPassword(WorldId),
+    /// The world uses TLS, which the server cannot connect yet.
+    #[error("{0} uses TLS, which this version cannot connect")]
+    TlsNotSupported(WorldId),
+    /// The world has a login, and its secret cannot be read. The reason says why, and names the
+    /// secret reference when there is one.
+    #[error("{0} cannot read the secret of its login: {1}")]
+    NoSecret(WorldId, String),
     /// The text holds a CR or an LF.
     #[error("the text holds a line break")]
     LineBreak,

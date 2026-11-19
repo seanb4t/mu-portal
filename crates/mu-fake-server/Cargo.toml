@@ -1,0 +1,20 @@
+[package]
+name = "mu-fake-server"
+description = "Fake games for the tests of mu and for the --fake-world flag"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+futures = { workspace = true }
+mu-core = { path = "../mu-core" }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
