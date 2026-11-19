@@ -92,7 +92,8 @@ async fn nothing_listens_on_the_port() {
         .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
         .await;
     assert!(
-        down.text.starts_with("the connect failed:"),
+        down.text
+            .starts_with(&format!("the connect failed: 127.0.0.1:{port}: ")),
         "{}",
         down.text
     );

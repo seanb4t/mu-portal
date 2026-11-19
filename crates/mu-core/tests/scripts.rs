@@ -517,13 +517,26 @@ async fn reply_of_the_framer_reaches_the_game() {
 
 #[tokio::test(start_paused = true)]
 async fn failed_reply_write_ends_the_connection() {
-    // The write of the mark gets through. Then the game says `ask` and `after`, and the
-    // write of the reply fails.
+    // The write of the mark gets through. Then the game says `ask` and `after` in one read, and
+    // the write of the reply fails. The line after the reply still counts, before the drop.
     let transport = BrokenTransport::after_writes(1, b"ask\nafter\n");
     let (portal, _) = broken_world(bare_world(transport).with_framer(reply_on_ask())).await;
     assert_eq!(try_idle(&portal).await, Ok(()));
-    assert_eq!(of_kind(&portal, EventKind::Disconnected).len(), 1);
-    assert_eq!(of_kind(&portal, EventKind::Line), []);
+    let tail: Vec<(EventKind, String)> = events(&portal)
+        .into_iter()
+        .filter(|event| matches!(event.kind, EventKind::Line | EventKind::Disconnected))
+        .map(|event| (event.kind, event.text))
+        .collect();
+    assert_eq!(
+        tail,
+        [
+            (EventKind::Line, "after".to_owned()),
+            (
+                EventKind::Disconnected,
+                "the connection failed: broken pipe".to_owned()
+            )
+        ]
+    );
     assert_eq!(
         portal.worlds(),
         [(id("alpha/aria"), WorldStatus::of(WorldState::Disconnected))]

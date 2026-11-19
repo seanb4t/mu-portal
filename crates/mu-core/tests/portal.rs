@@ -254,7 +254,11 @@ async fn failed_write_records_disconnect() {
         portal.send(&aria, "hello").await,
         Err(PortalError::NotConnected(aria.clone()))
     );
-    assert_eq!(of_kind(&portal, EventKind::Disconnected).len(), 1);
+    let gone: Vec<String> = of_kind(&portal, EventKind::Disconnected)
+        .into_iter()
+        .map(|event| event.text)
+        .collect();
+    assert_eq!(gone, ["the connection failed: broken pipe"]);
     assert_eq!(of_kind(&portal, EventKind::Input), []);
     wait_state(&portal, &aria, WorldState::Disconnected).await;
 }

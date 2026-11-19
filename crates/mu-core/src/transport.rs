@@ -43,9 +43,13 @@ impl Transport for TcpTransport {
         let port = self.port;
         Box::pin(async move {
             // One future resolves the name and connects, so the timeout of a connect covers both.
-            let stream = TcpStream::connect((host.as_str(), port)).await?;
-            // A MU sends short lines.
-            stream.set_nodelay(true)?;
+            let stream = TcpStream::connect((host.as_str(), port))
+                .await
+                .map_err(|error| io::Error::new(error.kind(), format!("{host}:{port}: {error}")))?;
+            // A MU sends short lines. Without the option the connection still works, only slower.
+            if let Err(error) = stream.set_nodelay(true) {
+                tracing::warn!(%error, "{host}:{port}: TCP_NODELAY is not set");
+            }
             Ok(Box::new(stream) as Box<dyn ByteStream>)
         })
     }

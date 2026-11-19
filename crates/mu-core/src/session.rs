@@ -213,6 +213,11 @@ enum AfterDrop {
     GiveUp(u32),
 }
 
+/// The reason of a drop for the failed read or write `error`.
+fn lost_reason(error: &io::Error) -> String {
+    format!("the connection failed: {error}")
+}
+
 /// Records the end of a connection for `cause` on its span.
 fn end_span(span: &Span, cause: Cause) {
     span.record("mu.connection.end", cause.end());
@@ -450,7 +455,9 @@ pub(crate) async fn run(parts: SessionParts) {
             Step::Read(Ok(0)) => {
                 session.down(Cause::Closed, "the game closed the connection", 0);
             }
-            Step::Read(Err(_)) => session.down(Cause::Lost, "the connection failed", 0),
+            Step::Read(Err(error)) => {
+                session.down(Cause::Lost, &lost_reason(&error), 0);
+            }
             Step::Read(Ok(n)) => {
                 let span = session.conn.span();
                 session.on_bytes(&buffer[..n]).instrument(span).await;
@@ -652,14 +659,24 @@ impl Session {
     }
 
     async fn write_bytes(&mut self, bytes: &[u8], depth: u8) -> Result<(), PortalError> {
-        let Conn::Up { write, .. } = &mut self.conn else {
-            return Err(PortalError::NotConnected(self.world().clone()));
-        };
-        if write.write_all(bytes).await.is_err() || write.flush().await.is_err() {
-            self.down(Cause::Lost, "the connection failed", depth);
+        if let Err(error) = self.send_bytes(bytes).await? {
+            self.down(Cause::Lost, &lost_reason(&error), depth);
             return Err(PortalError::NotConnected(self.world().clone()));
         }
         Ok(())
+    }
+
+    /// Writes `bytes` to the open stream. The inner error is a failed write, which the caller
+    /// must answer with `down`.
+    async fn send_bytes(&mut self, bytes: &[u8]) -> Result<io::Result<()>, PortalError> {
+        let Conn::Up { write, .. } = &mut self.conn else {
+            return Err(PortalError::NotConnected(self.world().clone()));
+        };
+        let sent = match write.write_all(bytes).await {
+            Ok(()) => write.flush().await,
+            Err(error) => Err(error),
+        };
+        Ok(sent)
     }
 
     async fn write_line(&mut self, line: &str, depth: u8) -> Result<(), PortalError> {
@@ -910,6 +927,9 @@ impl Session {
             // Every byte counts, telnet negotiation included.
             pending.last_byte = Some(Instant::now());
         }
+        // A failed reply ends the connection after the rest of the read is recorded, so that no
+        // line that came before the failure is lost.
+        let mut failed = None;
         for inbound in framer.feed(bytes) {
             match inbound {
                 Inbound::Line(line) => {
@@ -921,8 +941,10 @@ impl Session {
                     self.record(EventKind::Prompt, Origin::System, &prompt, 0);
                 }
                 Inbound::Reply(bytes) => {
-                    if self.write_bytes(&bytes, 0).await.is_err() {
-                        return;
+                    if failed.is_none()
+                        && let Ok(Err(error)) = self.send_bytes(&bytes).await
+                    {
+                        failed = Some(error);
                     }
                 }
                 Inbound::Mark => {
@@ -935,6 +957,9 @@ impl Session {
                     self.record(EventKind::Message, Origin::System, &text, 0);
                 }
             }
+        }
+        if let Some(error) = failed {
+            self.down(Cause::Lost, &lost_reason(&error), 0);
         }
     }
 
