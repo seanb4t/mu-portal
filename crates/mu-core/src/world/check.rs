@@ -44,6 +44,7 @@ fn connection_field(fields: &LayerFields) -> Option<&'static str> {
         ("host", fields.host.is_some()),
         ("port", fields.port.is_some()),
         ("tls", fields.tls.is_some()),
+        ("autoconnect", fields.autoconnect.is_some()),
         ("login.name", login.name.is_some()),
         ("login.secret", login.secret.is_some()),
         ("login.template", login.template.is_some()),

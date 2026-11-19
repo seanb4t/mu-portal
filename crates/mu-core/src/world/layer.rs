@@ -236,7 +236,7 @@ pub(crate) struct Quirks {
     #[serde(default, deserialize_with = "table")]
     login: Option<QuirkLogin>,
     #[serde(default, deserialize_with = "table")]
-    keepalive: Option<KeepaliveFields>,
+    keepalive: Option<QuirkKeepalive>,
 }
 
 /// The table `login` of a built-in type.
@@ -244,6 +244,14 @@ pub(crate) struct Quirks {
 #[serde(deny_unknown_fields)]
 struct QuirkLogin {
     template: Option<String>,
+}
+
+/// The table `keepalive` of a built-in type: its command and seconds, and no mode.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct QuirkKeepalive {
+    command: Option<String>,
+    seconds: Option<u32>,
 }
 
 impl From<Quirks> for LayerFields {
@@ -254,7 +262,11 @@ impl From<Quirks> for LayerFields {
                 template: login.template,
                 ..LoginFields::default()
             }),
-            keepalive: quirks.keepalive,
+            keepalive: quirks.keepalive.map(|keepalive| KeepaliveFields {
+                command: keepalive.command,
+                seconds: keepalive.seconds,
+                ..KeepaliveFields::default()
+            }),
             ..Self::default()
         }
     }
