@@ -1,13 +1,15 @@
 //! The telemetry of the engine under the layers of `mu server`, with in-memory exporters.
 
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use futures::StreamExt as _;
 use mu_cli::telemetry::Providers;
 use mu_core::{
-    Command, Event, EventKind, Journal, MemoryJournal, NewEvent, ResolvedWorld, Seq, Source,
-    WorldSetup, WorldState,
+    Backoff, Command, Event, EventKind, Journal, Keepalive, KeepaliveMode, MemoryJournal, NewEvent,
+    Portal, Reconnect, ResolvedWorld, Seq, Source, WorldSetup, WorldState,
 };
+use mu_fake_server::{Script, ScriptedGame};
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::metrics::InMemoryMetricExporter;
 use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
@@ -500,6 +502,60 @@ fn world_without_transport_is_disconnected() {
                 ]
             ),
             Some(1)
+        );
+    });
+}
+
+/// A portal with `alpha/aria` on `game`, with no login and no reconnect, changed by `change`.
+fn world_on_game(game: &ScriptedGame, change: impl FnOnce(&mut ResolvedWorld)) -> Portal {
+    let mut world = ResolvedWorld::new(id("alpha/aria"));
+    change(&mut world);
+    portal(
+        vec![WorldSetup::new(world, None, Arc::new(game.clone()))],
+        Vec::new(),
+    )
+}
+
+#[test]
+fn keepalive_lines_are_counted() {
+    let memory = Memory::new();
+    run_paused(memory.subscriber(), async {
+        let game = ScriptedGame::new(Script::new());
+        let portal = world_on_game(&game, |world| {
+            let keepalive = Keepalive::new("IDLE", 60).unwrap();
+            world.keepalive = Some(keepalive.with_mode(KeepaliveMode::Interval));
+        });
+        portal.connect(&id("alpha/aria")).await.unwrap();
+        wait_state(&portal, &id("alpha/aria"), WorldState::Connected).await;
+        // The paused clock moves to 130 seconds, through the keepalives at 60 and 120.
+        let until = tokio::time::timeout(Duration::from_secs(130), std::future::pending::<()>());
+        assert!(until.await.is_err());
+    });
+    assert_eq!(
+        memory.value("mu.keepalive.sent", &[("mu.world", "alpha/aria")]),
+        Some(2)
+    );
+}
+
+#[test]
+fn gauge_shows_reconnecting() {
+    let memory = Memory::new();
+    run_paused(memory.subscriber(), async {
+        let game = ScriptedGame::new(Script::new().close());
+        let portal = world_on_game(&game, |world| {
+            world.reconnect = Reconnect::Backoff(Backoff::new(1, 60, 30).unwrap());
+        });
+        portal.connect(&id("alpha/aria")).await.unwrap();
+        wait_state(&portal, &id("alpha/aria"), WorldState::Reconnecting).await;
+        let state = |name| {
+            memory.value(
+                "mu.world.state",
+                &[("mu.world", "alpha/aria"), ("mu.world.state.name", name)],
+            )
+        };
+        assert_eq!(
+            (state("reconnecting"), state("connected")),
+            (Some(1), Some(0))
         );
     });
 }

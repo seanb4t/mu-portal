@@ -29,12 +29,13 @@ At the stop, each provider shuts down on a helper thread of its own, so a slow t
 |---|---|---|
 | `mu.v1.PortalService/<method>` | span | `rpc.system`, `rpc.service`, `rpc.method`, `mu.world`, `rpc.connect_rpc.error_code` |
 | `command` | span | `mu.world`, `mu.command`, `mu.origin`, `mu.depth` |
-| `world.connection` | span | `mu.world` |
+| `world.connection` | span | `mu.world`, `mu.connection.end` |
 | `mu.journal.events` | sum | `mu.world`, `mu.event.kind` |
 | `mu.subscriber.lag` | histogram | none |
 | `mu.subscriber.lagged` | sum | none |
 | `mu.commands.dropped` | sum | `mu.world`, `mu.drop.reason` |
 | `mu.script.errors` | sum | `mu.world` |
+| `mu.keepalive.sent` | sum | `mu.world` |
 | `mu.world.state` | gauge | `mu.world`, `mu.world.state.name` |
 
 An API span has `mu.world` only for a call that names a world. The span of a command is a child of the span of its caller. A request to a world carries the span of its caller across the queue of the world. A failed API call sets the status `ERROR` on its span, and `rpc.connect_rpc.error_code` to the name of its Connect error code. The message of the error stays out.

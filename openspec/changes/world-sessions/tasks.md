@@ -114,7 +114,7 @@ Load the `rust-best-practices` skill before this group.
   - `closed_connection_span_is_not_error`, for "The game closes the connection" of the telemetry delta
 
   Add `lost_connection_span_is_error` to `crates/mu-cli/tests/telemetry_engine.rs`, for "A connection that is lost". Extend the test of "The connection of a fake world" with `mu.connection.end` equal to `stopped`. Make sure that the four new tests and the extended test pass.
-- [ ] 8.2 Count each keepalive in `mu.keepalive.sent`, and add `reconnecting` to the gauge `mu.world.state`. Add `keepalive_lines_are_counted` and `gauge_shows_reconnecting` to `crates/mu-cli/tests/telemetry_engine.rs`, for "The keepalive lines" and "A world that waits to reconnect" of the telemetry delta. Describe the new metric and attribute in `docs/src/content/docs/guides/telemetry.md`. Make sure that both tests pass, and that `state_at_the_stop` and the test of "A world that never connects" still pass.
+- [x] 8.2 Count each keepalive in `mu.keepalive.sent`, and add `reconnecting` to the gauge `mu.world.state`. Add `keepalive_lines_are_counted` and `gauge_shows_reconnecting` to `crates/mu-cli/tests/telemetry_engine.rs`, for "The keepalive lines" and "A world that waits to reconnect" of the telemetry delta. Describe the new metric and attribute in `docs/src/content/docs/guides/telemetry.md`. Make sure that both tests pass, and that `state_at_the_stop` and the test of "A world that never connects" still pass.
 
 ## 9. Integration
 

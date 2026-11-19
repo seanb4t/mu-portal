@@ -67,6 +67,21 @@ If the server does not trust the certificate of the collector, it exports nothin
 
 The export runs apart from the worlds, with a bounded queue. If the collector is slow or absent, the server drops data, and the worlds do not wait. The server writes two lines to stderr for each failed export, and one line at the first drop. Each export request has a limit of ten seconds. At the stop, the server waits at most five seconds for the export of both signals. If the export does not finish in that time, the server writes a line to stderr and exits.
 
+## The connections of a world
+
+The decision page [Telemetry](/decisions/telemetry/) lists each span and metric. The span `world.connection` covers one connection of a world, or one attempt to connect. At its end, it carries `mu.connection.end`, which tells why the connection ended:
+
+| Value | Meaning | Span status |
+|---|---|---|
+| `connect_failed` | The connect failed | `ERROR` |
+| `timeout` | The connect took more than 10 seconds | `ERROR` |
+| `lost` | A read or a write failed | `ERROR` |
+| `closed` | The game closed the connection | none |
+| `player` | A player or a script disconnected the world | none |
+| `stopped` | The server stopped | none |
+
+The sum `mu.keepalive.sent` counts each keepalive line that a world sends, with `mu.world`. While a world waits for its next attempt to connect, the gauge `mu.world.state` gives 1 for the state `reconnecting`. A `command` span whose command fails has the status `ERROR`.
+
 ## What the server does not support
 
 The server does not support these features. Some of them can have an effect through the OpenTelemetry library, but `mu` does not test them. The server sets its own request limit, so the timeout variables have no effect on either protocol:

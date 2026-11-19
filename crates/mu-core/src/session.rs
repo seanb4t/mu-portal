@@ -844,6 +844,12 @@ impl Session {
         if self.write_line(&command, 0).await.is_err() {
             return;
         }
+        tracing::event!(
+            target: crate::METRICS_TARGET,
+            tracing::Level::INFO,
+            mu.world = %self.parts.world,
+            "monotonic_counter.mu.keepalive.sent" = 1_u64,
+        );
         if let Conn::Up {
             phase: Phase::Live(live),
             ..
