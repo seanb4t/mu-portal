@@ -2,5 +2,7 @@
 //! `--fake-world` flag.
 
 pub mod memory;
+pub mod scripted;
 
 pub use memory::{ConnectGate, FakeGame, FakeTransport, WRONG_LOGIN};
+pub use scripted::{Listening, Script, ScriptedGame, Step};
