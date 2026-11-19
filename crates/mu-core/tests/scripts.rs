@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use mu_core::{
     Command, DEPTH_LIMIT, Envelope, Event, EventKind, Framer, Handler, Hook, HookAction, Inbound,
-    LineFramer, MemoryJournal, Origin, Portal, Source, WorldState,
+    LineFramer, MemoryJournal, Origin, Portal, Source, WorldState, WorldStatus,
 };
 
 use support::*;
@@ -438,7 +438,7 @@ async fn handler_cannot_connect_after_stop() {
     assert_eq!(connects, 1, "the handler brought the world back up");
     assert_eq!(
         portal.worlds(),
-        [(id("alpha/aria"), WorldState::Disconnected)]
+        [(id("alpha/aria"), WorldStatus::of(WorldState::Disconnected))]
     );
 }
 
@@ -453,7 +453,10 @@ async fn stray_mark_is_ignored() {
         event.kind == EventKind::Line && event.text == "after"
     })
     .await;
-    assert_eq!(portal.worlds(), [(id("alpha/aria"), WorldState::Connected)]);
+    assert_eq!(
+        portal.worlds(),
+        [(id("alpha/aria"), WorldStatus::of(WorldState::Connected))]
+    );
 }
 
 /// A line framer that gives `becomes` for the game line `trigger`.
@@ -506,7 +509,10 @@ async fn reply_of_the_framer_reaches_the_game() {
     assert_eq!(game.wait_for_lines(2).await[1], "reply");
     idle(&portal).await;
     assert!(events(&portal).iter().all(|event| event.text != "ask"));
-    assert_eq!(portal.worlds(), [(id("alpha/aria"), WorldState::Connected)]);
+    assert_eq!(
+        portal.worlds(),
+        [(id("alpha/aria"), WorldStatus::of(WorldState::Connected))]
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -520,7 +526,7 @@ async fn failed_reply_write_ends_the_connection() {
     assert_eq!(of_kind(&portal, EventKind::Line), []);
     assert_eq!(
         portal.worlds(),
-        [(id("alpha/aria"), WorldState::Disconnected)]
+        [(id("alpha/aria"), WorldStatus::of(WorldState::Disconnected))]
     );
 }
 

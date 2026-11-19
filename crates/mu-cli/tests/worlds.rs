@@ -1,5 +1,8 @@
 //! The scenarios of the world-sessions capability, run on the built binary.
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use mu_fake_server::{Script, ScriptedGame};
 use mu_proto::{EventKind, Source, WorldState};
 
 use support::process::{PW, ServerBuilder, Session, TWO_WORLDS};
@@ -289,4 +292,38 @@ async fn server_does_not_read_a_configured_secret() {
     let session = Session::start(builder).await;
     let worlds = session.client.list_worlds().await.unwrap();
     assert_eq!(worlds.len(), 1);
+}
+
+fn now_ms() -> i64 {
+    let since = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    i64::try_from(since.as_millis()).unwrap()
+}
+
+#[tokio::test]
+async fn list_worlds_shows_reconnecting() {
+    let game = ScriptedGame::new(Script::new().close());
+    let listening = game.listen().await.unwrap();
+    let base = format!(
+        "extends = \"tinymux\"\nhost = \"127.0.0.1\"\nport = {}\n",
+        listening.addr().port()
+    );
+    // A long first wait, so the call comes before the next attempt.
+    let conf = ConfigDir::empty().file("games/alpha.toml", &base).file(
+        "characters/alpha/aria.toml",
+        "[reconnect]\ninitial = 30\nmax = 60\n",
+    );
+    let mut session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
+    session.client.connect("alpha/aria").await.unwrap();
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    let called = now_ms();
+    let worlds = session.client.list_worlds().await.unwrap();
+    assert!(
+        worlds[0].state == WorldState::WORLD_STATE_RECONNECTING,
+        "{:?}",
+        worlds[0]
+    );
+    let next = worlds[0].next_attempt_ms.unwrap();
+    assert!(next > called, "{next} is not after {called}");
 }

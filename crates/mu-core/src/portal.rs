@@ -15,7 +15,7 @@ use crate::id::WorldId;
 use crate::journal::{Journal, Subscription};
 use crate::script::{Handler, Hook};
 use crate::secret::{Secret, SecretSource};
-use crate::session::{self, Reply, Request, Router, SessionParts, WorldState};
+use crate::session::{self, Reply, Request, Router, SessionParts, WorldState, WorldStatus};
 use crate::transport::Transport;
 use crate::world::ResolvedWorld;
 
@@ -106,7 +106,7 @@ impl WorldSetup {
 #[derive(Clone)]
 pub struct Portal {
     router: Router,
-    states: Arc<BTreeMap<WorldId, watch::Receiver<WorldState>>>,
+    states: Arc<BTreeMap<WorldId, watch::Receiver<WorldStatus>>>,
     journal: Arc<dyn Journal>,
     stopped: Arc<AtomicBool>,
     /// The last event that the server handlers handled. None with no server handlers.
@@ -136,7 +136,7 @@ impl Portal {
         at_start.sort();
         for setup in worlds {
             let (sender, requests) = mpsc::unbounded_channel();
-            let (state, state_receiver) = watch::channel(WorldState::Disconnected);
+            let (state, state_receiver) = watch::channel(WorldStatus::of(WorldState::Disconnected));
             senders.insert(setup.world.id.clone(), sender);
             states.insert(setup.world.id.clone(), state_receiver);
             receivers.push((setup, requests, state));
@@ -197,21 +197,21 @@ impl Portal {
         &self.journal
     }
 
-    /// Each world with its state, in the order of the ids.
+    /// Each world with its status, in the order of the ids.
     #[must_use]
-    pub fn worlds(&self) -> Vec<(WorldId, WorldState)> {
+    pub fn worlds(&self) -> Vec<(WorldId, WorldStatus)> {
         self.states
             .iter()
             .map(|(id, state)| (id.clone(), *state.borrow()))
             .collect()
     }
 
-    /// A receiver of the state of `world`.
+    /// A receiver of the status of `world`.
     ///
     /// # Errors
     ///
     /// [`PortalError::UnknownWorld`] for a world that does not exist.
-    pub fn state(&self, world: &WorldId) -> Result<watch::Receiver<WorldState>, PortalError> {
+    pub fn state(&self, world: &WorldId) -> Result<watch::Receiver<WorldStatus>, PortalError> {
         self.states
             .get(world)
             .cloned()

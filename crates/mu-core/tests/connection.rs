@@ -349,7 +349,7 @@ async fn world_stops_after_last_attempt() {
     portal.connect(&id("alpha/aria")).await.unwrap();
     gave_up(&portal, 3).await;
     assert_eq!(
-        *portal.state(&id("alpha/aria")).unwrap().borrow(),
+        portal.state(&id("alpha/aria")).unwrap().borrow().state,
         WorldState::Disconnected
     );
     let more = tokio::time::timeout(Duration::from_secs(120), game.wait_for_refused(5)).await;
@@ -438,7 +438,7 @@ async fn secret_gone_at_reconnect_stops() {
     })
     .await;
     assert_eq!(
-        *portal.state(&id("alpha/aria")).unwrap().borrow(),
+        portal.state(&id("alpha/aria")).unwrap().borrow().state,
         WorldState::Disconnected
     );
     assert_eq!((game.connects(), game.refused()), (1, 0));
@@ -477,7 +477,7 @@ async fn disconnect_during_a_wait() {
     let again = tokio::time::timeout(Duration::from_secs(120), game.wait_for_refused(2)).await;
     assert!(again.is_err());
     assert_eq!(
-        *portal.state(&id("alpha/aria")).unwrap().borrow(),
+        portal.state(&id("alpha/aria")).unwrap().borrow().state,
         WorldState::Disconnected
     );
 }

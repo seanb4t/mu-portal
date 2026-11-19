@@ -102,7 +102,7 @@ Load the `rust-best-practices` skill before this group.
   - `failed_autoconnect_does_not_stop_start`, for "A failed connect at the start"
 
   Replace `configured_world_cannot_connect_yet` with `configured_world_connects_on_request`, for "A configured world connects on request". Make `configured_world_waits` set no `autoconnect`. Make sure that the four tests and `two_worlds_connect` pass.
-- [ ] 7.2 Add `WORLD_STATE_RECONNECTING` and `next_attempt_ms` to `portal.proto`, as design decision 11 describes, and map them in `mu-server`. Add `list_worlds_shows_reconnecting` to `crates/mu-cli/tests/worlds.rs`, for "A world that waits to reconnect" of "ListWorlds gives the state of each world". Make sure that the test passes, and that the existing enum values and field numbers of `World` do not change.
+- [x] 7.2 Add `WORLD_STATE_RECONNECTING` and `next_attempt_ms` to `portal.proto`, as design decision 11 describes, and map them in `mu-server`. Add `list_worlds_shows_reconnecting` to `crates/mu-cli/tests/worlds.rs`, for "A world that waits to reconnect" of "ListWorlds gives the state of each world". Make sure that the test passes, and that the existing enum values and field numbers of `World` do not change.
 
 ## 8. Telemetry
 

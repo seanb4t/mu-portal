@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use mu_core::{
     EventKind, Journal, MemoryJournal, NewEvent, Portal, PortalError, ResolvedWorld, Source,
-    WorldId, WorldSetup, WorldState,
+    WorldId, WorldSetup, WorldState, WorldStatus,
 };
 use mu_fake_server::{ConnectGate, FakeTransport};
 
@@ -129,8 +129,8 @@ async fn one_world_drops() {
     assert_eq!(
         portal.worlds(),
         [
-            (id("alpha/aria"), WorldState::Disconnected),
-            (id("beta/bryn"), WorldState::Connected)
+            (id("alpha/aria"), WorldStatus::of(WorldState::Disconnected)),
+            (id("beta/bryn"), WorldStatus::of(WorldState::Connected))
         ]
     );
 }
@@ -268,8 +268,8 @@ async fn stop_disconnects_every_world_and_refuses_connect() {
     assert_eq!(
         portal.worlds(),
         [
-            (id("alpha/aria"), WorldState::Disconnected),
-            (id("beta/bryn"), WorldState::Disconnected)
+            (id("alpha/aria"), WorldStatus::of(WorldState::Disconnected)),
+            (id("beta/bryn"), WorldStatus::of(WorldState::Disconnected))
         ]
     );
     let gone: Vec<(WorldId, Source)> = of_kind(&portal, EventKind::Disconnected)
@@ -294,7 +294,7 @@ async fn stop_disconnects_every_world_and_refuses_connect() {
     );
     assert_eq!(
         portal.worlds()[0],
-        (id("alpha/aria"), WorldState::Disconnected)
+        (id("alpha/aria"), WorldStatus::of(WorldState::Disconnected))
     );
 }
 
@@ -315,7 +315,7 @@ async fn login_with_no_secret_is_refused() {
     idle(&portal).await;
     assert_eq!(
         portal.worlds()[0],
-        (id("alpha/aria"), WorldState::Disconnected)
+        (id("alpha/aria"), WorldStatus::of(WorldState::Disconnected))
     );
     assert!(game.lines().is_empty(), "{:?}", game.lines());
 }

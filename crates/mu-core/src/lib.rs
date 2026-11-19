@@ -32,7 +32,7 @@ pub use script::{DEPTH_LIMIT, Handler, Hook, HookAction, RATE_PER_SECOND};
 pub use secret::{
     EnvSecretStore, Secret, SecretError, SecretRef, SecretSource, SecretStore, load_password,
 };
-pub use session::WorldState;
+pub use session::{WorldState, WorldStatus};
 pub use transport::{ByteStream, TcpTransport, Transport};
 pub use world::{
     Backoff, Keepalive, KeepaliveMode, Login, Reconnect, ReconnectMode, ResolvedWorld,

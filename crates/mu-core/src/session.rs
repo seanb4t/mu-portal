@@ -5,7 +5,7 @@ use std::io;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use futures::future::BoxFuture;
 use governor::clock::Clock;
@@ -57,6 +57,26 @@ impl WorldState {
             Self::Connected => "connected",
             Self::Disconnected => "disconnected",
             Self::Reconnecting => "reconnecting",
+        }
+    }
+}
+
+/// The state of a world, with the time of its next attempt while it waits to reconnect.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WorldStatus {
+    /// The state.
+    pub state: WorldState,
+    /// The wall-clock time of the next attempt, in the state [`WorldState::Reconnecting`] only.
+    pub next_attempt: Option<SystemTime>,
+}
+
+impl WorldStatus {
+    /// The status of a world in `state` with no next attempt.
+    #[must_use]
+    pub fn of(state: WorldState) -> Self {
+        Self {
+            state,
+            next_attempt: None,
         }
     }
 }
@@ -219,7 +239,7 @@ pub(crate) struct SessionParts {
     pub(crate) handlers: Vec<Arc<dyn Handler>>,
     pub(crate) journal: Arc<dyn Journal>,
     pub(crate) router: Router,
-    pub(crate) state: watch::Sender<WorldState>,
+    pub(crate) state: watch::Sender<WorldStatus>,
     pub(crate) requests: mpsc::UnboundedReceiver<Request>,
     /// Set by [`crate::Portal::stop`]. After it, the session refuses each connect.
     pub(crate) stopped: Arc<AtomicBool>,
@@ -381,7 +401,7 @@ pub(crate) async fn run(parts: SessionParts) {
     if let Some(SecretSource::Fixed(password)) = &session.parts.secret {
         session.password = Some(password.clone());
     }
-    let start = *session.parts.state.borrow();
+    let start = session.parts.state.borrow().state;
     state_gauge(&session.parts.world, start, 1);
     let mut buffer = vec![0_u8; 4096];
     loop {
@@ -532,10 +552,14 @@ impl Session {
     }
 
     fn set_state(&self, state: WorldState) {
-        let old = self.parts.state.send_replace(state);
+        self.set_status(WorldStatus::of(state));
+    }
+
+    fn set_status(&self, status: WorldStatus) {
+        let old = self.parts.state.send_replace(status);
         // The 1 comes last, so a state that does not change keeps its 1.
-        state_gauge(self.world(), old, 0);
-        state_gauge(self.world(), state, 1);
+        state_gauge(self.world(), old.state, 0);
+        state_gauge(self.world(), status.state, 1);
     }
 
     /// Ends the connection, the connect or the wait for `cause`, records it on the span of the
@@ -563,7 +587,11 @@ impl Session {
                 self.conn = Conn::Waiting {
                     until: Instant::now() + wait,
                 };
-                self.set_state(WorldState::Reconnecting);
+                // Only the API reads the time, so the wall clock gives it.
+                self.set_status(WorldStatus {
+                    state: WorldState::Reconnecting,
+                    next_attempt: Some(SystemTime::now() + wait),
+                });
                 reason.to_owned()
             }
             AfterDrop::GiveUp(count) => {

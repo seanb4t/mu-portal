@@ -100,7 +100,7 @@ pub async fn wait_event(portal: &Portal, check: impl Fn(&Event) -> bool) -> Even
 /// Waits until `world` is in `state`.
 pub async fn wait_state(portal: &Portal, world: &WorldId, state: WorldState) {
     let mut receiver = portal.state(world).unwrap();
-    tokio::time::timeout(BOUND, receiver.wait_for(|now| *now == state))
+    tokio::time::timeout(BOUND, receiver.wait_for(|now| now.state == state))
         .await
         .unwrap_or_else(|_| panic!("{world} never got to {state:?}"))
         .unwrap();
