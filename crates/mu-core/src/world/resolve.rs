@@ -352,7 +352,7 @@ fn keepalive(id: &WorldId, fields: KeepaliveFields) -> Result<Option<Keepalive>,
     let missing = |field: &str| ConfigError::field(id, field, "no layer sets it");
     match (fields.command, fields.seconds) {
         (Some(command), Some(seconds)) => Keepalive::new(command, seconds)
-            .map(|keepalive| Some(keepalive.with_mode(fields.mode.unwrap_or_default())))
+            .map(|keepalive| keepalive.with_mode(fields.mode.unwrap_or_default()))
             .map_err(|error| ConfigError::of_field(id, &error)),
         (Some(_), None) => Err(missing("keepalive.seconds")),
         (None, Some(_)) => Err(missing("keepalive.command")),

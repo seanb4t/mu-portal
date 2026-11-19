@@ -523,7 +523,7 @@ fn keepalive_lines_are_counted() {
         let game = ScriptedGame::new(Script::new());
         let portal = world_on_game(&game, |world| {
             let keepalive = Keepalive::new("IDLE", 60).unwrap();
-            world.keepalive = Some(keepalive.with_mode(KeepaliveMode::Interval));
+            world.keepalive = keepalive.with_mode(KeepaliveMode::Interval);
         });
         portal.connect(&id("alpha/aria")).await.unwrap();
         wait_state(&portal, &id("alpha/aria"), WorldState::Connected).await;

@@ -171,7 +171,7 @@ fn idle_times(reads: &[Vec<(Instant, Vec<u8>)>], start: Instant) -> Vec<Duration
 /// to `connected`.
 async fn keepalive_world(game: &ScriptedGame, mode: KeepaliveMode) -> (Portal, Instant) {
     let mut world = ResolvedWorld::new(id("alpha/aria"));
-    world.keepalive = Some(Keepalive::new("IDLE", 60).unwrap().with_mode(mode));
+    world.keepalive = Keepalive::new("IDLE", 60).unwrap().with_mode(mode);
     let portal = portal(
         vec![WorldSetup::new(world, None, Arc::new(game.clone()))],
         Vec::new(),

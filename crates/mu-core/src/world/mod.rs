@@ -159,11 +159,19 @@ impl KeepaliveMode {
     }
 }
 
+/// When a [`Keepalive`] sends its line: [`KeepaliveMode`] with no `Off`, because a world with
+/// no keepalive has none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Schedule {
+    Idle,
+    Interval,
+}
+
 /// The keepalive of a world: a mode, a line to send, and the seconds of the mode, from 1 to
 /// 86400. The line holds no CR and no LF.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Keepalive {
-    mode: KeepaliveMode,
+    schedule: Schedule,
     command: String,
     seconds: u32,
 }
@@ -179,22 +187,31 @@ impl Keepalive {
         let command = command.into();
         check::check_keepalive(Some(&command), Some(seconds))?;
         Ok(Self {
-            mode: KeepaliveMode::Idle,
+            schedule: Schedule::Idle,
             command,
             seconds,
         })
     }
 
-    /// The same keepalive with `mode`.
+    /// The same keepalive with `mode`. None for [`KeepaliveMode::Off`], the one form of a world
+    /// with no keepalive.
     #[must_use]
-    pub fn with_mode(self, mode: KeepaliveMode) -> Self {
-        Self { mode, ..self }
+    pub fn with_mode(self, mode: KeepaliveMode) -> Option<Self> {
+        let schedule = match mode {
+            KeepaliveMode::Idle => Schedule::Idle,
+            KeepaliveMode::Interval => Schedule::Interval,
+            KeepaliveMode::Off => return None,
+        };
+        Some(Self { schedule, ..self })
     }
 
     /// The mode.
     #[must_use]
     pub fn mode(&self) -> KeepaliveMode {
-        self.mode
+        match self.schedule {
+            Schedule::Idle => KeepaliveMode::Idle,
+            Schedule::Interval => KeepaliveMode::Interval,
+        }
     }
 
     /// The line to send.
@@ -216,24 +233,23 @@ impl Keepalive {
     }
 
     /// The time of the next keepalive line, from the move of the world to `connected`, the last
-    /// line written to the game and the last keepalive line. With the mode `off`, none. A
-    /// keepalive line is also a line written to the game.
+    /// line written to the game and the last keepalive line. A keepalive line is also a line
+    /// written to the game.
     #[must_use]
     pub fn deadline(
         &self,
         connected: Instant,
         last_write: Option<Instant>,
         last_keepalive: Option<Instant>,
-    ) -> Option<Instant> {
-        let start = match self.mode {
-            KeepaliveMode::Idle => [last_write, last_keepalive]
+    ) -> Instant {
+        let start = match self.schedule {
+            Schedule::Idle => [last_write, last_keepalive]
                 .into_iter()
                 .flatten()
                 .fold(connected, Instant::max),
-            KeepaliveMode::Interval => last_keepalive.map_or(connected, |last| last.max(connected)),
-            KeepaliveMode::Off => return None,
+            Schedule::Interval => last_keepalive.map_or(connected, |last| last.max(connected)),
         };
-        Some(start + self.period())
+        start + self.period()
     }
 }
 
@@ -455,7 +471,7 @@ mod tests {
     use super::*;
 
     fn keepalive(mode: KeepaliveMode) -> Keepalive {
-        Keepalive::new("IDLE", 60).unwrap().with_mode(mode)
+        Keepalive::new("IDLE", 60).unwrap().with_mode(mode).unwrap()
     }
 
     fn secs(seconds: u64) -> Duration {
@@ -475,7 +491,7 @@ mod tests {
             let at = |seconds: Option<u64>| seconds.map(|seconds| t0 + secs(seconds));
             assert_eq!(
                 idle.deadline(t0, at(last_write), at(last_keepalive)),
-                Some(t0 + secs(next)),
+                t0 + secs(next),
                 "{last_write:?} {last_keepalive:?}"
             );
         }
@@ -493,7 +509,7 @@ mod tests {
             let at = |seconds: Option<u64>| seconds.map(|seconds| t0 + secs(seconds));
             assert_eq!(
                 interval.deadline(t0, at(last_write), at(last_keepalive)),
-                Some(t0 + secs(next)),
+                t0 + secs(next),
                 "{last_write:?} {last_keepalive:?}"
             );
         }
@@ -575,9 +591,17 @@ mod tests {
     }
 
     #[test]
-    fn off_has_no_deadline() {
-        let t0 = Instant::now();
-        assert_eq!(keepalive(KeepaliveMode::Off).deadline(t0, None, None), None);
+    fn off_is_no_keepalive() {
+        let keepalive = Keepalive::new("IDLE", 60).unwrap();
+        assert_eq!(keepalive.with_mode(KeepaliveMode::Off), None);
+    }
+
+    #[test]
+    fn mode_round_trips() {
+        for mode in [KeepaliveMode::Idle, KeepaliveMode::Interval] {
+            let keepalive = Keepalive::new("IDLE", 60).unwrap().with_mode(mode).unwrap();
+            assert_eq!(keepalive.mode(), mode);
+        }
     }
 
     #[test]

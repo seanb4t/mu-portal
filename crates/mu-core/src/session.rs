@@ -350,9 +350,11 @@ impl Conn {
             Phase::Login(pending) => {
                 Some((moment.deadline(opened, pending.last_byte), Timer::Login))
             }
-            Phase::Live(live) => keepalive?
-                .deadline(live.connected, live.last_write, live.last_keepalive)
-                .map(|deadline| (deadline, Timer::Keepalive)),
+            Phase::Live(live) => keepalive.map(|keepalive| {
+                let deadline =
+                    keepalive.deadline(live.connected, live.last_write, live.last_keepalive);
+                (deadline, Timer::Keepalive)
+            }),
         }
     }
 
