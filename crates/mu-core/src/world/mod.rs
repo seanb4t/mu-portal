@@ -303,6 +303,33 @@ impl Backoff {
     pub fn attempts(&self) -> u32 {
         self.attempts
     }
+
+    /// The wait before the attempt `attempt`, from 1: `min(initial * 2^(attempt-1), max)`
+    /// seconds, plus an extra time. `draw` sets the extra time, from 0 for none to `u32::MAX`
+    /// for `min(0.05 * attempt, 0.20)` times the wait. Attempt 0 counts as attempt 1.
+    #[must_use]
+    pub fn wait(&self, attempt: u32, draw: u32) -> Duration {
+        let max = u64::from(self.max);
+        let base = 1_u64
+            .checked_shl(attempt.saturating_sub(1))
+            .and_then(|power| power.checked_mul(u64::from(self.initial)))
+            .map_or(max, |wait| wait.min(max));
+        let share = (0.05 * f64::from(attempt.max(1))).min(0.20);
+        let extra = share * f64::from(draw) / f64::from(u32::MAX);
+        Duration::from_secs(base).mul_f64(1.0 + extra)
+    }
+
+    /// Whether a connection that stayed up for `up` starts the count of attempts again.
+    #[must_use]
+    pub fn resets(&self, up: Duration) -> bool {
+        up >= Duration::from_secs(u64::from(self.max))
+    }
+
+    /// Whether the world stops after `failed` failed attempts in a row.
+    #[must_use]
+    pub fn stops(&self, failed: u32) -> bool {
+        self.attempts != 0 && failed >= self.attempts
+    }
 }
 
 /// Whether a world reconnects after a drop that the player did not ask for.
@@ -312,6 +339,18 @@ pub enum Reconnect {
     Backoff(Backoff),
     /// It does not reconnect.
     Off,
+}
+
+impl Reconnect {
+    /// The wait before the attempt `attempt`, as [`Backoff::wait`] gives it, or none with no
+    /// reconnect.
+    #[must_use]
+    pub fn wait(&self, attempt: u32, draw: u32) -> Option<Duration> {
+        match self {
+            Self::Backoff(backoff) => Some(backoff.wait(attempt, draw)),
+            Self::Off => None,
+        }
+    }
 }
 
 /// Whether an entry is a rule or a script.
@@ -457,6 +496,81 @@ mod tests {
                 Some(t0 + secs(next)),
                 "{last_write:?} {last_keepalive:?}"
             );
+        }
+    }
+
+    fn backoff(initial: u32, max: u32) -> Backoff {
+        Backoff::new(initial, max, 30).unwrap()
+    }
+
+    /// `min(initial * 2^(attempt-1), max)` in seconds, computed apart from [`Backoff::wait`].
+    fn base_wait(initial: u32, max: u32, attempt: u32) -> f64 {
+        let shift = attempt - 1;
+        let wait = if shift >= 64 {
+            u128::from(max)
+        } else {
+            (u128::from(initial) << shift).min(u128::from(max))
+        };
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "the wait is at most 86400 seconds"
+        )]
+        let wait = wait as f64;
+        wait
+    }
+
+    #[test]
+    fn waits_double_up_to_the_cap() {
+        let waits: Vec<u64> = (1..=8)
+            .map(|attempt| backoff(1, 60).wait(attempt, 0).as_secs())
+            .collect();
+        assert_eq!(waits, [1, 2, 4, 8, 16, 32, 60, 60]);
+    }
+
+    #[test]
+    fn stable_connection_resets_the_count() {
+        assert!(backoff(1, 60).resets(secs(60)));
+    }
+
+    #[test]
+    fn short_connection_does_not_reset_the_count() {
+        assert!(!backoff(1, 60).resets(secs(59)));
+    }
+
+    #[test]
+    fn stops_after_the_last_attempt() {
+        let three = Backoff::new(1, 60, 3).unwrap();
+        assert_eq!([2, 3].map(|failed| three.stops(failed)), [false, true]);
+        let no_limit = Backoff::new(1, 60, 0).unwrap();
+        assert!(!no_limit.stops(u32::MAX));
+    }
+
+    #[test]
+    fn reconnect_off_has_no_wait() {
+        assert_eq!(Reconnect::Off.wait(1, 0), None);
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn extra_time_reaches_its_cap(
+            attempt in proptest::prop_oneof![
+                proptest::strategy::Just(4_u32),
+                proptest::strategy::Just(u32::MAX),
+                4_u32..=u32::MAX,
+            ],
+            draws in proptest::collection::vec(proptest::arbitrary::any::<u32>(), 1000),
+        ) {
+            for (initial, max) in [(1, 60), (3_600, 86_400)] {
+                let base = base_wait(initial, max, attempt);
+                let mut top = 0.0_f64;
+                for &draw in &draws {
+                    let wait = backoff(initial, max).wait(attempt, draw).as_secs_f64();
+                    proptest::prop_assert!(wait >= base, "{wait} < {base}");
+                    proptest::prop_assert!(wait <= base * 1.20 + 1e-6, "{wait} > 1.2 * {base}");
+                    top = top.max(wait / base - 1.0);
+                }
+                proptest::prop_assert!(top > 0.15, "the extra time reached only {top}");
+            }
         }
     }
 
