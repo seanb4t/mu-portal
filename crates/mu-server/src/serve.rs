@@ -119,7 +119,7 @@ pub async fn serve(
     let journal = MemoryJournal::new(DEFAULT_CAPACITY)
         .unwrap_or_else(|_| unreachable!("the default capacity is valid"));
     let portal = Portal::start(Arc::new(journal), worlds, Vec::new());
-    portal.connect_all().await;
+    portal.connect_at_start().await;
 
     let (stopping, stop_receiver) = watch::channel(false);
     let api = PortalApi::new(

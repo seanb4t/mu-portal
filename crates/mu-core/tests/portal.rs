@@ -66,7 +66,7 @@ async fn send_to_connecting_world() {
     let (transport, _gate) = FakeTransport::new("aria", PW).held();
     let (aria, _) = world_on("alpha/aria", PW, transport);
     let portal = portal(vec![aria], Vec::new());
-    portal.connect_all().await;
+    portal.connect_at_start().await;
     wait_state(&portal, &id("alpha/aria"), WorldState::Connecting).await;
     assert_eq!(
         portal.send(&id("alpha/aria"), "hello").await,
@@ -334,7 +334,7 @@ async fn world_in_held_connect() -> (Portal, ConnectGate) {
     let (transport, gate) = FakeTransport::new("aria", PW).held();
     let (aria, _) = world_on("alpha/aria", PW, transport);
     let portal = portal(vec![aria], Vec::new());
-    portal.connect_all().await;
+    portal.connect_at_start().await;
     (portal, gate)
 }
 

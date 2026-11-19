@@ -33,7 +33,7 @@ pub use secret::{
     EnvSecretStore, Secret, SecretError, SecretRef, SecretSource, SecretStore, load_password,
 };
 pub use session::WorldState;
-pub use transport::{ByteStream, Transport};
+pub use transport::{ByteStream, TcpTransport, Transport};
 pub use world::{
     Backoff, Keepalive, KeepaliveMode, Login, Reconnect, ReconnectMode, ResolvedWorld,
 };

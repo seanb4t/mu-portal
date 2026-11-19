@@ -340,7 +340,7 @@ async fn world_uses_its_framer() {
         Box::new(Shout(LineFramer::new()))
     }));
     let portal = portal(vec![aria], Vec::new());
-    portal.connect_all().await;
+    portal.connect_at_start().await;
     let login = format!("CONNECT ARIA {}", PW.to_uppercase());
     assert_eq!(game.wait_for_lines(1).await[0], login);
     // A new connection gets a new framer from the same factory.
@@ -374,7 +374,7 @@ async fn server_handler_sees_every_world() {
     let (aria, _) = world("alpha/aria", PW);
     let (bryn, _) = world("beta/bryn", PW);
     let portal = portal(vec![aria, bryn], vec![handler]);
-    portal.connect_all().await;
+    portal.connect_at_start().await;
     for greeting in ["Welcome, aria.", "Welcome, bryn."] {
         wait_event(&portal, |event| event.text == greeting).await;
     }

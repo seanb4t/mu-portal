@@ -111,6 +111,8 @@ pub struct Portal {
     stopped: Arc<AtomicBool>,
     /// The last event that the server handlers handled. None with no server handlers.
     handled: Option<watch::Receiver<Seq>>,
+    /// The worlds that connect at the start, in the order of the ids.
+    at_start: Arc<Vec<WorldId>>,
 }
 
 impl Portal {
@@ -126,6 +128,12 @@ impl Portal {
         let mut senders = BTreeMap::new();
         let mut receivers = Vec::new();
         let mut states = BTreeMap::new();
+        let mut at_start: Vec<WorldId> = worlds
+            .iter()
+            .filter(|setup| setup.world.autoconnect)
+            .map(|setup| setup.world.id.clone())
+            .collect();
+        at_start.sort();
         for setup in worlds {
             let (sender, requests) = mpsc::unbounded_channel();
             let (state, state_receiver) = watch::channel(WorldState::Disconnected);
@@ -179,6 +187,7 @@ impl Portal {
             journal,
             stopped,
             handled,
+            at_start: Arc::new(at_start),
         }
     }
 
@@ -298,12 +307,22 @@ impl Portal {
         .await;
     }
 
-    /// Connects every world, as the server. Each world logs in when it connects.
-    pub async fn connect_all(&self) {
-        self.to_every_world(|world, reply| {
-            Request::command(Envelope::system(Command::Connect { world }), Some(reply))
-        })
-        .await;
+    /// Connects each world with `autoconnect`, as the server, in the order of the ids. A
+    /// connect that fails goes to the log at `WARN`, and the next world still connects.
+    pub async fn connect_at_start(&self) {
+        for world in self.at_start.iter() {
+            let connected = self
+                .ask(world, |reply| {
+                    let command = Command::Connect {
+                        world: world.clone(),
+                    };
+                    Request::command(Envelope::system(command), Some(reply))
+                })
+                .await;
+            if let Err(error) = connected {
+                tracing::warn!(mu.world = %world, "the connect at the start failed: {error}");
+            }
+        }
     }
 
     /// Waits until the engine has no work left: the server handlers handled each event, each

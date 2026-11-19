@@ -79,7 +79,7 @@ Load the `rust-best-practices` skill before this group. The tests of this group 
 
 Load the `rust-best-practices` skill before this group. The tests of this group are binary tests in `crates/mu-cli/tests/connection.rs`. They use the scripted fake game over TCP.
 
-- [ ] 6.1 Add `TcpTransport` to `mu-core`, as design decision 6 describes. Make `mu-cli` give each configured world a `TcpTransport`, a `TelnetFramer` with its character set and window size (design decision 8), and a `SecretSource::Store`. Add these tests:
+- [x] 6.1 Add `TcpTransport` to `mu-core`, as design decision 6 describes. Make `mu-cli` give each configured world a `TcpTransport`, a `TelnetFramer` with its character set and window size (design decision 8), and a `SecretSource::Store`. Add these tests:
   - `world_reaches_its_game` and `nothing_listens_on_the_port`, for the two binary scenarios of "A configured world connects over TCP"
   - `tls_world_is_refused`, for "A TLS world"
   - `latin1_game` and `window_size_of_the_world`, for the two scenarios of "A configured world speaks telnet in its character set and window size"

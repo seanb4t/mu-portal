@@ -36,6 +36,7 @@ pub fn world(text: &str, password: &str) -> (WorldSetup, FakeGame) {
 pub fn world_on(text: &str, password: &str, transport: FakeTransport) -> (WorldSetup, FakeGame) {
     let game = transport.game();
     let resolved = ResolvedWorld {
+        autoconnect: true,
         reconnect: Reconnect::Off,
         ..ResolvedWorld::with_default_login(id(text), "env:PW".parse().unwrap())
     };
@@ -58,7 +59,7 @@ pub fn portal(worlds: Vec<WorldSetup>, server_handlers: Vec<Arc<dyn Handler>>) -
 /// Starts the portal, connects each world and waits for each greeting.
 pub async fn started(worlds: Vec<WorldSetup>) -> Portal {
     let portal = portal(worlds, Vec::new());
-    portal.connect_all().await;
+    portal.connect_at_start().await;
     for (world, _) in portal.worlds() {
         let greeting = format!("Welcome, {}.", world.character());
         wait_event(&portal, |event| {
@@ -231,6 +232,7 @@ impl AsyncWrite for BrokenStream {
 /// The world `alpha/aria` on `transport`, with no login and no password.
 pub fn bare_world(transport: impl Transport) -> WorldSetup {
     let world = ResolvedWorld {
+        autoconnect: true,
         reconnect: Reconnect::Off,
         ..ResolvedWorld::new(id("alpha/aria"))
     };
@@ -241,7 +243,7 @@ pub fn bare_world(transport: impl Transport) -> WorldSetup {
 pub async fn broken_world(setup: WorldSetup) -> (Portal, WorldId) {
     let aria = id("alpha/aria");
     let portal = portal(vec![setup], Vec::new());
-    portal.connect_all().await;
+    portal.connect_at_start().await;
     wait_state(&portal, &aria, WorldState::Connected).await;
     (portal, aria)
 }

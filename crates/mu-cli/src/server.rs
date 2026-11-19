@@ -4,8 +4,10 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::Args;
+use mu_core::connection::Quiet;
 use mu_core::{
-    EnvSecretStore, Reconnect, ResolvedWorld, SecretRef, WorldId, WorldSetup, load_password,
+    EnvSecretStore, Reconnect, ResolvedWorld, SecretRef, SecretSource, SecretStore, TcpTransport,
+    TelnetFramer, TelnetSettings, WorldId, WorldSetup, load_password,
 };
 use mu_fake_server::FakeTransport;
 use tracing_subscriber::util::SubscriberInitExt as _;
@@ -95,6 +97,38 @@ pub fn run(args: &ServerArgs) -> ExitCode {
     code
 }
 
+/// The setup of a configured world: TCP, telnet in its character set and window size, the
+/// login after a quiet second, and its secret read from `store` at each connect. A TLS world
+/// gets no transport.
+fn configured_setup(
+    world: ResolvedWorld,
+    store: &Arc<dyn SecretStore + Send + Sync>,
+) -> WorldSetup {
+    if world.tls {
+        return WorldSetup::without_transport(world);
+    }
+    let transport = TcpTransport::new(world.host.clone(), world.port);
+    let settings = TelnetSettings {
+        charset: world.charset,
+        columns: world.columns,
+        rows: world.rows,
+        ..TelnetSettings::default()
+    };
+    let secret = world
+        .login
+        .as_ref()
+        .map(|login| SecretSource::Store(login.secret().clone(), Arc::clone(store)));
+    let setup = WorldSetup::new(world, None, Arc::new(transport))
+        .with_framer(Arc::new(move || {
+            Box::new(TelnetFramer::new(settings.clone()))
+        }))
+        .with_login_moment(Arc::new(Quiet::default()));
+    match secret {
+        Some(source) => setup.with_secret_source(source),
+        None => setup,
+    }
+}
+
 /// Resolves the worlds, opens the socket and serves until a signal stops it.
 fn serve_worlds(args: &ServerArgs) -> ExitCode {
     // The configuration resolves first, so a bad file stops the start before the socket opens.
@@ -112,18 +146,19 @@ fn serve_worlds(args: &ServerArgs) -> ExitCode {
             fake.id
         ));
     }
-    let store = EnvSecretStore::new();
+    let store: Arc<dyn SecretStore + Send + Sync> = Arc::new(EnvSecretStore::new());
     let mut worlds: Vec<WorldSetup> = configured
         .into_iter()
-        .map(WorldSetup::without_transport)
+        .map(|world| configured_setup(world, &store))
         .collect();
     for fake in &args.fake_worlds {
-        let password = match load_password(&store, &fake.secret) {
+        let password = match load_password(store.as_ref(), &fake.secret) {
             Ok(password) => password,
             Err(error) => return fail(&format!("{}: {error}", fake.id)),
         };
         let transport = FakeTransport::with_secret(fake.id.character(), &password);
         let world = ResolvedWorld {
+            autoconnect: true,
             reconnect: Reconnect::Off,
             ..ResolvedWorld::with_default_login(fake.id.clone(), fake.secret.clone())
         };

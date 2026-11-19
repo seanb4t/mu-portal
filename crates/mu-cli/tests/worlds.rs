@@ -253,15 +253,6 @@ async fn configured_world_waits() {
 }
 
 #[tokio::test]
-async fn configured_world_cannot_connect_yet() {
-    let conf = ConfigDir::base();
-    let session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
-    let error = session.client.connect("alpha/aria").await.unwrap_err();
-    assert_eq!(error.code, "failed_precondition");
-    assert!(error.message.contains("alpha/aria"), "{}", error.message);
-}
-
-#[tokio::test]
 async fn bad_configuration_stops_the_start() {
     let conf = ConfigDir::base().file("games/alpha.toml", &BASE_GAME.replace("4201", "70000"));
     let builder = ServerBuilder::new().arg("--config").arg(conf.path());
