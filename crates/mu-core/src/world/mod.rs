@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tokio::time::Instant;
 
 use crate::framer::{Charset, TelnetSettings};
 use crate::id::WorldId;
@@ -213,6 +214,27 @@ impl Keepalive {
     pub fn period(&self) -> Duration {
         Duration::from_secs(u64::from(self.seconds))
     }
+
+    /// The time of the next keepalive line, from the move of the world to `connected`, the last
+    /// line written to the game and the last keepalive line. With the mode `off`, none. A
+    /// keepalive line is also a line written to the game.
+    #[must_use]
+    pub fn deadline(
+        &self,
+        connected: Instant,
+        last_write: Option<Instant>,
+        last_keepalive: Option<Instant>,
+    ) -> Option<Instant> {
+        let start = match self.mode {
+            KeepaliveMode::Idle => [last_write, last_keepalive]
+                .into_iter()
+                .flatten()
+                .fold(connected, Instant::max),
+            KeepaliveMode::Interval => last_keepalive.map_or(connected, |last| last.max(connected)),
+            KeepaliveMode::Off => return None,
+        };
+        Some(start + self.period())
+    }
 }
 
 /// The value of `reconnect.mode`.
@@ -392,6 +414,57 @@ impl ResolvedWorld {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn keepalive(mode: KeepaliveMode) -> Keepalive {
+        Keepalive::new("IDLE", 60).unwrap().with_mode(mode)
+    }
+
+    fn secs(seconds: u64) -> Duration {
+        Duration::from_secs(seconds)
+    }
+
+    #[test]
+    fn idle_deadlines() {
+        let t0 = Instant::now();
+        let idle = keepalive(KeepaliveMode::Idle);
+        for (last_write, last_keepalive, next) in [
+            (None, None, 60),
+            (Some(30), None, 90),
+            (Some(30), Some(90), 150),
+            (Some(100), Some(90), 160),
+        ] {
+            let at = |seconds: Option<u64>| seconds.map(|seconds| t0 + secs(seconds));
+            assert_eq!(
+                idle.deadline(t0, at(last_write), at(last_keepalive)),
+                Some(t0 + secs(next)),
+                "{last_write:?} {last_keepalive:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn interval_deadlines() {
+        let t0 = Instant::now();
+        let interval = keepalive(KeepaliveMode::Interval);
+        for (last_write, last_keepalive, next) in [
+            (None, None, 60),
+            (Some(30), None, 60),
+            (Some(70), Some(60), 120),
+        ] {
+            let at = |seconds: Option<u64>| seconds.map(|seconds| t0 + secs(seconds));
+            assert_eq!(
+                interval.deadline(t0, at(last_write), at(last_keepalive)),
+                Some(t0 + secs(next)),
+                "{last_write:?} {last_keepalive:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn off_has_no_deadline() {
+        let t0 = Instant::now();
+        assert_eq!(keepalive(KeepaliveMode::Off).deadline(t0, None, None), None);
+    }
 
     #[test]
     fn default_login_uses_the_character_part() {
