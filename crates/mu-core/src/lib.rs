@@ -31,4 +31,6 @@ pub use script::{DEPTH_LIMIT, Handler, Hook, HookAction, RATE_PER_SECOND};
 pub use secret::{EnvSecretStore, Secret, SecretError, SecretRef, SecretStore, load_password};
 pub use session::WorldState;
 pub use transport::{ByteStream, Transport};
-pub use world::{Keepalive, Login, ResolvedWorld};
+pub use world::{
+    Backoff, Keepalive, KeepaliveMode, Login, Reconnect, ReconnectMode, ResolvedWorld,
+};

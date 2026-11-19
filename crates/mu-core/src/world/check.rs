@@ -13,6 +13,15 @@ use super::layer::{Layer, LayerFields, Trust};
 /// The highest value of `keepalive.seconds`: one day.
 pub(crate) const MAX_KEEPALIVE_SECONDS: u32 = 86_400;
 
+/// The highest value of `reconnect.initial`: one hour.
+const MAX_FIRST_WAIT: u32 = 3_600;
+
+/// The highest value of `reconnect.max`: one day.
+const MAX_WAIT: u32 = 86_400;
+
+/// The highest value of `reconnect.attempts`.
+const MAX_ATTEMPTS: u32 = 10_000;
+
 /// Checks the values of `layer`, then its trust.
 pub(crate) fn check_layer(layer: &Layer) -> Result<(), ConfigError> {
     check_fields(&layer.fields).map_err(|error| ConfigError::of_field(&layer.origin, &error))?;
@@ -82,6 +91,50 @@ pub(crate) fn check_keepalive(
     Ok(())
 }
 
+/// Checks the ranges of the fields of a reconnect.
+pub(crate) fn check_reconnect(
+    initial: Option<u32>,
+    max: Option<u32>,
+    attempts: Option<u32>,
+) -> Result<(), FieldError> {
+    for (field, value, range, message) in [
+        (
+            "reconnect.initial",
+            initial,
+            1..=MAX_FIRST_WAIT,
+            "must be from 1 to 3600",
+        ),
+        (
+            "reconnect.max",
+            max,
+            1..=MAX_WAIT,
+            "must be from 1 to 86400",
+        ),
+        (
+            "reconnect.attempts",
+            attempts,
+            0..=MAX_ATTEMPTS,
+            "must be from 0 to 10000",
+        ),
+    ] {
+        if value.is_some_and(|value| !range.contains(&value)) {
+            return Err(FieldError::new(field, message));
+        }
+    }
+    Ok(())
+}
+
+/// Checks that the first wait of a reconnect is not greater than its cap.
+pub(crate) fn check_first_wait(initial: u32, max: u32) -> Result<(), FieldError> {
+    if initial > max {
+        return Err(FieldError::new(
+            "reconnect.initial",
+            "must not be greater than reconnect.max",
+        ));
+    }
+    Ok(())
+}
+
 /// Checks each value of `fields`, and returns the error of the first one that fails.
 fn check_fields(fields: &LayerFields) -> Result<(), FieldError> {
     let fail = |field: &str, message: &str| Err(FieldError::new(field, message));
@@ -112,6 +165,9 @@ fn check_fields(fields: &LayerFields) -> Result<(), FieldError> {
     }
     if let Some(keepalive) = &fields.keepalive {
         check_keepalive(keepalive.command.as_deref(), keepalive.seconds)?;
+    }
+    if let Some(reconnect) = &fields.reconnect {
+        check_reconnect(reconnect.initial, reconnect.max, reconnect.attempts)?;
     }
     check_ids(fields)
 }
@@ -161,6 +217,7 @@ mod tests {
             keepalive: Some(KeepaliveFields {
                 command: Some("idle".to_owned()),
                 seconds: Some(MAX_KEEPALIVE_SECONDS),
+                ..KeepaliveFields::default()
             }),
             ..LayerFields::default()
         };

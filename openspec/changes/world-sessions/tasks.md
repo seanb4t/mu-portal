@@ -25,7 +25,7 @@ Load the `rust-best-practices` skill before this group.
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 3.1 Add `Keepalive` and `Reconnect` to `mu-core`, as design decision 4 describes, with no behavior yet. Add `autoconnect`, `keepalive.mode` and the table `reconnect` to the layers, and resolve them into `ResolvedWorld` (design decision 10). This extends the field list of the requirement "Each field is known" and the ranges of the requirement "Each value is in its range". Add the defaults to `WorldDefaults`, and the rule that `reconnect.initial` is not greater than `reconnect.max`. Add these tests to `crates/mu-cli/tests/world_config.rs`:
+- [x] 3.1 Add `Keepalive` and `Reconnect` to `mu-core`, as design decision 4 describes, with no behavior yet. Add `autoconnect`, `keepalive.mode` and the table `reconnect` to the layers, and resolve them into `ResolvedWorld` (design decision 10). This extends the field list of the requirement "Each field is known" and the ranges of the requirement "Each value is in its range". Add the defaults to `WorldDefaults`, and the rule that `reconnect.initial` is not greater than `reconnect.max`. Add these tests to `crates/mu-cli/tests/world_config.rs`:
   - `unknown_mode`, for "An unknown mode"
   - `edges_of_the_attempts`, for "The edges of the attempts"
   - `connection_defaults`, for "The defaults"

@@ -4,8 +4,8 @@ use std::fmt::Write as _;
 use std::process::ExitCode;
 
 use clap::{Args, Subcommand};
-use mu_core::ResolvedWorld;
 use mu_core::world::{Entry, FIELD_PATHS};
+use mu_core::{Reconnect, ReconnectMode, ResolvedWorld};
 
 use crate::config::ConfigArgs;
 
@@ -97,18 +97,33 @@ pub fn render(world: &ResolvedWorld) -> Result<String, String> {
 fn value_of(world: &ResolvedWorld, path: &str) -> Option<toml::Value> {
     let login = world.login.as_ref();
     let keepalive = world.keepalive.as_ref();
+    let backoff = match &world.reconnect {
+        Reconnect::Backoff(backoff) => Some(backoff),
+        Reconnect::Off => None,
+    };
     Some(match path {
         "host" => world.host.clone().into(),
         "port" => i64::from(world.port).into(),
         "tls" => world.tls.into(),
+        "autoconnect" => world.autoconnect.into(),
         "charset" => world.charset.name().to_ascii_lowercase().into(),
         "columns" => i64::from(world.columns).into(),
         "rows" => i64::from(world.rows).into(),
         "login.template" => login?.template().into(),
         "login.name" => login?.name().into(),
         "login.secret" => login?.secret().to_string().into(),
+        "keepalive.mode" => world.keepalive_mode.name().into(),
         "keepalive.command" => keepalive?.command().into(),
         "keepalive.seconds" => i64::from(keepalive?.seconds()).into(),
+        "reconnect.mode" => match world.reconnect {
+            Reconnect::Backoff(_) => ReconnectMode::Backoff,
+            Reconnect::Off => ReconnectMode::Off,
+        }
+        .name()
+        .into(),
+        "reconnect.initial" => i64::from(backoff?.initial()).into(),
+        "reconnect.max" => i64::from(backoff?.max()).into(),
+        "reconnect.attempts" => i64::from(backoff?.attempts()).into(),
         _ => return None,
     })
 }

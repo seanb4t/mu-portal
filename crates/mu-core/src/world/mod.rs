@@ -4,6 +4,8 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
+
 use crate::framer::{Charset, TelnetSettings};
 use crate::id::WorldId;
 use crate::secret::SecretRef;
@@ -20,7 +22,8 @@ pub use builtin::{BUILT_IN_TYPES, built_in_layers, parse_quirks};
 pub use dir::{SERVER_FILE, TomlDirSource};
 pub use error::{ConfigError, FieldError};
 pub use layer::{
-    KeepaliveFields, Layer, LayerFields, LayerKey, LayerOrigin, LayerSource, LoginFields, Trust,
+    KeepaliveFields, Layer, LayerFields, LayerKey, LayerOrigin, LayerSource, LoginFields,
+    ReconnectFields, Trust,
 };
 pub use parse::{Hidden, parse as parse_toml};
 pub use resolve::{FIELD_PATHS, resolve};
@@ -41,10 +44,18 @@ pub struct WorldDefaults {
     pub tls: bool,
     /// The login template.
     pub login_template: &'static str,
+    /// Whether the world connects at the start of the server.
+    pub autoconnect: bool,
+    /// The mode of the keepalive.
+    pub keepalive_mode: KeepaliveMode,
+    /// The waits of the reconnect, whose mode is [`ReconnectMode::Backoff`].
+    pub reconnect: Backoff,
 }
 
 impl Default for WorldDefaults {
-    /// The settings of [`TelnetSettings::default`], no TLS and [`DEFAULT_LOGIN_TEMPLATE`].
+    /// The settings of [`TelnetSettings::default`], no TLS, [`DEFAULT_LOGIN_TEMPLATE`], no
+    /// autoconnect, the keepalive mode `idle`, and a reconnect from 1 to 60 seconds that stops
+    /// after 30 attempts.
     fn default() -> Self {
         let telnet = TelnetSettings::default();
         Self {
@@ -53,6 +64,13 @@ impl Default for WorldDefaults {
             rows: telnet.rows,
             tls: false,
             login_template: DEFAULT_LOGIN_TEMPLATE,
+            autoconnect: false,
+            keepalive_mode: KeepaliveMode::Idle,
+            reconnect: Backoff {
+                initial: 1,
+                max: 60,
+                attempts: 30,
+            },
         }
     }
 }
@@ -115,16 +133,43 @@ impl Login {
     }
 }
 
-/// The keepalive of a world: a line to send, and the seconds between two sends, from 1 to
+/// When a keepalive sends its line: the value of `keepalive.mode`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum KeepaliveMode {
+    /// After the set seconds with no write to the game.
+    #[default]
+    Idle,
+    /// Every set seconds.
+    Interval,
+    /// Never.
+    Off,
+}
+
+impl KeepaliveMode {
+    /// The name of the mode in the configuration.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Interval => "interval",
+            Self::Off => "off",
+        }
+    }
+}
+
+/// The keepalive of a world: a mode, a line to send, and the seconds of the mode, from 1 to
 /// 86400. The line holds no CR and no LF.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Keepalive {
+    mode: KeepaliveMode,
     command: String,
     seconds: u32,
 }
 
 impl Keepalive {
-    /// A keepalive that sends `command` every `seconds`.
+    /// A keepalive that sends `command` after `seconds` with no write: the mode
+    /// [`KeepaliveMode::Idle`].
     ///
     /// # Errors
     ///
@@ -132,7 +177,23 @@ impl Keepalive {
     pub fn new(command: impl Into<String>, seconds: u32) -> Result<Self, FieldError> {
         let command = command.into();
         check::check_keepalive(Some(&command), Some(seconds))?;
-        Ok(Self { command, seconds })
+        Ok(Self {
+            mode: KeepaliveMode::Idle,
+            command,
+            seconds,
+        })
+    }
+
+    /// The same keepalive with `mode`.
+    #[must_use]
+    pub fn with_mode(self, mode: KeepaliveMode) -> Self {
+        Self { mode, ..self }
+    }
+
+    /// The mode.
+    #[must_use]
+    pub fn mode(&self) -> KeepaliveMode {
+        self.mode
     }
 
     /// The line to send.
@@ -152,6 +213,83 @@ impl Keepalive {
     pub fn period(&self) -> Duration {
         Duration::from_secs(u64::from(self.seconds))
     }
+}
+
+/// The value of `reconnect.mode`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReconnectMode {
+    /// Waits longer before each attempt.
+    #[default]
+    Backoff,
+    /// Never reconnects.
+    Off,
+}
+
+impl ReconnectMode {
+    /// The name of the mode in the configuration.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Backoff => "backoff",
+            Self::Off => "off",
+        }
+    }
+}
+
+/// The waits of a reconnect: the first wait and the cap, in seconds, and the number of failed
+/// attempts in a row before the world stops. The first wait is from 1 to 3600 and not greater
+/// than the cap, the cap is from 1 to 86400, and the attempts are from 0 to 10000. With 0
+/// attempts, the world never stops.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Backoff {
+    initial: u32,
+    max: u32,
+    attempts: u32,
+}
+
+impl Backoff {
+    /// A backoff from `initial` seconds up to `max` seconds, which stops after `attempts`.
+    ///
+    /// # Errors
+    ///
+    /// A [`FieldError`] when a value is out of its range, or `initial` is greater than `max`.
+    pub fn new(initial: u32, max: u32, attempts: u32) -> Result<Self, FieldError> {
+        check::check_reconnect(Some(initial), Some(max), Some(attempts))?;
+        check::check_first_wait(initial, max)?;
+        Ok(Self {
+            initial,
+            max,
+            attempts,
+        })
+    }
+
+    /// The first wait, in seconds.
+    #[must_use]
+    pub fn initial(&self) -> u32 {
+        self.initial
+    }
+
+    /// The cap of each wait, in seconds.
+    #[must_use]
+    pub fn max(&self) -> u32 {
+        self.max
+    }
+
+    /// The number of failed attempts in a row before the world stops, or 0 for no limit.
+    #[must_use]
+    pub fn attempts(&self) -> u32 {
+        self.attempts
+    }
+}
+
+/// Whether a world reconnects after a drop that the player did not ask for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reconnect {
+    /// It reconnects with these waits.
+    Backoff(Backoff),
+    /// It does not reconnect.
+    Off,
 }
 
 /// Whether an entry is a rule or a script.
@@ -186,6 +324,8 @@ pub struct ResolvedWorld {
     pub port: u16,
     /// Whether the connection uses TLS.
     pub tls: bool,
+    /// Whether the world connects at the start of the server.
+    pub autoconnect: bool,
     /// The character set of the text.
     pub charset: Charset,
     /// The width of the window.
@@ -194,8 +334,12 @@ pub struct ResolvedWorld {
     pub rows: u16,
     /// The login, or none for a world that logs in by hand.
     pub login: Option<Login>,
-    /// The keepalive, or none.
+    /// The mode of `keepalive.mode`, also for a world with no keepalive.
+    pub keepalive_mode: KeepaliveMode,
+    /// The keepalive, or none for the mode `off` or a world with no command and no seconds.
     pub keepalive: Option<Keepalive>,
+    /// Whether the world reconnects after a drop.
+    pub reconnect: Reconnect,
     /// The rules, in the order that their ids were added. An override keeps its place, and an
     /// id that is disabled and added again moves to the end.
     pub rules: Vec<Entry>,
@@ -215,11 +359,14 @@ impl ResolvedWorld {
             host: String::new(),
             port: 0,
             tls: defaults.tls,
+            autoconnect: defaults.autoconnect,
             charset: defaults.charset,
             columns: defaults.columns,
             rows: defaults.rows,
             login: None,
+            keepalive_mode: defaults.keepalive_mode,
             keepalive: None,
+            reconnect: Reconnect::Backoff(defaults.reconnect),
             rules: Vec::new(),
             scripts: Vec::new(),
             sources: BTreeMap::new(),
