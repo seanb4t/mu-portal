@@ -26,6 +26,7 @@ The quirks of the three server families come from the telnet spike: decision pag
 **Non-Goals:**
 
 - TLS (#58), a login moment that matches a banner (a later strategy), detection of a refused login, and Docker tests of real games (#82).
+- The `tos/agree` step of AresMUSH that #54 names. A new character must agree once, at its first login, so the player sends `tos/agree` by hand. A script can also send it.
 - The items under Not tested on the `telnet-engine` decision page. One is the cause of the TinyMUX stall after UTF-8. The `tinymux` type uses ISO-8859-1, so the stall does not occur.
 - The other items on that list: PennMUSH and RhostMUSH (not Phase 1 targets), MCCP3, MXP and MSDP.
 - Servers with a configuration other than the default, and long sessions. Only the owner's first evening covers them.
@@ -96,7 +97,7 @@ An attempt counts as failed unless its connection stays up for `max` seconds. Af
 
 The count of short connections is a choice of the owner, made in the plan review. Without it, a game that closes each connection right after a bad login never reaches the cap. The reset after `max` seconds is a design choice of this change. A game that drops each connection early still moves the wait up to the cap.
 
-The policy is one function in `mu-core` on `Reconnect`. The function takes the random draw as an argument, so a test controls it. `backon` does not fit: its jitter adds a random fraction from 0 to 1 of the delay, the same fraction range at each attempt, with no cap. The table "Checked facts" gives the source.
+The policy is one function in `mu-core` on `Reconnect`. The function takes the random draw as an argument, so a test controls it. In the session, the draw comes from `fastrand`, a small crate with no dependencies that `Cargo.lock` already held. It enters `mu-core` through `[workspace.dependencies]`. `backon` does not fit: its jitter adds a random fraction from 0 to 1 of the delay, the same fraction range at each attempt, with no cap. The table "Checked facts" gives the source.
 
 Enforced by: the scenarios of "The wait before each attempt grows" and "A world stops after its last attempt". One of them is a property test over many draws, up to the largest attempt number.
 

@@ -37,7 +37,7 @@ The server can connect only a fake world. Each configured world stays `disconnec
 ### Modified Capabilities
 
 - `world-sessions`: a configured world can connect. `ListWorlds` gains the state `reconnecting`. At the start, the server connects the fake worlds and each world with `autoconnect = true`. The login of a world waits for its login trigger.
-- `world-config`: the fields `autoconnect`, `keepalive.mode` and `reconnect`, with their defaults and ranges. The rule for `keepalive` changes for the mode `off`. Built-in types and shared plugins get limits on the new fields. The server still does not read a secret at the start.
+- `world-config`: the fields `autoconnect`, `keepalive.mode` and `reconnect`, with their defaults and ranges. The rule for `keepalive` changes for the mode `off`. Built-in types and shared plugins get limits on the new fields. The server reads a secret at the start only for a world with `autoconnect = true`.
 - `telemetry`: the `world.connection` and `command` spans carry the status `error` on a failure, and the gauge `mu.world.state` knows the state `reconnecting`.
 
 ## Impact
@@ -45,6 +45,6 @@ The server can connect only a fake world. Each configured world stays `disconnec
 - Code: `mu-core` gains the TCP transport, the login trigger, the keepalive and the reconnect policy in the session, and the state `reconnecting`. `fake.rs` leaves `mu-core`. `mu-cli` builds a transport and a telnet framer for each configured world. `mu-server` connects the worlds with `autoconnect` at the start and maps the new state.
 - API: `portal.proto` gains `WORLD_STATE_RECONNECTING` and a time of the next attempt on `World`.
 - New crate: `mu-fake-server`. The allowlist in `crates/mu-cli/tests/workspace_boundary.rs` and the LikeC4 model in `architecture/` gain it.
-- Dependencies: if a backoff crate fits the growing jitter, it enters through `[workspace.dependencies]`. The design names the check.
+- Dependencies: no backoff crate fits the growing jitter, so the policy is a function of its own. `fastrand` gives its random draw, and enters `mu-core` through `[workspace.dependencies]`. The design names the check.
 - Issues: closes #54 and #95. Leaves #82 open.
 - Docs: the user page of the world configuration describes the new fields.

@@ -138,6 +138,33 @@ After the merge, each world SHALL have `host` and `port`, and `host` SHALL NOT b
 - **THEN** stdout shows no login
 - **AND** the exit status is 0
 
+### Requirement: The server holds the configured worlds
+At the start, `mu server` SHALL resolve the configuration directory. A bad configuration SHALL stop the start with an error that names the file, and the exit status SHALL be 1. A world id that is both a configured world and a `--fake-world` SHALL be an error that names the id. The server SHALL NOT read the secret of a configured world at the start, unless the world sets `autoconnect = true`. Such a world SHALL read its secret at its connect at the start, and a failed read SHALL NOT stop the start.
+
+#### Scenario: A bad configuration stops the start
+- **GIVEN** the game `alpha` sets `port = 70000`
+- **WHEN** the user runs `mu server --socket <dir>/s.sock --config <dir>/conf`
+- **THEN** stderr names `games/alpha.toml`
+- **AND** no file `<dir>/s.sock` exists
+- **AND** the exit status is 1
+
+#### Scenario: A fake world with a configured id
+- **GIVEN** the configuration holds the world `alpha/aria`
+- **WHEN** the user runs `mu server --socket <dir>/s.sock --config <dir>/conf --fake-world alpha/aria=env:PW`
+- **THEN** stderr names `alpha/aria`
+- **AND** the exit status is 1
+
+#### Scenario: The secret is not read at the start
+- **GIVEN** the character sets `login.name = "Aria"` and `login.secret = "env:ARIA_PW"`, with no `autoconnect`, and `ARIA_PW` is not set
+- **WHEN** the user runs `mu server --socket <dir>/s.sock --config <dir>/conf`
+- **THEN** an API call to list the worlds on `<dir>/s.sock` succeeds
+
+#### Scenario: An autoconnect world whose secret is missing
+- **GIVEN** a fake game on TCP, and the character sets its host and port, `autoconnect = true`, `login.name = "Aria"` and `login.secret = "env:ARIA_PW"`, and `ARIA_PW` is not set
+- **WHEN** the user runs `mu server --socket <dir>/s.sock --config <dir>/conf`
+- **THEN** an API call to list the worlds on `<dir>/s.sock` returns `alpha/aria` in the state `disconnected`
+- **AND** the fake game gets no connection
+
 ## ADDED Requirements
 
 ### Requirement: The connection fields have defaults

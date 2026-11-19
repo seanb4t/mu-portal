@@ -295,6 +295,31 @@ async fn server_does_not_read_a_configured_secret() {
 }
 
 #[tokio::test]
+async fn autoconnect_world_with_a_missing_secret() {
+    let game = ScriptedGame::new(Script::new());
+    let listening = game.listen().await.unwrap();
+    let conf = ConfigDir::tcp_world(
+        listening.addr().port(),
+        "autoconnect = true\n[login]\nname = \"Aria\"\nsecret = \"env:ARIA_PW\"\n",
+    );
+    let builder = ServerBuilder::new()
+        .arg("--config")
+        .arg(conf.path())
+        .env("ARIA_PW", None::<&str>);
+    let session = Session::start(builder).await;
+    let worlds = session.client.list_worlds().await.unwrap();
+    let states: Vec<(&str, bool)> = worlds
+        .iter()
+        .map(|world| {
+            let down = world.state == WorldState::WORLD_STATE_DISCONNECTED;
+            (world.id.as_str(), down)
+        })
+        .collect();
+    assert_eq!(states, [("alpha/aria", true)]);
+    assert_eq!(game.connects(), 0);
+}
+
+#[tokio::test]
 async fn autoconnect_world_connects_at_start() {
     let game = ScriptedGame::new(Script::new());
     let listening = game.listen().await.unwrap();
