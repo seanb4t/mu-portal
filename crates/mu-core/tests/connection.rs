@@ -9,9 +9,9 @@ use futures::future::BoxFuture;
 use mu_core::connection::Quiet;
 use mu_core::telnet::{IAC, MARK, WILL, opt};
 use mu_core::{
-    Backoff, ByteStream, EnvSecretStore, EventKind, Keepalive, KeepaliveMode, Portal, PortalError,
-    Reconnect, ResolvedWorld, Secret, SecretRef, SecretSource, Transport, WorldId, WorldSetup,
-    WorldState,
+    Backoff, ByteStream, Command, EnvSecretStore, Envelope, EventKind, Keepalive, KeepaliveMode,
+    Portal, PortalError, Reconnect, ResolvedWorld, Secret, SecretRef, SecretSource, Transport,
+    WorldId, WorldSetup, WorldState,
 };
 use mu_fake_server::{Script, ScriptedGame};
 use tokio::time::Instant;
@@ -547,4 +547,39 @@ async fn failed_login_write_never_connects() {
     wait_event(&portal, |event| event.kind == EventKind::Disconnected).await;
     let connected = of_kind(&portal, EventKind::Connected);
     assert!(connected.is_empty(), "{:#?}", events(&portal));
+}
+
+/// Echoes `text` to `alpha/aria` and gives the text of its event.
+async fn echo(portal: &Portal, text: &str) -> String {
+    let command = Command::Echo {
+        world: id("alpha/aria"),
+        text: text.to_owned(),
+    };
+    let seq = portal
+        .submit(Envelope::system(command))
+        .await
+        .unwrap()
+        .unwrap();
+    wait_event(portal, |event| event.seq == seq).await.text
+}
+
+#[tokio::test(start_paused = true)]
+async fn secret_from_the_store_lasts_one_connection() {
+    let store = EnvSecretStore::with_lookup(|_| Some(OsString::from(PW)));
+    let reference: SecretRef = "env:PW".parse().unwrap();
+    let world = ResolvedWorld {
+        reconnect: Reconnect::Off,
+        ..ResolvedWorld::with_default_login(id("alpha/aria"), reference.clone())
+    };
+    let game = ScriptedGame::new(Script::new().wait_for(LOGIN));
+    let setup = WorldSetup::new(world, None, Arc::new(game.clone()))
+        .with_secret_source(SecretSource::Store(reference, Arc::new(store)));
+    let portal = portal(vec![setup], Vec::new());
+    portal.connect(&id("alpha/aria")).await.unwrap();
+    wait_state(&portal, &id("alpha/aria"), WorldState::Connected).await;
+    assert!(!echo(&portal, PW).await.contains(PW));
+    portal.disconnect(&id("alpha/aria")).await.unwrap();
+    wait_state(&portal, &id("alpha/aria"), WorldState::Disconnected).await;
+    // With no connection, the session holds no secret to mask the text with.
+    assert_eq!(echo(&portal, PW).await, PW);
 }

@@ -378,8 +378,9 @@ struct Session {
     conn: Conn,
     limiter: Limiter,
     last_script_error: Option<tokio::time::Instant>,
-    /// The password of the last connect, which masks each event. A fixed source gives it at
-    /// the start.
+    /// The password of the open connection, which masks each event. A fixed source gives it at
+    /// the start, and the session keeps it. A store gives it at each connect, and the session
+    /// drops it when the connection ends.
     password: Option<Secret>,
     /// The failed attempts in a row since the last `Connect` call or stable connection.
     failed: u32,
@@ -570,6 +571,9 @@ impl Session {
     /// connection and in the journal, and answers each waiting frame. Then the world waits for
     /// its next attempt, or stays down.
     fn down(&mut self, cause: Cause, reason: &str, depth: u8) {
+        if matches!(self.parts.secret, Some(SecretSource::Store(..))) {
+            self.password = None;
+        }
         let (mut frames, opened) = match std::mem::replace(&mut self.conn, Conn::Down) {
             Conn::Connecting { frames, span, .. } => {
                 end_span(&span, cause);
