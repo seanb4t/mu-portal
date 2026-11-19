@@ -118,7 +118,7 @@ Load the `rust-best-practices` skill before this group.
 
 ## 9. Integration
 
-- [ ] 9.1 Run `mise run check` and `mise run docs:check` on the branch. Make sure that both pass, and that `openspec validate world-sessions --type change --strict` passes.
+- [x] 9.1 Run `mise run check` and `mise run docs:check` on the branch. Make sure that both pass, and that `openspec validate world-sessions --type change --strict` passes.
 - [ ] 9.2 Run `/sb:review-lint` and `/sb:suite-review` on the branch before the pull request. Make sure that each finding is fixed or answered in the pull request.
 
 ## Workflow follow-up
