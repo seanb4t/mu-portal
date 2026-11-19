@@ -244,7 +244,8 @@ impl AsyncWrite for BrokenStream {
     }
 }
 
-/// The world `alpha/aria` on `transport`, with no login and no password.
+/// The world `alpha/aria` on `transport`, with no login, no password, `autoconnect` and no
+/// reconnect.
 pub fn bare_world(transport: impl Transport) -> WorldSetup {
     let world = ResolvedWorld {
         autoconnect: true,

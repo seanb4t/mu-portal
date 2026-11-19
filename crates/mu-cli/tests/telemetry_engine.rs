@@ -506,7 +506,8 @@ fn world_without_transport_is_disconnected() {
     });
 }
 
-/// A portal with `alpha/aria` on `game`, with no login and no reconnect, changed by `change`.
+/// A portal with `alpha/aria` on `game`, with no login and the default reconnect, changed by
+/// `change`.
 fn world_on_game(game: &ScriptedGame, change: impl FnOnce(&mut ResolvedWorld)) -> Portal {
     let mut world = ResolvedWorld::new(id("alpha/aria"));
     change(&mut world);

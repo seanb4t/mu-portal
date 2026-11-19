@@ -201,7 +201,8 @@ fn seconds(list: &[u64]) -> Vec<Duration> {
 
 #[tokio::test(start_paused = true)]
 async fn keepalive_idle() {
-    // The third line at 210 shows that no line came between 150 and 200.
+    // The send at 30 moves the first line to 90, and each keepalive line starts the idle time
+    // again.
     let (_, times) = keepalive_times(KeepaliveMode::Idle, 3).await;
     assert_eq!(times, seconds(&[90, 150, 210]));
 }

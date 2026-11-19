@@ -157,7 +157,7 @@ pub struct KeepaliveFields {
     /// The line to send.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
-    /// The seconds of the mode.
+    /// The seconds with no write (idle) or between two lines (interval).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seconds: Option<u32>,
 }

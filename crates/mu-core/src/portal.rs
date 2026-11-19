@@ -31,8 +31,8 @@ pub struct WorldSetup {
 }
 
 impl WorldSetup {
-    /// A world with the [`LineFramer`], the login at the connect, no hook and no handler. The
-    /// `password` is read once, at the start of the server.
+    /// A world with the [`LineFramer`], the login at the connect, no hook and no handler. Every
+    /// connect uses the same `password`.
     #[must_use]
     pub fn new(
         world: ResolvedWorld,
@@ -308,7 +308,8 @@ impl Portal {
     }
 
     /// Connects each world with `autoconnect`, as the server, in the order of the ids. A
-    /// connect that fails goes to the log at `WARN`, and the next world still connects.
+    /// connect that the world refuses goes to the log at `WARN`, and the next world still
+    /// connects. A connect that fails later records a disconnect event in its session.
     pub async fn connect_at_start(&self) {
         for world in self.at_start.iter() {
             let connected = self

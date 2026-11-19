@@ -30,7 +30,7 @@ use crate::world::{Keepalive, Login, Reconnect};
 /// The state of a world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum WorldState {
-    /// The transport is opening.
+    /// The transport is opening, or the stream is open and the login has not gone out.
     Connecting,
     /// The world is connected.
     Connected,
@@ -230,7 +230,8 @@ fn end_span(span: &Span, cause: Cause) {
 pub(crate) struct SessionParts {
     pub(crate) world: WorldId,
     pub(crate) login: Option<Login>,
-    /// The source of the password, or none for a world with no login.
+    /// The source of the password, or none when the setup gave none. A world with a login and
+    /// no source fails its connect with `NoSecret`.
     pub(crate) secret: Option<SecretSource>,
     pub(crate) transport: Option<Arc<dyn Transport>>,
     pub(crate) framer: NewFramer,
@@ -480,7 +481,7 @@ pub(crate) async fn run(parts: SessionParts) {
 }
 
 /// The next step of the connection: a finished connect, a read, or the deadline of a timer.
-/// Pending with no connection.
+/// Pending in `Down`.
 async fn progress(
     conn: &mut Conn,
     moment: &dyn LoginMoment,
@@ -629,7 +630,8 @@ impl Session {
     }
 
     /// What the world does after a drop for `cause` of a stream that opened at `opened`. It also
-    /// counts the drop as a failed attempt, or starts the count again after a stable connection.
+    /// counts the drop as a failed attempt when the last connect was a reconnect attempt, or
+    /// starts the count again after a stable connection.
     fn after_drop(&mut self, cause: Cause, opened: Option<Instant>) -> AfterDrop {
         let Reconnect::Backoff(backoff) = self.parts.reconnect else {
             return AfterDrop::Rest;
@@ -648,7 +650,8 @@ impl Session {
         AfterDrop::Wait(backoff.wait(self.failed.saturating_add(1), fastrand::u32(..)))
     }
 
-    /// Starts the next attempt to connect. A failed read of the secret ends the wait in `Down`.
+    /// Starts the next attempt to connect. A refused attempt, for a failed read of the secret or
+    /// a stop, ends the wait in `Down`.
     fn on_attempt(&mut self) {
         if let Err(error) = self.connect(0, true) {
             self.conn = Conn::Down;
@@ -900,8 +903,10 @@ impl Session {
         }
     }
 
-    /// Moves the world to `connected`: starts the time of the keepalive, records the connect,
-    /// sends the login, and writes the mark of each frame that waits.
+    /// Moves the world to `connected`, in this order: sends the login line, sets the state and
+    /// starts the time of the keepalive, records the connect and then the login, and writes the
+    /// mark of each frame that waits. A failed login write ends the connection before the state
+    /// changes.
     async fn logged_in(&mut self, depth: u8) {
         let Conn::Up { frames, .. } = &self.conn else {
             return;

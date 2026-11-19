@@ -11,13 +11,14 @@ pub enum PortalError {
     /// No world has this id.
     #[error("unknown world {0}")]
     UnknownWorld(WorldId),
-    /// The world is connecting or disconnected.
+    /// The world is connecting, reconnecting or disconnected.
     #[error("{0} is not connected")]
     NotConnected(WorldId),
-    /// The world uses TLS, which this version cannot connect.
+    /// The world uses TLS, which the server cannot connect yet.
     #[error("{0} uses TLS, which this version cannot connect")]
     TlsNotSupported(WorldId),
-    /// The world has a login, and its secret cannot be read. The reason names the variable.
+    /// The world has a login, and its secret cannot be read. The reason says why, and names the
+    /// secret reference when there is one.
     #[error("{0} cannot read the secret of its login: {1}")]
     NoSecret(WorldId, String),
     /// The text holds a CR or an LF.

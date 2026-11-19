@@ -181,8 +181,8 @@ impl Keepalive {
         })
     }
 
-    /// The same keepalive with `mode`. None for [`KeepaliveMode::Off`], the one form of a world
-    /// with no keepalive.
+    /// The same keepalive with `mode`. None for [`KeepaliveMode::Off`], because a world with no
+    /// keepalive holds none.
     #[must_use]
     pub fn with_mode(self, mode: KeepaliveMode) -> Option<Self> {
         let schedule = match mode {

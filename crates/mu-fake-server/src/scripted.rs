@@ -27,7 +27,7 @@ pub enum Step {
     WaitFor(Vec<u8>),
     /// Sends nothing for the time. The time moves with the paused clock of tokio.
     SilentFor(Duration),
-    /// Sends nothing until the client closes the connection.
+    /// Sends nothing until the client closes the connection. The steps after it never run.
     Silent,
     /// Closes the connection.
     Close,

@@ -98,7 +98,8 @@ pub fn run(args: &ServerArgs) -> ExitCode {
 }
 
 /// The setup of a configured world: TCP, telnet in its character set and window size, the
-/// login after a quiet second, and its secret read from `store` at each connect. A TLS world
+/// login after a quiet second or after 10 seconds at the latest, and its secret read from
+/// `store` at each connect. A TLS world
 /// gets no transport.
 fn configured_setup(
     world: ResolvedWorld,
