@@ -4,7 +4,9 @@
 //!
 //! - The codes of telnet live only in `src/telnet.rs`.
 //! - An option code after `WILL`, `WONT`, `DO`, `DONT` or `SB` is a constant of `telnet::opt`.
-//! - No file of `src` or `tests` sleeps.
+//! - No file of `tests` sleeps. A file of `src` sleeps only where `ALLOWED` names it.
+//!
+//! `ALLOWED` names each accepted hit with its count and a reason.
 
 use std::fmt;
 use std::fs;
@@ -29,22 +31,34 @@ const OPTION_VERBS: [&str; 5] = ["WILL", "WONT", "DO", "DONT", "SB"];
 /// The names of a call that waits for time.
 const SLEEPS: [&str; 2] = ["sleep", "sleep_until"];
 
-/// A literal with a code of telnet that is not a code of telnet.
-struct AllowedCode {
+/// A hit that the test accepts: a literal with a code of telnet that is not a code of telnet, or
+/// a timer of the engine.
+struct Allowed {
+    rule: Rule,
     file: &'static str,
-    /// The text of the literal in the source.
-    literal: &'static str,
+    /// The text of the hit in the source.
+    text: &'static str,
     /// How many times the file holds it. A different count fails the test.
     count: usize,
     reason: &'static str,
 }
 
-const ALLOWED_CODES: &[AllowedCode] = &[AllowedCode {
-    file: "src/secret.rs",
-    literal: "0xff",
-    count: 1,
-    reason: "a byte that is not UTF-8, in the test of a secret that is not Unicode",
-}];
+const ALLOWED: &[Allowed] = &[
+    Allowed {
+        rule: Rule::TelnetCode,
+        file: "src/secret.rs",
+        text: "0xff",
+        count: 1,
+        reason: "a byte that is not UTF-8, in the test of a secret that is not Unicode",
+    },
+    Allowed {
+        rule: Rule::Sleep,
+        file: "src/session.rs",
+        text: "sleep_until",
+        count: 1,
+        reason: "the timer of the session: the moment of the login",
+    },
+];
 
 #[derive(Debug, PartialEq, Eq)]
 enum Rule {
@@ -195,23 +209,27 @@ fn is_assigned_six(after: &[TokenTree]) -> bool {
     )
 }
 
-/// The hits of the whole crate that no entry of `ALLOWED_CODES` accepts.
-fn crate_hits(files: &[(String, String)]) -> Vec<String> {
+/// The hits of `files` that no entry of `allowed` accepts, and each entry of `allowed` with
+/// another count.
+fn crate_hits<'a>(
+    files: &[(String, String)],
+    allowed: impl IntoIterator<Item = &'a Allowed>,
+) -> Vec<String> {
     let mut hits: Vec<Hit> = files
         .iter()
         .flat_map(|(name, text)| scan(name, text, name != TELNET_HOME))
         .collect();
     let mut problems = Vec::new();
-    for allowed in ALLOWED_CODES {
+    for allowed in allowed {
         let (accepted, rest): (Vec<Hit>, Vec<Hit>) = hits.into_iter().partition(|hit| {
-            hit.rule == Rule::TelnetCode && hit.file == allowed.file && hit.text == allowed.literal
+            hit.rule == allowed.rule && hit.file == allowed.file && hit.text == allowed.text
         });
         hits = rest;
         if accepted.len() != allowed.count {
             problems.push(format!(
                 "{} holds `{}` {} times, and the allowed count is {} ({})",
                 allowed.file,
-                allowed.literal,
+                allowed.text,
                 accepted.len(),
                 allowed.count,
                 allowed.reason
@@ -224,7 +242,25 @@ fn crate_hits(files: &[(String, String)]) -> Vec<String> {
 
 #[test]
 fn source_of_mu_core_keeps_its_rules() {
-    assert_eq!(crate_hits(&rust_files()), Vec::<String>::new());
+    assert_eq!(crate_hits(&rust_files(), ALLOWED), Vec::<String>::new());
+}
+
+/// The entries of `ALLOWED` for `file`.
+fn entries_of(file: &str) -> impl Iterator<Item = &'static Allowed> {
+    ALLOWED.iter().filter(move |allowed| allowed.file == file)
+}
+
+#[test]
+fn allowed_sleep_holds_only_in_its_file() {
+    let sleep = "fn f() { tokio::time::sleep_until(t).await; }";
+    let files = vec![
+        ("src/session.rs".to_owned(), sleep.to_owned()),
+        ("tests/other.rs".to_owned(), sleep.to_owned()),
+    ];
+    assert_eq!(
+        crate_hits(&files, entries_of("src/session.rs")),
+        ["tests/other.rs:1: a sleep: sleep_until"]
+    );
 }
 
 /// The rules on `text` as a file other than `src/telnet.rs`.
@@ -360,7 +396,7 @@ fn an_allowed_literal_with_another_count_fails() {
         "src/secret.rs".to_owned(),
         "fn f() { let _ = [0xff, 0xff]; }".to_owned(),
     )];
-    let problems = crate_hits(&files);
+    let problems = crate_hits(&files, entries_of("src/secret.rs"));
     assert_eq!(problems.len(), 1, "{problems:?}");
     assert!(problems[0].contains("2 times"), "{problems:?}");
 }
@@ -368,7 +404,7 @@ fn an_allowed_literal_with_another_count_fails() {
 #[test]
 fn an_allowed_literal_that_is_gone_fails() {
     let files = vec![("src/secret.rs".to_owned(), "fn f() {}".to_owned())];
-    assert_eq!(crate_hits(&files).len(), 1);
+    assert_eq!(crate_hits(&files, entries_of("src/secret.rs")).len(), 1);
 }
 
 #[test]
@@ -384,7 +420,7 @@ fn a_code_outside_the_list_fails_with_file_and_line() {
         ),
     ];
     assert_eq!(
-        crate_hits(&files),
+        crate_hits(&files, entries_of("src/secret.rs")),
         ["tests/other.rs:2: a code of telnet outside src/telnet.rs: 0xff"]
     );
 }

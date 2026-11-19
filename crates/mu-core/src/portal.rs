@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::command::{Command, Envelope};
+use crate::connection::{Immediate, LoginMoment};
 use crate::error::PortalError;
 use crate::event::Seq;
 use crate::framer::{LineFramer, NewFramer};
@@ -24,13 +25,14 @@ pub struct WorldSetup {
     secret: Option<SecretSource>,
     transport: Option<Arc<dyn Transport>>,
     framer: NewFramer,
+    login_moment: Arc<dyn LoginMoment>,
     hooks: Vec<Arc<dyn Hook>>,
     handlers: Vec<Arc<dyn Handler>>,
 }
 
 impl WorldSetup {
-    /// A world with the [`LineFramer`], no hook and no handler. The `password` is read once, at
-    /// the start of the server.
+    /// A world with the [`LineFramer`], the login at the connect, no hook and no handler. The
+    /// `password` is read once, at the start of the server.
     #[must_use]
     pub fn new(
         world: ResolvedWorld,
@@ -50,9 +52,17 @@ impl WorldSetup {
             secret,
             transport,
             framer: Arc::new(|| Box::new(LineFramer::new())),
+            login_moment: Arc::new(Immediate),
             hooks: Vec::new(),
             handlers: Vec::new(),
         }
+    }
+
+    /// Sends the login at the moment that `moment` gives, instead of at the connect.
+    #[must_use]
+    pub fn with_login_moment(mut self, moment: Arc<dyn LoginMoment>) -> Self {
+        self.login_moment = moment;
+        self
     }
 
     /// A world with no transport and no password: a TLS world. It stays disconnected, and a
@@ -124,6 +134,7 @@ impl Portal {
                 secret: setup.secret,
                 transport: setup.transport,
                 framer: setup.framer,
+                login_moment: setup.login_moment,
                 hooks: setup.hooks,
                 handlers: setup.handlers,
                 journal: Arc::clone(&journal),

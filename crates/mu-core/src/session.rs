@@ -12,10 +12,11 @@ use governor::clock::Clock;
 use governor::{Quota, RateLimiter};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _, ReadHalf, WriteHalf};
 use tokio::sync::{mpsc, oneshot, watch};
+use tokio::time::Instant;
 use tracing::{Instrument as _, Span};
 
 use crate::command::{Command, Envelope, Origin};
-use crate::connection::Cause;
+use crate::connection::{Cause, LoginMoment};
 use crate::error::PortalError;
 use crate::event::{Event, EventKind, NewEvent, Seq, Source};
 use crate::framer::{Framer, Inbound, NewFramer, has_line_break};
@@ -182,6 +183,8 @@ pub(crate) struct SessionParts {
     pub(crate) secret: Option<SecretSource>,
     pub(crate) transport: Option<Arc<dyn Transport>>,
     pub(crate) framer: NewFramer,
+    /// When the login line goes out.
+    pub(crate) login_moment: Arc<dyn LoginMoment>,
     pub(crate) hooks: Vec<Arc<dyn Hook>>,
     pub(crate) handlers: Vec<Arc<dyn Handler>>,
     pub(crate) journal: Arc<dyn Journal>,
@@ -218,6 +221,8 @@ enum Conn {
         read: ReadHalf<Box<dyn ByteStream>>,
         write: WriteHalf<Box<dyn ByteStream>>,
         framer: Box<dyn Framer>,
+        /// The login that waits for its moment. The world stays in `connecting` until it goes.
+        pending: Option<PendingLogin>,
         frames: WaitingFrames,
         /// The `world.connection` span. It closes when its last clone drops: `down` drops this
         /// one, a step that runs in the span holds a clone until the step ends, and the end of
@@ -226,7 +231,22 @@ enum Conn {
     },
 }
 
+/// A login that waits for the moment of its [`LoginMoment`].
+struct PendingLogin {
+    /// The open of the stream.
+    connect: Instant,
+    /// The last byte from the game, or none before the first.
+    last_byte: Option<Instant>,
+    /// The depth of the command that started the connect.
+    depth: u8,
+}
+
 impl Conn {
+    /// Whether the world is up and logged in, so a line can go to the game.
+    fn is_connected(&self) -> bool {
+        matches!(self, Self::Up { pending: None, .. })
+    }
+
     /// The `world.connection` span, or a disabled span with no connection.
     fn span(&self) -> Span {
         match self {
@@ -240,6 +260,8 @@ enum Step {
     Request(Option<Request>),
     Connected(Result<Box<dyn ByteStream>, Failure>, u8),
     Read(io::Result<usize>),
+    /// The moment of the pending login came.
+    Login,
 }
 
 struct Session {
@@ -270,7 +292,7 @@ pub(crate) async fn run(parts: SessionParts) {
     loop {
         let step = tokio::select! {
             request = session.parts.requests.recv() => Step::Request(request),
-            step = progress(&mut session.conn, &mut buffer) => step,
+            step = progress(&mut session.conn, &*session.parts.login_moment, &mut buffer) => step,
         };
         match step {
             Step::Request(None) => return,
@@ -306,14 +328,30 @@ pub(crate) async fn run(parts: SessionParts) {
                 let span = session.conn.span();
                 session.on_bytes(&buffer[..n]).instrument(span).await;
             }
+            Step::Login => {
+                let span = session.conn.span();
+                session.on_login_moment().instrument(span).await;
+            }
         }
     }
 }
 
-/// The next step of the connection: a finished connect or a read. Pending with no connection.
-async fn progress(conn: &mut Conn, buffer: &mut [u8]) -> Step {
+/// The next step of the connection: a finished connect, a read, or the moment of a pending
+/// login. Pending with no connection.
+async fn progress(conn: &mut Conn, moment: &dyn LoginMoment, buffer: &mut [u8]) -> Step {
     match conn {
         Conn::Connecting { connect, depth, .. } => Step::Connected(connect.await, *depth),
+        Conn::Up {
+            read,
+            pending: Some(pending),
+            ..
+        } => {
+            let deadline = moment.deadline(pending.connect, pending.last_byte);
+            tokio::select! {
+                result = read.read(buffer) => Step::Read(result),
+                () = tokio::time::sleep_until(deadline) => Step::Login,
+            }
+        }
         Conn::Up { read, .. } => Step::Read(read.read(buffer).await),
         Conn::Down => std::future::pending().await,
     }
@@ -445,7 +483,12 @@ impl Session {
     async fn on_frame(&mut self, frame: oneshot::Sender<Reply>) {
         match &mut self.conn {
             Conn::Down => answer(frame),
-            Conn::Connecting { frames, .. } => frames.push(frame),
+            Conn::Connecting { frames, .. }
+            | Conn::Up {
+                frames,
+                pending: Some(_),
+                ..
+            } => frames.push(frame),
             Conn::Up { frames, .. } => {
                 frames.push(frame);
                 // A failed write already answered the frame through `down`.
@@ -527,22 +570,23 @@ impl Session {
                     Conn::Connecting { frames, span, .. } => (std::mem::take(frames), span.clone()),
                     Conn::Down | Conn::Up { .. } => (WaitingFrames::default(), Span::current()),
                 };
-                let waiting = frames.len();
+                let connect = Instant::now();
+                let waits = self.parts.login.is_some()
+                    && self.parts.login_moment.deadline(connect, None) > connect;
                 self.conn = Conn::Up {
                     read,
                     write,
                     framer: (self.parts.framer)(),
+                    pending: waits.then_some(PendingLogin {
+                        connect,
+                        last_byte: None,
+                        depth,
+                    }),
                     frames,
                     span,
                 };
-                self.set_state(WorldState::Connected);
-                self.record(EventKind::Connected, Origin::System, "connected", depth);
-                // A failed write already recorded the disconnect and answered each frame.
-                let _ = self.login(depth).await;
-                for _ in 0..waiting {
-                    if self.write_mark(depth).await.is_err() {
-                        break;
-                    }
+                if !waits {
+                    self.logged_in(depth).await;
                 }
             }
             Err(Failure::Connect(error)) => self.down(
@@ -558,10 +602,45 @@ impl Session {
         }
     }
 
-    async fn on_bytes(&mut self, bytes: &[u8]) {
-        let Conn::Up { framer, .. } = &mut self.conn else {
+    /// Sends the pending login at its moment.
+    async fn on_login_moment(&mut self) {
+        let Conn::Up { pending, .. } = &mut self.conn else {
             return;
         };
+        if let Some(pending) = pending.take() {
+            self.logged_in(pending.depth).await;
+        }
+    }
+
+    /// Moves the world to `connected`: records the connect, sends the login, and writes the
+    /// mark of each frame that waits.
+    async fn logged_in(&mut self, depth: u8) {
+        let waiting = match &self.conn {
+            Conn::Up { frames, .. } => frames.len(),
+            Conn::Down | Conn::Connecting { .. } => return,
+        };
+        self.set_state(WorldState::Connected);
+        self.record(EventKind::Connected, Origin::System, "connected", depth);
+        // A failed write already recorded the disconnect and answered each frame.
+        let _ = self.login(depth).await;
+        for _ in 0..waiting {
+            if self.write_mark(depth).await.is_err() {
+                break;
+            }
+        }
+    }
+
+    async fn on_bytes(&mut self, bytes: &[u8]) {
+        let Conn::Up {
+            framer, pending, ..
+        } = &mut self.conn
+        else {
+            return;
+        };
+        if let Some(pending) = pending {
+            // Every byte counts, telnet negotiation included.
+            pending.last_byte = Some(Instant::now());
+        }
         for inbound in framer.feed(bytes) {
             match inbound {
                 Inbound::Line(line) => {
@@ -614,7 +693,7 @@ impl Session {
                 if has_line_break(&text) {
                     return Err(PortalError::LineBreak);
                 }
-                if !matches!(self.conn, Conn::Up { .. }) {
+                if !self.conn.is_connected() {
                     return Err(PortalError::NotConnected(self.world().clone()));
                 }
                 let Some(text) = run_hooks(&self.parts.hooks, &text, Hook::on_player_line) else {
@@ -650,6 +729,9 @@ impl Session {
                 }
                 self.down(Cause::Requested(origin), "disconnected", depth);
                 Ok(None)
+            }
+            Command::Login { .. } if !self.conn.is_connected() => {
+                Err(PortalError::NotConnected(self.world().clone()))
             }
             Command::Login { .. } => self.login(depth).await,
             Command::Echo { text, .. } => {

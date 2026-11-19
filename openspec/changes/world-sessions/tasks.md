@@ -52,7 +52,7 @@ Load the `rust-best-practices` skill before this group. The tests of this group 
 
 - [x] 5.1 Make `SessionParts` hold a `SecretSource` that reads through `load_password`, as design decision 7 describes. Replace `PortalError::NoPassword` with `PortalError::NoSecret`, and `NoTransport` with `TlsNotSupported`, in `mu-core` and in `crates/mu-server/src/convert.rs`. Make sure that every current test still passes, and that the fake world still reads its password at the start.
 - [x] 5.2 Add the connect function of design decision 1, with the 10 second timeout and the span. Make the `Connect` handler use it. Give `Session::down` the cause of task 4.4. Add `connect_that_hangs`, for "A connect that hangs". Make sure that it passes, and that the current tests of `crates/mu-core/tests/portal.rs` still pass.
-- [ ] 5.3 Make the session send the login at the moment that its `LoginMoment` gives. Keep the world in `connecting` until then (design decision 3). Control frames wait in the queue, and `Send` fails. Add these tests:
+- [x] 5.3 Make the session send the login at the moment that its `LoginMoment` gives. Keep the world in `connecting` until then (design decision 3). Control frames wait in the queue, and `Send` fails. Add these tests:
   - `login_after_banner_and_quiet`, for "A banner and then quiet"
   - `login_after_a_silent_second`, for "A silent game"
   - `login_cap_for_a_noisy_game`, for "A game that never goes quiet"
