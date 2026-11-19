@@ -116,6 +116,15 @@ impl ConfigDir {
         Self { path, _temp: None }
     }
 
+    /// A directory with the world `alpha/aria` of the type `tinymux` on `127.0.0.1:port`, and
+    /// `character` as `characters/alpha/aria.toml`.
+    pub fn tcp_world(port: u16, character: &str) -> Self {
+        let game = format!("extends = \"tinymux\"\nhost = \"127.0.0.1\"\nport = {port}\n");
+        Self::empty()
+            .file("games/alpha.toml", &game)
+            .file("characters/alpha/aria.toml", character)
+    }
+
     /// Adds the base files: `games/alpha.toml` with [`BASE_GAME`], and an empty
     /// `characters/alpha/aria.toml`.
     pub fn with_base(self) -> Self {

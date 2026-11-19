@@ -998,19 +998,10 @@ async fn failed_connect_span_is_error() {
     let listening = ScriptedGame::new(Script::new()).listen().await.unwrap();
     let port = listening.addr().port();
     listening.stop().await;
-    let config = ConfigDir::empty()
-        .file(
-            "server.toml",
-            &format!("[telemetry]\nendpoint = \"{}\"\n", collector.url()),
-        )
-        .file(
-            "games/alpha.toml",
-            &format!("extends = \"tinymux\"\nhost = \"127.0.0.1\"\nport = {port}\n"),
-        )
-        .file(
-            "characters/alpha/aria.toml",
-            "[reconnect]\nmode = \"off\"\n",
-        );
+    let config = ConfigDir::tcp_world(port, "[reconnect]\nmode = \"off\"\n").file(
+        "server.toml",
+        &format!("[telemetry]\nendpoint = \"{}\"\n", collector.url()),
+    );
     let builder = ServerBuilder::new().env("MU_CONFIG", Some(config.path()));
     let mut session = Session::start(builder).await;
     session.client.connect("alpha/aria").await.unwrap();

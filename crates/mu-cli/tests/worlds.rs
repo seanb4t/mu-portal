@@ -2,7 +2,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use mu_fake_server::{Listening, Script, ScriptedGame};
+use mu_fake_server::{Script, ScriptedGame};
 use mu_proto::{EventKind, Source, WorldState};
 
 use support::process::{PW, ServerBuilder, Session, TWO_WORLDS};
@@ -294,21 +294,11 @@ async fn server_does_not_read_a_configured_secret() {
     assert_eq!(worlds.len(), 1);
 }
 
-/// The configuration of the world `alpha/aria` on the fake game of `listening`, with
-/// `character` as the text of its character file.
-fn tcp_config(listening: &Listening, character: &str) -> ConfigDir {
-    let port = listening.addr().port();
-    let game = format!("extends = \"tinymux\"\nhost = \"127.0.0.1\"\nport = {port}\n");
-    ConfigDir::empty()
-        .file("games/alpha.toml", &game)
-        .file("characters/alpha/aria.toml", character)
-}
-
 #[tokio::test]
 async fn autoconnect_world_connects_at_start() {
     let game = ScriptedGame::new(Script::new());
     let listening = game.listen().await.unwrap();
-    let conf = tcp_config(&listening, "autoconnect = true\n");
+    let conf = ConfigDir::tcp_world(listening.addr().port(), "autoconnect = true\n");
     let mut session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
     session
         .kind("alpha/aria", EventKind::EVENT_KIND_CONNECTED, 0)
@@ -320,7 +310,7 @@ async fn autoconnect_world_connects_at_start() {
 async fn configured_world_connects_on_request() {
     let game = ScriptedGame::new(Script::new());
     let listening = game.listen().await.unwrap();
-    let conf = tcp_config(&listening, "");
+    let conf = ConfigDir::tcp_world(listening.addr().port(), "");
     let mut session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
     session.client.connect("alpha/aria").await.unwrap();
     session
@@ -381,7 +371,10 @@ async fn list_worlds_shows_reconnecting() {
     let game = ScriptedGame::new(Script::new().close());
     let listening = game.listen().await.unwrap();
     // A long first wait, so the call comes before the next attempt.
-    let conf = tcp_config(&listening, "[reconnect]\ninitial = 30\nmax = 60\n");
+    let conf = ConfigDir::tcp_world(
+        listening.addr().port(),
+        "[reconnect]\ninitial = 30\nmax = 60\n",
+    );
     let mut session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
     session.client.connect("alpha/aria").await.unwrap();
     session
