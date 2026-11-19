@@ -178,3 +178,49 @@ async fn login_line_hides_the_password() {
         .collect();
     assert!(leaks.is_empty(), "{leaks:?}");
 }
+
+#[tokio::test]
+async fn game_close_reconnects() {
+    let (_game, listening) = serve(Script::new().close()).await;
+    let conf = config(listening.addr().port(), "");
+    let mut session = start(&conf, &[]).await;
+    session.client.connect("alpha/aria").await.unwrap();
+    let drop = session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    // The world sets its state before it records the drop, and then waits at least 1 second.
+    assert_state(&session, WorldState::WORLD_STATE_RECONNECTING).await;
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_CONNECTED, drop.seq)
+        .await;
+}
+
+#[tokio::test]
+async fn player_disconnect_does_not_reconnect() {
+    let (game, listening) = serve(Script::new()).await;
+    let conf = config(listening.addr().port(), "");
+    let mut session = start(&conf, &[]).await;
+    session.client.connect("alpha/aria").await.unwrap();
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_CONNECTED, 0)
+        .await;
+    session.client.disconnect("alpha/aria").await.unwrap();
+    let gone = session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    assert_state(&session, WorldState::WORLD_STATE_DISCONNECTED).await;
+    session.no_connect_after("alpha/aria", gone.seq).await;
+    assert_eq!(game.connects(), 1);
+}
+
+#[tokio::test]
+async fn reconnect_off_stays_disconnected() {
+    let (_game, listening) = serve(Script::new().close()).await;
+    let conf = config(listening.addr().port(), "[reconnect]\nmode = \"off\"\n");
+    let mut session = start(&conf, &[]).await;
+    session.client.connect("alpha/aria").await.unwrap();
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    assert_state(&session, WorldState::WORLD_STATE_DISCONNECTED).await;
+}

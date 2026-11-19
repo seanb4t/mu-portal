@@ -86,7 +86,7 @@ Load the `rust-best-practices` skill before this group. The tests of this group 
   - `missing_secret_variable_at_connect` and `login_line_hides_the_password`, for the two binary scenarios of "The secret is read at each connect"
 
   Make sure that the seven tests pass.
-- [ ] 6.2 Add these tests for "A world reconnects after a drop":
+- [x] 6.2 Add these tests for "A world reconnects after a drop":
   - `game_close_reconnects`, for "The game closes the connection"
   - `player_disconnect_does_not_reconnect`, for "The player disconnects"
   - `reconnect_off_stays_disconnected`, for "Reconnect off"

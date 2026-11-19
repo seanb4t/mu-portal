@@ -294,6 +294,18 @@ async fn server_does_not_read_a_configured_secret() {
     assert_eq!(worlds.len(), 1);
 }
 
+#[tokio::test]
+async fn fake_world_does_not_reconnect() {
+    let mut session = Session::with_worlds(&["alpha/aria"]).await;
+    session.client.send("alpha/aria", "@drop").await.unwrap();
+    let gone = session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    let worlds = session.client.list_worlds().await.unwrap();
+    assert_eq!(worlds[0].state, WorldState::WORLD_STATE_DISCONNECTED);
+    session.no_connect_after("alpha/aria", gone.seq).await;
+}
+
 fn now_ms() -> i64 {
     let since = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     i64::try_from(since.as_millis()).unwrap()
