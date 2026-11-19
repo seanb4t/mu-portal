@@ -1,11 +1,13 @@
 //! Rules of the workspace: members, dependency edges, license, lints and
-//! the shared dependency table. `ALLOWED_EDGES` is the single source of the
-//! edge rule, and `ALLOWED_CRATES` of the third-party crates of each member.
+//! the shared dependency table. `ALLOWED_EDGES` and `ALLOWED_DEV_EDGES` are
+//! the single source of the edge rule, and `ALLOWED_CRATES` of the
+//! third-party crates of each member.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use cargo_metadata::{Dependency, DependencyKind};
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use syn::ext::IdentExt as _;
 
@@ -17,14 +19,27 @@ mod support;
 const ALLOWED_EDGES: &[(&str, &[&str])] = &[
     ("mu-proto", &[]),
     ("mu-core", &[]),
+    ("mu-fake-server", &["mu-core"]),
     ("mu-server", &["mu-core", "mu-proto"]),
     ("mu-client", &["mu-proto"]),
     ("mu-tui", &["mu-client", "mu-proto"]),
     (
         "mu-cli",
-        &["mu-core", "mu-server", "mu-tui", "mu-client", "mu-proto"],
+        &[
+            "mu-core",
+            "mu-fake-server",
+            "mu-server",
+            "mu-tui",
+            "mu-client",
+            "mu-proto",
+        ],
     ),
 ];
+
+/// Each member and the members that only its `[dev-dependencies]` can name.
+/// Cargo accepts a cycle through a dev-dependency, so the integration tests
+/// of `mu-core` can use the fake games that depend on `mu-core`.
+const ALLOWED_DEV_EDGES: &[(&str, &[&str])] = &[("mu-core", &["mu-fake-server"])];
 
 /// Each member and the third-party crates that it can use, in any dependency table.
 /// `mu-core` and `mu-tui` get no crate of the wire format.
@@ -189,6 +204,20 @@ fn allowed(from: &str) -> Option<&'static [&'static str]> {
         .map(|(_, to)| *to)
 }
 
+fn allowed_dev(from: &str) -> &'static [&'static str] {
+    ALLOWED_DEV_EDGES
+        .iter()
+        .find(|(member, _)| *member == from)
+        .map_or(&[], |(_, to)| *to)
+}
+
+/// A dev-dependency can also use an edge of `ALLOWED_DEV_EDGES`.
+fn edge_allowed(from: &str, dependency: &Dependency) -> bool {
+    let to = dependency.name.as_str();
+    allowed(from).is_some_and(|targets| targets.contains(&to))
+        || dependency.kind == DependencyKind::Development && allowed_dev(from).contains(&to)
+}
+
 fn allowed_crates(from: &str) -> &'static [&'static str] {
     ALLOWED_CRATES
         .iter()
@@ -215,8 +244,7 @@ fn violations(root: &Path) -> Vec<Violation> {
     }
     for package in &members {
         let member = package.name.to_string();
-        let allowed_targets = allowed(&member);
-        if allowed_targets.is_none() {
+        if allowed(&member).is_none() {
             found.push(Violation::UnlistedMember {
                 member: member.clone(),
             });
@@ -244,7 +272,7 @@ fn violations(root: &Path) -> Vec<Violation> {
                 }
             } else if is_member(&to) {
                 // A member is a member whatever its source: path, git or registry.
-                if !allowed_targets.is_some_and(|targets| targets.contains(&to.as_str())) {
+                if !edge_allowed(&member, dependency) {
                     found.push(Violation::ForbiddenEdge {
                         from: member.clone(),
                         to,
@@ -639,6 +667,27 @@ fn renamed_local_dependency_version_fails() {
     assert_eq!(
         violations(fixture.root()),
         not_from_workspace("mu-tui", "runtime")
+    );
+}
+
+#[test]
+fn dev_edge_allows_dev_dependency() {
+    let fixture = fixture().append(
+        "mu-core",
+        "\n[dev-dependencies]\nmu-fake-server = { path = \"../mu-fake-server\" }\n",
+    );
+    assert_eq!(violations(fixture.root()), vec![]);
+}
+
+#[test]
+fn dev_edge_refuses_normal_dependency() {
+    let fixture = fixture().append(
+        "mu-core",
+        "mu-fake-server = { path = \"../mu-fake-server\" }\n",
+    );
+    assert_eq!(
+        violations(fixture.root()),
+        forbidden("mu-core", "mu-fake-server")
     );
 }
 
