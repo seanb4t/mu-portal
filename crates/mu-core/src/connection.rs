@@ -1,9 +1,12 @@
-//! The rules of one connection of a world: when the login goes out.
+//! The rules of one connection of a world: when the login goes out, and why the connection
+//! ended.
 
 use std::fmt::Debug;
 use std::time::Duration;
 
 use tokio::time::Instant;
+
+use crate::command::Origin;
 
 /// When a world sends its login line. Each kind is pure: it gives a deadline from times that
 /// the session passes, and holds no timer.
@@ -53,9 +56,70 @@ impl LoginMoment for Quiet {
     }
 }
 
+/// Why a connection of a world ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cause {
+    /// The connect of the transport failed.
+    ConnectFailed,
+    /// The connect of the transport took longer than its timeout.
+    Timeout,
+    /// A read or a write failed.
+    Lost,
+    /// The game closed the connection.
+    Closed,
+    /// A `Disconnect` command from this origin.
+    Requested(Origin),
+}
+
+impl Cause {
+    /// Whether the world connects again, with a reconnect that is not off.
+    #[must_use]
+    pub fn reconnects(self) -> bool {
+        !matches!(self, Self::Requested(_))
+    }
+
+    /// The value of the span attribute `mu.connection.end`.
+    #[must_use]
+    pub fn end(self) -> &'static str {
+        match self {
+            Self::ConnectFailed => "connect_failed",
+            Self::Timeout => "timeout",
+            Self::Lost => "lost",
+            Self::Closed => "closed",
+            Self::Requested(Origin::Player | Origin::Script) => "player",
+            Self::Requested(Origin::System) => "stopped",
+        }
+    }
+
+    /// Whether the span of the connection ends with the status `error`.
+    #[must_use]
+    pub fn is_error(self) -> bool {
+        matches!(self, Self::ConnectFailed | Self::Timeout | Self::Lost)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cause_map() {
+        for (cause, reconnects, end, is_error) in [
+            (Cause::ConnectFailed, true, "connect_failed", true),
+            (Cause::Timeout, true, "timeout", true),
+            (Cause::Lost, true, "lost", true),
+            (Cause::Closed, true, "closed", false),
+            (Cause::Requested(Origin::Player), false, "player", false),
+            (Cause::Requested(Origin::Script), false, "player", false),
+            (Cause::Requested(Origin::System), false, "stopped", false),
+        ] {
+            assert_eq!(
+                (cause.reconnects(), cause.end(), cause.is_error()),
+                (reconnects, end, is_error),
+                "{cause:?}"
+            );
+        }
+    }
 
     fn ms(millis: u64) -> Duration {
         Duration::from_millis(millis)
