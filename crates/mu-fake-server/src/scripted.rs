@@ -44,6 +44,13 @@ impl Script {
         Self::default()
     }
 
+    /// A script that replays the reads of a recorded transcript: one [`Step::Send`] for each
+    /// read, in order. The caller parses the transcript and gives the reads of the game.
+    #[must_use]
+    pub fn replay(reads: impl IntoIterator<Item = impl AsRef<[u8]>>) -> Self {
+        reads.into_iter().fold(Self::new(), Self::send)
+    }
+
     /// Adds a [`Step::Send`].
     #[must_use]
     pub fn send(self, bytes: impl AsRef<[u8]>) -> Self {
@@ -439,6 +446,15 @@ mod tests {
         let mut bytes = Vec::new();
         stream.read_to_end(&mut bytes).await.unwrap();
         assert_eq!(bytes, b"bye");
+    }
+
+    #[test]
+    fn replay_sends_each_read_in_order() {
+        let reads: [&[u8]; 2] = [b"\xff\xfb\x01", b"Welcome\r\n"];
+        assert_eq!(
+            Script::replay(reads),
+            Script::new().send(b"\xff\xfb\x01").send(b"Welcome\r\n")
+        );
     }
 
     #[tokio::test(start_paused = true)]
