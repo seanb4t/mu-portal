@@ -19,7 +19,7 @@ The quirks of the three server families come from the telnet spike: decision pag
 **Goals:**
 
 - The login moment is a strategy behind a trait. A later change then adds a banner trigger with no change to the session loop.
-- The keepalive and the reconnect are each one enum in `mu-core`. The configuration and the session use the same type, so each kind exists once.
+- The keepalive and the reconnect are each one enum in `mu-core`. The resolved world and the session use the same type, so each kind with its parameters exists once. The layers keep a mode enum for each `mode` field (decision 4).
 - Every timer runs on the tokio clock, so the paused clock tests each scenario with no real wait.
 - The new TCP fake game does not use the framer of the engine. A defect that is the same on both sides then cannot pass.
 
@@ -83,6 +83,8 @@ Enforced by: unit tests of each kind. Also by the paused-clock scenarios of "The
 ### 4. The keepalive and the reconnect are enums
 
 `mu-core` defines `Keepalive { mode, command, seconds }` with `mode` one of `Idle` and `Interval`, and `Reconnect` with the kinds `Backoff { initial, max, attempts }` and `Off`. Each type has pure methods that give the next deadline. `ResolvedWorld` holds `keepalive: Option<Keepalive>` and `reconnect: Reconnect`, and the session uses the same values. A world whose layers set neither half of the keepalive gets `None`, and so does `keepalive.mode = "off"`. A fake world gets `None` and `Reconnect::Off`.
+
+The layers keep two more enums beside these: `KeepaliveMode` (`idle`, `interval`, `off`) and `ReconnectMode` (`backoff`, `off`). They are the values of the fields `keepalive.mode` and `reconnect.mode`, which name a kind with no parameters. A layer can set a mode without its parameters, and the merge needs the mode alone. The resolution maps each mode to its `Keepalive` or `Reconnect` value, and `mu world show` maps the value back. Serde gives the one spelling of each mode, for the parse and for `mu world show`.
 
 Enforced by: unit tests of each kind, and the scenarios of the keepalive requirement on the paused clock.
 
