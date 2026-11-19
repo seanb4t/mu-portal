@@ -87,6 +87,8 @@ If no file sets one of these fields, `mu world show` names the source `default` 
 
 A world with `autoconnect = true` connects at the start of the server. Any other world waits for a client to ask it to connect.
 
+The connection is plain TCP. The login line goes to the game with no encryption, so a host on the network path can read the password. A wrong `host` or `port` sends the line to another service. A world with `tls = true` cannot connect yet. Use a password for the game that you use nowhere else.
+
 The keepalive sends `keepalive.command` to the game. In the mode `"idle"`, the server sends it after `keepalive.seconds` with no write to the game. In the mode `"interval"`, the server sends it every `keepalive.seconds`. In the mode `"off"`, the server sends nothing. Unless the mode is `"off"`, a world that sets the command or the seconds must set both. A world that sets neither has no keepalive.
 
 After a drop that the player did not ask for, the world connects again. The first wait is `reconnect.initial` seconds. Each next wait is twice as long, up to `reconnect.max` seconds. The server adds a random extra time of at most 20% of the wait. `reconnect.initial` must not be greater than `reconnect.max`.
