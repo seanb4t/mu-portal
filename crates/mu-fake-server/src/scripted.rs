@@ -14,6 +14,7 @@ use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _, Re
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 
 const BUFFER: usize = 64 * 1024;
 
@@ -93,6 +94,8 @@ impl Script {
 #[derive(Clone, Debug)]
 struct Connection {
     bytes: Vec<u8>,
+    /// Each read of the game, with its time.
+    reads: Vec<(Instant, Vec<u8>)>,
     open: bool,
 }
 
@@ -159,12 +162,39 @@ impl ScriptedGame {
             .collect()
     }
 
+    /// Each read of the game, with the time of the read, one entry for each accepted connection,
+    /// in order. On the paused clock, the time of a read is the time of the write of the client.
+    #[must_use]
+    pub fn reads(&self) -> Vec<Vec<(Instant, Vec<u8>)>> {
+        self.shared
+            .connections
+            .borrow()
+            .iter()
+            .map(|connection| connection.reads.clone())
+            .collect()
+    }
+
     /// Waits until the game accepted `count` connections in all.
     pub async fn wait_for_connects(&self, count: usize) {
         let mut receiver = self.shared.connections.subscribe();
         // The sender lives in `self`, so the channel stays open.
         let _ = receiver
             .wait_for(|connections| connections.len() >= count)
+            .await;
+    }
+
+    /// Waits until `done` holds for the reads of the game, as [`ScriptedGame::reads`] gives them.
+    pub async fn wait_reads(&self, done: impl Fn(&[Vec<(Instant, Vec<u8>)>]) -> bool) {
+        let mut receiver = self.shared.connections.subscribe();
+        // The sender lives in `self`, so the channel stays open.
+        let _ = receiver
+            .wait_for(|connections| {
+                let reads: Vec<_> = connections
+                    .iter()
+                    .map(|connection| connection.reads.clone())
+                    .collect();
+                done(&reads)
+            })
             .await;
     }
 
@@ -215,6 +245,7 @@ impl ScriptedGame {
             index = connections.len();
             connections.push(Connection {
                 bytes: Vec::new(),
+                reads: Vec::new(),
                 open: true,
             });
         });
@@ -322,7 +353,11 @@ where
             return;
         }
         shared.connections.send_modify(|connections| {
-            connections[index].bytes.extend_from_slice(&buffer[..count]);
+            let connection = &mut connections[index];
+            connection.bytes.extend_from_slice(&buffer[..count]);
+            connection
+                .reads
+                .push((Instant::now(), buffer[..count].to_vec()));
         });
     }
 }
@@ -480,6 +515,31 @@ mod tests {
         assert_eq!(
             game.written(),
             vec![b"connect aria pw\r\n".to_vec(), b"\xff\xf4\r\n".to_vec()]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reads_carry_their_time() {
+        let game = ScriptedGame::new(Script::new());
+        let start = Instant::now();
+        let mut stream = connect(&game).await;
+        for (bytes, count) in [(b"one", 1), (b"two", 2)] {
+            if count == 2 {
+                tokio::time::advance(Duration::from_secs(5)).await;
+            }
+            stream.write_all(bytes).await.unwrap();
+            game.wait_reads(|reads| reads[0].len() == count).await;
+        }
+        let reads: Vec<(Duration, Vec<u8>)> = game.reads()[0]
+            .iter()
+            .map(|(time, bytes)| (*time - start, bytes.clone()))
+            .collect();
+        assert_eq!(
+            reads,
+            [
+                (Duration::ZERO, b"one".to_vec()),
+                (Duration::from_secs(5), b"two".to_vec())
+            ]
         );
     }
 

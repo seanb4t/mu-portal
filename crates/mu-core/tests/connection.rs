@@ -8,8 +8,8 @@ use futures::future::BoxFuture;
 use mu_core::connection::Quiet;
 use mu_core::telnet::{IAC, MARK, WILL, opt};
 use mu_core::{
-    ByteStream, EventKind, Portal, PortalError, Reconnect, ResolvedWorld, Secret, Transport,
-    WorldId, WorldSetup, WorldState,
+    ByteStream, EventKind, Keepalive, KeepaliveMode, Portal, PortalError, Reconnect, ResolvedWorld,
+    Secret, Transport, WorldId, WorldSetup, WorldState,
 };
 use mu_fake_server::{Script, ScriptedGame};
 use tokio::time::Instant;
@@ -146,6 +146,118 @@ async fn wait_covers_pending_login() {
     let (portal, _) = connected(&game, true).await;
     idle(&portal).await;
     assert_eq!(of_kind(&portal, EventKind::Login).len(), 1);
+}
+
+/// The keepalive line on the wire.
+const IDLE: &[u8] = b"IDLE\r\n";
+
+/// The longest wait of a keepalive test on the paused clock.
+const KEEPALIVE_BOUND: Duration = Duration::from_secs(300);
+
+/// The time from `start` of each read of the game that holds the keepalive line.
+fn idle_times(reads: &[Vec<(Instant, Vec<u8>)>], start: Instant) -> Vec<Duration> {
+    reads
+        .iter()
+        .flatten()
+        .filter(|(_, bytes)| bytes.windows(IDLE.len()).any(|window| window == IDLE))
+        .map(|(time, _)| *time - start)
+        .collect()
+}
+
+/// Starts a portal with `alpha/aria`, which has no login and the keepalive `IDLE` every 60
+/// seconds in `mode`, on a game that sends nothing. Connects it, and gives the time of the move
+/// to `connected`.
+async fn keepalive_world(game: &ScriptedGame, mode: KeepaliveMode) -> (Portal, Instant) {
+    let mut world = ResolvedWorld::new(id("alpha/aria"));
+    world.keepalive = Some(Keepalive::new("IDLE", 60).unwrap().with_mode(mode));
+    let portal = portal(
+        vec![WorldSetup::new(world, None, Arc::new(game.clone()))],
+        Vec::new(),
+    );
+    let start = Instant::now();
+    portal.connect(&id("alpha/aria")).await.unwrap();
+    wait_state(&portal, &id("alpha/aria"), WorldState::Connected).await;
+    assert_eq!(start.elapsed(), Duration::ZERO);
+    (portal, start)
+}
+
+/// Connects the keepalive world in `mode` at the time 0, sends `hello` at 30, and waits until
+/// the game read `count` keepalive lines. Gives the portal and the time of each keepalive line.
+async fn keepalive_times(mode: KeepaliveMode, count: usize) -> (Portal, Vec<Duration>) {
+    let game = ScriptedGame::new(Script::new());
+    let (portal, start) = keepalive_world(&game, mode).await;
+    tokio::time::advance(Duration::from_secs(30)).await;
+    portal.send(&id("alpha/aria"), "hello").await.unwrap();
+    let enough = game.wait_reads(|reads| idle_times(reads, start).len() >= count);
+    tokio::time::timeout(KEEPALIVE_BOUND, enough).await.unwrap();
+    (portal, idle_times(&game.reads(), start))
+}
+
+fn seconds(list: &[u64]) -> Vec<Duration> {
+    list.iter().copied().map(Duration::from_secs).collect()
+}
+
+#[tokio::test(start_paused = true)]
+async fn keepalive_idle() {
+    // The third line at 210 shows that no line came between 150 and 200.
+    let (_, times) = keepalive_times(KeepaliveMode::Idle, 3).await;
+    assert_eq!(times, seconds(&[90, 150, 210]));
+}
+
+#[tokio::test(start_paused = true)]
+async fn keepalive_interval() {
+    let (_, times) = keepalive_times(KeepaliveMode::Interval, 4).await;
+    let every_minute: Vec<Duration> = (1..=4).map(|n| Duration::from_secs(60 * n)).collect();
+    assert_eq!(times, every_minute);
+}
+
+#[tokio::test(start_paused = true)]
+async fn keepalive_off() {
+    let game = ScriptedGame::new(Script::new());
+    let (_, start) = keepalive_world(&game, KeepaliveMode::Off).await;
+    let any = game.wait_reads(|reads| !idle_times(reads, start).is_empty());
+    let waited = tokio::time::timeout(Duration::from_secs(200), any).await;
+    assert!(waited.is_err(), "{:?}", game.reads());
+}
+
+#[tokio::test(start_paused = true)]
+async fn journal_holds_no_keepalive() {
+    let (portal, _) = keepalive_times(KeepaliveMode::Idle, 3).await;
+    let journal = events(&portal);
+    assert!(
+        journal.iter().any(|event| event.text.contains("hello")),
+        "{journal:#?}"
+    );
+    assert!(
+        !journal.iter().any(|event| event.text.contains("IDLE")),
+        "{journal:#?}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn no_keepalive_before_login() {
+    let noise = (0..40).fold(Script::new(), |script, _| {
+        script
+            .send("noise\r\n")
+            .silent_for(Duration::from_millis(500))
+    });
+    let game = ScriptedGame::new(noise);
+    let mut world = ResolvedWorld::with_default_login(id("alpha/aria"), "env:PW".parse().unwrap());
+    world.keepalive = Some(Keepalive::new("IDLE", 1).unwrap());
+    let setup = WorldSetup::new(
+        world,
+        Some(Secret::new(PW.to_owned())),
+        Arc::new(game.clone()),
+    )
+    .with_login_moment(Arc::new(Quiet::default()));
+    let portal = portal(vec![setup], Vec::new());
+    let start = Instant::now();
+    portal.connect(&id("alpha/aria")).await.unwrap();
+    let read = game.wait_reads(|reads| reads.first().is_some_and(|reads| !reads.is_empty()));
+    tokio::time::timeout(KEEPALIVE_BOUND, read).await.unwrap();
+    let (time, bytes) = game.reads()[0][0].clone();
+    assert_eq!(time - start, Duration::from_secs(10));
+    assert!(bytes.starts_with(LOGIN), "{bytes:?}");
 }
 
 /// A transport whose connect never ends.

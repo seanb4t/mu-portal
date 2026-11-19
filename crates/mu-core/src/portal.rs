@@ -135,6 +135,7 @@ impl Portal {
                 transport: setup.transport,
                 framer: setup.framer,
                 login_moment: setup.login_moment,
+                keepalive: setup.world.keepalive,
                 hooks: setup.hooks,
                 handlers: setup.handlers,
                 journal: Arc::clone(&journal),

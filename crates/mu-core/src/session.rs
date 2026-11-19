@@ -25,7 +25,7 @@ use crate::journal::Journal;
 use crate::script::{DEPTH_LIMIT, Handler, Hook, RATE_PER_SECOND, run_hooks};
 use crate::secret::{MASK, Secret, SecretSource};
 use crate::transport::{ByteStream, Transport};
-use crate::world::Login;
+use crate::world::{Keepalive, Login};
 
 /// The state of a world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -185,6 +185,8 @@ pub(crate) struct SessionParts {
     pub(crate) framer: NewFramer,
     /// When the login line goes out.
     pub(crate) login_moment: Arc<dyn LoginMoment>,
+    /// The keepalive, or none for a world with no keepalive.
+    pub(crate) keepalive: Option<Keepalive>,
     pub(crate) hooks: Vec<Arc<dyn Hook>>,
     pub(crate) handlers: Vec<Arc<dyn Handler>>,
     pub(crate) journal: Arc<dyn Journal>,
@@ -221,14 +223,40 @@ enum Conn {
         read: ReadHalf<Box<dyn ByteStream>>,
         write: WriteHalf<Box<dyn ByteStream>>,
         framer: Box<dyn Framer>,
-        /// The login that waits for its moment. The world stays in `connecting` until it goes.
-        pending: Option<PendingLogin>,
+        phase: Phase,
         frames: WaitingFrames,
         /// The `world.connection` span. It closes when its last clone drops: `down` drops this
         /// one, a step that runs in the span holds a clone until the step ends, and the end of
         /// the session drops the rest.
         span: Span,
     },
+}
+
+/// The phase of a stream that is open.
+enum Phase {
+    /// The login waits for its moment. The world stays in `connecting` until it goes.
+    Login(PendingLogin),
+    /// The world is `connected`. The times give the deadline of the keepalive.
+    Live(Live),
+}
+
+/// The times of a world in `connected`.
+struct Live {
+    /// The move of the world to `connected`.
+    connected: Instant,
+    /// The last line written to the game.
+    last_write: Option<Instant>,
+    /// The last keepalive line.
+    last_keepalive: Option<Instant>,
+}
+
+/// A timer of the session.
+#[derive(Clone, Copy)]
+enum Timer {
+    /// The moment of the pending login.
+    Login,
+    /// The next keepalive line.
+    Keepalive,
 }
 
 /// A login that waits for the moment of its [`LoginMoment`].
@@ -244,7 +272,33 @@ struct PendingLogin {
 impl Conn {
     /// Whether the world is up and logged in, so a line can go to the game.
     fn is_connected(&self) -> bool {
-        matches!(self, Self::Up { pending: None, .. })
+        matches!(
+            self,
+            Self::Up {
+                phase: Phase::Live(_),
+                ..
+            }
+        )
+    }
+
+    /// The next timer of the connection with its deadline, or none.
+    fn timer(
+        &self,
+        moment: &dyn LoginMoment,
+        keepalive: Option<&Keepalive>,
+    ) -> Option<(Instant, Timer)> {
+        let Self::Up { phase, .. } = self else {
+            return None;
+        };
+        match phase {
+            Phase::Login(pending) => Some((
+                moment.deadline(pending.connect, pending.last_byte),
+                Timer::Login,
+            )),
+            Phase::Live(live) => keepalive?
+                .deadline(live.connected, live.last_write, live.last_keepalive)
+                .map(|deadline| (deadline, Timer::Keepalive)),
+        }
     }
 
     /// The `world.connection` span, or a disabled span with no connection.
@@ -260,8 +314,8 @@ enum Step {
     Request(Option<Request>),
     Connected(Result<Box<dyn ByteStream>, Failure>, u8),
     Read(io::Result<usize>),
-    /// The moment of the pending login came.
-    Login,
+    /// The deadline of a timer came.
+    Timer(Timer, Instant),
 }
 
 struct Session {
@@ -292,7 +346,12 @@ pub(crate) async fn run(parts: SessionParts) {
     loop {
         let step = tokio::select! {
             request = session.parts.requests.recv() => Step::Request(request),
-            step = progress(&mut session.conn, &*session.parts.login_moment, &mut buffer) => step,
+            step = progress(
+                &mut session.conn,
+                &*session.parts.login_moment,
+                session.parts.keepalive.as_ref(),
+                &mut buffer,
+            ) => step,
         };
         match step {
             Step::Request(None) => return,
@@ -328,32 +387,40 @@ pub(crate) async fn run(parts: SessionParts) {
                 let span = session.conn.span();
                 session.on_bytes(&buffer[..n]).instrument(span).await;
             }
-            Step::Login => {
+            Step::Timer(Timer::Login, _) => {
                 let span = session.conn.span();
                 session.on_login_moment().instrument(span).await;
+            }
+            Step::Timer(Timer::Keepalive, at) => {
+                let span = session.conn.span();
+                session.on_keepalive(at).instrument(span).await;
             }
         }
     }
 }
 
-/// The next step of the connection: a finished connect, a read, or the moment of a pending
-/// login. Pending with no connection.
-async fn progress(conn: &mut Conn, moment: &dyn LoginMoment, buffer: &mut [u8]) -> Step {
-    match conn {
-        Conn::Connecting { connect, depth, .. } => Step::Connected(connect.await, *depth),
-        Conn::Up {
-            read,
-            pending: Some(pending),
-            ..
-        } => {
-            let deadline = moment.deadline(pending.connect, pending.last_byte);
-            tokio::select! {
-                result = read.read(buffer) => Step::Read(result),
-                () = tokio::time::sleep_until(deadline) => Step::Login,
-            }
+/// The next step of the connection: a finished connect, a read, or the deadline of a timer.
+/// Pending with no connection.
+async fn progress(
+    conn: &mut Conn,
+    moment: &dyn LoginMoment,
+    keepalive: Option<&Keepalive>,
+    buffer: &mut [u8],
+) -> Step {
+    let timer = conn.timer(moment, keepalive);
+    let io = async {
+        match conn {
+            Conn::Connecting { connect, depth, .. } => Step::Connected(connect.await, *depth),
+            Conn::Up { read, .. } => Step::Read(read.read(buffer).await),
+            Conn::Down => std::future::pending().await,
         }
-        Conn::Up { read, .. } => Step::Read(read.read(buffer).await),
-        Conn::Down => std::future::pending().await,
+    };
+    let Some((deadline, timer)) = timer else {
+        return io.await;
+    };
+    tokio::select! {
+        step = io => step,
+        () = tokio::time::sleep_until(deadline) => Step::Timer(timer, deadline),
     }
 }
 
@@ -463,7 +530,15 @@ impl Session {
             return Err(PortalError::NotConnected(self.world().clone()));
         };
         let bytes = framer.encode(line);
-        self.write_bytes(&bytes, depth).await
+        self.write_bytes(&bytes, depth).await?;
+        if let Conn::Up {
+            phase: Phase::Live(live),
+            ..
+        } = &mut self.conn
+        {
+            live.last_write = Some(Instant::now());
+        }
+        Ok(())
     }
 
     /// Writes the mark for the oldest waiting frame. A framer with no mark bytes answers
@@ -486,7 +561,7 @@ impl Session {
             Conn::Connecting { frames, .. }
             | Conn::Up {
                 frames,
-                pending: Some(_),
+                phase: Phase::Login(_),
                 ..
             } => frames.push(frame),
             Conn::Up { frames, .. } => {
@@ -577,7 +652,7 @@ impl Session {
                     read,
                     write,
                     framer: (self.parts.framer)(),
-                    pending: waits.then_some(PendingLogin {
+                    phase: Phase::Login(PendingLogin {
                         connect,
                         last_byte: None,
                         depth,
@@ -604,21 +679,50 @@ impl Session {
 
     /// Sends the pending login at its moment.
     async fn on_login_moment(&mut self) {
-        let Conn::Up { pending, .. } = &mut self.conn else {
-            return;
-        };
-        if let Some(pending) = pending.take() {
+        if let Conn::Up {
+            phase: Phase::Login(pending),
+            ..
+        } = &self.conn
+        {
             self.logged_in(pending.depth).await;
         }
     }
 
-    /// Moves the world to `connected`: records the connect, sends the login, and writes the
-    /// mark of each frame that waits.
-    async fn logged_in(&mut self, depth: u8) {
-        let waiting = match &self.conn {
-            Conn::Up { frames, .. } => frames.len(),
-            Conn::Down | Conn::Connecting { .. } => return,
+    /// Sends the keepalive line at its deadline `at`, with no event.
+    async fn on_keepalive(&mut self, at: Instant) {
+        let Some(command) = self
+            .parts
+            .keepalive
+            .as_ref()
+            .map(|k| k.command().to_owned())
+        else {
+            return;
         };
+        // A failed write already recorded the disconnect.
+        if self.write_line(&command, 0).await.is_err() {
+            return;
+        }
+        if let Conn::Up {
+            phase: Phase::Live(live),
+            ..
+        } = &mut self.conn
+        {
+            live.last_keepalive = Some(at);
+        }
+    }
+
+    /// Moves the world to `connected`: starts the time of the keepalive, records the connect,
+    /// sends the login, and writes the mark of each frame that waits.
+    async fn logged_in(&mut self, depth: u8) {
+        let Conn::Up { frames, phase, .. } = &mut self.conn else {
+            return;
+        };
+        let waiting = frames.len();
+        *phase = Phase::Live(Live {
+            connected: Instant::now(),
+            last_write: None,
+            last_keepalive: None,
+        });
         self.set_state(WorldState::Connected);
         self.record(EventKind::Connected, Origin::System, "connected", depth);
         // A failed write already recorded the disconnect and answered each frame.
@@ -631,13 +735,10 @@ impl Session {
     }
 
     async fn on_bytes(&mut self, bytes: &[u8]) {
-        let Conn::Up {
-            framer, pending, ..
-        } = &mut self.conn
-        else {
+        let Conn::Up { framer, phase, .. } = &mut self.conn else {
             return;
         };
-        if let Some(pending) = pending {
+        if let Phase::Login(pending) = phase {
             // Every byte counts, telnet negotiation included.
             pending.last_byte = Some(Instant::now());
         }

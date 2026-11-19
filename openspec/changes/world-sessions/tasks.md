@@ -61,7 +61,7 @@ Load the `rust-best-practices` skill before this group. The tests of this group 
   - `wait_covers_pending_login`, for "A wait outlasts the quiet before the login"
 
   Make sure that the six tests pass, and that the tests of the fake world in `crates/mu-cli/tests/worlds.rs` still pass.
-- [ ] 5.4 Make the session send the keepalive from the move to `connected`, with no journal event. Add `keepalive_idle`, `keepalive_interval`, `keepalive_off`, `journal_holds_no_keepalive` and `no_keepalive_before_login`, for the five scenarios of "The keepalive keeps an idle world connected". Make sure that the five tests pass.
+- [x] 5.4 Make the session send the keepalive from the move to `connected`, with no journal event. Add `keepalive_idle`, `keepalive_interval`, `keepalive_off`, `journal_holds_no_keepalive` and `no_keepalive_before_login`, for the five scenarios of "The keepalive keeps an idle world connected". Make sure that the five tests pass.
 - [ ] 5.5 Add `Conn::Waiting` and `WorldState::Reconnecting`, and the reconnect after a drop through `Reconnect` (design decisions 1 and 5). Each attempt calls the connect function of task 5.2. Add these tests:
   - `waits_grow_until_the_last_attempt`, for "The waits of a game that refuses every connect"
   - `world_stops_after_last_attempt`, for "The last attempt"
