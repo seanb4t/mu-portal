@@ -54,7 +54,9 @@ impl Secret {
         Self(SecretString::from(value))
     }
 
-    pub(crate) fn expose(&self) -> &str {
+    /// The value. Do not log it or write it into the journal.
+    #[must_use]
+    pub fn expose(&self) -> &str {
         self.0.expose_secret()
     }
 

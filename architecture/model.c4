@@ -58,6 +58,9 @@ model {
     muCore = crate 'mu-core' {
       description 'Server engine. It does not know the wire format.'
     }
+    muFakeServer = crate 'mu-fake-server' {
+      description 'Fake games for the tests and for the --fake-world flag.'
+    }
     muServer = crate 'mu-server' {
       description 'API server: the adapter between the engine and the schema.'
     }
@@ -76,7 +79,10 @@ model {
     muClient -> muProto 'depends on'
     muTui -> muClient 'depends on'
     muTui -> muProto 'depends on'
+    muFakeServer -> muCore 'depends on'
+    muCore -> muFakeServer 'tests depend on'
     muCli -> muCore 'depends on'
+    muCli -> muFakeServer 'depends on'
     muCli -> muServer 'depends on'
     muCli -> muTui 'depends on'
     muCli -> muClient 'depends on'

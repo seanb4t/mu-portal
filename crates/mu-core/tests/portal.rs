@@ -4,9 +4,10 @@
 use std::sync::Arc;
 
 use mu_core::{
-    ConnectGate, EventKind, FakeTransport, Journal, MemoryJournal, NewEvent, Portal, PortalError,
-    ResolvedWorld, Source, WorldId, WorldSetup, WorldState,
+    EventKind, Journal, MemoryJournal, NewEvent, Portal, PortalError, ResolvedWorld, Source,
+    WorldId, WorldSetup, WorldState,
 };
+use mu_fake_server::{ConnectGate, FakeTransport};
 
 use support::*;
 

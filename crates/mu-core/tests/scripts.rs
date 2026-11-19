@@ -192,7 +192,7 @@ async fn handler_on_every_event_stops() {
 }
 
 /// A world whose handler sends `again` for each echo of the game.
-fn again_loop() -> (mu_core::WorldSetup, mu_core::FakeGame) {
+fn again_loop() -> (mu_core::WorldSetup, mu_fake_server::FakeGame) {
     let handler = on(|event| {
         if event.kind == EventKind::Line && event.text.starts_with("You say") {
             vec![send("alpha/aria", "again")]

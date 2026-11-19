@@ -137,7 +137,8 @@ impl LineFramer {
     }
 
     /// A framer for the game side: it answers the mark of a client.
-    pub(crate) fn game() -> Self {
+    #[must_use]
+    pub fn game() -> Self {
         Self {
             role: Role::Game,
             ..Self::default()

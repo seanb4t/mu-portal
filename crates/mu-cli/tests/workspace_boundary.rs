@@ -64,6 +64,7 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "tracing",
         ],
     ),
+    ("mu-fake-server", &["futures", "tokio"]),
     (
         "mu-server",
         &[

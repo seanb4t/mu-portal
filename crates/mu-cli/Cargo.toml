@@ -16,6 +16,7 @@ clap = { workspace = true }
 http = { workspace = true }
 mu-client = { path = "../mu-client" }
 mu-core = { path = "../mu-core" }
+mu-fake-server = { path = "../mu-fake-server" }
 mu-server = { path = "../mu-server" }
 mu-tui = { path = "../mu-tui" }
 opentelemetry = { workspace = true }

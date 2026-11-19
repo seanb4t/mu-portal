@@ -11,9 +11,10 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use mu_core::{
-    ByteStream, Command, Event, EventKind, FakeGame, FakeTransport, Handler, MemoryJournal, Portal,
-    PortalError, ResolvedWorld, Secret, Seq, Transport, WorldId, WorldSetup, WorldState,
+    ByteStream, Command, Event, EventKind, Handler, MemoryJournal, Portal, PortalError,
+    ResolvedWorld, Secret, Seq, Transport, WorldId, WorldSetup, WorldState,
 };
+use mu_fake_server::{FakeGame, FakeTransport};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 /// The bound of each wait. On the paused clock it passes only when nothing else can run.

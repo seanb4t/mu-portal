@@ -396,7 +396,7 @@ fn lag_behind_the_head() {
 }
 
 /// A world on a fake game whose handler answers `go` from the game with `count` echoes.
-fn burst(count: usize) -> (WorldSetup, mu_core::FakeGame) {
+fn burst(count: usize) -> (WorldSetup, mu_fake_server::FakeGame) {
     let handler = on(move |event| {
         if event.kind == EventKind::Line && event.text == "go" {
             (0..count)

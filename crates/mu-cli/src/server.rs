@@ -4,9 +4,8 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::Args;
-use mu_core::{
-    EnvSecretStore, FakeTransport, ResolvedWorld, SecretRef, WorldId, WorldSetup, load_password,
-};
+use mu_core::{EnvSecretStore, ResolvedWorld, SecretRef, WorldId, WorldSetup, load_password};
+use mu_fake_server::FakeTransport;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
 use crate::config::ConfigArgs;

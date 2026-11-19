@@ -13,7 +13,7 @@ views {
 
   view crateLayout of workspace {
     title 'Crate layout'
-    description 'The six crates and their allowed dependencies.'
+    description 'The seven crates and their allowed dependencies.'
     include *
   }
 }
