@@ -2,7 +2,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use mu_fake_server::{Script, ScriptedGame};
+use mu_fake_server::{Listening, Script, ScriptedGame};
 use mu_proto::{EventKind, Source, WorldState};
 
 use support::process::{PW, ServerBuilder, Session, TWO_WORLDS};
@@ -294,6 +294,71 @@ async fn server_does_not_read_a_configured_secret() {
     assert_eq!(worlds.len(), 1);
 }
 
+/// The configuration of the world `alpha/aria` on the fake game of `listening`, with
+/// `character` as the text of its character file.
+fn tcp_config(listening: &Listening, character: &str) -> ConfigDir {
+    let port = listening.addr().port();
+    let game = format!("extends = \"tinymux\"\nhost = \"127.0.0.1\"\nport = {port}\n");
+    ConfigDir::empty()
+        .file("games/alpha.toml", &game)
+        .file("characters/alpha/aria.toml", character)
+}
+
+#[tokio::test]
+async fn autoconnect_world_connects_at_start() {
+    let game = ScriptedGame::new(Script::new());
+    let listening = game.listen().await.unwrap();
+    let conf = tcp_config(&listening, "autoconnect = true\n");
+    let mut session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_CONNECTED, 0)
+        .await;
+    assert_eq!(game.connects(), 1);
+}
+
+#[tokio::test]
+async fn configured_world_connects_on_request() {
+    let game = ScriptedGame::new(Script::new());
+    let listening = game.listen().await.unwrap();
+    let conf = tcp_config(&listening, "");
+    let mut session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
+    session.client.connect("alpha/aria").await.unwrap();
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_CONNECTED, 0)
+        .await;
+}
+
+#[tokio::test]
+async fn failed_autoconnect_does_not_stop_start() {
+    let conf = ConfigDir::base().file(
+        "characters/alpha/aria.toml",
+        "tls = true\nautoconnect = true\n",
+    );
+    let builder = ServerBuilder::new()
+        .fake_world("beta/bryn", "PW", PW)
+        .arg("--config")
+        .arg(conf.path());
+    let mut session = Session::start(builder).await;
+    session
+        .kind("beta/bryn", EventKind::EVENT_KIND_CONNECTED, 0)
+        .await;
+    let worlds = session.client.list_worlds().await.unwrap();
+    let states: Vec<(&str, bool, bool)> = worlds
+        .iter()
+        .map(|world| {
+            (
+                world.id.as_str(),
+                world.state == WorldState::WORLD_STATE_DISCONNECTED,
+                world.state == WorldState::WORLD_STATE_CONNECTED,
+            )
+        })
+        .collect();
+    assert_eq!(
+        states,
+        [("alpha/aria", true, false), ("beta/bryn", false, true)]
+    );
+}
+
 #[tokio::test]
 async fn fake_world_does_not_reconnect() {
     let mut session = Session::with_worlds(&["alpha/aria"]).await;
@@ -315,15 +380,8 @@ fn now_ms() -> i64 {
 async fn list_worlds_shows_reconnecting() {
     let game = ScriptedGame::new(Script::new().close());
     let listening = game.listen().await.unwrap();
-    let base = format!(
-        "extends = \"tinymux\"\nhost = \"127.0.0.1\"\nport = {}\n",
-        listening.addr().port()
-    );
     // A long first wait, so the call comes before the next attempt.
-    let conf = ConfigDir::empty().file("games/alpha.toml", &base).file(
-        "characters/alpha/aria.toml",
-        "[reconnect]\ninitial = 30\nmax = 60\n",
-    );
+    let conf = tcp_config(&listening, "[reconnect]\ninitial = 30\nmax = 60\n");
     let mut session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
     session.client.connect("alpha/aria").await.unwrap();
     session

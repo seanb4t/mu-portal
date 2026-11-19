@@ -97,7 +97,7 @@ Load the `rust-best-practices` skill before this group. The tests of this group 
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 7.1 Replace `Portal::connect_all` with `Portal::connect_at_start`, as design decision 9 describes. In `crates/mu-cli/tests/worlds.rs`, add these tests:
+- [x] 7.1 Replace `Portal::connect_all` with `Portal::connect_at_start`, as design decision 9 describes. In `crates/mu-cli/tests/worlds.rs`, add these tests:
   - `autoconnect_world_connects_at_start`, for "A configured world that connects at the start"
   - `failed_autoconnect_does_not_stop_start`, for "A failed connect at the start"
 
