@@ -1,10 +1,10 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-19T21:27:03+00:00
-head: 410683bb7fa8cef6e86c8782e736e7ca4d640c7d
-round: 4
-next_id: 67
+reviewed_at: 2026-11-19T22:12:15+00:00
+head: 6b9cca003948ce9e84dce8b42eda70873e6ad4ef
+round: 5
+next_id: 72
 lenses:
   spec-lint: not-applicable
   approach: ok
@@ -20,6 +20,11 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
+| R-67 | test-coverage | should-fix | in-change | delta scenario 'A bad configuration stops the start' has no matrix row | review > absent-row — "A bad configuration stops the start" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-68 | test-coverage | should-fix | in-change | delta scenario 'A fake world with a configured id' has no matrix row | review > absent-row — "A fake world with a configured id" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-69 | test-coverage | should-fix | in-change | delta scenario 'The secret is not read at the start' has no matrix row | review > absent-row — "The secret is not read at the start" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-70 | test-coverage | should-fix | in-change | delta scenario 'An autoconnect world whose secret is missing' has no matrix row | review > absent-row — "An autoconnect world whose secret is missing" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-71 | test-coverage | should-fix | in-change | delta scenario 'A write that hangs' has no matrix row | review > absent-row — "A write that hangs" | add the row with its covering task or test |  |  | unmet-requirement |
 
 ## Repeats
 
@@ -58,6 +63,7 @@ None.
 | 2 | plan | follow-up | 42c490126b69c4fd643395340e27409ea483bf2d | 88f74e9b2b52e841a79fbefd78846432b739436477847f7668a3172514bc07d4 | approve-with-notes | 11 | 0 | 1 | 27 | 0 |  |
 | 3 | implementation | full | e1ff199f16da2b4eeadd597d9b431849b0fd81b7 | 617b0e8d0b1a0fe60fa8a6cef3189d650f65850d181fb2ffd90b542dd962b040 | approve-with-notes | 19 | 0 | 0 | 0 | 0 |  |
 | 4 | implementation | follow-up | 410683bb7fa8cef6e86c8782e736e7ca4d640c7d | 7731db6da7b540f3332c1f9df835e7ab58ea2048f1b8dde8a7771c2baebdec76 | approve-with-notes | 0 | 3 | 0 | 11 | 0 |  |
+| 5 | implementation | follow-up | 6b9cca003948ce9e84dce8b42eda70873e6ad4ef | d5a90507d70dea997ed11bca9d343623a90f4d53da76bfd127c29f97893060e9 | approve-with-notes | 5 | 3 | 0 | 0 | 0 |  |
 
 ## Judge
 
@@ -261,11 +267,13 @@ None.
 
 ## Lens notes
 
-- verify: The review.md ranges of diff-hunks.txt and of the fix_hunks of R-15 were not read: the agent file forbids a read of review.md. The design.md and spec.md hunks of R-15 were read.
-- verify: Design decision 4 says mu world show maps the value back to its mode. That holds for reconnect.mode (crates/mu-cli/src/world.rs:118). keepalive.mode is printed from ResolvedWorld.keepalive_mode, a second copy of the mode beside the Schedule of Keepalive, which is the deferred row R-56.
-- verify: The private enum Schedule (crates/mu-core/src/world/mod.rs:153) repeats Idle and Interval of KeepaliveMode. Both maps between them are exhaustive matches, so a new mode fails to compile until it is mapped, and the two cannot drift silently.
-- verify: After the R-51 fix, on_attempt (crates/mu-core/src/session.rs:641) also records the Stopped error as a disconnect event if the attempt timer fires between the stop flag and the Disconnect of Portal::stop. Its doc comment names only a failed read of the secret. The text 'the server is stopping' is accurate, so this has no consequence.
-- verify: Both resolve::reconnect and Backoff::new call check_first_wait on the backoff path. It is one function with one message, so the two calls cannot drift.
+- verify: prior.json holds no row with the disposition fixed, so fixes is empty.
+- verify: Every range of diff-hunks.txt outside review.md was read at head: session.rs, error.rs, portal.rs, transport.rs, world/layer.rs, world/mod.rs, scripted.rs, server.rs, and the changed tests of mu-core and mu-cli. No regression was found.
+- verify: The write timeout of send_bytes covers every write of the session: write_all and flush occur only inside it, and write_line, write_mark and the replies of on_bytes all pass through it.
+- verify: on_bytes keeps recording the lines and marks of a read after a failed reply, skips each later reply, and calls down with Cause::Lost after the loop, as the commit names.
+- verify: The doc comments changed by a1f0574 match the code at head: WorldState::Connecting, NotConnected, NoSecret, WorldSetup::new, connect_at_start, KeepaliveFields.seconds, Keepalive::with_mode, Step::Silent and configured_setup.
+- verify: source_rules.rs at head applies the telnet rules only to mu-core and only the sleep rule to mu-fake-server; session.rs holds one sleep_until and scripted.rs one sleep, the counts that ALLOWED names.
+- verify: The doc comment of configured_setup in crates/mu-cli/src/server.rs breaks its last sentence over two lines after 'A TLS world'. It is cosmetic and has no consequence.
 
 ## Ledger
 
@@ -334,9 +342,14 @@ None.
 | R-61 | 3 | 3 | suggestion | in-change |  | ["path","crates/mu-cli/tests/workspace_boundary.rs",210] | deferred | ticket: https://github.com/seanb4t/mu-portal/issues/105; reason: Suggestions of the world-sessions implementation review: design drift to record and test ideas, none of which changes behavior; deferred to one follow-up issue. |  |  | allowed_dev is allowed_crates with another table: both find the member in a (&str, &[&str]) table and give an empty slice when it is absent. The parameter is the table. |
 | R-62 | 3 | 4 | suggestion | in-change |  | ["artifact",["specs/world-connection/spec.md","Requirement: The login waits until the game is quiet"],"Until the login line goes out, the world SHALL stay in the state `connecting`."] | resolved | resolved in round 4 from fixed 40cf900e40e47384741c9e54c85f92f8115e070e |  | severity? blocker 0.75 | logged_in moves the world to connected and records the connected event before it writes the login line, so during the write the state is connected, and a login write that fails leaves a connected state and event for a connection that never logged in. |
 | R-63 | 3 | 3 | suggestion | in-change |  | ["path","crates/mu-core/src/world/mod.rs",228] | deferred | ticket: https://github.com/seanb4t/mu-portal/issues/105; reason: Suggestions of the world-sessions implementation review: design drift to record and test ideas, none of which changes behavior; deferred to one follow-up issue. |  |  | Keepalive::deadline is a bound over any times of connect, last write and last keepalive: for idle it is the latest of them plus the period, for interval the last keepalive or the connect plus the period, never earlier than connected + period. Four and three table rows test it. |
-| R-64 | 3 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"The game closes the connection"] | refuted | Each test of these rows ran at head with exit 0 (verification-runs.txt): closed_connection_span_is_not_error, game_close_reconnects, gauge_shows_reconnecting, list_worlds_shows_reconnecting, send_to_reconnecting_world, world_that_logs_in_by_hand, no_login_sends_no_line. run_keys does not split a covered_by cell that joins several tests with '; ', so no run matched the whole cell. |  |  | covered row 'The game closes the connection' has no verification run |
-| R-65 | 3 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A world that waits to reconnect"] | refuted | Each test of these rows ran at head with exit 0 (verification-runs.txt): closed_connection_span_is_not_error, game_close_reconnects, gauge_shows_reconnecting, list_worlds_shows_reconnecting, send_to_reconnecting_world, world_that_logs_in_by_hand, no_login_sends_no_line. run_keys does not split a covered_by cell that joins several tests with '; ', so no run matched the whole cell. |  |  | covered row 'A world that waits to reconnect' has no verification run |
-| R-66 | 3 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A world that logs in by hand"] | refuted | Each test of these rows ran at head with exit 0 (verification-runs.txt): closed_connection_span_is_not_error, game_close_reconnects, gauge_shows_reconnecting, list_worlds_shows_reconnecting, send_to_reconnecting_world, world_that_logs_in_by_hand, no_login_sends_no_line. run_keys does not split a covered_by cell that joins several tests with '; ', so no run matched the whole cell. |  |  | covered row 'A world that logs in by hand' has no verification run |
+| R-64 | 3 | 5 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"The game closes the connection"] | refuted | Each test of these rows ran at head with exit 0 (verification-runs.txt): closed_connection_span_is_not_error, game_close_reconnects, gauge_shows_reconnecting, list_worlds_shows_reconnecting, send_to_reconnecting_world, world_that_logs_in_by_hand, no_login_sends_no_line. run_keys does not split a covered_by cell that joins several tests with '; ', so no run matched the whole cell. |  |  | covered row 'The game closes the connection' has no verification run |
+| R-65 | 3 | 5 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A world that waits to reconnect"] | refuted | Each test of these rows ran at head with exit 0 (verification-runs.txt): closed_connection_span_is_not_error, game_close_reconnects, gauge_shows_reconnecting, list_worlds_shows_reconnecting, send_to_reconnecting_world, world_that_logs_in_by_hand, no_login_sends_no_line. run_keys does not split a covered_by cell that joins several tests with '; ', so no run matched the whole cell. |  |  | covered row 'A world that waits to reconnect' has no verification run |
+| R-66 | 3 | 5 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A world that logs in by hand"] | refuted | Each test of these rows ran at head with exit 0 (verification-runs.txt): closed_connection_span_is_not_error, game_close_reconnects, gauge_shows_reconnecting, list_worlds_shows_reconnecting, send_to_reconnecting_world, world_that_logs_in_by_hand, no_login_sends_no_line. run_keys does not split a covered_by cell that joins several tests with '; ', so no run matched the whole cell. |  |  | covered row 'A world that logs in by hand' has no verification run |
+| R-67 | 5 | 5 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A bad configuration stops the start"] | refuted | Tool gap: a follow-up round reuses the coverage matrix of the last full round, so scenarios added after it have no row. Each has a passing test at 6b9cca0: R-67 worlds.rs bad_configuration_stops_the_start, R-68 worlds.rs fake_world_with_a_configured_id, R-69 worlds.rs server_does_not_read_a_configured_secret, R-70 worlds.rs autoconnect_world_with_a_missing_secret (task 7.3), R-71 mu-core connection.rs write_that_hangs (task 5.6). |  |  | delta scenario 'A bad configuration stops the start' has no matrix row |
+| R-68 | 5 | 5 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A fake world with a configured id"] | refuted | Tool gap: a follow-up round reuses the coverage matrix of the last full round, so scenarios added after it have no row. Each has a passing test at 6b9cca0: R-67 worlds.rs bad_configuration_stops_the_start, R-68 worlds.rs fake_world_with_a_configured_id, R-69 worlds.rs server_does_not_read_a_configured_secret, R-70 worlds.rs autoconnect_world_with_a_missing_secret (task 7.3), R-71 mu-core connection.rs write_that_hangs (task 5.6). |  |  | delta scenario 'A fake world with a configured id' has no matrix row |
+| R-69 | 5 | 5 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The secret is not read at the start"] | refuted | Tool gap: a follow-up round reuses the coverage matrix of the last full round, so scenarios added after it have no row. Each has a passing test at 6b9cca0: R-67 worlds.rs bad_configuration_stops_the_start, R-68 worlds.rs fake_world_with_a_configured_id, R-69 worlds.rs server_does_not_read_a_configured_secret, R-70 worlds.rs autoconnect_world_with_a_missing_secret (task 7.3), R-71 mu-core connection.rs write_that_hangs (task 5.6). |  |  | delta scenario 'The secret is not read at the start' has no matrix row |
+| R-70 | 5 | 5 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"An autoconnect world whose secret is missing"] | refuted | Tool gap: a follow-up round reuses the coverage matrix of the last full round, so scenarios added after it have no row. Each has a passing test at 6b9cca0: R-67 worlds.rs bad_configuration_stops_the_start, R-68 worlds.rs fake_world_with_a_configured_id, R-69 worlds.rs server_does_not_read_a_configured_secret, R-70 worlds.rs autoconnect_world_with_a_missing_secret (task 7.3), R-71 mu-core connection.rs write_that_hangs (task 5.6). |  |  | delta scenario 'An autoconnect world whose secret is missing' has no matrix row |
+| R-71 | 5 | 5 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A write that hangs"] | refuted | Tool gap: a follow-up round reuses the coverage matrix of the last full round, so scenarios added after it have no row. Each has a passing test at 6b9cca0: R-67 worlds.rs bad_configuration_stops_the_start, R-68 worlds.rs fake_world_with_a_configured_id, R-69 worlds.rs server_does_not_read_a_configured_secret, R-70 worlds.rs autoconnect_world_with_a_missing_secret (task 7.3), R-71 mu-core connection.rs write_that_hangs (task 5.6). |  |  | delta scenario 'A write that hangs' has no matrix row |
 
 ## Reviewed files
 
@@ -347,62 +360,63 @@ None.
 | architecture/model.c4 | ae0dadffc865aca8b849b7cea380383f76008310 |
 | architecture/views.c4 | daa87e6e451d5b46c6e26f2a5a3dc01768a45d2c |
 | crates/mu-cli/Cargo.toml | 64a1351c960e8946c582237f139cc1919390cad8 |
-| crates/mu-cli/src/server.rs | 0f2311274c7cecccac9dc55881794f5d58e407fa |
+| crates/mu-cli/src/server.rs | 4fdd6073aecb31d4cc71825006e72dc1115b9e6f |
 | crates/mu-cli/src/world.rs | 6c0912c61fe1e68054b3d54957098b80e091b728 |
-| crates/mu-cli/tests/connection.rs | a2f9c24880a12616b0ae4bbb3e0b8c8604c7dd80 |
+| crates/mu-cli/tests/connection.rs | 95c415d9998ba9cb83a18ef408f342eafa09c9a5 |
 | crates/mu-cli/tests/fixtures/base/crates/mu-fake-server/Cargo.toml | b378743ba1cff09436ca741d2ebc3bfcbdcd2e70 |
 | crates/mu-cli/tests/fixtures/base/crates/mu-fake-server/src/lib.rs | e69de29bb2d1d6434b8b29ae775ad8c2e48c5391 |
-| crates/mu-cli/tests/source_rules.rs | eb49010059a0c003607ec2292fe0aab54d2631f4 |
+| crates/mu-cli/tests/source_rules.rs | a3928d98743034b5824864eebcc23bd9cd906ab3 |
 | crates/mu-cli/tests/support/mod.rs | 85ed622654dfb50b59d339edd11f08a563a2952e |
 | crates/mu-cli/tests/support/process.rs | f935d81746f5057d3cc96c5319ea8547b7297131 |
 | crates/mu-cli/tests/telemetry.rs | 60c79e0d01b5689d9ec4c1ef4d5c5b196e63c368 |
-| crates/mu-cli/tests/telemetry_engine.rs | 2f6da8ebb7e0d86d17fe68c22c587585e611dc5e |
+| crates/mu-cli/tests/telemetry_engine.rs | e503d2f61438944b2d8209453020873956a0a163 |
 | crates/mu-cli/tests/workspace_boundary.rs | a61f50256bd8fe31fdb4f4d50e0a79fbaedb10d5 |
 | crates/mu-cli/tests/world_config.rs | 29dd9f111298bc668bfbf366aa10f51b92d3e3eb |
-| crates/mu-cli/tests/worlds.rs | d879784b52482c0816972558a2ab4a7752c8a87e |
+| crates/mu-cli/tests/worlds.rs | ee5ebb1773035b8b4564dd43d514db3a9e608261 |
 | crates/mu-core/Cargo.toml | c996e90ef5e7923ab6864e8a74df8d9e053281b2 |
 | crates/mu-core/proptest-regressions/world/mod.txt | cc35c8f4a6c6fd88db13e57e26c00ba8cfc9df25 |
 | crates/mu-core/src/connection.rs | 201ea3e74eae86e7804614f8c259a8f7314dbcb5 |
-| crates/mu-core/src/error.rs | 623f2426ec3c0dcb4ef8e145324991b3ac1bf007 |
+| crates/mu-core/src/error.rs | 3d11f5ae47fdcd34714b1d9ab7995ec1578251e9 |
 | crates/mu-core/src/fake.rs | absent |
 | crates/mu-core/src/framer.rs | b89771990a7df1af6183c3253a5b4375d25cb882 |
 | crates/mu-core/src/lib.rs | 2d622cbc260b135704d7b58f27c339be8ac3636f |
-| crates/mu-core/src/portal.rs | ef68fc39d70e7d61d50e8008481123520a344691 |
+| crates/mu-core/src/portal.rs | a586b1af2abfa97f4a6942e01b614ff9e1177f5b |
 | crates/mu-core/src/secret.rs | 09fd0f66b7b61350b4e001c6e07c916e49b99170 |
-| crates/mu-core/src/session.rs | 41f174a9522cba322499d3b0963d95f3aefdc0e2 |
-| crates/mu-core/src/transport.rs | 2744bdf8baf36f59e83395769585ca7430ec820c |
+| crates/mu-core/src/session.rs | 56f3de5d05bec637d4908f5cc1c4a6c17a3f1d83 |
+| crates/mu-core/src/transport.rs | e6341984e008f561356832c3b4b9e88687e2a527 |
 | crates/mu-core/src/world/builtin.rs | f7fcf7a280c8608660f6cb7a3407e7ef4041272f |
 | crates/mu-core/src/world/check.rs | ab6388ad333119dc93bd99f73365573770944205 |
-| crates/mu-core/src/world/layer.rs | a7cf111fa3cefe7cc8ec6be88446292a9df76ee6 |
-| crates/mu-core/src/world/mod.rs | 6633c52d53d21bb24b6316be777b4cc9eb19b187 |
+| crates/mu-core/src/world/layer.rs | c02790cbee87cef93f5ef0c1c4101f3ec7f8f253 |
+| crates/mu-core/src/world/mod.rs | 1954394a17707181c94fb3915f26bc31e5b65965 |
 | crates/mu-core/src/world/resolve.rs | 02a5fea79c3bde4c1b27f86a8dfd63b55a1a4aaf |
-| crates/mu-core/tests/connection.rs | fb336752e2c2dbf97aef3ca3ae4a29e27486cf73 |
-| crates/mu-core/tests/portal.rs | 6b0f729f8659b89475f5e0f26dde16b4600e7ade |
-| crates/mu-core/tests/scripts.rs | 1018501ff925ca18259df6f92808da28ad4d1df6 |
-| crates/mu-core/tests/support/mod.rs | 728abbe4a2bd0c0347e17fee1b3de3a44eb97b3f |
+| crates/mu-core/tests/connection.rs | 4191425115c5dbda11f5320cbb643c7bf1d58b49 |
+| crates/mu-core/tests/portal.rs | 9a61831c4d2bc0ab009ba69ab1366b9a061bc71c |
+| crates/mu-core/tests/scripts.rs | 51e4f40594db4b5274286ad0aaf7f00979f66c26 |
+| crates/mu-core/tests/support/mod.rs | 97f24fd6ab116bde71e2225a7679fd8b6c435027 |
 | crates/mu-core/tests/telnet_transcripts.rs | d53ef3d06453ef1a92c738a81e472b3b44a1c3aa |
 | crates/mu-core/tests/world_config.rs | 8e6a7e8f2145c87422d5cb6bcdf8abcf37e495ac |
 | crates/mu-fake-server/Cargo.toml | 409490e038dec47cd1bd666dc1fc704cea6e0170 |
 | crates/mu-fake-server/src/lib.rs | b3ceb28cd0c37b92a260a2da473a7628f1e4cae3 |
 | crates/mu-fake-server/src/memory.rs | 3e8248029c91d1fc42b9c177bfe308c5cd8d2c6f |
-| crates/mu-fake-server/src/scripted.rs | 2c6187be09db8140200dbf3b53973dc16467b699 |
+| crates/mu-fake-server/src/scripted.rs | d1b76c5fadfae846bafc9be23f020875ccd5c261 |
 | crates/mu-proto/proto/mu/v1/portal.proto | fb544c2312001e1632d566f4333976137b4312b5 |
 | crates/mu-server/src/convert.rs | 0102074139aeb6f15c53dd869ac051a2148377a8 |
 | crates/mu-server/src/serve.rs | 3e3d548737c5197919149e1307129c1c620ad481 |
 | crates/mu-server/src/service.rs | b3a61e9fd6d25849fedb60fe34da690e0104b06e |
 | docs/src/content/docs/architecture/crate-layout.mdx | 93bceaad4e89dedb7d5d3b2530d3aac87aa7ccd2 |
-| docs/src/content/docs/contributing/workspace.md | 58363218adc6defc3c5f49329eb9219827345732 |
+| docs/src/content/docs/contributing/workspace.md | 240fcd05687f6f1ea8ffb646a01ca69abaa4528e |
 | docs/src/content/docs/decisions/telemetry.md | ef9722478437c74ce85f32d48e32458a71334cb8 |
-| docs/src/content/docs/guides/configuration.md | d600983143526d62da4250cc82e74ca251c628ae |
+| docs/src/content/docs/guides/configuration.md | 0fce77c32be61941961a9e0f8e31de6514b1fcd8 |
+| docs/src/content/docs/guides/first-run.md | 81ba59c4a11693fbce62a9d25ab4148f4b2947a9 |
 | docs/src/content/docs/guides/telemetry.md | 576b135b321ccb033f7991c3ca50e0f5d0b5f90a |
 | openspec/changes/world-sessions/.openspec.yaml | 56d16f001e73f64dfad7c20b1dc221e8c7dcba66 |
-| openspec/changes/world-sessions/design.md | cfb2dde26f17561126678aa2ea5217954deee205 |
-| openspec/changes/world-sessions/proposal.md | 25c53e649fef22ea7906e4b47393cf55dabb5b33 |
+| openspec/changes/world-sessions/design.md | dfa9f4ba20fc1d2be014215dcc3b09739b428b6b |
+| openspec/changes/world-sessions/proposal.md | 68f7a4f1e743aff4af369fcaa36e5b91b5a1a7d2 |
 | openspec/changes/world-sessions/specs/telemetry/spec.md | 9f61875617bb0cd60e29a380eddf245ce81b5dea |
-| openspec/changes/world-sessions/specs/world-config/spec.md | a21d17f2d2c93bf84e48b4922e8ef23f639a85b8 |
-| openspec/changes/world-sessions/specs/world-connection/spec.md | f18edecc5719c46e4f18029336f0cff658caab91 |
+| openspec/changes/world-sessions/specs/world-config/spec.md | 7720ab7fce097cfd9b1d1a1b64b87f047e292dab |
+| openspec/changes/world-sessions/specs/world-connection/spec.md | ee7d2b81323fa7648ccb01058228375f2d4364a0 |
 | openspec/changes/world-sessions/specs/world-sessions/spec.md | b5e9e9b99681d4334c9ff3299e543bd010e8a893 |
-| openspec/changes/world-sessions/tasks.md | sha256:2a79500d3ca60b18f5b716e2432902b8c973fe194d5a19a462f35d164962b864 |
+| openspec/changes/world-sessions/tasks.md | sha256:22817e22d15f06ab03e88f7536bf172c41cf5d355ac92f8d5eda6aadc0796184 |
 | openspec/review.json | absent |
 
 ## Plan review (2026-11-19)
