@@ -15,6 +15,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tracing::{Instrument as _, Span};
 
 use crate::command::{Command, Envelope, Origin};
+use crate::connection::Cause;
 use crate::error::PortalError;
 use crate::event::{Event, EventKind, NewEvent, Seq, Source};
 use crate::framer::{Framer, Inbound, NewFramer, has_line_break};
@@ -191,10 +192,21 @@ pub(crate) struct SessionParts {
     pub(crate) stopped: Arc<AtomicBool>,
 }
 
+/// The time that a connect of the transport can take.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Why a connect of the transport failed.
+enum Failure {
+    /// The transport gave an error.
+    Connect(io::Error),
+    /// The connect took longer than [`CONNECT_TIMEOUT`].
+    Timeout,
+}
+
 enum Conn {
     Down,
     Connecting {
-        connect: BoxFuture<'static, io::Result<Box<dyn ByteStream>>>,
+        connect: BoxFuture<'static, Result<Box<dyn ByteStream>, Failure>>,
         depth: u8,
         frames: WaitingFrames,
         /// The `world.connection` span. It closes when its last clone drops: `down` drops this
@@ -226,7 +238,7 @@ impl Conn {
 
 enum Step {
     Request(Option<Request>),
-    Connected(io::Result<Box<dyn ByteStream>>, u8),
+    Connected(Result<Box<dyn ByteStream>, Failure>, u8),
     Read(io::Result<usize>),
 }
 
@@ -286,9 +298,10 @@ pub(crate) async fn run(parts: SessionParts) {
                 let span = session.conn.span();
                 session.on_connect(result, depth).instrument(span).await;
             }
-            Step::Read(Ok(0) | Err(_)) => {
-                session.down("the game closed the connection", 0);
+            Step::Read(Ok(0)) => {
+                session.down(Cause::Closed, "the game closed the connection", 0);
             }
+            Step::Read(Err(_)) => session.down(Cause::Lost, "the connection failed", 0),
             Step::Read(Ok(n)) => {
                 let span = session.conn.span();
                 session.on_bytes(&buffer[..n]).instrument(span).await;
@@ -378,10 +391,17 @@ impl Session {
         state_gauge(self.world(), state, 1);
     }
 
-    /// Ends the connection or the connect, records it, and answers each waiting frame.
-    fn down(&mut self, reason: &str, depth: u8) {
+    /// Ends the connection or the connect for `cause`, records it on the span of the connection
+    /// and in the journal, and answers each waiting frame.
+    fn down(&mut self, cause: Cause, reason: &str, depth: u8) {
         let mut frames = match std::mem::replace(&mut self.conn, Conn::Down) {
-            Conn::Connecting { frames, .. } | Conn::Up { frames, .. } => frames,
+            Conn::Connecting { frames, span, .. } | Conn::Up { frames, span, .. } => {
+                span.record("mu.connection.end", cause.end());
+                if cause.is_error() {
+                    span.record("otel.status_code", "ERROR");
+                }
+                frames
+            }
             Conn::Down => WaitingFrames::default(),
         };
         self.set_state(WorldState::Disconnected);
@@ -394,7 +414,7 @@ impl Session {
             return Err(PortalError::NotConnected(self.world().clone()));
         };
         if write.write_all(bytes).await.is_err() || write.flush().await.is_err() {
-            self.down("the connection failed", depth);
+            self.down(Cause::Lost, "the connection failed", depth);
             return Err(PortalError::NotConnected(self.world().clone()));
         }
         Ok(())
@@ -434,6 +454,41 @@ impl Session {
         }
     }
 
+    /// Starts each connect of the world: reads the secret, opens the `world.connection` span, and
+    /// starts the connect of the transport under [`CONNECT_TIMEOUT`]. A failed read starts
+    /// nothing.
+    fn connect(&mut self, depth: u8) -> Result<(), PortalError> {
+        let Some(transport) = self.parts.transport.clone() else {
+            return Err(PortalError::TlsNotSupported(self.world().clone()));
+        };
+        if let Some(password) = self.read_secret()? {
+            self.password = Some(password);
+        }
+        let span = tracing::info_span!(
+            parent: None,
+            "world.connection",
+            mu.world = %self.parts.world,
+            mu.connection.end = tracing::field::Empty,
+            otel.status_code = tracing::field::Empty,
+        );
+        span.follows_from(Span::current());
+        let connect = transport.connect(self.world());
+        let connect = Box::pin(async move {
+            match tokio::time::timeout(CONNECT_TIMEOUT, connect).await {
+                Ok(result) => result.map_err(Failure::Connect),
+                Err(_) => Err(Failure::Timeout),
+            }
+        });
+        self.conn = Conn::Connecting {
+            connect,
+            depth,
+            frames: WaitingFrames::default(),
+            span,
+        };
+        self.set_state(WorldState::Connecting);
+        Ok(())
+    }
+
     /// The password of a connect, read from its source. None for a world with no login.
     fn read_secret(&self) -> Result<Option<Secret>, PortalError> {
         if self.parts.login.is_none() {
@@ -464,7 +519,7 @@ impl Session {
         Ok(Some(event.seq))
     }
 
-    async fn on_connect(&mut self, result: io::Result<Box<dyn ByteStream>>, depth: u8) {
+    async fn on_connect(&mut self, result: Result<Box<dyn ByteStream>, Failure>, depth: u8) {
         match result {
             Ok(stream) => {
                 let (read, write) = tokio::io::split(stream);
@@ -490,7 +545,16 @@ impl Session {
                     }
                 }
             }
-            Err(error) => self.down(&format!("the connect failed: {error}"), depth),
+            Err(Failure::Connect(error)) => self.down(
+                Cause::ConnectFailed,
+                &format!("the connect failed: {error}"),
+                depth,
+            ),
+            Err(Failure::Timeout) => {
+                let seconds = CONNECT_TIMEOUT.as_secs();
+                let reason = format!("the connect failed: it timed out after {seconds} seconds");
+                self.down(Cause::Timeout, &reason, depth);
+            }
         }
     }
 
@@ -572,27 +636,11 @@ impl Session {
                 if self.parts.stopped.load(Ordering::Acquire) {
                     return Err(PortalError::Stopped);
                 }
-                let Some(transport) = self.parts.transport.clone() else {
+                if self.parts.transport.is_none() {
                     return Err(PortalError::TlsNotSupported(self.world().clone()));
-                };
+                }
                 if matches!(self.conn, Conn::Down) {
-                    if let Some(password) = self.read_secret()? {
-                        self.password = Some(password);
-                    }
-                    let connect = transport.connect(self.world());
-                    let span = tracing::info_span!(
-                        parent: None,
-                        "world.connection",
-                        mu.world = %self.parts.world,
-                    );
-                    span.follows_from(Span::current());
-                    self.conn = Conn::Connecting {
-                        connect,
-                        depth,
-                        frames: WaitingFrames::default(),
-                        span,
-                    };
-                    self.set_state(WorldState::Connecting);
+                    self.connect(depth)?;
                 }
                 Ok(None)
             }
@@ -600,7 +648,7 @@ impl Session {
                 if matches!(self.conn, Conn::Down) {
                     return Ok(None);
                 }
-                self.down("disconnected", depth);
+                self.down(Cause::Requested(origin), "disconnected", depth);
                 Ok(None)
             }
             Command::Login { .. } => self.login(depth).await,
