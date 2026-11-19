@@ -29,7 +29,9 @@ pub use id::{BadWorldId, WorldId};
 pub use journal::{Journal, Lagged, MemoryJournal, Subscription};
 pub use portal::{Portal, WorldSetup};
 pub use script::{DEPTH_LIMIT, Handler, Hook, HookAction, RATE_PER_SECOND};
-pub use secret::{EnvSecretStore, Secret, SecretError, SecretRef, SecretStore, load_password};
+pub use secret::{
+    EnvSecretStore, Secret, SecretError, SecretRef, SecretSource, SecretStore, load_password,
+};
 pub use session::WorldState;
 pub use transport::{ByteStream, Transport};
 pub use world::{

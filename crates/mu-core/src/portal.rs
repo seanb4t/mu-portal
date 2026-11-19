@@ -13,15 +13,15 @@ use crate::framer::{LineFramer, NewFramer};
 use crate::id::WorldId;
 use crate::journal::{Journal, Subscription};
 use crate::script::{Handler, Hook};
-use crate::secret::Secret;
+use crate::secret::{Secret, SecretSource};
 use crate::session::{self, Reply, Request, Router, SessionParts, WorldState};
 use crate::transport::Transport;
 use crate::world::ResolvedWorld;
 
-/// One world with its password, its transport and its scripts.
+/// One world with the source of its password, its transport and its scripts.
 pub struct WorldSetup {
     world: ResolvedWorld,
-    password: Option<Secret>,
+    secret: Option<SecretSource>,
     transport: Option<Arc<dyn Transport>>,
     framer: NewFramer,
     hooks: Vec<Arc<dyn Hook>>,
@@ -29,24 +29,25 @@ pub struct WorldSetup {
 }
 
 impl WorldSetup {
-    /// A world with the [`LineFramer`], no hook and no handler.
+    /// A world with the [`LineFramer`], no hook and no handler. The `password` is read once, at
+    /// the start of the server.
     #[must_use]
     pub fn new(
         world: ResolvedWorld,
         password: Option<Secret>,
         transport: Arc<dyn Transport>,
     ) -> Self {
-        Self::with(world, password, Some(transport))
+        Self::with(world, password.map(SecretSource::Fixed), Some(transport))
     }
 
     fn with(
         world: ResolvedWorld,
-        password: Option<Secret>,
+        secret: Option<SecretSource>,
         transport: Option<Arc<dyn Transport>>,
     ) -> Self {
         Self {
             world,
-            password,
+            secret,
             transport,
             framer: Arc::new(|| Box::new(LineFramer::new())),
             hooks: Vec::new(),
@@ -54,8 +55,8 @@ impl WorldSetup {
         }
     }
 
-    /// A world with no transport and no password. It stays disconnected, and a connect of it
-    /// fails with [`PortalError::NoTransport`].
+    /// A world with no transport and no password: a TLS world. It stays disconnected, and a
+    /// connect of it fails with [`PortalError::TlsNotSupported`].
     #[must_use]
     pub fn without_transport(world: ResolvedWorld) -> Self {
         Self::with(world, None, None)
@@ -120,7 +121,7 @@ impl Portal {
             tokio::spawn(session::run(SessionParts {
                 world: setup.world.id,
                 login: setup.world.login,
-                password: setup.password,
+                secret: setup.secret,
                 transport: setup.transport,
                 framer: setup.framer,
                 hooks: setup.hooks,
@@ -201,7 +202,7 @@ impl Portal {
     /// # Errors
     ///
     /// [`PortalError::UnknownWorld`], [`PortalError::NotConnected`],
-    /// [`PortalError::NoTransport`], [`PortalError::NoPassword`], [`PortalError::LineBreak`], or
+    /// [`PortalError::TlsNotSupported`], [`PortalError::NoSecret`], [`PortalError::LineBreak`], or
     /// [`PortalError::Stopped`].
     pub async fn submit(&self, envelope: Envelope) -> Result<Option<Seq>, PortalError> {
         let world = envelope.command.world().clone();

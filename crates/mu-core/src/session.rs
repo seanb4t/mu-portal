@@ -21,7 +21,7 @@ use crate::framer::{Framer, Inbound, NewFramer, has_line_break};
 use crate::id::WorldId;
 use crate::journal::Journal;
 use crate::script::{DEPTH_LIMIT, Handler, Hook, RATE_PER_SECOND, run_hooks};
-use crate::secret::{MASK, Secret};
+use crate::secret::{MASK, Secret, SecretSource};
 use crate::transport::{ByteStream, Transport};
 use crate::world::Login;
 
@@ -177,7 +177,8 @@ const RATE: NonZeroU32 = NonZeroU32::new(RATE_PER_SECOND).expect("the rate is no
 pub(crate) struct SessionParts {
     pub(crate) world: WorldId,
     pub(crate) login: Option<Login>,
-    pub(crate) password: Option<Secret>,
+    /// The source of the password, or none for a world with no login.
+    pub(crate) secret: Option<SecretSource>,
     pub(crate) transport: Option<Arc<dyn Transport>>,
     pub(crate) framer: NewFramer,
     pub(crate) hooks: Vec<Arc<dyn Hook>>,
@@ -234,6 +235,9 @@ struct Session {
     conn: Conn,
     limiter: Limiter,
     last_script_error: Option<tokio::time::Instant>,
+    /// The password of the last connect, which masks each event. A fixed source gives it at
+    /// the start.
+    password: Option<Secret>,
 }
 
 /// Runs the session of one world until the `Portal` drops its channel.
@@ -243,7 +247,11 @@ pub(crate) async fn run(parts: SessionParts) {
         conn: Conn::Down,
         limiter: RateLimiter::direct_with_clock(Quota::per_second(RATE), TokioClock),
         last_script_error: None,
+        password: None,
     };
+    if let Some(SecretSource::Fixed(password)) = &session.parts.secret {
+        session.password = Some(password.clone());
+    }
     let start = *session.parts.state.borrow();
     state_gauge(&session.parts.world, start, 1);
     let mut buffer = vec![0_u8; 4096];
@@ -306,7 +314,6 @@ impl Session {
     /// Masks, records and hands an event to the world handlers.
     fn record(&mut self, kind: EventKind, origin: Origin, text: &str, depth: u8) -> Event {
         let text = self
-            .parts
             .password
             .as_ref()
             .map_or_else(|| text.to_owned(), |password| password.mask(text));
@@ -427,12 +434,28 @@ impl Session {
         }
     }
 
+    /// The password of a connect, read from its source. None for a world with no login.
+    fn read_secret(&self) -> Result<Option<Secret>, PortalError> {
+        if self.parts.login.is_none() {
+            return Ok(None);
+        }
+        let no_secret = |reason: String| PortalError::NoSecret(self.world().clone(), reason);
+        let Some(source) = &self.parts.secret else {
+            return Err(no_secret("the world has no secret".to_owned()));
+        };
+        source
+            .read()
+            .map(Some)
+            .map_err(|error| no_secret(error.to_string()))
+    }
+
     async fn login(&mut self, depth: u8) -> Reply {
         let Some(login) = self.parts.login.clone() else {
             return Ok(None);
         };
-        let Some(password) = &self.parts.password else {
-            return Err(PortalError::NoPassword(self.world().clone()));
+        // A connect reads the password, so a world with no password never connected.
+        let Some(password) = &self.password else {
+            return Err(PortalError::NotConnected(self.world().clone()));
         };
         let password = password.expose().to_owned();
         self.write_line(&login.line(&password), depth).await?;
@@ -549,13 +572,13 @@ impl Session {
                 if self.parts.stopped.load(Ordering::Acquire) {
                     return Err(PortalError::Stopped);
                 }
-                let Some(transport) = &self.parts.transport else {
-                    return Err(PortalError::NoTransport(self.world().clone()));
+                let Some(transport) = self.parts.transport.clone() else {
+                    return Err(PortalError::TlsNotSupported(self.world().clone()));
                 };
-                if self.parts.login.is_some() && self.parts.password.is_none() {
-                    return Err(PortalError::NoPassword(self.world().clone()));
-                }
                 if matches!(self.conn, Conn::Down) {
+                    if let Some(password) = self.read_secret()? {
+                        self.password = Some(password);
+                    }
                     let connect = transport.connect(self.world());
                     let span = tracing::info_span!(
                         parent: None,

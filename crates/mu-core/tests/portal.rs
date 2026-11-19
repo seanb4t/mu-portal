@@ -299,7 +299,7 @@ async fn stop_disconnects_every_world_and_refuses_connect() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn login_with_no_password_is_refused() {
+async fn login_with_no_secret_is_refused() {
     let transport = FakeTransport::new("aria", PW);
     let game = transport.game();
     let resolved = ResolvedWorld::with_default_login(id("alpha/aria"), "env:PW".parse().unwrap());
@@ -309,7 +309,7 @@ async fn login_with_no_password_is_refused() {
     );
     let refused = portal.connect(&id("alpha/aria")).await;
     assert!(
-        matches!(&refused, Err(PortalError::NoPassword(world)) if *world == id("alpha/aria")),
+        matches!(&refused, Err(PortalError::NoSecret(world, _)) if *world == id("alpha/aria")),
         "{refused:?}"
     );
     idle(&portal).await;
