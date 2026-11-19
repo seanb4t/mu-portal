@@ -300,7 +300,7 @@ The server SHALL make one span for each call of the API, named `mu.v1.PortalServ
 - **AND** that span has `rpc.connect_rpc.error_code` equal to `not_found`
 
 ### Requirement: A span for each command of a world
-The server SHALL make one span named `command` for each command that a world handles. It SHALL carry `mu.world`, `mu.command`, `mu.origin` and `mu.depth`. The values of `mu.command` SHALL be `send`, `connect`, `disconnect`, `login`, `echo` and `emit`. The values of `mu.origin` SHALL be `player`, `script` and `system`. The span of a command from the API SHALL be a child of the span of that call.
+The server SHALL make one span named `command` for each command that a world handles. It SHALL carry `mu.world`, `mu.command`, `mu.origin` and `mu.depth`. The values of `mu.command` SHALL be `send`, `connect`, `disconnect`, `login`, `echo` and `emit`. The values of `mu.origin` SHALL be `player`, `script` and `system`. The span of a command from the API SHALL be a child of the span of that call. The span of a command that fails SHALL have the status `error`.
 
 #### Scenario: A command under its call
 - **GIVEN** a server with the fake world `alpha/aria` that exports to a fake collector
@@ -313,13 +313,33 @@ The server SHALL make one span named `command` for each command that a world han
 - **WHEN** the server connects the world at the start, and gets SIGTERM
 - **THEN** the collector got a span named `command` with `mu.command` equal to `connect` and `mu.origin` equal to `system`
 
+#### Scenario: A command that fails
+- **GIVEN** a server with the fake world `alpha/aria` that exports to a fake collector, and `alpha/aria` is disconnected
+- **WHEN** a client calls `Send` for `alpha/aria`, and the server gets SIGTERM
+- **THEN** the collector got a span named `command` with `mu.command` equal to `send` and the status `error`
+
 ### Requirement: A span for each connection of a world
-The server SHALL make one span named `world.connection` for each connection of a world. It SHALL cover the time from the open of the transport to the disconnect of the world. It SHALL carry `mu.world`.
+The server SHALL make one span named `world.connection` for each connection and for each attempt of a world. It SHALL cover the time from the open of the transport to the disconnect of the world. It SHALL carry `mu.world`, and at its end `mu.connection.end` with one of `connect_failed`, `timeout`, `lost`, `closed`, `player` and `stopped`. A span that ends with `connect_failed`, `timeout` or `lost` SHALL have the status `error`.
 
 #### Scenario: The connection of a fake world
 - **GIVEN** a server with the fake world `alpha/aria` that exports to a fake collector
 - **WHEN** the world connects at the start, and the server gets SIGTERM
-- **THEN** the collector got one span named `world.connection` with `mu.world` equal to `alpha/aria`
+- **THEN** the collector got one span named `world.connection` with `mu.world` equal to `alpha/aria` and `mu.connection.end` equal to `stopped`
+
+#### Scenario: A connect that fails
+- **GIVEN** a server that exports to a fake collector, and a configured world `alpha/aria` with `reconnect.mode = "off"` whose port has no listener
+- **WHEN** a client calls `Connect` for `alpha/aria`, and the server gets SIGTERM
+- **THEN** the collector got a span named `world.connection` with `mu.connection.end` equal to `connect_failed` and the status `error`
+
+#### Scenario: The game closes the connection
+- **GIVEN** a server with the fake world `alpha/aria` that exports to a fake collector
+- **WHEN** a client sends `@drop` to `alpha/aria`, and the server gets SIGTERM
+- **THEN** the collector got a span named `world.connection` with `mu.connection.end` equal to `closed`, and its status is not `error`
+
+#### Scenario: A connection that is lost
+- **GIVEN** a world on a test transport whose writes fail, connected, with a fake collector
+- **WHEN** a client sends `hello` to the world
+- **THEN** the collector got a span named `world.connection` with `mu.connection.end` equal to `lost` and the status `error`
 
 ### Requirement: Metrics of the journal
 The server SHALL count each event of the journal in the sum `mu.journal.events`, with the attributes `mu.world` and `mu.event.kind`. For each event that the API sends, the histogram `mu.subscriber.lag` SHALL get the gap from that event to the last event of the journal. It SHALL count in the sum `mu.subscriber.lagged` each stream that a lag ended.
@@ -341,7 +361,7 @@ The server SHALL count each event of the journal in the sum `mu.journal.events`,
 - **AND** the server records 1 in `mu.subscriber.lagged`
 
 ### Requirement: Metrics of the worlds
-The server SHALL count each dropped command in the sum `mu.commands.dropped`. Its attributes SHALL be `mu.world` and `mu.drop.reason`, `depth` or `rate`. It SHALL count each script error in the sum `mu.script.errors`, with `mu.world`. The gauge `mu.world.state` SHALL carry `mu.world` and `mu.world.state.name`. Its value SHALL be 1 for the current state of the world, and 0 for each state that it left. A world SHALL report `disconnected` from the start of the server.
+The server SHALL count each dropped command in the sum `mu.commands.dropped`. Its attributes SHALL be `mu.world` and `mu.drop.reason`, `depth` or `rate`. It SHALL count each script error in the sum `mu.script.errors`, with `mu.world`. It SHALL count each keepalive line in the sum `mu.keepalive.sent`, with `mu.world`. The gauge `mu.world.state` SHALL carry `mu.world` and `mu.world.state.name`, one of `connecting`, `connected`, `reconnecting` and `disconnected`. Its value SHALL be 1 for the current state of the world, and 0 for each state that it left. A world SHALL report `disconnected` from the start of the server.
 
 #### Scenario: A command past the depth limit
 - **GIVEN** a world with the depth limit of 8, and a handler that answers each event of the world with one `Echo`
@@ -370,6 +390,16 @@ The server SHALL count each dropped command in the sum `mu.commands.dropped`. It
 - **GIVEN** a server with the fake world `alpha/aria` that exports to a fake collector
 - **WHEN** the world connects at the start, and the server gets SIGTERM
 - **THEN** the last export of `mu.world.state` for `alpha/aria` has the value 1 for `disconnected` and 0 for `connected`
+
+#### Scenario: The keepalive lines
+- **GIVEN** a world on a paused clock with `keepalive.mode = "interval"` and `keepalive.seconds = 60`, connected at the time 0
+- **WHEN** the clock reaches 130
+- **THEN** the server records 2 in `mu.keepalive.sent` for that world
+
+#### Scenario: A world that waits to reconnect
+- **GIVEN** a world that was connected and is now in the state `reconnecting`
+- **WHEN** a test reads the gauge `mu.world.state` of the world
+- **THEN** it has the value 1 for `reconnecting` and 0 for `connected`
 
 ### Requirement: No password and no line text in the telemetry
 No span, attribute, event, metric, resource or log line SHALL hold the password of a world or the text of a line. The server SHALL put only ids, names, numbers and states in the telemetry.
