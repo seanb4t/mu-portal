@@ -713,6 +713,33 @@ fn half_a_keepalive() {
 }
 
 #[test]
+fn half_keepalive_that_is_off() {
+    let config = Config::base().file(
+        "games/alpha.toml",
+        &game(
+            &["extends"],
+            "extends = \"aresmush\"\n[keepalive]\nmode = \"off\"\ncommand = \"idle\"\n",
+        ),
+    );
+    succeeds(&config.list());
+}
+
+#[test]
+fn mode_with_no_keepalive() {
+    let config = Config::base().file(
+        "games/alpha.toml",
+        &game(
+            &["extends"],
+            "extends = \"aresmush\"\n[keepalive]\nmode = \"interval\"\n",
+        ),
+    );
+    let text = succeeds(&config.show("alpha/aria"));
+    let keepalive = lines_under(&text, "keepalive");
+    assert_eq!(keepalive.len(), 1, "{text}");
+    assert!(keepalive[0].starts_with("mode = \"interval\" "), "{text}");
+}
+
+#[test]
 fn world_that_logs_in_by_hand() {
     let text = succeeds(&Config::base().show("alpha/aria"));
     assert!(!text.contains("[login]"), "{text}");
@@ -737,11 +764,13 @@ fn sources_of_fields() {
     }
 }
 
-/// The lines of `text` under the header `[table]`, or before the first header for `""`.
+/// The lines of `text` that are not blank, under the header `[table]`, or before the first
+/// header for `""`.
 fn lines_under<'a>(text: &'a str, table: &str) -> Vec<&'a str> {
     let header = format!("[{table}]");
     let mut current = "";
     text.lines()
+        .filter(|line| !line.is_empty())
         .filter(|line| {
             if line.starts_with('[') {
                 current = line;

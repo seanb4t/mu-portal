@@ -18,8 +18,8 @@ use super::layer::{
     ReconnectFields,
 };
 use super::{
-    Backoff, Entry, EntryKind, Keepalive, Login, Reconnect, ReconnectMode, ResolvedWorld,
-    WorldDefaults,
+    Backoff, Entry, EntryKind, Keepalive, KeepaliveMode, Login, Reconnect, ReconnectMode,
+    ResolvedWorld, WorldDefaults,
 };
 
 /// The paths of the fields that a resolved world can have, in the order of `mu world show`. A
@@ -343,8 +343,12 @@ fn finish(
     })
 }
 
-/// The keepalive of the world `id` from its merged table.
+/// The keepalive of the world `id` from its merged table. The mode `off` has no keepalive and
+/// needs neither half.
 fn keepalive(id: &WorldId, fields: KeepaliveFields) -> Result<Option<Keepalive>, ConfigError> {
+    if fields.mode == Some(KeepaliveMode::Off) {
+        return Ok(None);
+    }
     let missing = |field: &str| ConfigError::field(id, field, "no layer sets it");
     match (fields.command, fields.seconds) {
         (Some(command), Some(seconds)) => Keepalive::new(command, seconds)
