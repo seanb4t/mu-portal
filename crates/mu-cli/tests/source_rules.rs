@@ -1,16 +1,20 @@
-//! Rules of the Rust source of `mu-core` that a later change can break without a failing
-//! build. The test reads each Rust file of the crate as tokens, so a comment or a string
-//! never counts. A hit names the file and the line.
+//! Rules of the Rust source of `mu-core` and `mu-fake-server` that a later change can break
+//! without a failing build. The test reads each Rust file of a crate as tokens, so a comment or
+//! a string never counts. A hit names the file and the line.
 //!
-//! - The codes of telnet live only in `src/telnet.rs`.
-//! - An option code after `WILL`, `WONT`, `DO`, `DONT` or `SB` is a constant of `telnet::opt`.
+//! - In `mu-core`, the codes of telnet live only in `src/telnet.rs`.
+//! - In `mu-core`, an option code after `WILL`, `WONT`, `DO`, `DONT` or `SB` is a constant of
+//!   `telnet::opt`.
 //! - No file of `tests` sleeps. A file of `src` sleeps only where `ALLOWED` names it.
 //!
-//! `ALLOWED` names each accepted hit with its count and a reason.
+//! The scripted game of `mu-fake-server` writes the bytes of telnet itself, so that a defect of
+//! the engine's telnet cannot pass on both sides. Only the sleep rule holds there.
+//!
+//! `ALLOWED` names each accepted hit with its crate, its count and a reason.
 
 use std::fmt;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use proc_macro2::{Literal, TokenStream, TokenTree};
@@ -35,6 +39,8 @@ const SLEEPS: [&str; 2] = ["sleep", "sleep_until"];
 /// a timer of the engine.
 struct Allowed {
     rule: Rule,
+    /// The crate of the file.
+    krate: &'static str,
     file: &'static str,
     /// The text of the hit in the source.
     text: &'static str,
@@ -46,6 +52,7 @@ struct Allowed {
 const ALLOWED: &[Allowed] = &[
     Allowed {
         rule: Rule::TelnetCode,
+        krate: "mu-core",
         file: "src/secret.rs",
         text: "0xff",
         count: 1,
@@ -53,10 +60,20 @@ const ALLOWED: &[Allowed] = &[
     },
     Allowed {
         rule: Rule::Sleep,
+        krate: "mu-core",
         file: "src/session.rs",
         text: "sleep_until",
         count: 1,
-        reason: "the timer of the session: the moment of the login",
+        reason: "the one timer of the session: the login moment, the keepalive and the next \
+                 reconnect attempt",
+    },
+    Allowed {
+        rule: Rule::Sleep,
+        krate: "mu-fake-server",
+        file: "src/scripted.rs",
+        text: "sleep",
+        count: 1,
+        reason: "the step SilentFor of a script, on the tokio clock that a paused test moves",
     },
 ];
 
@@ -87,19 +104,22 @@ impl fmt::Display for Hit {
     }
 }
 
-/// The root of `mu-core`. This test lives in `mu-cli`, so it never scans itself.
-fn crate_root() -> &'static Path {
-    Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../mu-core"))
+/// The root of the crate `krate`. This test lives in `mu-cli`, so it never scans itself.
+fn crate_root(krate: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join(krate)
 }
 
-/// Each Rust file of `src` and `tests`, with its path from the crate root.
-fn rust_files() -> Vec<(String, String)> {
+/// Each Rust file of `src` and `tests` of `krate`, with its path from the crate root.
+fn rust_files(krate: &str) -> Vec<(String, String)> {
+    let root = crate_root(krate);
     ["src", "tests"]
         .iter()
-        .flat_map(|dir| support::files_under(&crate_root().join(dir)))
+        .map(|dir| root.join(dir))
+        .filter(|dir| dir.is_dir())
+        .flat_map(|dir| support::files_under(&dir))
         .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
         .map(|path| {
-            let relative = path.strip_prefix(crate_root()).unwrap();
+            let relative = path.strip_prefix(&root).unwrap();
             let name = relative.to_string_lossy().replace('\\', "/");
             (name, fs::read_to_string(&path).unwrap())
         })
@@ -210,14 +230,16 @@ fn is_assigned_six(after: &[TokenTree]) -> bool {
 }
 
 /// The hits of `files` that no entry of `allowed` accepts, and each entry of `allowed` with
-/// another count.
+/// another count. The telnet rules hold in each file but `telnet_home` with `Some`, and in no
+/// file with `None`.
 fn crate_hits<'a>(
     files: &[(String, String)],
     allowed: impl IntoIterator<Item = &'a Allowed>,
+    telnet_home: Option<&str>,
 ) -> Vec<String> {
     let mut hits: Vec<Hit> = files
         .iter()
-        .flat_map(|(name, text)| scan(name, text, name != TELNET_HOME))
+        .flat_map(|(name, text)| scan(name, text, telnet_home.is_some_and(|home| name != home)))
         .collect();
     let mut problems = Vec::new();
     for allowed in allowed {
@@ -240,14 +262,34 @@ fn crate_hits<'a>(
     problems
 }
 
-#[test]
-fn source_of_mu_core_keeps_its_rules() {
-    assert_eq!(crate_hits(&rust_files(), ALLOWED), Vec::<String>::new());
+/// The entries of `ALLOWED` for `krate`.
+fn entries_of_crate(krate: &str) -> impl Iterator<Item = &'static Allowed> {
+    ALLOWED.iter().filter(move |allowed| allowed.krate == krate)
 }
 
-/// The entries of `ALLOWED` for `file`.
+#[test]
+fn source_of_mu_core_keeps_its_rules() {
+    let hits = crate_hits(
+        &rust_files("mu-core"),
+        entries_of_crate("mu-core"),
+        Some(TELNET_HOME),
+    );
+    assert_eq!(hits, Vec::<String>::new());
+}
+
+#[test]
+fn source_of_mu_fake_server_keeps_the_sleep_rule() {
+    let hits = crate_hits(
+        &rust_files("mu-fake-server"),
+        entries_of_crate("mu-fake-server"),
+        None,
+    );
+    assert_eq!(hits, Vec::<String>::new());
+}
+
+/// The entries of `ALLOWED` for `file` of `mu-core`.
 fn entries_of(file: &str) -> impl Iterator<Item = &'static Allowed> {
-    ALLOWED.iter().filter(move |allowed| allowed.file == file)
+    entries_of_crate("mu-core").filter(move |allowed| allowed.file == file)
 }
 
 #[test]
@@ -258,7 +300,7 @@ fn allowed_sleep_holds_only_in_its_file() {
         ("tests/other.rs".to_owned(), sleep.to_owned()),
     ];
     assert_eq!(
-        crate_hits(&files, entries_of("src/session.rs")),
+        crate_hits(&files, entries_of("src/session.rs"), Some(TELNET_HOME)),
         ["tests/other.rs:1: a sleep: sleep_until"]
     );
 }
@@ -396,7 +438,7 @@ fn an_allowed_literal_with_another_count_fails() {
         "src/secret.rs".to_owned(),
         "fn f() { let _ = [0xff, 0xff]; }".to_owned(),
     )];
-    let problems = crate_hits(&files, entries_of("src/secret.rs"));
+    let problems = crate_hits(&files, entries_of("src/secret.rs"), Some(TELNET_HOME));
     assert_eq!(problems.len(), 1, "{problems:?}");
     assert!(problems[0].contains("2 times"), "{problems:?}");
 }
@@ -404,7 +446,10 @@ fn an_allowed_literal_with_another_count_fails() {
 #[test]
 fn an_allowed_literal_that_is_gone_fails() {
     let files = vec![("src/secret.rs".to_owned(), "fn f() {}".to_owned())];
-    assert_eq!(crate_hits(&files, entries_of("src/secret.rs")).len(), 1);
+    assert_eq!(
+        crate_hits(&files, entries_of("src/secret.rs"), Some(TELNET_HOME)).len(),
+        1
+    );
 }
 
 #[test]
@@ -420,7 +465,7 @@ fn a_code_outside_the_list_fails_with_file_and_line() {
         ),
     ];
     assert_eq!(
-        crate_hits(&files, entries_of("src/secret.rs")),
+        crate_hits(&files, entries_of("src/secret.rs"), Some(TELNET_HOME)),
         ["tests/other.rs:2: a code of telnet outside src/telnet.rs: 0xff"]
     );
 }
