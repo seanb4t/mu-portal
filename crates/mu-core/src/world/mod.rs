@@ -521,6 +521,18 @@ mod tests {
     }
 
     #[test]
+    fn largest_extra_time_of_each_attempt() {
+        for (attempt, share) in [(1, 0.05), (2, 0.10), (3, 0.15), (4, 0.20), (5, 0.20)] {
+            let base = base_wait(1, 60, attempt);
+            let wait = backoff(1, 60).wait(attempt, u32::MAX).as_secs_f64();
+            assert!(
+                (wait - base * (1.0 + share)).abs() < 1e-9,
+                "attempt {attempt}: {wait}"
+            );
+        }
+    }
+
+    #[test]
     fn stable_connection_resets_the_count() {
         assert!(backoff(1, 60).resets(secs(60)));
     }
