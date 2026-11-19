@@ -130,7 +130,7 @@ pub(crate) fn check_first_wait(initial: u32, max: u32) -> Result<(), FieldError>
     if initial > max {
         return Err(FieldError::new(
             "reconnect.initial",
-            "must not be greater than reconnect.max",
+            format!("is {initial}, which is greater than reconnect.max, {max}"),
         ));
     }
     Ok(())

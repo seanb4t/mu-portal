@@ -11,7 +11,7 @@ use crate::id::WorldId;
 use crate::secret::SecretRef;
 
 use super::builtin::built_in_layers;
-use super::check::check_layer;
+use super::check::{check_first_wait, check_layer};
 use super::error::ConfigError;
 use super::layer::{
     KeepaliveFields, Layer, LayerFields, LayerKey, LayerOrigin, LayerSource, LoginFields,
@@ -362,18 +362,13 @@ fn keepalive(id: &WorldId, fields: KeepaliveFields) -> Result<Option<Keepalive>,
 
 /// The reconnect of the world `id` from its merged table.
 fn reconnect(id: &WorldId, fields: &ReconnectFields) -> Result<Reconnect, ConfigError> {
-    if fields.mode == Some(ReconnectMode::Off) {
-        return Ok(Reconnect::Off);
-    }
     let defaults = WorldDefaults::default().reconnect;
     let initial = fields.initial.unwrap_or(defaults.initial());
     let max = fields.max.unwrap_or(defaults.max());
-    if initial > max {
-        return Err(ConfigError::field(
-            id,
-            "reconnect.initial",
-            format!("is {initial}, which is greater than reconnect.max, {max}"),
-        ));
+    // The rule holds for the merged values whatever the mode.
+    check_first_wait(initial, max).map_err(|error| ConfigError::of_field(id, &error))?;
+    if fields.mode == Some(ReconnectMode::Off) {
+        return Ok(Reconnect::Off);
     }
     Backoff::new(initial, max, fields.attempts.unwrap_or(defaults.attempts()))
         .map(Reconnect::Backoff)

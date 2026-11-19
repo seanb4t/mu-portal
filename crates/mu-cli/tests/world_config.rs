@@ -476,6 +476,21 @@ fn first_wait_over_the_cap() {
     );
     fails_naming(
         &config.list(),
+        &["alpha/aria", "reconnect.initial", "reconnect.max", "120"],
+    );
+}
+
+#[test]
+fn first_wait_over_the_cap_with_reconnect_off() {
+    let config = Config::base().file(
+        "games/alpha.toml",
+        &game(
+            &[],
+            "[reconnect]\nmode = \"off\"\ninitial = 120\nmax = 60\n",
+        ),
+    );
+    fails_naming(
+        &config.list(),
         &["alpha/aria", "reconnect.initial", "reconnect.max"],
     );
 }
