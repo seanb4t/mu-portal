@@ -74,6 +74,7 @@ Load the `rust-best-practices` skill before this group. The tests of this group 
   - `send_to_reconnecting_world`, for "A world that waits to reconnect" of "A command reaches only its world"
 
   Make sure that the eleven tests pass.
+- [x] 5.6 Put each write to the game and its flush under the write timeout of design decision 1. Add `write_that_hangs`, for "A write that hangs". Make sure that it passes.
 
 ## 6. The TCP connection of a configured world
 

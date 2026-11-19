@@ -154,6 +154,7 @@ pub fn on(f: impl Fn(&Event) -> Vec<Command> + Send + Sync + 'static) -> Arc<dyn
 pub struct BrokenTransport {
     writes_allowed: usize,
     incoming: &'static [u8],
+    stalls: bool,
 }
 
 impl BrokenTransport {
@@ -166,6 +167,15 @@ impl BrokenTransport {
         Self {
             writes_allowed,
             incoming,
+            stalls: false,
+        }
+    }
+
+    /// A stream that gives no byte, and whose writes never end: a game that reads nothing.
+    pub fn stalling_writes() -> Self {
+        Self {
+            stalls: true,
+            ..Self::refusing_writes()
         }
     }
 }
@@ -175,6 +185,7 @@ impl Transport for BrokenTransport {
         let stream = BrokenStream {
             writes_left: self.writes_allowed,
             incoming: self.incoming,
+            stalls: self.stalls,
             reader: None,
         };
         Box::pin(async move { Ok(Box::new(stream) as Box<dyn ByteStream>) })
@@ -184,6 +195,7 @@ impl Transport for BrokenTransport {
 struct BrokenStream {
     writes_left: usize,
     incoming: &'static [u8],
+    stalls: bool,
     reader: Option<Waker>,
 }
 
@@ -208,6 +220,9 @@ impl AsyncWrite for BrokenStream {
         _: &mut Context<'_>,
         bytes: &[u8],
     ) -> Poll<io::Result<usize>> {
+        if self.stalls {
+            return Poll::Pending;
+        }
         if self.writes_left == 0 {
             return Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()));
         }

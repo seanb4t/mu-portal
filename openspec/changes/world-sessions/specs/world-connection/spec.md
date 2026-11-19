@@ -26,6 +26,16 @@ Defines how a configured world reaches its game: the TCP connection, the read of
 - **WHEN** the world connects, and the clock passes 10 seconds
 - **THEN** the journal holds a disconnect event whose text starts with `the connect failed:` and names the timeout
 
+### Requirement: A write that hangs ends the connection
+A write to the game that does not end in 10 seconds SHALL end the connection as a drop that the player did not ask for. Its disconnect event SHALL start with `the connection failed:` and name the timeout.
+
+#### Scenario: A write that hangs
+- **GIVEN** a connected world on a paused clock whose transport never ends a write, and `reconnect.mode = "off"`
+- **WHEN** the player sends a line, and the clock passes 10 seconds
+- **THEN** the send fails because the world is not connected
+- **AND** the journal holds a disconnect event whose text starts with `the connection failed:` and names the timeout
+- **AND** the world is in the state `disconnected`
+
 ### Requirement: A TLS world cannot connect yet
 `Connect` on a world with `tls = true` SHALL fail with `failed_precondition`. The message SHALL name the world and TLS. The server SHALL record no event, open no connection and not reconnect.
 

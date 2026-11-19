@@ -253,6 +253,10 @@ pub(crate) struct SessionParts {
 /// The time that a connect of the transport can take.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// The longest time that one write to the game and its flush can take. A game that keeps the
+/// socket open but reads nothing would otherwise block the session, and with it the stop.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Why a connect of the transport failed.
 enum Failure {
     /// The transport gave an error.
@@ -666,16 +670,23 @@ impl Session {
         Ok(())
     }
 
-    /// Writes `bytes` to the open stream. The inner error is a failed write, which the caller
-    /// must answer with `down`.
+    /// Writes `bytes` to the open stream under [`WRITE_TIMEOUT`]. The inner error is a failed or
+    /// late write, which the caller must answer with `down`.
     async fn send_bytes(&mut self, bytes: &[u8]) -> Result<io::Result<()>, PortalError> {
         let Conn::Up { write, .. } = &mut self.conn else {
             return Err(PortalError::NotConnected(self.world().clone()));
         };
-        let sent = match write.write_all(bytes).await {
-            Ok(()) => write.flush().await,
-            Err(error) => Err(error),
+        let write_and_flush = async {
+            write.write_all(bytes).await?;
+            write.flush().await
         };
+        let sent = tokio::time::timeout(WRITE_TIMEOUT, write_and_flush)
+            .await
+            .unwrap_or_else(|_| {
+                let seconds = WRITE_TIMEOUT.as_secs();
+                let message = format!("the write timed out after {seconds} seconds");
+                Err(io::Error::new(io::ErrorKind::TimedOut, message))
+            });
         Ok(sent)
     }
 

@@ -532,6 +532,23 @@ async fn connect_that_hangs() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn write_that_hangs() {
+    let (portal, aria) = broken_world(bare_world(BrokenTransport::stalling_writes())).await;
+    let start = Instant::now();
+    assert_eq!(
+        portal.send(&aria, "hello").await,
+        Err(PortalError::NotConnected(aria.clone()))
+    );
+    assert_eq!(start.elapsed(), Duration::from_secs(10));
+    let down = wait_event(&portal, |event| event.kind == EventKind::Disconnected).await;
+    assert_eq!(
+        down.text,
+        "the connection failed: the write timed out after 10 seconds"
+    );
+    wait_state(&portal, &aria, WorldState::Disconnected).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn failed_login_write_never_connects() {
     let world = ResolvedWorld {
         reconnect: Reconnect::Off,

@@ -39,11 +39,11 @@ The quirks of the three server families come from the telnet spike: decision pag
 
 `WorldState` gains `Reconnecting`. The `watch` channel of the state carries the state and, for `Reconnecting`, the wall-clock time of the next attempt. At the start of the wait, the session computes that time from the tokio deadline. Only the API reads it.
 
-One function of the session starts every connect: the `Connect` handler and each attempt from `Waiting` call it. It reads the secret (decision 7), opens the `world.connection` span, and wraps the connect of the transport in one `tokio::time::timeout` of 10 seconds. The timeout therefore holds for every transport, the test transports included, and its expiry is the cause `Timeout`.
+One function of the session starts every connect: the `Connect` handler and each attempt from `Waiting` call it. It reads the secret (decision 7), opens the `world.connection` span, and wraps the connect of the transport in one `tokio::time::timeout` of 10 seconds. The timeout therefore holds for every transport, the test transports included, and its expiry is the cause `Timeout`. Each write to the game and its flush also run under a timeout of 10 seconds. A game that keeps the socket open but reads nothing would otherwise block the session, and with it `Portal::stop`. The expiry of a write is the cause `Lost`.
 
 Alternative: a separate reconnect task per world that sends `Connect` after a sleep. That task races with the requests of the player, and the session does not know the state `reconnecting`. Rejected.
 
-Enforced by: engine tests on the paused clock. They run the scenarios of "A world reconnects after a drop", "A connect that hangs" and "Connect and Disconnect act on a world that waits".
+Enforced by: engine tests on the paused clock. They run the scenarios of "A world reconnects after a drop", "A connect that hangs", "A write that hangs" and "Connect and Disconnect act on a world that waits".
 
 ### 2. Why a world goes down decides whether it reconnects
 
@@ -102,7 +102,7 @@ Enforced by: the scenarios of "The wait before each attempt grows" and "A world 
 
 ### 6. The TCP transport
 
-`TcpTransport { host, port }` in `mu-core` implements `Transport`. It resolves the host and connects in one future, so a slow name lookup also counts against the timeout of decision 1. It sets `TCP_NODELAY`, because a MU sends short lines. A world with `tls = true` gets no transport. `PortalError::NoTransport` becomes `PortalError::TlsNotSupported`, whose message names the world and TLS, and `mu-server` maps it to `failed_precondition`.
+`TcpTransport { host, port }` in `mu-core` implements `Transport`. It resolves the host and connects in one future, so a slow name lookup also counts against the timeout of decision 1. It sets `TCP_NODELAY`, because a MU sends short lines. If the option cannot be set, it logs a warning and keeps the connection. A connect error names the host and the port. A world with `tls = true` gets no transport. `PortalError::NoTransport` becomes `PortalError::TlsNotSupported`, whose message names the world and TLS, and `mu-server` maps it to `failed_precondition`.
 
 `TcpStream::connect` takes a `(&str, u16)` pair. For a name that is not an IP address, it resolves the name with a blocking task at each call. The table "Checked facts" gives the source.
 
