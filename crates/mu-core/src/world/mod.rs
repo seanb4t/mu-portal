@@ -147,18 +147,6 @@ pub enum KeepaliveMode {
     Off,
 }
 
-impl KeepaliveMode {
-    /// The name of the mode in the configuration.
-    #[must_use]
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Idle => "idle",
-            Self::Interval => "interval",
-            Self::Off => "off",
-        }
-    }
-}
-
 /// When a [`Keepalive`] sends its line: [`KeepaliveMode`] with no `Off`, because a world with
 /// no keepalive has none.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -262,17 +250,6 @@ pub enum ReconnectMode {
     Backoff,
     /// Never reconnects.
     Off,
-}
-
-impl ReconnectMode {
-    /// The name of the mode in the configuration.
-    #[must_use]
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Backoff => "backoff",
-            Self::Off => "off",
-        }
-    }
 }
 
 /// The waits of a reconnect: the first wait and the cap, in seconds, and the number of failed

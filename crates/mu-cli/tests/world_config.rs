@@ -580,6 +580,23 @@ fn show_does_not_read_the_secret() {
     assert!(succeeds(&output).contains("env:ARIA_PW"));
 }
 
+#[test]
+fn show_spells_the_modes_as_the_configuration() {
+    for (table, mode) in [
+        ("keepalive", "interval"),
+        ("keepalive", "off"),
+        ("reconnect", "off"),
+    ] {
+        let config = Config::base().file(
+            "games/alpha.toml",
+            &game(&[], &format!("[{table}]\nmode = \"{mode}\"\n")),
+        );
+        let shown = succeeds(&config.show("alpha/aria"));
+        let parsed: toml::Table = shown.parse().unwrap();
+        assert_eq!(parsed[table]["mode"].as_str(), Some(mode), "{shown}");
+    }
+}
+
 // The merge.
 
 #[test]

@@ -112,15 +112,14 @@ fn value_of(world: &ResolvedWorld, path: &str) -> Option<toml::Value> {
         "login.template" => login?.template().into(),
         "login.name" => login?.name().into(),
         "login.secret" => login?.secret().to_string().into(),
-        "keepalive.mode" => world.keepalive_mode.name().into(),
+        "keepalive.mode" => toml::Value::try_from(world.keepalive_mode).ok()?,
         "keepalive.command" => keepalive?.command().into(),
         "keepalive.seconds" => i64::from(keepalive?.seconds()).into(),
-        "reconnect.mode" => match world.reconnect {
+        "reconnect.mode" => toml::Value::try_from(match world.reconnect {
             Reconnect::Backoff(_) => ReconnectMode::Backoff,
             Reconnect::Off => ReconnectMode::Off,
-        }
-        .name()
-        .into(),
+        })
+        .ok()?,
         "reconnect.initial" => i64::from(backoff?.initial()).into(),
         "reconnect.max" => i64::from(backoff?.max()).into(),
         "reconnect.attempts" => i64::from(backoff?.attempts()).into(),
