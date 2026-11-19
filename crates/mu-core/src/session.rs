@@ -763,6 +763,15 @@ impl Session {
     }
 
     async fn login(&mut self, depth: u8) -> Reply {
+        let Some(masked) = self.write_login(depth).await? else {
+            return Ok(None);
+        };
+        let event = self.record(EventKind::Login, Origin::System, &masked, depth);
+        Ok(Some(event.seq))
+    }
+
+    /// Writes the login line of the world, if it has one, and gives the text of its event.
+    async fn write_login(&mut self, depth: u8) -> Result<Option<String>, PortalError> {
         let Some(login) = self.parts.login.clone() else {
             return Ok(None);
         };
@@ -773,8 +782,7 @@ impl Session {
         let password = password.expose().to_owned();
         self.write_line(&login.line(&password), depth).await?;
         // The event gets the line of the template for the mask, so it never holds the password.
-        let event = self.record(EventKind::Login, Origin::System, &login.line(MASK), depth);
-        Ok(Some(event.seq))
+        Ok(Some(login.line(MASK)))
     }
 
     async fn on_connect(&mut self, result: Result<Box<dyn ByteStream>, Failure>, depth: u8) {
@@ -862,10 +870,16 @@ impl Session {
     /// Moves the world to `connected`: starts the time of the keepalive, records the connect,
     /// sends the login, and writes the mark of each frame that waits.
     async fn logged_in(&mut self, depth: u8) {
-        let Conn::Up { frames, phase, .. } = &mut self.conn else {
+        let Conn::Up { frames, .. } = &self.conn else {
             return;
         };
         let waiting = frames.len();
+        // The world stays connecting until the login line goes out.
+        let masked = self.write_login(depth).await.ok().flatten();
+        // A failed write already recorded the disconnect and answered each frame.
+        let Conn::Up { phase, .. } = &mut self.conn else {
+            return;
+        };
         *phase = Phase::Live(Live {
             connected: Instant::now(),
             last_write: None,
@@ -873,8 +887,9 @@ impl Session {
         });
         self.set_state(WorldState::Connected);
         self.record(EventKind::Connected, Origin::System, "connected", depth);
-        // A failed write already recorded the disconnect and answered each frame.
-        let _ = self.login(depth).await;
+        if let Some(masked) = masked {
+            self.record(EventKind::Login, Origin::System, &masked, depth);
+        }
         for _ in 0..waiting {
             if self.write_mark(depth).await.is_err() {
                 break;

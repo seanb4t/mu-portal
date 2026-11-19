@@ -530,3 +530,21 @@ async fn connect_that_hangs() {
         down.text
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn failed_login_write_never_connects() {
+    let world = ResolvedWorld {
+        reconnect: Reconnect::Off,
+        ..ResolvedWorld::with_default_login(id("alpha/aria"), "env:PW".parse().unwrap())
+    };
+    let setup = WorldSetup::new(
+        world,
+        Some(Secret::new(PW.to_owned())),
+        Arc::new(BrokenTransport::refusing_writes()),
+    );
+    let portal = portal(vec![setup], Vec::new());
+    portal.connect(&id("alpha/aria")).await.unwrap();
+    wait_event(&portal, |event| event.kind == EventKind::Disconnected).await;
+    let connected = of_kind(&portal, EventKind::Connected);
+    assert!(connected.is_empty(), "{:#?}", events(&portal));
+}
