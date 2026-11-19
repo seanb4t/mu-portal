@@ -2,7 +2,7 @@
 
 ## 1. Sources
 
-- [ ] 1.1 Read the current documentation for each third-party fact that the design uses:
+- [x] 1.1 Read the current documentation for each third-party fact that the design uses:
   - `tokio::net::TcpStream::connect` with a `(host, port)` pair, and whether it resolves the name on each call
   - `TcpStream::set_nodelay`
   - `tokio::io::duplex`, and how a duplex stream behaves on the paused clock

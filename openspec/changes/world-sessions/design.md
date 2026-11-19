@@ -94,7 +94,7 @@ An attempt counts as failed unless its connection stays up for `max` seconds. Af
 
 The count of short connections is a choice of the owner, made in the plan review. Without it, a game that closes each connection right after a bad login never reaches the cap. The reset after `max` seconds is a design choice of this change. A game that drops each connection early still moves the wait up to the cap.
 
-`backon` is already in `[workspace.dependencies]` for `mu-client`. A task reads its documentation to find out whether its exponential builder gives a jitter that grows with each attempt and has a cap. If it cannot, the policy is one function in `mu-core` on `Reconnect`. The function takes the random draw as an argument, so a test controls it. Either way, a reading of the documentation meets the reuse rule, not a guess.
+The policy is one function in `mu-core` on `Reconnect`. The function takes the random draw as an argument, so a test controls it. `backon` does not fit: its jitter adds a random fraction from 0 to 1 of the delay, the same fraction range at each attempt, with no cap. The table "Checked facts" gives the source.
 
 Enforced by: the scenarios of "The wait before each attempt grows" and "A world stops after its last attempt". One of them is a property test over many draws, up to the largest attempt number.
 
@@ -102,7 +102,7 @@ Enforced by: the scenarios of "The wait before each attempt grows" and "A world 
 
 `TcpTransport { host, port }` in `mu-core` implements `Transport`. It resolves the host and connects in one future, so a slow name lookup also counts against the timeout of decision 1. It sets `TCP_NODELAY`, because a MU sends short lines. A world with `tls = true` gets no transport. `PortalError::NoTransport` becomes `PortalError::TlsNotSupported`, whose message names the world and TLS, and `mu-server` maps it to `failed_precondition`.
 
-This decision takes two facts from tokio that nobody read in the current documentation. `TcpStream::connect` accepts a `(host, port)` pair and resolves it on each call. `set_nodelay` exists on the stream. A task reads that documentation first.
+`TcpStream::connect` takes a `(&str, u16)` pair. For a name that is not an IP address, it resolves the name with a blocking task at each call. The table "Checked facts" gives the source.
 
 Enforced by: the scenarios of "A configured world connects over TCP" and "A TLS world cannot connect yet".
 
@@ -147,7 +147,7 @@ Enforced by: the scenario "A world that waits to reconnect" of the world-session
 
 The connect function of decision 1 opens the `world.connection` span for each attempt. At `down`, the session records `mu.connection.end` and the status from the table of decision 2. A failed command sets the status `error` on its `command` span. The keepalive adds 1 to `mu.keepalive.sent`.
 
-`tracing-opentelemetry` sets the span status from the special field `otel.status_code`, and the API spans in `mu-server` already use it. A task still reads the current documentation of the field before the session depends on it.
+`tracing-opentelemetry` sets the span status from the special field `otel.status_code`, and the API spans in `mu-server` already use it. For a later record of a field, `tracing` needs the field in the declaration of the span. The `world.connection` span therefore declares `mu.connection.end` and `otel.status_code` as `tracing::field::Empty`, and `down` records them.
 
 Enforced by: the scenarios of the telemetry delta, with the fake collector of the telemetry tests.
 
@@ -161,7 +161,7 @@ Enforced by: the scenarios of the telemetry delta, with the fake collector of th
 
 The TCP fake game listens on `127.0.0.1:0` and runs a script of steps: send bytes, wait for bytes, go silent, close. A test reads every byte that the client wrote. Replay takes the bytes of a transcript from the caller. The transcripts then stay in `crates/mu-core/tests/fixtures/telnet`, and nothing in `crates/` reads `spikes/`.
 
-The scripted fake game runs over a TCP socket or over an in-memory `tokio::io::duplex` stream. The binary tests use TCP. The engine tests on the paused clock use the duplex stream, because a real socket does not move with the paused clock.
+The scripted fake game runs over a TCP socket or over an in-memory `tokio::io::duplex` stream. The binary tests use TCP. The engine tests on the paused clock use the duplex stream. With no work in the runtime, a paused clock jumps to the next timer. A wait for a real socket counts as no work. A timer can then fire before bytes in flight arrive.
 
 `mu-fake-server` depends on `mu-core` for `Transport`, `WorldId` and the line framer. `mu-cli` depends on it for `--fake-world`. The integration tests of `mu-core` also use the fake, so `mu-core` gets `mu-fake-server` as a dev-dependency. Cargo accepts this cycle for integration tests only, so no unit test inside `mu-core` can use the fake.
 
@@ -170,6 +170,19 @@ The scripted fake game runs over a TCP socket or over an in-memory `tokio::io::d
 Alternative: keep the fakes in `mu-core` behind a feature. The shipped binary needs the in-memory fake for `--fake-world`, so the feature is always on. Rejected.
 
 Enforced by: the boundary test, `mise run docs:check`, and every test that uses a fake game.
+
+## Checked facts
+
+Task 1.1 read each source on 2026-11-19.
+
+| Fact | Source | Result |
+|---|---|---|
+| `TcpStream::connect` with `(&str, u16)` resolves the name at each call | tokio 1.54.1, `src/net/addr.rs`, `impl ToSocketAddrsPriv for (&str, u16)` | Holds: it parses an IP address, or else it resolves the name with `spawn_blocking`. |
+| `TcpStream::set_nodelay` exists | docs.rs, `tokio::net::TcpStream` | Holds. |
+| `tokio::io::duplex` and the paused clock | docs.rs, `tokio::io::duplex`, and tokio 1.54.1, `src/time/clock.rs`, the doc of `pause` | The duplex stream is in memory. With no work in the runtime, the paused clock jumps to the next timer. Decision 13 now gives this reason. |
+| The jitter of the exponential builder of `backon` | docs.rs, backon 1.6.0, `src/backoff/exponential.rs` | Does not fit. The jitter adds `current_delay * rng.f32()`, from 0 to 100%, at each attempt. Decision 5 now names a function of its own. |
+| `otel.status_code` on a span that is already open | tracing-opentelemetry, `src/layer.rs`, `SpanAttributeVisitor` | Holds for a field that the span declared. Decision 12 now declares the fields as `Empty`. |
+| A dev-dependency cycle between two members | The Cargo book, resolver, "dev-dependency cycles" | Holds. Unit tests of the library link two copies with types that do not match, as decision 13 says. |
 
 ## Risks / Trade-offs
 
