@@ -108,7 +108,7 @@ Load the `rust-best-practices` skill before this group.
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 8.1 Record `mu.connection.end` and the span status of design decision 2 on the `world.connection` span. Record the status `error` on a failed `command` span (design decision 12). Add these tests to `crates/mu-cli/tests/telemetry.rs`:
+- [x] 8.1 Record `mu.connection.end` and the span status of design decision 2 on the `world.connection` span. Record the status `error` on a failed `command` span (design decision 12). Add these tests to `crates/mu-cli/tests/telemetry.rs`:
   - `failed_command_span_is_error`, for "A command that fails"
   - `failed_connect_span_is_error`, for "A connect that fails"
   - `closed_connection_span_is_not_error`, for "The game closes the connection" of the telemetry delta

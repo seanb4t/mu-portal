@@ -6,7 +6,7 @@ use futures::StreamExt as _;
 use mu_cli::telemetry::Providers;
 use mu_core::{
     Command, Event, EventKind, Journal, MemoryJournal, NewEvent, ResolvedWorld, Seq, Source,
-    WorldSetup,
+    WorldSetup, WorldState,
 };
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::metrics::InMemoryMetricExporter;
@@ -17,7 +17,10 @@ use tokio::sync::watch;
 use tracing::{Dispatch, Subscriber};
 use tracing_subscriber::layer::SubscriberExt as _;
 
-use engine::{id, idle, on, portal, started, wait_event, world};
+use engine::{
+    BrokenTransport, bare_world, broken_world, id, idle, on, portal, started, wait_event,
+    wait_state, world,
+};
 
 #[path = "../../mu-core/tests/support/mod.rs"]
 mod engine;
@@ -499,4 +502,32 @@ fn world_without_transport_is_disconnected() {
             Some(1)
         );
     });
+}
+
+#[test]
+fn lost_connection_span_is_error() {
+    let memory = Memory::new();
+    run_paused(memory.subscriber(), async {
+        let (portal, aria) = broken_world(bare_world(BrokenTransport::refusing_writes())).await;
+        // The write of the line fails, so the connection is lost.
+        let _ = portal.send(&aria, "hello").await;
+        wait_state(&portal, &aria, WorldState::Disconnected).await;
+    });
+    let spans: Vec<_> = memory
+        .finished_spans()
+        .into_iter()
+        .filter(|span| span.name == "world.connection")
+        .collect();
+    assert_eq!(spans.len(), 1, "{spans:?}");
+    let end = spans[0]
+        .attributes
+        .iter()
+        .find(|pair| pair.key.as_str() == "mu.connection.end")
+        .map(|pair| pair.value.to_string());
+    assert_eq!(end.as_deref(), Some("lost"));
+    assert!(
+        matches!(spans[0].status, opentelemetry::trace::Status::Error { .. }),
+        "{:?}",
+        spans[0].status
+    );
 }

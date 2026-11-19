@@ -428,8 +428,12 @@ pub(crate) async fn run(parts: SessionParts) {
                     mu.command = envelope.command.name(),
                     mu.origin = envelope.origin.name(),
                     mu.depth = envelope.depth,
+                    otel.status_code = tracing::field::Empty,
                 );
-                let result = session.handle(envelope).instrument(command).await;
+                let result = session.handle(envelope).instrument(command.clone()).await;
+                if result.is_err() {
+                    command.record("otel.status_code", "ERROR");
+                }
                 if let Some(sender) = reply {
                     // The caller can give up on the reply.
                     let _ = sender.send(result);
