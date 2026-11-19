@@ -41,7 +41,7 @@ Load the `rust-best-practices` skill before this group.
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 4.1 Add the trait `LoginMoment` with `Immediate` and `Quiet` to `mu-core`, as pure methods over the tokio `Instant` (design decision 3). Add unit tests for a banner and then quiet, for a silent game, for a game that is never quiet, and for the cap. Make sure that the tests pass, and that `Quiet` holds no timer.
+- [x] 4.1 Add the trait `LoginMoment` with `Immediate` and `Quiet` to `mu-core`, as pure methods over the tokio `Instant` (design decision 3). Add unit tests for a banner and then quiet, for a silent game, for a game that is never quiet, and for the cap. Make sure that the tests pass, and that `Quiet` holds no timer.
 - [ ] 4.2 Add the deadline methods of `Keepalive` for `Idle` and `Interval`. Add unit tests for the next deadline after the move to `connected`, after a write and after a keepalive, for each mode. Make sure that the tests pass.
 - [ ] 4.3 Add the wait of design decision 5 to `Reconnect`, with the saturation of the doubling. If task 1.1 found that `backon` fits, use it. Otherwise the policy takes the random draw as an argument. Add `extra_time_reaches_its_cap`, a property test for "The extra time at its cap", up to the largest attempt number. Add unit tests for the reset after `max` seconds and for no reset after `max - 1` seconds. Make sure that the tests pass.
 - [ ] 4.4 Add the cause of design decision 2 to `mu-core`. Add `cause_map`, a unit test of each row of the table of design decision 2: the reconnect choice, the value of `mu.connection.end` and the span status. Make sure that the test passes.

@@ -3,6 +3,7 @@
 //! The engine knows no wire format. `mu-server` adapts it to the API schema.
 
 pub mod command;
+pub mod connection;
 pub mod error;
 pub mod event;
 pub mod framer;
