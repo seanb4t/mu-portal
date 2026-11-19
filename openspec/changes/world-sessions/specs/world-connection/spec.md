@@ -201,7 +201,7 @@ An attempt SHALL count as failed unless its connection stays up for `reconnect.m
 - **THEN** the wait before the next attempt is at least 8 seconds
 
 ### Requirement: Connect and Disconnect act on a world that waits
-While a world is in the state `reconnecting`, `Connect` SHALL start an attempt at once and start the count again. `Disconnect` SHALL end the wait, and the world SHALL go to the state `disconnected`.
+While a world is in the state `reconnecting`, `Connect` SHALL start a connect at once and set the count of failed attempts to 0. A `Connect` call is not an attempt, so the wait after a failed `Connect` is the wait before attempt 1. `Disconnect` SHALL end the wait, and the world SHALL go to the state `disconnected`.
 
 #### Scenario: Connect during a wait
 - **GIVEN** a world with `reconnect.initial = 1` in the state `reconnecting` before attempt 5, whose game refuses every connect

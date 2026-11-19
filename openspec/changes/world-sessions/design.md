@@ -35,11 +35,11 @@ The quirks of the three server families come from the telnet spike: decision pag
 
 ### 1. The session gets a fourth connection state, `Waiting`
 
-`Conn` gains `Waiting { attempt, until }`. The session loop already selects on the requests and on `progress(&mut conn)`. For `Waiting`, `progress` sleeps until `until` and then starts the attempt. A `Connect` request in `Waiting` starts at once and sets the attempt to 1. A `Disconnect` request moves to `Down`. A control frame in `Waiting` gets its answer at once, as in `Down`.
+`Conn` gains `Waiting { attempt, until }`. The session loop already selects on the requests and on `progress(&mut conn)`. For `Waiting`, `progress` sleeps until `until` and then starts the attempt. A `Connect` request in `Waiting` starts a connect at once and sets the count of failed attempts to 0. A `Connect` call is not an attempt. After a failed `Connect`, the world therefore waits `wait(1)`, as after the first connect. A `Disconnect` request moves to `Down`. `Portal::stop` sends a `Disconnect`, so no attempt starts after the stop of the server. A control frame in `Waiting` gets its answer at once, as in `Down`.
 
 `WorldState` gains `Reconnecting`. The `watch` channel of the state carries the state and, for `Reconnecting`, the wall-clock time of the next attempt. At the start of the wait, the session computes that time from the tokio deadline. Only the API reads it.
 
-One function of the session starts every connect: the `Connect` handler and each attempt from `Waiting` call it. It reads the secret (decision 6), opens the `world.connection` span, and wraps the connect of the transport in one `tokio::time::timeout` of 10 seconds. The timeout therefore holds for every transport, the test transports included, and its expiry is the cause `Timeout`.
+One function of the session starts every connect: the `Connect` handler and each attempt from `Waiting` call it. It reads the secret (decision 7), opens the `world.connection` span, and wraps the connect of the transport in one `tokio::time::timeout` of 10 seconds. The timeout therefore holds for every transport, the test transports included, and its expiry is the cause `Timeout`.
 
 Alternative: a separate reconnect task per world that sends `Connect` after a sleep. That task races with the requests of the player, and the session does not know the state `reconnecting`. Rejected.
 
@@ -58,7 +58,7 @@ Enforced by: engine tests on the paused clock. They run the scenarios of "A worl
 | `Requested(Player)`, `Requested(Script)` | no | `player` | none |
 | `Requested(System)` | no | `stopped` | none |
 
-A refused TLS connect and a missing secret at a `Connect` call fail the call before any state change, so they never reach `down`. A missing secret at an automatic attempt ends the wait in `Down`, before any span opens.
+A refused TLS connect and a missing secret at a `Connect` call fail the call before any state change, so they never reach `down`. A missing secret at an automatic attempt ends the wait in `Down`, before any span opens. It does not go through `down`, so it has no row in the table.
 
 Enforced by: a unit test of each row of the table, and the scenarios of the reconnect requirement.
 
@@ -108,7 +108,7 @@ Enforced by: the scenarios of "A configured world connects over TCP" and "A TLS 
 
 ### 7. The secret is a source, read at each connect
 
-`SessionParts.password: Option<Secret>` becomes `secret: SecretSource`, with two cases:
+`SessionParts.password: Option<Secret>` becomes `secret: Option<SecretSource>`. A world with no login has `None`. `SecretSource` has two cases:
 
 - `Fixed(Secret)` for a fake world. The flag reads its password at the start, as today.
 - `Store(SecretRef, Arc<dyn SecretStore>)` for a configured world. It reads through `load_password`, so a masked or multi-line password fails as it does for the flag.
