@@ -13,6 +13,7 @@ pub mod store;
 mod text;
 mod update;
 mod view;
+pub mod wrap;
 
 pub use keymap::{Chord, Keymap};
 pub use layout::{Leaf, Node};
