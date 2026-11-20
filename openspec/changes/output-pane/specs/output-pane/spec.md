@@ -95,6 +95,12 @@ The pane SHALL keep at most its capacity of lines. Past that capacity, it SHALL 
 - **WHEN** the line `1001` arrives
 - **THEN** the copy text is `2`
 
+#### Scenario: A selection with both ends on dropped lines
+- **GIVEN** a pane with a capacity of 1000 lines that holds the lines `1` to `1000`
+- **AND** a selection from the start of `1` to the end of `2`
+- **WHEN** the lines `1001` and `1002` arrive
+- **THEN** the pane has no selection
+
 #### Scenario: An empty pane
 - **GIVEN** a pane with no lines
 - **WHEN** the pane drops its oldest lines, and then drops zero lines
@@ -123,6 +129,12 @@ If the pane holds more rows than its area shows, its last column SHALL show a sc
 - **WHEN** the pane renders
 - **THEN** the last column shows a scroll bar
 - **AND** the rows wrap at 9 columns
+
+#### Scenario: Rows that fit only at the full width
+- **GIVEN** a pane 10 columns wide and 2 rows high that holds the lines `aaaaaaaaaa` and `b`
+- **WHEN** the pane renders twice
+- **THEN** both renders show no scroll bar
+- **AND** the rows show `aaaaaaaaaa` and `b`
 
 ### Requirement: Styles show on their text
 The pane SHALL draw each part of a line with the style of that part: the foreground color, the background color, bold, dim, italic, underline, reverse and strikethrough. A style SHALL apply to its text only, in each row that the text wraps onto.
