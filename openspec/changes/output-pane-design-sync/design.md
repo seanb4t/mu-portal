@@ -76,6 +76,8 @@ Each frame then goes to one place:
 | A broken sequence | The probe makes the keys itself. ESC and the byte after it give that key with Alt, for example Alt+`[`. Each other byte gives its own key. |
 | Other bytes | A `termina::Parser`, for keys, text and paste. |
 
+At the end of the probe, an open sequence can still wait for more input. Its bytes then go to the early input as the keys of a broken sequence. Today the probe loses them.
+
 `probe::run` returns the outcome and the early events, so `run.rs` makes no parser of its own. The hand CSI decoder goes away. The public type of a probe reply is renamed `probe::Answer`, so the crate has no second `Reply` beside `update::Reply` (QUAL-22). The framer is a public function, so `tests/probe.rs` drives it.
 
 `Outcome` keeps the DECRPM value of mode 2027 as Termina's `DecModeSetting`. One function says whether a setting is set. `Outcome::resets_grapheme_mode` and the late DECRPM arm of `update` both call it.
@@ -89,7 +91,13 @@ Enforced by: the tests of `tests/probe.rs` that D10 names, and the pseudo-termin
 
 ### D4. The read error wins over the restore error
 
-A read error and a restore error can meet in two places: `probe::run` and `run::run`. In both, the result keeps the kind of the first error, and its message also holds the restore error. If only one fails, the result is that one. One function in `screen` does this, and both places call it.
+An error and the error of the restore after it can meet in three places:
+
+- `probe::run`: the read, then the restore of the terminal mode.
+- `run::run`: the event loop, then `screen::leave`.
+- `screen::open`: `enter`, then `leave` after `enter` fails.
+
+In each place, the result keeps the kind of the first error, and its message also holds the restore error. If only one fails, the result is that one. One public function in `screen` does this, and the three places call it.
 
 The panic hook still drops the error of its restore. A panic hook has no caller to give an error to.
 
