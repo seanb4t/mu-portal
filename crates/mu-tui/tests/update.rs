@@ -203,6 +203,28 @@ fn cut_reply_past_the_cap_is_dropped() {
     assert_eq!(model.input(), "1c");
 }
 
+#[test]
+fn early_keys_come_before_a_cut_reply() {
+    let mut model = model();
+    probe(&mut model, &incomplete());
+    type_text(&mut model, "x");
+    update(&mut model, Msg::CutReply(b"\x1b[12;".to_vec()));
+    type_text(&mut model, "5");
+    press(&mut model, KeyCode::Char('R'), Modifiers::SHIFT);
+    assert_eq!(model.input(), "x");
+}
+
+#[test]
+fn graphics_reply_cut_at_its_end() {
+    let mut model = model();
+    probe(&mut model, &incomplete());
+    press(&mut model, KeyCode::Char('_'), Modifiers::ALT);
+    type_text(&mut model, "Gi=31;OK");
+    press(&mut model, KeyCode::Escape, Modifiers::NONE);
+    press(&mut model, KeyCode::Char('\\'), Modifiers::NONE);
+    assert_eq!(model.input(), "");
+}
+
 /// The notice that the probe adds when it gives no widths.
 const WIDTH_NOTICE: &str =
     "-- the terminal gave no character widths, so wide characters can be out of line";

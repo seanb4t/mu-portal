@@ -225,6 +225,22 @@ fn long_apc_is_dropped() {
 }
 
 #[test]
+fn long_sequence_tail_is_dropped() {
+    let apc = [b"\x1b_".as_slice(), &[b'x'; PENDING_MAX]].concat();
+    let framing = framed(&[&apc, b"xxxx", b"\x1b", b"\\", b"\x1b[?62c"]);
+    assert_eq!(
+        (framing.answers, framing.events, framing.pending),
+        (vec![Answer::Da1], vec![], vec![])
+    );
+    let csi = [b"\x1b[".as_slice(), &[b'1'; PENDING_MAX]].concat();
+    let framing = framed(&[&csi, b"11", b"2c", b"\x1b[?62c"]);
+    assert_eq!(
+        (framing.answers, framing.events, framing.pending),
+        (vec![Answer::Da1], vec![], vec![])
+    );
+}
+
+#[test]
 fn incomplete_reply_stays() {
     let framing = framed(&[b"x\x1b[1;"]);
     assert_eq!(framing.pending, b"\x1b[1;");
