@@ -99,9 +99,14 @@ pub struct Framed {
 
 const ESC: u8 = 0x1b;
 
+/// The most bytes that [`frame`] holds for an open sequence.
+pub const PENDING_MAX: usize = 4096;
+
 /// Adds `read` to `pending` and frames the bytes of `pending` that make whole frames. A frame is
-/// a complete CSI, an APC, a broken sequence, or a run of other bytes. The bytes of an open
-/// sequence, or an ESC at the end, stay in `pending` for the next read.
+/// a complete CSI, an APC, a broken sequence, or a run of other bytes. A CSI or APC with no end,
+/// an ESC with at most one byte after it, and the first bytes of a UTF-8 character stay in
+/// `pending` for the next read. `pending` holds at most [`PENDING_MAX`] bytes: an open CSI or APC
+/// that passes the limit is dropped.
 ///
 /// - A complete CSI goes alone to a Termina parser. An answer of the three kinds is an
 ///   [`Answer`]. Each other event is input.
@@ -147,11 +152,34 @@ pub fn frame(pending: &mut Vec<u8>, read: &[u8]) -> Framed {
         used = at;
     }
     if used < at {
-        framed.events.extend(plain(&pending[used..at]));
-        used = at;
+        let end = at - unfinished_tail(&pending[used..at]);
+        framed.events.extend(plain(&pending[used..end]));
+        used = end;
     }
     pending.drain(..used);
+    if pending.len() > PENDING_MAX {
+        pending.clear();
+    }
     framed
+}
+
+/// The count of bytes at the end of `run` that need bytes of the next read: an ESC with one byte
+/// after it, or the first bytes of a UTF-8 character.
+fn unfinished_tail(run: &[u8]) -> usize {
+    if run.len() >= 2 && run[run.len() - 2] == ESC {
+        return 2;
+    }
+    for (back, &byte) in run.iter().rev().enumerate().take(3) {
+        let width = match byte {
+            0x80..=0xbf => continue,
+            0xc0..=0xdf => 2,
+            0xe0..=0xef => 3,
+            0xf0..=0xf7 => 4,
+            _ => return 0,
+        };
+        return if back + 1 < width { back + 1 } else { 0 };
+    }
+    0
 }
 
 /// The keys of the bytes that the framer still holds at the end of the probe, as the keys of a
@@ -189,11 +217,16 @@ fn scan(buf: &[u8]) -> Scan {
     Scan::Open
 }
 
-/// Gives one complete CSI to a Termina parser and sorts its events.
+/// The events that a Termina parser gives for one complete CSI, with no more input to come.
+/// [`frame`] decodes each CSI with this function, and so does the update of a late reply.
+#[must_use]
+pub fn decode_csi(bytes: &[u8]) -> Vec<Event> {
+    plain(bytes)
+}
+
+/// Decodes one complete CSI and sorts its events.
 fn csi(bytes: &[u8], framed: &mut Framed) {
-    let mut parser = Parser::default();
-    parser.parse(bytes, false);
-    while let Some(event) = parser.pop() {
+    for event in decode_csi(bytes) {
         match event {
             Event::Csi(Csi::Cursor(Cursor::ActivePositionReport { line, col })) => {
                 framed.answers.push(Answer::Cursor {
@@ -254,6 +287,9 @@ pub struct Outcome {
     /// True if the cursor replies gave the width of each grapheme of [`GRAPHEMES`]. If false,
     /// every class keeps the `unicode-width` value.
     pub measured: bool,
+    /// The bytes of a reply that the deadline cut, when DA1 did not come: an open CSI, or a lone
+    /// ESC. The rest of the reply comes as keys.
+    pub open: Vec<u8>,
 }
 
 impl Outcome {
@@ -337,15 +373,14 @@ pub fn run(out: &mut impl Write, wait: Duration) -> io::Result<(Outcome, Vec<Eve
     tcsetattr(fd, OptionalActions::Now, &timed)?;
     let read = write_and_read(fd, out, wait);
     let restored = tcsetattr(fd, OptionalActions::Now, &raw).map_err(io::Error::from);
-    let (answers, events) = screen::finish(read, restored)?;
-    Ok((Outcome::learn(&answers), events))
+    screen::finish(read, restored)
 }
 
 fn write_and_read(
     fd: BorrowedFd<'_>,
     out: &mut impl Write,
     wait: Duration,
-) -> io::Result<(Vec<Answer>, Vec<Event>)> {
+) -> io::Result<(Outcome, Vec<Event>)> {
     out.write_all(&queries())?;
     out.flush()?;
     read_answers(|buf| Ok(rustix::io::read(fd, buf)?), Instant::now, wait)
@@ -353,7 +388,10 @@ fn write_and_read(
 
 /// Reads with `read` and frames the bytes until DA1 or the time `wait` after the start. A read
 /// starts only if it can end by then, so the last tick can stay unread. `now` is the clock.
-/// Returns the answers, and the input that is not an answer, as events.
+/// Returns what the answers give, and the input that is not an answer, as events.
+///
+/// If DA1 did not come, an open CSI or a lone ESC at the end is in [`Outcome::open`]. Every other
+/// byte that the framer still holds is input.
 ///
 /// # Errors
 ///
@@ -362,7 +400,7 @@ pub fn read_answers(
     mut read: impl FnMut(&mut [u8]) -> io::Result<usize>,
     now: impl Fn() -> Instant,
     wait: Duration,
-) -> io::Result<(Vec<Answer>, Vec<Event>)> {
+) -> io::Result<(Outcome, Vec<Event>)> {
     let deadline = now() + wait;
     let mut pending = Vec::new();
     let mut answers = Vec::new();
@@ -378,6 +416,11 @@ pub fn read_answers(
         answers.extend(framed.answers);
         events.extend(framed.events);
     }
-    events.extend(flush(&pending));
-    Ok((answers, events))
+    let mut outcome = Outcome::learn(&answers);
+    if !outcome.complete && matches!(pending.as_slice(), [ESC] | [ESC, b'[', ..]) {
+        outcome.open = pending;
+    } else {
+        events.extend(flush(&pending));
+    }
+    Ok((outcome, events))
 }
