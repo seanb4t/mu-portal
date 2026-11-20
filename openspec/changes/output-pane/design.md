@@ -230,7 +230,7 @@ The design follows the part "Using a spike" of the Contributing page for spikes.
 | No file of a crate includes a file of `spikes/` | the boundary test |
 | `update` does no I/O | review, and the signature of `update` |
 | A widget state does not know the app | review |
-| A third-party crate enters through `[workspace.dependencies]` | `cargo deny` and the workspace lint in CI |
+| A third-party crate enters through `[workspace.dependencies]` | The test `crates/mu-cli/tests/workspace_boundary.rs`, with the violation `DependencyNotFromWorkspace` and the list `ALLOWED_CRATES` |
 | `mu-tui` uses only the crates that its row of `ALLOWED_CRATES` names | the boundary test in `crates/mu-cli/tests/workspace_boundary.rs` |
 | No text of a game sends a sequence to the terminal | the scenarios "Control characters" and "Other escape sequences" |
 | The terminal comes back at exit | the scenario "The modes at exit" |
