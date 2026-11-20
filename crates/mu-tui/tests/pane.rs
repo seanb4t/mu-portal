@@ -562,3 +562,11 @@ fn trim_moves_the_anchor_to_the_oldest_live_line() {
     pane.trim(5);
     assert_eq!(pane.anchor().map(|at| at.line), Some(id_of(&pane, "6")));
 }
+
+#[test]
+fn scroll_back_holds_when_lines_wrap_beside_the_bar() {
+    let mut pane = pane_with(std::iter::repeat_n("a".repeat(10), 10));
+    let bottom = rows(&render(&mut pane, 10, 3));
+    pane.scroll_rows(-1);
+    assert_ne!(rows(&render(&mut pane, 10, 3)), bottom);
+}

@@ -513,9 +513,11 @@ impl OutputPane {
 
     /// True if every row fits at `geometry` with no anchor.
     fn fits(state: &PaneState, geometry: Geometry) -> bool {
-        if state.anchor.is_some() {
-            return false;
-        }
+        state.anchor.is_none() && Self::all_fit(state, geometry)
+    }
+
+    /// True if the rows of every line fit at `geometry`.
+    fn all_fit(state: &PaneState, geometry: Geometry) -> bool {
         let mut left = usize::from(geometry.height);
         for line in (state.store.first_id().0..state.store.end_id().0).rev() {
             let count = state.rows_of(LineId(line), geometry.width).len();
@@ -634,11 +636,19 @@ impl StatefulWidget for OutputPane {
             height: area.height - unfinished_row,
         };
         // A resize can bring the last row of the newest line onto the screen. The pane is then
-        // at the bottom, so it follows new lines again.
-        if let Some(top) = state.anchor.and_then(|_| state.top_row(full))
-            && state.bottom_shows(top, full)
-        {
-            state.anchor = None;
+        // at the bottom, so it follows new lines again. With an anchor, the rows are drawn beside
+        // the scroll bar.
+        if state.anchor.is_some() {
+            let beside_bar = Geometry {
+                width: full.width.saturating_sub(1),
+                ..full
+            };
+            let bottom = state
+                .top_row(beside_bar)
+                .is_some_and(|top| state.bottom_shows(top, beside_bar));
+            if bottom || Self::all_fit(state, full) {
+                state.anchor = None;
+            }
         }
         let bar = area.width > 0 && !Self::fits(state, full);
         let geometry = Geometry {

@@ -41,11 +41,28 @@ fn cells(pixels: u32, cell: u16) -> u16 {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = env::args().nth(1).ok_or("usage: image-pane <file.png>")?;
     let png = fs::read(&path)?;
-    let (width, height) = png_size(&png).ok_or("not a PNG file")?;
-
+    let size = png_size(&png).ok_or("not a PNG file")?;
     let grapheme_mode = Arc::new(AtomicBool::new(true));
     let (mut terminal, reader) = screen::open(&grapheme_mode)?;
-    let cell = screen::cell(&mut terminal);
+    let result = session(&mut terminal, &reader, &grapheme_mode, &path, &png, size);
+    screen::leave(
+        terminal.backend_mut(),
+        grapheme_mode.load(Ordering::Relaxed),
+    )?;
+    result
+}
+
+/// Probes the terminal, shows the pane with the image until the user leaves, and deletes the
+/// image. The caller restores the terminal after it, also after an error.
+fn session(
+    terminal: &mut Screen,
+    reader: &EventReader,
+    grapheme_mode: &AtomicBool,
+    path: &str,
+    png: &[u8],
+    (width, height): (u32, u32),
+) -> Result<(), Box<dyn std::error::Error>> {
+    let cell = screen::cell(terminal);
     let (outcome, _input) = probe::run(terminal.backend_mut(), probe::WAIT)?;
     grapheme_mode.store(outcome.resets_grapheme_mode(), Ordering::Relaxed);
     let graphics = outcome.graphics;
@@ -64,23 +81,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for n in 1..=200 {
         pane.push(&format!("line {n} before the image"));
     }
-    pane.push_image(&path, image);
+    pane.push_image(path, image);
     for n in 1..=5 {
         pane.push(&format!("line {n} after the image"));
     }
-    if graphics {
-        let out = terminal.backend_mut();
-        out.write_all(&kitty::transmit(image, &png))?;
-        out.flush()?;
-    }
-
-    let result = show(&mut terminal, &reader, &mut pane);
     let out = terminal.backend_mut();
     if graphics {
-        write!(out, "\x1b_Ga=d,d=I,i={ID},q=2\x1b\\")?;
+        out.write_all(&kitty::transmit(image, png))?;
+        out.flush()?;
     }
-    screen::leave(out, grapheme_mode.load(Ordering::Relaxed))?;
-    Ok(result?)
+    let shown = show(terminal, reader, &mut pane);
+    if graphics {
+        let out = terminal.backend_mut();
+        write!(out, "\x1b_Ga=d,d=I,i={ID},q=2\x1b\\")?;
+        out.flush()?;
+    }
+    Ok(shown?)
 }
 
 fn show(terminal: &mut Screen, reader: &EventReader, pane: &mut PaneState) -> io::Result<()> {

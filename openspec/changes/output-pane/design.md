@@ -102,7 +102,7 @@ Enforced by: unit tests of `update` with no terminal, the unchanged pseudo-termi
 
 ### D3. The line store follows the output-pane decision
 
-The store keeps lines in chunks of 4096 lines, the size that the spike measured. A line id is absolute and never used again. A chunk holds the text of its lines in one string, the style spans in one list, and one record for each line. The record holds the end of the text, the end of the spans, the display width and flags. A span is a byte offset and an id in the style table of the pane.
+The store keeps lines in chunks of 4096 lines, the size that the spike measured. A line id is absolute and never used again. A chunk holds the text of its lines in one string, the style spans in one list, and one record for each line. The record holds the end of the text, the end of the spans and the image of an image line. The pane measures a line with the learned widths of D8, so the record holds no width. A span is a byte offset and an id in the style table of the pane.
 
 - The capacity of a pane is 100000 lines, a constant. #101 can make it a setting. The tests use a small capacity.
 - The store keeps the id of its first live line. A trim moves that id forward one line at a time, so the store holds at most its capacity. A chunk is freed when all its lines are behind the first live line. A trim of an empty store, and a trim of zero lines, return with no change. The review of #29 found both cases.
