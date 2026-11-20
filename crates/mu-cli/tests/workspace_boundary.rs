@@ -102,6 +102,8 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "ratatui-textarea",
             "termina",
             "tokio",
+            "unicode-segmentation",
+            "unicode-width",
         ],
     ),
     (

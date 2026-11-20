@@ -73,5 +73,7 @@ tonic = { version = "0.14.9", default-features = false, features = ["tls-native-
 tracing = "0.1.44"
 tracing-opentelemetry = { version = "0.34.0", default-features = false, features = ["metrics"] }
 tracing-subscriber = "0.3.23"
+unicode-segmentation = "1.13.3"
+unicode-width = "0.2.3"
 uuid = { version = "1.29.2", features = ["v4"] }
 vt100 = "0.18.1"

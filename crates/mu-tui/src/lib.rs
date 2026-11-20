@@ -9,6 +9,7 @@ mod layout;
 mod model;
 mod pane;
 mod run;
+pub mod store;
 mod text;
 mod update;
 mod view;

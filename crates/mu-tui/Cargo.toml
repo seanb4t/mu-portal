@@ -19,6 +19,8 @@ ratatui = { workspace = true }
 ratatui-textarea = { workspace = true }
 termina = { workspace = true }
 tokio = { workspace = true }
+unicode-segmentation = { workspace = true }
+unicode-width = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
