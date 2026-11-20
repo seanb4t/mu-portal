@@ -293,6 +293,7 @@ Each row is a fact that a task read in the current source or documentation. The 
 
 - [The change is large.] → The task groups land in order, and each group ends with passing tests. The skeleton group changes no behavior, so a review can read it alone.
 - [Termina is young, and its ratatui backend can lag behind ratatui.] → D1 keeps crossterm on a tie, and the decision page records the gap.
+- [The style table of a pane holds at most 65536 styles, and a trim does not free a style.] → A style past the limit draws as the default style, and its text stays. A session with many 24-bit colors can reach the limit. A clear of the pane empties the table. The test `style_past_the_table_limit_is_the_default` holds the limit.
 - [Mouse capture takes the selection from the terminal.] → The modifier key still gives the terminal selection, and the user guide says so.
 - [A terminal that answers DA1 late makes the client start slowly.] → The probe waits at most 500 milliseconds, once.
 - [Some terminals turn OSC 52 off, or need a setting for it.] → The copy is a write with no reply. Thus the client cannot see a failure. The user guide names the setting in Rex.

@@ -53,3 +53,22 @@ proptest! {
         prop_assert_eq!(newest, Some((pushes - 1).to_string()));
     }
 }
+
+#[test]
+fn style_past_the_table_limit_is_the_default() {
+    use ratatui::style::{Color, Style};
+    let style = |n: u32| {
+        let [_, _, high, low] = n.to_be_bytes();
+        Style::new().fg(Color::Rgb(1, high, low))
+    };
+    let mut store = LineStore::new(70_000);
+    // The default style takes the first entry, so 65535 new styles fill the table.
+    let ids: Vec<_> = (0..=65_535)
+        .map(|n| store.push("x", &[(0, style(n))]))
+        .collect();
+    let style_of = |n: usize| store.style(store.line(ids[n]).unwrap().spans[0].style);
+    assert_eq!(
+        (style_of(65_534), style_of(65_535)),
+        (style(65_534), Style::default())
+    );
+}
