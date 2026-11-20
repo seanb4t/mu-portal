@@ -142,8 +142,8 @@ Load the `rust-best-practices` skill before this group.
 
 ## 11. Integration
 
-- [ ] 11.1 Run `cargo nextest run --workspace --locked`, `cargo clippy --workspace --all-targets --locked`, `cargo deny check` and `mise run docs:check`. Make sure that each one passes, and that no test in the diff sleeps or waits on a clock.
-- [ ] 11.2 Run `openspec validate output-pane --strict`. Make sure that it passes, and that each scenario of both specs has the test that a task of this file names.
+- [x] 11.1 Run `cargo nextest run --workspace --locked`, `cargo clippy --workspace --all-targets --locked`, `cargo deny check` and `mise run docs:check`. Make sure that each one passes, and that no test in the diff sleeps or waits on a clock.
+- [x] 11.2 Run `openspec validate output-pane --strict`. Make sure that it passes, and that each scenario of both specs has the test that a task of this file names.
 
 ## Workflow follow-up
 
