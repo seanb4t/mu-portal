@@ -143,18 +143,16 @@ fn reply_after_da1_is_input() {
     assert_eq!(model.input(), "Gx");
 }
 
-/// An outcome with no DA1 that holds `bytes` of a cut reply.
-fn cut_at(bytes: &[u8]) -> Outcome {
-    Outcome {
-        open: bytes.to_vec(),
-        ..Outcome::default()
-    }
+/// Sends the probe result with no DA1, then `bytes` as the cut reply.
+fn cut_at(model: &mut Model, bytes: &[u8]) {
+    probe(model, &incomplete());
+    update(model, Msg::CutReply(bytes.to_vec()));
 }
 
 #[test]
 fn cut_da1_ends_the_wait() {
     let mut model = model();
-    probe(&mut model, &cut_at(b"\x1b[?62;2"));
+    cut_at(&mut model, b"\x1b[?62;2");
     type_text(&mut model, "2");
     press(&mut model, KeyCode::Char('c'), Modifiers::NONE);
     assert_eq!(model.input(), "");
@@ -165,7 +163,7 @@ fn cut_da1_ends_the_wait() {
 #[test]
 fn cut_cursor_reply_is_not_typed() {
     let mut model = model();
-    probe(&mut model, &cut_at(b"\x1b[12;"));
+    cut_at(&mut model, b"\x1b[12;");
     type_text(&mut model, "5");
     press(&mut model, KeyCode::Char('R'), Modifiers::SHIFT);
     assert_eq!(model.input(), "");
@@ -174,7 +172,7 @@ fn cut_cursor_reply_is_not_typed() {
 #[test]
 fn other_key_drops_a_cut_reply() {
     let mut model = model();
-    probe(&mut model, &cut_at(b"\x1b[1"));
+    cut_at(&mut model, b"\x1b[1");
     type_text(&mut model, "2");
     assert_eq!(model.input(), "");
     press(&mut model, KeyCode::Char('n'), Modifiers::CONTROL);
@@ -185,7 +183,7 @@ fn other_key_drops_a_cut_reply() {
 #[test]
 fn lone_esc_then_bracket_continues_a_cut_reply() {
     let mut model = model();
-    probe(&mut model, &cut_at(b"\x1b"));
+    cut_at(&mut model, b"\x1b");
     type_text(&mut model, "[?62");
     press(&mut model, KeyCode::Char('c'), Modifiers::NONE);
     assert_eq!(model.input(), "");
@@ -197,7 +195,7 @@ fn lone_esc_then_bracket_continues_a_cut_reply() {
 fn cut_reply_past_the_cap_is_dropped() {
     let mut model = model();
     let held = [b"\x1b[".as_slice(), &vec![b'1'; PENDING_MAX - 2]].concat();
-    probe(&mut model, &cut_at(&held));
+    cut_at(&mut model, &held);
     type_text(&mut model, "1");
     press(&mut model, KeyCode::Char('c'), Modifiers::NONE);
     assert_eq!(model.input(), "1c");

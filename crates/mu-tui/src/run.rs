@@ -32,11 +32,14 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
     let (mut terminal, reader) = screen::open(&grapheme_mode)?;
     let probed = probe::run(terminal.backend_mut(), probe::WAIT);
     let result = match probed {
-        Ok((outcome, input)) => {
+        Ok((mut outcome, input)) => {
             grapheme_mode.store(outcome.resets_grapheme_mode(), Ordering::Relaxed);
-            // The probe result goes first, then the input that came during the probe.
+            let open = std::mem::take(&mut outcome.open);
+            // The probe result goes first, then the input that came during the probe, then the
+            // bytes of a cut reply. The input came before those bytes.
             let early = std::iter::once(Msg::Probe(outcome))
                 .chain(input.into_iter().map(Msg::Terminal))
+                .chain((!open.is_empty()).then_some(Msg::CutReply(open)))
                 .collect();
             let result = event_loop(&mut terminal, reader, early, &mut model, &client).await;
             if model.keeps_grapheme_mode() {

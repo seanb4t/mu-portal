@@ -70,6 +70,8 @@ pub(crate) enum Late {
     Waiting,
     /// A graphics reply started with Alt+`_`, and `keys` of its text came.
     Graphics { keys: usize },
+    /// A graphics reply started with Alt+`_`, and the key Escape came. A `\` key ends the reply.
+    GraphicsEscape,
     /// The probe stopped inside a CSI reply, or after the ESC of one. The held bytes start with
     /// ESC, and the keys of the rest of the reply add to them until the final byte. At most
     /// [`PENDING_MAX`](crate::probe::PENDING_MAX) bytes.
@@ -124,14 +126,22 @@ impl Model {
     }
 
     /// Waits for the late replies of the probe until a DA1 reply comes. It drops the keys of a
-    /// kitty graphics reply, and it rebuilds the reply that `open` starts from the keys after it.
-    /// `open` is empty, or it starts with ESC.
-    pub(crate) fn await_late_replies(&mut self, open: Vec<u8>) {
-        self.late = if open.is_empty() {
-            Late::Waiting
-        } else {
-            Late::Csi(open)
-        };
+    /// kitty graphics reply.
+    pub(crate) fn await_late_replies(&mut self) {
+        self.late = Late::Waiting;
+    }
+
+    /// Holds `bytes`, the start of a CSI reply that the probe cut, and rebuilds the reply from the
+    /// keys after it. `bytes` start with ESC, and have `[` second if they hold more than one byte.
+    /// They hold at most [`PENDING_MAX`](crate::probe::PENDING_MAX) bytes.
+    pub(crate) fn hold_cut_reply(&mut self, bytes: Vec<u8>) {
+        debug_assert!(
+            bytes.first() == Some(&0x1b)
+                && bytes.len() <= crate::probe::PENDING_MAX
+                && (bytes.len() == 1 || bytes[1] == b'['),
+            "a cut reply starts with ESC, and a longer one with ESC [: {bytes:?}"
+        );
+        self.late = Late::Csi(bytes);
     }
 
     /// The id of the world in focus.

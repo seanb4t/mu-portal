@@ -33,6 +33,9 @@ pub enum Msg {
     Client(ClientEvent),
     /// The result of the startup probe.
     Probe(Outcome),
+    /// The bytes of a reply that the end of the probe cut, after the early input. The model
+    /// holds them if it waits for late replies, and drops them if it does not.
+    CutReply(Vec<u8>),
     /// The reply of a call.
     Reply(Reply),
 }
@@ -126,6 +129,12 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
             on_probe(model, &outcome);
             Vec::new()
         }
+        Msg::CutReply(bytes) => {
+            if model.late == Late::Waiting && !bytes.is_empty() {
+                model.hold_cut_reply(bytes);
+            }
+            Vec::new()
+        }
         Msg::Reply(reply) => {
             on_reply(model, reply);
             Vec::new()
@@ -140,7 +149,7 @@ const WIDTH_NOTICE: &str =
 fn on_probe(model: &mut Model, outcome: &Outcome) {
     model.set_caps(Caps::from(outcome));
     if !outcome.complete {
-        model.await_late_replies(outcome.open.clone());
+        model.await_late_replies();
     }
     if !outcome.measured {
         model.notice(WIDTH_NOTICE);
@@ -176,6 +185,10 @@ fn on_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
                 model.late = Late::Waiting;
                 return Vec::new();
             }
+            if key.code == KeyCode::Escape && key.modifiers.is_empty() {
+                model.late = Late::GraphicsEscape;
+                return Vec::new();
+            }
             // A graphics reply starts with `G`. Any other key after Alt+`_` is the user's.
             if text(key).is_some()
                 && (keys > 0 || key.code == KeyCode::Char('G'))
@@ -184,26 +197,38 @@ fn on_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
                 model.late = Late::Graphics { keys: keys + 1 };
                 return Vec::new();
             }
-            model.late = Late::Waiting;
-            let mut effects =
-                on_input_key(model, KeyEvent::new(KeyCode::Char('_'), Modifiers::ALT));
-            effects.extend(on_input_key(model, key));
-            return effects;
+            return not_a_graphics_reply(model, key);
         }
-        Late::Csi(_) => return on_cut_reply_key(model, key),
+        Late::GraphicsEscape => {
+            if text(key) == Some('\\') {
+                model.late = Late::Waiting;
+                return Vec::new();
+            }
+            return not_a_graphics_reply(model, key);
+        }
+        Late::Csi(ref mut bytes) => {
+            let bytes = std::mem::take(bytes);
+            return on_cut_reply_key(model, bytes, key);
+        }
     }
     on_input_key(model, key)
 }
 
-/// A key while the model holds the bytes of a reply that the probe cut. A key that is a CSI byte
+/// `key` after the start of a graphics reply that did not go on. The model waits for late replies
+/// again, and the Alt+`_` that started the reply and `key` are the user's.
+fn not_a_graphics_reply(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
+    model.late = Late::Waiting;
+    let mut effects = on_input_key(model, KeyEvent::new(KeyCode::Char('_'), Modifiers::ALT));
+    effects.extend(on_input_key(model, key));
+    effects
+}
+
+/// A key while the model holds `bytes` of a reply that the probe cut. A key that is a CSI byte
 /// as text adds its byte. At the final byte, the bytes go to the decoder of the probe, and each
 /// event is handled as a terminal event. After a lone ESC, `[` continues the CSI, and `_` starts
 /// a graphics reply. Any other key, or a byte past [`probe::PENDING_MAX`], drops the held bytes,
 /// and the key acts as it does while the model waits for late replies.
-fn on_cut_reply_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
-    let Late::Csi(mut bytes) = std::mem::take(&mut model.late) else {
-        return Vec::new();
-    };
+fn on_cut_reply_key(model: &mut Model, mut bytes: Vec<u8>, key: KeyEvent) -> Vec<Effect> {
     let byte = text(key)
         .and_then(|c| u8::try_from(c).ok())
         .filter(|b| (0x20..=0x7e).contains(b));
