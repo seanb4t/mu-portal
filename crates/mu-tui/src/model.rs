@@ -183,8 +183,8 @@ impl Model {
             .map_or(PaneId::NOTICES, |world| world.pane)
     }
 
-    /// Adds the system line `-- <text>` at the bottom of the pane in focus. After a reset of
-    /// the panes, the line comes back in the pane in focus.
+    /// Adds the system line `-- <text>` at the bottom of the pane in focus. After a Reset
+    /// clears the panes of the worlds, the line comes back in the pane of the world in focus.
     pub fn notice(&mut self, text: &str) {
         let line = format!("-- {text}");
         self.push(self.focused_pane(), &line);

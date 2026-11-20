@@ -138,6 +138,33 @@ fn reply_after_da1_is_input() {
     assert_eq!(model.input(), "Gx");
 }
 
+/// The count of rows of `model` on a 20 by 4 screen that read `-- note`.
+fn note_rows(model: &mut Model) -> usize {
+    let mut terminal = Terminal::new(TestBackend::new(20, 4)).unwrap();
+    terminal.draw(|frame| view(model, frame)).unwrap();
+    (0..4)
+        .filter(|&y| {
+            let row: String = (0..20)
+                .map(|x| terminal.backend().buffer()[(x, y)].symbol())
+                .collect();
+            row.trim_end() == "-- note"
+        })
+        .count()
+}
+
+#[test]
+fn notice_with_no_world_shows_once_after_a_reset() {
+    let mut model = Model::new([]);
+    model.notice("note");
+    update(
+        &mut model,
+        Msg::Client(ClientEvent::Reset {
+            instance_id: "i".to_owned(),
+        }),
+    );
+    assert_eq!(note_rows(&mut model), 1);
+}
+
 #[test]
 fn notice_comes_back_after_a_reset() {
     let mut model = model();
@@ -148,18 +175,7 @@ fn notice_comes_back_after_a_reset() {
             instance_id: "i".to_owned(),
         }),
     );
-    let mut terminal = Terminal::new(TestBackend::new(20, 4)).unwrap();
-    terminal.draw(|frame| view(&mut model, frame)).unwrap();
-    let rows: Vec<String> = (0..4)
-        .map(|y| {
-            (0..20)
-                .map(|x| terminal.backend().buffer()[(x, y)].symbol())
-                .collect::<String>()
-                .trim_end()
-                .to_owned()
-        })
-        .collect();
-    assert_eq!(rows.iter().filter(|row| *row == "-- note").count(), 1);
+    assert_eq!(note_rows(&mut model), 1);
 }
 
 #[test]
