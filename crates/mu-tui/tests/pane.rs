@@ -639,3 +639,107 @@ fn placeholder_char_in_text_is_a_replacement() {
     pane.push("\u{10EEEE}b");
     assert_eq!(rows(&render(&mut pane, 3, 1)), ["\u{FFFD}b"]);
 }
+
+fn small_pane_without_its_first_line() -> PaneState {
+    let mut pane = PaneState::new(3);
+    for line in ["a", "b", "c", "d"] {
+        pane.push(line);
+    }
+    pane
+}
+
+#[test]
+fn select_on_a_dropped_line_starts_at_the_oldest_live_line() {
+    let mut pane = small_pane_without_its_first_line();
+    let b = id_of(&pane, "b");
+    let c = id_of(&pane, "c");
+    pane.select(
+        Position {
+            line: LineId(0),
+            byte: 0,
+        },
+        Position { line: c, byte: 1 },
+    );
+    assert_eq!(
+        (pane.selection(), pane.copy_text().as_deref()),
+        (
+            Some((Position { line: b, byte: 0 }, Position { line: c, byte: 1 })),
+            Some("b\nc")
+        )
+    );
+}
+
+#[test]
+fn press_on_a_dropped_line_starts_at_the_oldest_live_line() {
+    let mut pane = small_pane_without_its_first_line();
+    let b = id_of(&pane, "b");
+    pane.press(Position {
+        line: LineId(0),
+        byte: 0,
+    });
+    assert_eq!(
+        pane.selection(),
+        Some((Position { line: b, byte: 0 }, Position { line: b, byte: 0 }))
+    );
+}
+
+#[test]
+fn select_inside_a_char_starts_at_the_char() {
+    let mut pane = pane_with(["a日b".to_owned()]);
+    let line = id_of(&pane, "a日b");
+    pane.select(Position { line, byte: 2 }, Position { line, byte: 4 });
+    assert_eq!(
+        (pane.selection(), pane.copy_text().as_deref()),
+        (
+            Some((Position { line, byte: 1 }, Position { line, byte: 4 })),
+            Some("日")
+        )
+    );
+}
+
+#[test]
+fn press_inside_a_char_starts_at_the_char() {
+    let mut pane = pane_with(["a日b".to_owned()]);
+    let line = id_of(&pane, "a日b");
+    pane.press(Position { line, byte: 2 });
+    pane.drag(Position { line, byte: 4 });
+    assert_eq!(pane.release().as_deref(), Some("日b"));
+}
+
+#[test]
+fn select_past_the_end_of_a_line_ends_at_the_line() {
+    let mut pane = pane_with(["abc".to_owned()]);
+    let line = id_of(&pane, "abc");
+    pane.select(Position { line, byte: 1 }, Position { line, byte: 9 });
+    assert_eq!(pane.copy_text().as_deref(), Some("bc"));
+}
+
+#[test]
+fn select_past_the_newest_line_ends_at_the_newest_line() {
+    let mut pane = pane_with(["abc".to_owned()]);
+    let line = id_of(&pane, "abc");
+    pane.select(
+        Position { line, byte: 1 },
+        Position {
+            line: LineId(line.0 + 5),
+            byte: 0,
+        },
+    );
+    assert_eq!(pane.copy_text().as_deref(), Some("bc"));
+}
+
+#[test]
+fn select_in_an_empty_pane_selects_nothing() {
+    let mut pane = PaneState::default();
+    pane.select(
+        Position {
+            line: LineId(0),
+            byte: 0,
+        },
+        Position {
+            line: LineId(0),
+            byte: 0,
+        },
+    );
+    assert_eq!(pane.selection(), None);
+}

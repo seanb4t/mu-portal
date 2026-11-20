@@ -207,15 +207,45 @@ impl PaneState {
         self.selection
     }
 
-    /// Selects from `from` to `to`.
+    /// The live position nearest to `position`: a position on a dropped line moves to the start
+    /// of the oldest live line, a position past the newest line moves to the end of that line,
+    /// and a byte past the end of a text line or inside a char moves to the end of the line or
+    /// the start of the char. None if the pane holds no line.
+    fn live(&self, position: Position) -> Option<Position> {
+        let first = self.store.first_id();
+        let end = self.store.end_id();
+        if self.store.is_empty() {
+            return None;
+        }
+        if position.line < first {
+            return Some(Position {
+                line: first,
+                byte: 0,
+            });
+        }
+        let line = LineId(position.line.0.min(end.0 - 1));
+        let text = self.store.line(line)?;
+        let byte = if line != position.line {
+            text.text.len()
+        } else if text.image.is_some() {
+            position.byte
+        } else {
+            text.text.floor_char_boundary(position.byte)
+        };
+        Some(Position { line, byte })
+    }
+
+    /// Selects from `from` to `to`, each moved to the live position nearest to it. A pane with
+    /// no line has no selection.
     pub fn select(&mut self, from: Position, to: Position) {
-        self.selection = Some((from, to));
+        self.selection = self.live(from).zip(self.live(to));
     }
 
     /// Starts a drag at `position`, the cell under the press, with an empty selection there.
+    /// The drag starts at the live position nearest to `position`.
     pub fn press(&mut self, position: Position) {
-        self.pressed = Some(position);
-        self.selection = Some((position, position));
+        self.pressed = self.live(position);
+        self.selection = self.pressed.map(|position| (position, position));
     }
 
     /// Moves the end of the drag to `position`, the cell under the pointer. The selection holds
@@ -223,6 +253,9 @@ impl PaneState {
     /// nothing.
     pub fn drag(&mut self, position: Position) {
         let Some(pressed) = self.pressed else {
+            return;
+        };
+        let Some(position) = self.live(position) else {
             return;
         };
         self.selection = Some(if position >= pressed {
