@@ -264,6 +264,16 @@ impl PaneState {
         };
     }
 
+    /// Scrolls by `pages` pages at the size of the last render, as [`Self::scroll_rows`] does. A
+    /// page is the height of the text area less one row, and at least one row.
+    pub fn scroll_pages(&mut self, pages: i32) {
+        let Some(geometry) = self.geometry else {
+            return;
+        };
+        let step = i32::from(geometry.height.saturating_sub(1).max(1));
+        self.scroll_rows(pages.saturating_mul(step));
+    }
+
     /// The position of the screen cell `x`, `y` at the last render. A cell of a wide grapheme
     /// gives the start of that grapheme, and a cell past the end of the text gives the end of
     /// the row. A cell of the scroll bar or of the unfinished line gives none. A row of a line

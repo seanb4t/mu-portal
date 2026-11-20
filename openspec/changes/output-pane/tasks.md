@@ -90,7 +90,7 @@ Load the `rust-best-practices` skill before this group.
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 7.1 Add the actions `ScrollPage` and `ScrollRows`, with their default keys of D6 and the mouse wheel. After `Submit`, return the pane to the bottom. Compute the page step with `saturating_sub`, and make it at least one row. Add these tests to `crates/mu-tui/tests/app.rs`:
+- [x] 7.1 Add the actions `ScrollPage` and `ScrollRows`, with their default keys of D6 and the mouse wheel. After `Submit`, return the pane to the bottom. Compute the page step with `saturating_sub`, and make it at least one row. Add these tests to `crates/mu-tui/tests/app.rs`:
   - `back_and_forward`, for "Back and forward"
   - `new_line_while_scrolled_back`, for "A new line while scrolled back"
   - `enter_returns_to_the_bottom`, for "Enter returns to the bottom"
@@ -100,7 +100,7 @@ Load the `rust-best-practices` skill before this group.
   - `page_keys_in_a_pane_of_no_rows`, for "A pane of no rows"
 
   Make sure that the seven tests pass.
-- [ ] 7.2 Describe the keys, the mouse wheel and the modifier key for the terminal selection in Rex in `docs/src/content/docs/guides/first-run.md`. Make sure that `mise run docs:check` passes, and that each key in the page has a test of task 7.1.
+- [x] 7.2 Describe the keys, the mouse wheel and the modifier key for the terminal selection in Rex in `docs/src/content/docs/guides/first-run.md`. Make sure that `mise run docs:check` passes, and that each key in the page has a test of task 7.1.
 
 ## 8. Selection and copy
 

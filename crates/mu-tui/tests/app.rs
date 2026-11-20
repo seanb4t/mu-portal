@@ -19,14 +19,18 @@ fn app(worlds: &[&str]) -> Model {
 
 /// An 80 by 24 screen.
 fn draw(app: &mut Model) -> Buffer {
-    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    draw_sized(app, 24)
+}
+
+/// A screen 80 cells wide and `height` rows high.
+fn draw_sized(app: &mut Model, height: u16) -> Buffer {
+    let mut terminal = Terminal::new(TestBackend::new(80, height)).unwrap();
     terminal.draw(|frame| view(app, frame)).unwrap();
     terminal.backend().buffer().clone()
 }
 
-/// The rows of an 80 by 24 screen, with no trailing spaces.
-fn screen(app: &mut Model) -> Vec<String> {
-    let buffer = draw(app);
+/// The rows of `buffer`, with no trailing spaces.
+fn text_rows(buffer: &Buffer) -> Vec<String> {
     (0..buffer.area.height)
         .map(|y| {
             let row: String = (0..buffer.area.width)
@@ -35,6 +39,11 @@ fn screen(app: &mut Model) -> Vec<String> {
             row.trim_end().to_owned()
         })
         .collect()
+}
+
+/// The rows of an 80 by 24 screen, with no trailing spaces.
+fn screen(app: &mut Model) -> Vec<String> {
+    text_rows(&draw(app))
 }
 
 /// The cells of the first row of the screen that starts with `text`, one for each char of
@@ -582,6 +591,140 @@ fn reset_clears_each_pane() {
             looks(&cells_of(&mut app, "after"))
         ),
         (None, None, plain(5))
+    );
+}
+
+/// `alpha/aria` with the game lines `1` to `count`, drawn once.
+fn numbered(count: u32) -> Model {
+    let mut app = app(&["alpha/aria"]);
+    for n in 1..=count {
+        on_event(&mut app, game("alpha/aria", &n.to_string()));
+    }
+    draw(&mut app);
+    app
+}
+
+/// The rows of the pane on an 80 by 24 screen, with no scroll bar column.
+fn pane_rows(app: &mut Model) -> Vec<String> {
+    let screen = screen(app);
+    screen[1..screen.len() - 1]
+        .iter()
+        .map(|row| {
+            row.chars()
+                .take(79)
+                .collect::<String>()
+                .trim_end()
+                .to_owned()
+        })
+        .collect()
+}
+
+fn wheel(app: &mut Model, kind: MouseEventKind) -> Vec<Effect> {
+    let mouse = MouseEvent {
+        kind,
+        column: 10,
+        row: 10,
+        modifiers: Modifiers::NONE,
+    };
+    update(app, Msg::Terminal(TermEvent::Mouse(mouse)))
+}
+
+#[test]
+fn back_and_forward() {
+    let mut app = numbered(40);
+    assert_eq!(press(&mut app, key(KeyCode::PageUp)), []);
+    let back = pane_rows(&mut app);
+    assert_eq!(
+        (back[0].as_str(), back.contains(&"40".to_owned())),
+        ("1", false)
+    );
+    assert_eq!(press(&mut app, key(KeyCode::PageDown)), []);
+    assert_eq!(pane_rows(&mut app).last().unwrap(), "40");
+}
+
+#[test]
+fn new_line_while_scrolled_back() {
+    let mut app = numbered(40);
+    press(&mut app, key(KeyCode::PageUp));
+    let before = pane_rows(&mut app);
+    on_event(&mut app, game("alpha/aria", "ping"));
+    assert_eq!(pane_rows(&mut app), before);
+}
+
+#[test]
+fn enter_returns_to_the_bottom() {
+    let mut app = numbered(40);
+    press(&mut app, key(KeyCode::PageUp));
+    type_text(&mut app, "hi");
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [Effect::Send {
+            world: "alpha/aria".to_owned(),
+            text: "hi".to_owned()
+        }]
+    );
+    on_event(&mut app, event("alpha/aria", Source::SOURCE_PLAYER, "hi"));
+    on_event(&mut app, game("alpha/aria", "You say, \"hi\""));
+    assert_eq!(pane_rows(&mut app).last().unwrap(), "You say, \"hi\"");
+}
+
+#[test]
+fn mouse_wheel_scrolls_three_rows() {
+    let mut app = numbered(40);
+    assert_eq!(
+        (
+            pane_rows(&mut app)[0].as_str(),
+            wheel(&mut app, MouseEventKind::ScrollUp)
+        ),
+        ("19", vec![])
+    );
+    let rows = pane_rows(&mut app);
+    assert_eq!((rows[0].as_str(), rows[21].as_str()), ("16", "37"));
+}
+
+#[test]
+fn back_to_a_scrolled_world() {
+    let mut app = two_worlds();
+    for n in 1..=40 {
+        on_event(&mut app, game("alpha/aria", &n.to_string()));
+    }
+    draw(&mut app);
+    press(&mut app, key(KeyCode::PageUp));
+    let before = pane_rows(&mut app);
+    press(&mut app, ctrl('n'));
+    draw(&mut app);
+    press(&mut app, ctrl('p'));
+    assert_eq!(pane_rows(&mut app), before);
+}
+
+#[test]
+fn page_up_in_a_pane_of_one_row() {
+    let mut app = app(&["alpha/aria"]);
+    for n in 1..=5 {
+        on_event(&mut app, game("alpha/aria", &n.to_string()));
+    }
+    let first = |app: &mut Model| text_rows(&draw_sized(app, 3))[1].chars().next();
+    assert_eq!(first(&mut app), Some('5'));
+    assert_eq!(press(&mut app, key(KeyCode::PageUp)), []);
+    assert_eq!(first(&mut app), Some('4'));
+}
+
+#[test]
+fn page_keys_in_a_pane_of_no_rows() {
+    let mut app = numbered(5);
+    draw_sized(&mut app, 2);
+    assert_eq!(
+        (
+            press(&mut app, key(KeyCode::PageUp)),
+            press(&mut app, key(KeyCode::PageDown))
+        ),
+        (vec![], vec![])
+    );
+    type_text(&mut app, "hi");
+    let rows = text_rows(&draw_sized(&mut app, 2));
+    assert_eq!(
+        (rows[0].starts_with("[alpha/aria]"), rows[1].as_str()),
+        (true, "hi")
     );
 }
 

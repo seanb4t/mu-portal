@@ -35,9 +35,18 @@ pub enum Action {
     FocusNext,
     /// Give the focus to the previous world, before the first world the last.
     FocusPrev,
-    /// Send the input line to the world in focus.
+    /// Send the input line to the world in focus, and return its pane to the bottom.
     Submit,
+    /// Scroll the pane in focus by this many pages: back for a negative count, forward for a
+    /// positive one. A page is the height of the pane less one row, and at least one row.
+    ScrollPage(i32),
+    /// Scroll the pane in focus by this many rows: back for a negative count, forward for a
+    /// positive one.
+    ScrollRows(i32),
 }
+
+/// The rows that one step of the mouse wheel scrolls.
+const WHEEL_ROWS: i32 = 3;
 
 /// What the loop must do after an update.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -73,10 +82,7 @@ pub enum Reply {
 pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
     match msg {
         Msg::Terminal(TermEvent::Key(key)) => on_key(model, key),
-        Msg::Terminal(TermEvent::Mouse(mouse)) => {
-            on_mouse(model, mouse);
-            Vec::new()
-        }
+        Msg::Terminal(TermEvent::Mouse(mouse)) => on_mouse(model, mouse),
         Msg::Terminal(_) => Vec::new(),
         Msg::Action(action) => act(model, action),
         Msg::Client(item) => {
@@ -102,17 +108,22 @@ fn on_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
     }
 }
 
-/// A press of the left button starts a selection at the position under the pointer.
-fn on_mouse(model: &mut Model, mouse: MouseEvent) {
-    if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
-        return;
-    }
-    let pane = model.focused_pane();
-    if let Some(state) = model.panes.get_mut(&pane) {
-        match state.position(mouse.column, mouse.row) {
-            Some(position) => state.select(position, position),
-            None => state.clear_selection(),
+/// The wheel scrolls the pane in focus, and a press of the left button starts a selection at
+/// the position under the pointer.
+fn on_mouse(model: &mut Model, mouse: MouseEvent) -> Vec<Effect> {
+    match mouse.kind {
+        MouseEventKind::ScrollUp => act(model, Action::ScrollRows(-WHEEL_ROWS)),
+        MouseEventKind::ScrollDown => act(model, Action::ScrollRows(WHEEL_ROWS)),
+        MouseEventKind::Down(MouseButton::Left) => {
+            if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
+                match state.position(mouse.column, mouse.row) {
+                    Some(position) => state.select(position, position),
+                    None => state.clear_selection(),
+                }
+            }
+            Vec::new()
         }
+        _ => Vec::new(),
     }
 }
 
@@ -127,7 +138,25 @@ fn act(model: &mut Model, action: Action) -> Vec<Effect> {
             move_focus(model, false);
             Vec::new()
         }
-        Action::Submit => submit(model).into_iter().collect(),
+        Action::Submit => {
+            let effects = submit(model).into_iter().collect();
+            if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
+                state.to_bottom();
+            }
+            effects
+        }
+        Action::ScrollPage(pages) => {
+            if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
+                state.scroll_pages(pages);
+            }
+            Vec::new()
+        }
+        Action::ScrollRows(rows) => {
+            if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
+                state.scroll_rows(rows);
+            }
+            Vec::new()
+        }
     }
 }
 

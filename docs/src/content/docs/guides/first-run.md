@@ -52,12 +52,18 @@ The top row lists the worlds. The world in focus is in square brackets: `[alpha/
 
 | Key | Action |
 |---|---|
-| Enter | Sends the input line to the world in focus |
+| Enter | Sends the input line to the world in focus, and returns its lines to the bottom |
+| PageUp | Scrolls the lines back by the height of the pane less one row |
+| PageDown | Scrolls the lines forward by the height of the pane less one row |
 | Ctrl+N | Moves the focus to the next world |
 | Ctrl+P | Moves the focus to the world before |
 | Ctrl+C | Quits the client. The server and its worlds keep running. |
 
 Type `hello` and press Enter. The screen shows `> hello`, and then the answer of the fake world, `You say, "hello"`. A line from the system has the prefix `-- `, for example `-- connect aria ****`. The server replaced the password with `****`.
+
+Each step of the mouse wheel scrolls the lines by 3 rows. When the lines do not fit, a scroll bar shows in the last column. If you scroll back, new lines do not move the rows on the screen. If you scroll forward to the newest line, the pane follows new lines again. Each world keeps its own scroll position when the focus moves.
+
+The client reads the mouse, so a plain drag does not make a selection of the terminal. In Rex, hold Shift while you drag to select text with the terminal.
 
 A world out of focus that gets a line shows `*` after its id. The mark goes when that world gets the focus.
 

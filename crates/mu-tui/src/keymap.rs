@@ -85,6 +85,8 @@ impl Default for Keymap {
         keymap.bind(Chord::ctrl('n'), Action::FocusNext);
         keymap.bind(Chord::ctrl('p'), Action::FocusPrev);
         keymap.bind(Chord::plain(KeyCode::Enter), Action::Submit);
+        keymap.bind(Chord::plain(KeyCode::PageUp), Action::ScrollPage(-1));
+        keymap.bind(Chord::plain(KeyCode::PageDown), Action::ScrollPage(1));
         keymap
     }
 }
