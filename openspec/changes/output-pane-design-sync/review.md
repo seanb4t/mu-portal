@@ -1,9 +1,9 @@
 ---
-verdict: approve-with-notes
+verdict: approve
 phase: plan
-reviewed_at: 2026-11-20T14:28:59+00:00
-head: 6fcd861930db5c3d0718d9bdc9a04edafbdaa334
-round: 2
+reviewed_at: 2026-11-20T14:31:24+00:00
+head: a4921572886382a6b8584a63619f2b63878839e8
+round: 3
 next_id: 27
 lenses:
   spec-lint: ok
@@ -20,7 +20,6 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-13 | verify | should-fix | in-change | PARTIAL: the fix 21c94fc351164eaac813eceb3be70eb5c60e0e01 of R-13 did not hold. D5 adds a rule that keeps the restore error in the message of the read error. run.rs and screen.rs handle the same pair, an error and the error of the terminal restore, by dropping the second. D5 names neither, so the client gets two rules for one case. | crates/mu-tui/src/screen.rs:80 — "let _ = leave(out, false);" | fix it again | regression |  | wrong-behaviour |
 
 ## Repeats
 
@@ -44,10 +43,11 @@ None.
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | 1 | plan | full | 372c2e90854597c5c8287f633b24c8ff860a4a85 | e3cdae8b25f34fd3701152b8ff30ec88fbf5b40a3fc5236e05c7be0fd4fbcf06 | changes-requested | 26 | 0 | 0 | 0 | 0 |  |
 | 2 | plan | follow-up | 6fcd861930db5c3d0718d9bdc9a04edafbdaa334 | fabb89e983e8c70dae4bafd96c9685d0b525c3d7604705fd56508f08ce0f49c0 | approve-with-notes | 0 | 0 | 1 | 19 | 0 |  |
+| 3 | plan | follow-up | a4921572886382a6b8584a63619f2b63878839e8 | 4f9019e79495a35fd65ccc89c4a1b46e969b0f79e7ec1830b6323731fdca29a9 | approve | 0 | 0 | 0 | 1 | 0 |  |
 
 ## Judge
 
-judge: 2 questions, 0.000 USD
+judge: 0 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -68,10 +68,11 @@ None.
 
 ## Lens notes
 
-- verify: Task 2.2 adds open_apc_does_not_hide_da1, which D10 says runs with the fake clock, and task 2.3 requires the tests of 2.2 to pass. But the read loop that takes a clock comes only in task 3.1. Task 3.2 checks the test again, so the plan may mean the clock part to wait until then. Saying so in task 2.2 would make the order clear.
-- verify: D3 says an ESC or an open sequence at the end of a read waits for the next read, but it gives no rule for bytes still pending when the probe ends at DA1 or at the deadline, now that run.rs makes no parser. The code at head passes the pending bytes to the run.rs parser, and a bare ESC [ is lost there too, so this is no regression.
-- verify: tests/update.rs sets the notice to the text note and counts rows that read -- note on a 20-column screen (lines 141-179). Through Msg::Probe the notice becomes WIDTH_NOTICE, so task 4.1 has to change the assertion and the screen width, not just the setup.
-- verify: Task 3.3 names no file for the four tests of the D4 function. If they live in crates/mu-tui/tests/, as every other mu-tui test does, the function in screen must be public.
+- verify: R-13: D4 now names the three places where an error meets a restore error (probe::run, run::run at the result.and(left) line of run.rs, and screen::open at its let _ = leave(out, false) line), and gives them one public function in screen. The panic hook is named as the one exception, with its reason. Task 3.3 calls the function from all three places and writes four tests in crates/mu-tui/tests/screen.rs, which exists.
+- verify: Task 3.3 writes its tests in crates/mu-tui/tests/screen.rs, but the Tests line of the proposal's Impact does not name that file. The Code line names screen.rs and run.rs.
+- verify: Task 2.3 (tasks.md line 14) asks that the tests of 2.2 pass except open_apc_does_not_hide_da1, which needs the fake clock of task 3.1. If that test calls the public read loop that task 3.1 adds, tests/probe.rs does not build at task 2.3, and every probe test fails with it, not only that one. Task 2.2 should write that test without the fake clock, or task 2.3 should expect the probe test binary not to build.
+- verify: What Changes in the proposal names the read-and-restore rule only for the probe (QUAL-12). D4 now also changes the error message of run::run and screen::open. Impact already names run.rs and screen.rs, so this note raises no scope finding.
+- verify: D8 sends D2 to D4 to character-width.md. D4 now also covers run::run and screen::open, which have nothing to do with character width. Task 3.4 writes the error rule there too.
 
 ## Ledger
 
@@ -89,7 +90,7 @@ None.
 | R-10 | 1 | 2 | should-fix | in-change | next-change | ["artifact",["tasks.md","4. The probe result is a message"],"Write the unit tests of `update` for `Msg::Probe` in `crates/mu-tui/src/update.rs` or `crates/mu-tui/tests/app.rs`"] | resolved | resolved in round 2 from fixed 21c94fc351164eaac813eceb3be70eb5c60e0e01 |  |  | Task 4.1 puts the Msg::Probe tests in src/update.rs or tests/app.rs, but tests/update.rs is the home of the update tests for terminal replies. Its late-reply and notice tests call await_late_replies and notice, which task 4.2 makes crate-private, and no task rewrites them. |
 | R-11 | 1 | 2 | should-fix | in-change | drift | ["path","crates/mu-tui/src/probe.rs",214] | resolved | resolved in round 2 from fixed 21c94fc351164eaac813eceb3be70eb5c60e0e01 |  |  | After D3 the probe gets DECRPM as Termina's DecModeSetting, as update already does, but Outcome keeps mode 2027 as a raw u16 and tests it with Some(1 \| 3). The rule 'mode reported as set' then has two encodings and two copies. |
 | R-12 | 1 | 2 | should-fix | in-change | drift | ["artifact",["proposal.md","What Changes"],"`Caps` stops repeating the probe outcome."] | resolved | resolved in round 2 from fixed 21c94fc351164eaac813eceb3be70eb5c60e0e01 |  |  | The proposal says Caps stops repeating the probe outcome, but after D6 Caps still holds the profile and the graphics flag of Outcome. The Outcome-to-Caps mapping is copied in run.rs, which D1 moves into update, and in the image-pane example. |
-| R-13 | 1 | 2 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D5. The read error wins over the restore error"],"Its message holds both errors."] | fixed | ecacbba87c9a14cce2d2fe93f40cc5a74bc9fe53 |  |  | D5 adds a rule that keeps the restore error in the message of the read error. run.rs and screen.rs handle the same pair, an error and the error of the terminal restore, by dropping the second. D5 names neither, so the client gets two rules for one case. |
+| R-13 | 1 | 3 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D5. The read error wins over the restore error"],"Its message holds both errors."] | resolved | resolved in round 3 from fixed ecacbba87c9a14cce2d2fe93f40cc5a74bc9fe53 |  |  | D5 adds a rule that keeps the restore error in the message of the read error. run.rs and screen.rs handle the same pair, an error and the error of the terminal restore, by dropping the second. D5 names neither, so the client gets two rules for one case. |
 | R-14 | 1 | 2 | should-fix | in-change | drift | ["path","crates/mu-tui/src/probe.rs",241] | resolved | resolved in round 2 from fixed 21c94fc351164eaac813eceb3be70eb5c60e0e01 |  |  | D2 needs the tick of 100 milliseconds as a Duration in the loop condition, while the probe sets the same tick as VTIME 1. The design states no single source, so the bound can drift from the read if one of them changes. |
 | R-15 | 1 | 2 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D4. An ESC ends an open sequence"],"In the input of the probe, an ESC that comes before the end of an open CSI or APC ends that sequence."] | resolved | resolved in round 2 from fixed 21c94fc351164eaac813eceb3be70eb5c60e0e01 |  |  | D4 covers an open CSI, but the planned tests pass only a bare ESC [ and an open APC. An open CSI with a ? prefix takes another path in termina: it keeps reading up to the next u, c, n or y. A probe of ESC [ ? before a cursor reply and DA1 gave DA1 alone, so the cursor reply was swallowed. |
 | R-16 | 1 | 2 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D3. Termina parses the CSI replies, and the probe parses only the APC reply"],"An APC, from ESC `_` to ESC `\\\\`, goes to the parser of the kitty graphics reply in the probe."] | resolved | resolved in round 2 from fixed 21c94fc351164eaac813eceb3be70eb5c60e0e01 |  |  | The APC ends with ESC \\, so its own terminator starts with the ESC that D4 says ends an open APC. No planned test puts a read boundary between that ESC and the backslash. A probe that reads a trailing ESC as a new sequence loses the kitty reply and turns graphics off. |
