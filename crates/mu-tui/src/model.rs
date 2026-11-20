@@ -125,9 +125,9 @@ impl Model {
         self.keeps_grapheme_mode
     }
 
-    /// Drops the keys of a kitty graphics reply until a DA1 reply comes. The client calls this
-    /// when the probe stopped before DA1, so the rest of its replies come as terminal events.
-    pub fn await_late_replies(&mut self) {
+    /// Drops the keys of a kitty graphics reply until a DA1 reply comes. The update of the probe
+    /// result calls this when the probe stopped before DA1, so the rest of its replies come as terminal events.
+    pub(crate) fn await_late_replies(&mut self) {
         self.late = Late::Waiting;
     }
 
@@ -190,7 +190,7 @@ impl Model {
     }
 
     /// Wraps and draws every pane for a terminal with `caps`.
-    pub fn set_caps(&mut self, caps: Caps) {
+    pub(crate) fn set_caps(&mut self, caps: Caps) {
         self.caps = Arc::new(caps);
         for pane in self.panes.values_mut() {
             pane.set_caps(Arc::clone(&self.caps));
@@ -213,7 +213,7 @@ impl Model {
 
     /// Adds the system line `-- <text>` at the bottom of the pane in focus. After a Reset
     /// clears the panes of the worlds, the line comes back in the pane of the world in focus.
-    pub fn notice(&mut self, text: &str) {
+    pub(crate) fn notice(&mut self, text: &str) {
         let line = format!("-- {text}");
         self.push(self.focused_pane(), &line);
         self.notices.push(line);

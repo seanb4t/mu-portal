@@ -1,5 +1,6 @@
 //! The loop of the terminal client: keys, the event stream and the replies of calls.
 
+use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -7,12 +8,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use futures::StreamExt as _;
 use mu_client::PortalClient;
 use termina::escape::osc::{Osc, Selection};
-use termina::{Event as TermEvent, EventReader, EventStream};
+use termina::{EventReader, EventStream};
 use tokio::sync::mpsc;
 
 use crate::kitty;
 use crate::model::Model;
-use crate::pane::Caps;
 use crate::probe;
 use crate::screen::{self, Screen};
 use crate::update::{Effect, Msg, Reply, update};
@@ -30,25 +30,14 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
     // The probe sets mode 2027, so a panic before its replies turns the mode off.
     let grapheme_mode = Arc::new(AtomicBool::new(true));
     let (mut terminal, reader) = screen::open(&grapheme_mode)?;
-    let cell = screen::cell(&mut terminal).unwrap_or_else(|error| {
-        model.window_size_failed(&error);
-        None
-    });
     let probed = probe::run(terminal.backend_mut(), probe::WAIT);
     let result = match probed {
-        Ok((outcome, early)) => {
+        Ok((outcome, input)) => {
             grapheme_mode.store(outcome.resets_grapheme_mode(), Ordering::Relaxed);
-            model.set_caps(Caps {
-                profile: outcome.profile,
-                graphics: outcome.graphics,
-                cell,
-            });
-            if !outcome.complete {
-                model.await_late_replies();
-            }
-            if !outcome.measured {
-                model.notice(WIDTH_NOTICE);
-            }
+            // The probe result goes first, then the input that came during the probe.
+            let early = std::iter::once(Msg::Probe(outcome))
+                .chain(input.into_iter().map(Msg::Terminal))
+                .collect();
             let result = event_loop(&mut terminal, reader, early, &mut model, &client).await;
             if model.keeps_grapheme_mode() {
                 grapheme_mode.store(false, Ordering::Relaxed);
@@ -65,27 +54,22 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
     screen::finish(result, left)
 }
 
-/// The notice when the probe gives no character widths.
-const WIDTH_NOTICE: &str =
-    "the terminal gave no character widths, so wide characters can be out of line";
-
 async fn event_loop(
     terminal: &mut Screen,
     reader: EventReader,
-    early: Vec<TermEvent>,
+    mut early: VecDeque<Msg>,
     model: &mut Model,
     client: &PortalClient,
 ) -> io::Result<()> {
     let mut terminal_events = EventStream::new(reader, |_| true);
     let mut events = Box::pin(client.events());
     let (replies, mut reply) = mpsc::unbounded_channel();
-    // The input that came during the probe goes first.
-    let mut early = early.into_iter();
     loop {
-        terminal.draw(|frame| view(model, frame))?;
-        let msg = if let Some(event) = early.next() {
-            Msg::Terminal(event)
+        // No frame comes while an early message waits, so the first frame has the probe result.
+        let msg = if let Some(msg) = early.pop_front() {
+            msg
         } else {
+            terminal.draw(|frame| view(model, frame))?;
             tokio::select! {
             event = terminal_events.next() => match event {
                 Some(Ok(event)) => Msg::Terminal(event),

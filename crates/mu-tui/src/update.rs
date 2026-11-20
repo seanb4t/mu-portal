@@ -17,8 +17,8 @@ use termina::event::{
 use crate::convert::convert;
 use crate::keymap::Wheel;
 use crate::model::{Late, Model, PaneId};
-use crate::pane::PaneState;
-use crate::probe;
+use crate::pane::{Caps, PaneState};
+use crate::probe::{self, Outcome};
 use crate::store::Image;
 use crate::text::{clean, line};
 
@@ -31,6 +31,8 @@ pub enum Msg {
     Action(Action),
     /// An item of the event stream of the server.
     Client(ClientEvent),
+    /// The result of the startup probe.
+    Probe(Outcome),
     /// The reply of a call.
     Reply(Reply),
 }
@@ -120,10 +122,32 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
             on_client(model, item);
             Vec::new()
         }
+        Msg::Probe(outcome) => {
+            on_probe(model, &outcome);
+            Vec::new()
+        }
         Msg::Reply(reply) => {
             on_reply(model, reply);
             Vec::new()
         }
+    }
+}
+
+/// The notice when the probe gives no character widths.
+const WIDTH_NOTICE: &str =
+    "the terminal gave no character widths, so wide characters can be out of line";
+
+fn on_probe(model: &mut Model, outcome: &Outcome) {
+    model.set_caps(Caps {
+        profile: outcome.profile.clone(),
+        graphics: outcome.graphics,
+        cell: None,
+    });
+    if !outcome.complete {
+        model.await_late_replies();
+    }
+    if !outcome.measured {
+        model.notice(WIDTH_NOTICE);
     }
 }
 
