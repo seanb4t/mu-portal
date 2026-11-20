@@ -1,9 +1,9 @@
 ---
-verdict: approve-with-notes
+verdict: approve
 phase: implementation
-reviewed_at: 2026-11-20T04:48:13+00:00
-head: cd59fe6cbe5c799e761ac3c0c4a6030f4a50e0d1
-round: 9
+reviewed_at: 2026-11-20T04:50:19+00:00
+head: 2e1c509073f1adfcbae21c47781f7b7fc03bd3bc
+round: 10
 next_id: 95
 lenses:
   spec-lint: not-applicable
@@ -20,7 +20,6 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-94 | verify | should-fix | in-change | A Reset pushes each kept notice again into the pane in focus, but clears only the panes of worlds. With no world, the pane in focus is the notices pane, which the Reset does not clear, so each notice shows once more at each Reset. mu-client gives a Reset as the first item of the stream, so a terminal that gives no widths and a server with no world show the width notice twice at startup. | crates/mu-tui/src/update.rs:293 — "let pane = model.focused_pane();" | Clear the notices pane at a Reset too, or push the notices again only into a pane that the Reset cleared. Add a case with no world to notice_comes_back_after_a_reset. |  |  | wrong-behaviour |
 
 ## Repeats
 
@@ -62,10 +61,11 @@ None.
 | 7 | implementation | follow-up | a791882b38af41f3e77b40bf42c73008d32b396e | 504cf63a9cc562d28c9a396896ca15987d375e3e56b99bc600d2620894c93bcb | approve-with-notes | 0 | 0 | 1 | 0 | 0 |  |
 | 8 | implementation | follow-up | b3c4b591cffba229bb747c298bb1004aaccf8a6a | 504cf63a9cc562d28c9a396896ca15987d375e3e56b99bc600d2620894c93bcb | approve | 0 | 0 | 0 | 1 | 0 |  |
 | 9 | implementation | follow-up | cd59fe6cbe5c799e761ac3c0c4a6030f4a50e0d1 | 1aa4a87e2e77b0f4a3bec1dcff688f986fc2f01395ac9530f0b7186ebbac9f10 | approve-with-notes | 1 | 0 | 0 | 0 | 0 |  |
+| 10 | implementation | follow-up | 2e1c509073f1adfcbae21c47781f7b7fc03bd3bc | 1aa4a87e2e77b0f4a3bec1dcff688f986fc2f01395ac9530f0b7186ebbac9f10 | approve | 0 | 0 | 0 | 1 | 0 |  |
 
 ## Judge
 
-judge: 2 questions, 0.000 USD
+judge: 0 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -221,10 +221,11 @@ None.
 
 ## Lens notes
 
-- verify: prior.json holds no row with the disposition fixed, so fixes is empty.
-- verify: update.rs on_key: in Late::Graphics, a non-text key after Alt+_ G and more text keys replays only Alt+_ and that key, so the text keys that the wait ate are lost. Only a user who types Alt+_ G before a late DA1 meets it, so this is no finding.
-- verify: screen.rs open and run.rs: the panic hook reads the mode 2027 flag that run.rs updates only after the event loop, so a panic after a late reply of mode 2027 as set still writes the reset. The window is the life of the loop, and the reset does no harm on a terminal that knows the mode.
-- verify: text.rs clean_styled, store.rs push_line and pane.rs set_unfinished: the moved span offsets were read with a 2-byte C1 char and the 4-byte placeholder char; the style starts at its char in both cases.
+- verify: R-94: the Reset now pushes the kept notices again only when the pane in focus is not the notices pane. A world pane is never PaneId::NOTICES, because PaneId::NOTICES is PaneId(0) and next_pane starts at 1, so the guard cannot skip a world pane.
+- verify: R-94: with no world, the notices pane is not cleared by the Reset and keeps its notices, so each notice shows once. With a world in focus, the Reset clears the world pane and the notices come back once there.
+- verify: The test notice_with_no_world_shows_once_after_a_reset renders Model::new([]) on a 20 by 4 TestBackend after a Reset and counts the rows that read -- note. Before the fix, the pane would hold two such rows, both on the screen, so the test fails on the old code.
+- verify: The doc comment of Model::notice (model.rs 186-187) matches the new behaviour: the line comes back in the pane of the world in focus after a Reset.
+- verify: The hunks of openspec/changes/output-pane/review.md in diff-hunks.txt were not read, because this agent never reads review.md.
 
 ## Ledger
 
@@ -323,7 +324,7 @@ None.
 | R-91 | 5 | 5 | suggestion | in-change |  | ["artifact",["design.md","Risks / Trade-offs"],"The probe waits at most 500 milliseconds, once."] | deferred | ticket: https://github.com/seanb4t/mu-portal/issues/112; reason: Output-pane implementation review, round 5: the wait_screen and wait_rows duplication in the pty helper, and design text that differs from the code (ScrollPage(n), the probe as a Msg, the tty read and its bound, rustix, graphics without DA1, the CSI parser, the snapshot asserts). None changes behaviour. |  | severity? should-fix 0.75 | The design bounds the probe at 500 ms. The loop checks the deadline and then starts a read that can block for one VTIME of 100 ms, so a silent terminal waits up to about 600 ms. |
 | R-92 | 5 | 5 | suggestion | in-change |  | ["artifact",["proposal.md","Impact"],"Dependencies: a parser of escape sequences from an existing crate, and a snapshot test library"] | deferred | ticket: https://github.com/seanb4t/mu-portal/issues/112; reason: Output-pane implementation review, round 5: the wait_screen and wait_rows duplication in the pty helper, and design text that differs from the code (ScrollPage(n), the probe as a Msg, the tty read and its bound, rustix, graphics without DA1, the CSI parser, the snapshot asserts). None changes behaviour. |  | severity? should-fix 0.83 | mu-tui gains rustix with the termios feature, and it joins the mu-tui row of ALLOWED_CRATES. Neither the Dependencies part of the proposal nor any decision names it. The probe of D8 uses it for its timed read. |
 | R-93 | 5 | 5 | suggestion | in-change |  | ["path","crates/mu-tui/src/probe.rs",137] | deferred | ticket: https://github.com/seanb4t/mu-portal/issues/112; reason: Output-pane implementation review, round 5: the wait_screen and wait_rows duplication in the pty helper, and design text that differs from the code (ScrollPage(n), the probe as a Msg, the tty read and its bound, rustix, graphics without DA1, the CSI parser, the snapshot asserts). None changes behaviour. |  | severity? should-fix 0.72 | The probe parses the cursor position, DECRPM and DA1 replies by hand, while the termina::Parser it already feeds the other bytes gives each of them as Event::Csi. Only the APC reply needs a parser of its own, and D8 names no reason for the CSI part. |
-| R-94 | 9 | 9 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-tui/src/update.rs",293] | fixed | d53d2beddfbecb32040d249df86c75b1e4b8e998 |  |  | A Reset pushes each kept notice again into the pane in focus, but clears only the panes of worlds. With no world, the pane in focus is the notices pane, which the Reset does not clear, so each notice shows once more at each Reset. mu-client gives a Reset as the first item of the stream, so a terminal that gives no widths and a server with no world show the width notice twice at startup. |
+| R-94 | 9 | 10 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-tui/src/update.rs",293] | resolved | resolved in round 10 from fixed d53d2beddfbecb32040d249df86c75b1e4b8e998 |  |  | A Reset pushes each kept notice again into the pane in focus, but clears only the panes of worlds. With no world, the pane in focus is the notices pane, which the Reset does not clear, so each notice shows once more at each Reset. mu-client gives a Reset as the first item of the stream, so a terminal that gives no widths and a server with no world show the width notice twice at startup. |
 
 ## Reviewed files
 
@@ -349,14 +350,14 @@ None.
 | crates/mu-tui/src/kitty.rs | 8d9ae18e195c47aaeb9d3bfa78df64a3dfb2d755 |
 | crates/mu-tui/src/layout.rs | 1c0527ed55f420181f4466e059076ab9a82d5b91 |
 | crates/mu-tui/src/lib.rs | d3aca2f8da9fa91dd9ba3b291e0a2cb5269e4137 |
-| crates/mu-tui/src/model.rs | 23f01e2a4f942d59d3ec34c8ea889df17c06fa47 |
+| crates/mu-tui/src/model.rs | 0c206364fa01631c01c25676fbc1cab259f2cc08 |
 | crates/mu-tui/src/pane.rs | 2fa1665bd444546cc82b7496b3e57413e509f165 |
 | crates/mu-tui/src/probe.rs | 4474b2f92ac76702c6ee51d9215c8d2145b619b1 |
 | crates/mu-tui/src/run.rs | b0de97ec4b43627c4304f619f5c6079dee128a14 |
 | crates/mu-tui/src/screen.rs | 2cb155eb1c81a859cef4010bd372ab41d45179da |
 | crates/mu-tui/src/store.rs | 05642b53d76b5c36d614d12aa72051d7a2ad9720 |
 | crates/mu-tui/src/text.rs | 59209e40281df68d6c3e92862797ff8f888450ff |
-| crates/mu-tui/src/update.rs | bb1c0076f456812ef5fa8278c86be82beacece58 |
+| crates/mu-tui/src/update.rs | 0c2498b3e28d58a7eee2d933a5032b04a4f59473 |
 | crates/mu-tui/src/view.rs | b68a45df8b1eeea6937df4577fcbc809cf61cfc0 |
 | crates/mu-tui/src/width.rs | 8eaff2bf04da276226d0517d3ae50a984f75ef34 |
 | crates/mu-tui/src/wrap.rs | 71f7dcac265fa495459b2c8359b572ef8305311c |
@@ -373,7 +374,7 @@ None.
 | crates/mu-tui/tests/screen.rs | 14f8e8ca1998447c4c9da91a2b6b783c3dd9a2e0 |
 | crates/mu-tui/tests/snapshots/app__first_view_snapshot.snap | 4f61093601e1a81c3933bc090c0442d1357a46e4 |
 | crates/mu-tui/tests/store.rs | ab07a16294c360039247880430e6b3af563bf20f |
-| crates/mu-tui/tests/update.rs | 7619787098f27615fd412ef61c8fecee6532010a |
+| crates/mu-tui/tests/update.rs | 0bbe6886d9b23533c976fb64b8d94dedb7f8cde6 |
 | crates/mu-tui/tests/width.rs | 5f005e395f9bd44faf22491afaa354d87102dfd0 |
 | crates/mu-tui/tests/wrap.rs | 6e2abe5dc9525f323b04f4a1c8af0582bdc34709 |
 | deny.toml | 94857513f354b7d42f5c02e797edc200d11ca90d |
