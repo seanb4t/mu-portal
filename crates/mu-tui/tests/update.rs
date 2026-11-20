@@ -102,3 +102,38 @@ fn press_after_a_trim() {
     };
     assert_eq!(pane.selection(), Some((oldest, oldest)));
 }
+
+/// Feeds `bytes` to `model` as the Termina parser gives them.
+fn feed(model: &mut Model, bytes: &[u8]) {
+    let mut parser = termina::Parser::default();
+    parser.parse(bytes, false);
+    for event in std::iter::from_fn(|| parser.pop()) {
+        update(model, Msg::Terminal(event));
+    }
+}
+
+#[test]
+fn late_graphics_reply_does_not_reach_the_input_line() {
+    let mut model = model();
+    model.await_late_replies();
+    feed(&mut model, b"\x1b_Gi=31;OK\x1b\\\x1b[?62;22c");
+    type_text(&mut model, "hi");
+    assert_eq!(model.input(), "hi");
+}
+
+#[test]
+fn alt_underscore_with_no_reply_after_it_keeps_the_next_key() {
+    let mut model = model();
+    model.await_late_replies();
+    press(&mut model, KeyCode::Char('_'), Modifiers::ALT);
+    type_text(&mut model, "hi");
+    assert_eq!(model.input(), "hi");
+}
+
+#[test]
+fn reply_after_da1_is_input() {
+    let mut model = model();
+    model.await_late_replies();
+    feed(&mut model, b"\x1b[?62;22c\x1b_Gx\x1b\\");
+    assert_eq!(model.input(), "Gx");
+}

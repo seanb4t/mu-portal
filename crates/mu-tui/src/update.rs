@@ -7,13 +7,14 @@ use mu_proto::{EventKind, Source};
 use ratatui::style::Style;
 use ratatui_textarea::{Input, Key};
 use termina::Event as TermEvent;
+use termina::escape::csi::{Csi, Device};
 use termina::event::{
     KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 
 use crate::convert::convert;
 use crate::keymap::Wheel;
-use crate::model::{Model, PaneId};
+use crate::model::{Late, Model, PaneId};
 use crate::pane::PaneState;
 use crate::store::Image;
 use crate::text::{clean, line};
@@ -95,6 +96,10 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
     match msg {
         Msg::Terminal(TermEvent::Key(key)) => on_key(model, key),
         Msg::Terminal(TermEvent::Mouse(mouse)) => on_mouse(model, mouse),
+        Msg::Terminal(TermEvent::Csi(Csi::Device(Device::DeviceAttributes(())))) => {
+            model.late = Late::None;
+            Vec::new()
+        }
         Msg::Terminal(_) => Vec::new(),
         Msg::Action(action) => act(model, action),
         Msg::Client(item) => {
@@ -108,10 +113,45 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
     }
 }
 
+/// The most keys of a late graphics reply. A reply that is longer ends here.
+const GRAPHICS_KEYS: usize = 256;
+
 fn on_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
     if key.kind == KeyEventKind::Release {
         return Vec::new();
     }
+    let alt = |c: char| key.code == KeyCode::Char(c) && key.modifiers == Modifiers::ALT;
+    match model.late {
+        Late::None => {}
+        Late::Waiting => {
+            if alt('_') {
+                model.late = Late::Graphics { keys: 0 };
+                return Vec::new();
+            }
+        }
+        Late::Graphics { keys } => {
+            if alt('\\') {
+                model.late = Late::Waiting;
+                return Vec::new();
+            }
+            let text = matches!(key.code, KeyCode::Char(_))
+                && (key.modifiers - Modifiers::SHIFT).is_empty();
+            // A graphics reply starts with `G`. Any other key after Alt+`_` is the user's.
+            if text && (keys > 0 || key.code == KeyCode::Char('G')) && keys < GRAPHICS_KEYS {
+                model.late = Late::Graphics { keys: keys + 1 };
+                return Vec::new();
+            }
+            model.late = Late::Waiting;
+            let mut effects =
+                on_input_key(model, KeyEvent::new(KeyCode::Char('_'), Modifiers::ALT));
+            effects.extend(on_input_key(model, key));
+            return effects;
+        }
+    }
+    on_input_key(model, key)
+}
+
+fn on_input_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
     if let Some(action) = model.keymap.get(&key) {
         act(model, action)
     } else {

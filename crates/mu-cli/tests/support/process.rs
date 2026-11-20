@@ -497,7 +497,7 @@ pub enum Answers {
     ZwjWidth(u16),
     /// No answer to any query.
     None,
-    /// The default answers, after the first frame.
+    /// The default answers, and a kitty graphics reply before DA1, after the first frame.
     Late,
 }
 
@@ -591,6 +591,9 @@ impl Answerer {
                     _ => col,
                 };
                 format!("\x1b[{};{}R", row + 1, col + 1).into_bytes()
+            }
+            b"\x1b[c" if matches!(self.answers, Answers::Late) => {
+                b"\x1b_Gi=31;OK\x1b\\\x1b[?62;22c".to_vec()
             }
             b"\x1b[c" => b"\x1b[?62;22c".to_vec(),
             _ => {

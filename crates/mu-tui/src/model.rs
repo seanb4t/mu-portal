@@ -49,6 +49,20 @@ pub struct Model {
     pub(crate) lost: bool,
     pub(crate) keymap: Keymap,
     pub(crate) layout: Node,
+    pub(crate) late: Late,
+}
+
+/// The wait for the probe replies that came after the probe stopped reading. Termina gives the
+/// kitty graphics reply as keys: Alt+`_`, the keys of its text, then Alt+`\`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Late {
+    /// Every reply came, or the probe did not stop early.
+    #[default]
+    None,
+    /// The replies after the probe end with DA1.
+    Waiting,
+    /// A graphics reply started with Alt+`_`, and `keys` of its text came.
+    Graphics { keys: usize },
 }
 
 impl Model {
@@ -66,12 +80,19 @@ impl Model {
             lost: false,
             keymap: Keymap::default(),
             layout: Node::default(),
+            late: Late::None,
         };
         for id in worlds {
             model.world(&id);
         }
         model.focus = (!model.worlds.is_empty()).then_some(0);
         model
+    }
+
+    /// Drops the keys of a kitty graphics reply until a DA1 reply comes. The client calls this
+    /// when the probe stopped before DA1, so the rest of its replies come as terminal events.
+    pub fn await_late_replies(&mut self) {
+        self.late = Late::Waiting;
     }
 
     /// The id of the world in focus.

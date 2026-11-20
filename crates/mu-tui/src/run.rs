@@ -44,6 +44,9 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
                 graphics: outcome.graphics,
                 cell,
             });
+            if !outcome.complete {
+                model.await_late_replies();
+            }
             let mut parser = termina::Parser::default();
             parser.parse(&input, false);
             let early = std::iter::from_fn(|| parser.pop()).collect();
