@@ -15,23 +15,27 @@ The probe runs once, on the alternate screen, before the first frame:
 2. The client writes one grapheme from each width class and asks for the cursor position after each one. It also asks whether the terminal draws kitty images. It sends all the queries in one write and ends them with a device attributes query (DA1). Every terminal answers DA1, so the DA1 reply marks the end of the answers.
 3. For each class, the client keeps the rule that gives the measured width. The rules are the `unicode-width` value, the sum of the code point widths, or a constant. A zero-width probe sets the width of a joiner (ZWJ) inside a sum.
 
-The client reads the replies itself, before its event reader starts, and waits at most 500 milliseconds for DA1. The event reader drops some replies and gives the kitty graphics reply as key presses, so the replies must not reach it. A key that the user presses during the probe still reaches the client.
+The client reads the replies itself, before its event reader starts. It waits at most `probe::WAIT` for DA1. The event reader gives the kitty graphics reply as key presses, and its parser loses a reply that follows a stray escape byte. So the replies must not reach it. A key that the user presses during the probe still reaches the client.
 
 The probe frames its input. It cuts the bytes it reads into frames by the rules of ECMA-48. A CSI (control sequence introducer) starts with the escape byte and `[`. It holds parameter bytes and ends with one final byte. An APC (application program command) starts with the escape byte and `_`. It ends with the escape byte and `\`.
 
 Termina decodes each CSI. The probe gives each complete CSI to a Termina parser alone. The cursor, mode and DA1 replies come out of the parser as events. The probe decodes the kitty graphics reply itself, because Termina gives an APC as key presses.
 
-An escape byte ends an open sequence. So does a byte that cannot be part of a CSI. The probe then turns the bytes of the broken sequence into key presses for the client, and a new frame starts. A stray Alt+`[` or an open APC cannot hide a reply that follows it. A sequence that is still open when the probe stops also becomes key presses.
+An escape byte ends an open CSI or an open APC. The one exception is the escape byte of the `\` that ends an APC. A byte that cannot be part of a CSI also ends an open CSI. Inside an APC, only an escape byte ends the sequence. The probe then turns the bytes of the broken sequence into key presses for the client, and a new frame starts. A stray Alt+`[` or an open APC cannot hide a reply that follows it. If DA1 came, a sequence that is still open when the probe stops becomes key presses, because no reply follows DA1.
+
+The probe holds some bytes until its next read. It holds an open CSI or APC, an escape byte with at most one byte after it, and the first bytes of a UTF-8 character. So a key such as F1, which is the escape byte, `O` and `P`, reaches the client in one piece when its bytes come in two reads. So does a character such as `é`. The probe holds at most `probe::PENDING_MAX` bytes. It drops an open CSI or APC that grows past that limit.
+
+The wait can end inside a reply. Then the probe keeps the open CSI, or a lone escape byte, in its outcome, and it does not turn those bytes into key presses. The client holds them while it waits for late replies. Each key that is a CSI byte as text adds its byte. A key is a CSI byte as text if it is a character from space to `~` with no modifier but Shift. At the final byte, the client decodes the bytes with the decoder of the probe and handles the result as a late reply. So a cut DA1 reply still ends the wait, and a cut cursor reply never reaches the input line. After a lone escape byte, `[` continues the CSI, and `_` starts a late kitty graphics reply. Any other key drops the held bytes, and the key acts as usual. So does a byte past `probe::PENDING_MAX`. A key that the user presses at that moment can be lost, up to the first letter.
 
 The probe reads from stdin if stdin is a terminal. If it is not, the probe opens `/dev/tty`. Termina makes the same choice. The `mu-tui` crate uses `rustix` with its `termios` feature for the timed read.
 
-A kitty graphics reply turns graphics on, with or without DA1. The reply proves that the terminal supports images. Only the width profile needs DA1.
+A kitty graphics reply of `OK` with the id of the probe query turns graphics on, with or without DA1. The reply proves that the terminal supports images. An error reply, or a reply with another id, does not turn graphics on. Only the width profile needs DA1.
 
-The probe reads with a timed read. It sets the terminal to return from a read after at most one tenth of a second, even with no input. The terminal setting is VMIN 0 and VTIME 1. A read starts only if it can end before the 500 milliseconds are over. So a terminal that stays silent costs the client at most 500 milliseconds. The probe can stop up to one tenth of a second early. A DA1 reply in that last tenth of a second counts as a late reply.
+The probe reads with a timed read. It sets the terminal to return from a read after at most one tick (`probe::TICK`), even with no input. The terminal setting is VMIN at zero and VTIME at the tick. A read starts only if it can end before `probe::WAIT` is over. So a terminal that stays silent costs the client at most `probe::WAIT`. The probe can stop up to one tick early. A DA1 reply in that last tick counts as a late reply.
 
 The probe sets the terminal back after its reads. If the read fails and the restore fails too, the client reports the read error. The message of that error also holds the restore error. The same rule holds when the client leaves, and when it enters the alternate screen. If only the restore fails, the client reports the restore error.
 
-If the terminal does not answer in that time, the client uses the `unicode-width` value for every class. When the client exits, it turns off mode 2027, unless the terminal gave the mode as on before the probe. A reply that comes after the wait still counts, if it comes before the client exits.
+If the terminal does not answer in that time, the client uses the `unicode-width` value for every class. When the client exits, it turns off mode 2027, unless the terminal gave the mode as on before the probe. A mode 2027 reply or a DA1 reply that comes after the wait still counts, if it comes before the client exits. The client drops a kitty graphics reply and a cursor reply that come after the wait.
 
 The command `cargo run -p char-width -- list` in `spikes/` prints the class of each grapheme.
 
@@ -61,7 +65,6 @@ The tests of the client cover a terminal that adds the widths of code points, a 
 
 These cases have no test:
 
-- A kitty graphics reply that comes after the wait of 500 milliseconds. The event reader gives it to the input line as key presses.
 - tmux. tmux answers the cursor position query from its own grid, so the probe measures the widths of tmux. A difference between tmux and the terminal outside it is not visible to the client.
 - An East Asian locale where the terminal draws ambiguous characters two cells wide. The ambiguous class has its own probe, so the profile follows it.
 
