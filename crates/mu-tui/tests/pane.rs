@@ -570,3 +570,13 @@ fn scroll_back_holds_when_lines_wrap_beside_the_bar() {
     pane.scroll_rows(-1);
     assert_ne!(rows(&render(&mut pane, 10, 3)), bottom);
 }
+
+#[test]
+fn render_at_zero_width_keeps_the_scroll_position() {
+    let mut pane = pane_with(numbers(1..=10));
+    render(&mut pane, 20, 3);
+    pane.scroll_rows(-2);
+    let anchor = pane.anchor();
+    render(&mut pane, 0, 3);
+    assert_eq!((anchor.is_some(), pane.anchor()), (true, anchor));
+}

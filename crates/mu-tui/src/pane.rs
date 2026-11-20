@@ -637,8 +637,8 @@ impl StatefulWidget for OutputPane {
         };
         // A resize can bring the last row of the newest line onto the screen. The pane is then
         // at the bottom, so it follows new lines again. With an anchor, the rows are drawn beside
-        // the scroll bar.
-        if state.anchor.is_some() {
+        // the scroll bar. An area with no column shows no row, so it keeps the anchor.
+        if state.anchor.is_some() && full.width > 0 {
             let beside_bar = Geometry {
                 width: full.width.saturating_sub(1),
                 ..full
