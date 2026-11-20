@@ -95,11 +95,11 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
     (
         "mu-tui",
         &[
-            "crossterm",
             "futures",
             "proptest",
             "ratatui",
             "ratatui-textarea",
+            "termina",
             "tokio",
         ],
     ),

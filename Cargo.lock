@@ -727,7 +727,6 @@ dependencies = [
  "crossterm_winapi",
  "derive_more",
  "document-features",
- "futures-core",
  "mio",
  "parking_lot",
  "rustix",
@@ -1905,13 +1904,13 @@ dependencies = [
 name = "mu-tui"
 version = "0.1.0"
 dependencies = [
- "crossterm",
  "futures",
  "mu-client",
  "mu-proto",
  "proptest",
  "ratatui",
  "ratatui-textarea",
+ "termina",
  "tokio",
 ]
 
@@ -2625,7 +2624,6 @@ dependencies = [
  "instability",
  "ratatui-core",
  "ratatui-crossterm",
- "ratatui-macros",
  "ratatui-termina",
  "ratatui-termwiz",
  "ratatui-widgets",
@@ -2667,16 +2665,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ratatui-macros"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed7dc68daa7498a43e4d68e0eb078427e10c38fbcfbb1e42d955f1fa2140d814"
-dependencies = [
- "ratatui-core",
- "ratatui-widgets",
-]
-
-[[package]]
 name = "ratatui-termina"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2704,7 +2692,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6cf7263fbb7f37caa4bcfd00fc604ff1409f70456a833fbdff99282e88fdfe92"
 dependencies = [
  "ratatui-core",
- "ratatui-crossterm",
  "ratatui-widgets",
  "unicode-segmentation",
  "unicode-width",
@@ -3395,6 +3382,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9048a889effe34a5cddee0af7f53285198b16dca3be510858d38dfdb3e62a04e"
 dependencies = [
  "bitflags 2.13.2",
+ "futures-core",
  "parking_lot",
  "rustix",
  "signal-hook",

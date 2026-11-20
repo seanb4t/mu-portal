@@ -12,12 +12,12 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-crossterm = { workspace = true }
 futures = { workspace = true }
 mu-client = { path = "../mu-client" }
 mu-proto = { path = "../mu-proto" }
 ratatui = { workspace = true }
 ratatui-textarea = { workspace = true }
+termina = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]

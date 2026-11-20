@@ -1,12 +1,12 @@
 //! The scenarios of the terminal-client capability on `App`, drawn on a `TestBackend`.
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use mu_client::ClientEvent;
 use mu_proto::{Event, EventKind, Source};
 use mu_tui::{Action, App, Reply};
 use proptest::prelude::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 fn app(worlds: &[&str]) -> App {
     App::new(worlds.iter().map(|world| (*world).to_owned()))
@@ -61,11 +61,11 @@ fn game(world: &str, text: &str) -> ClientEvent {
 }
 
 fn key(code: KeyCode) -> KeyEvent {
-    KeyEvent::new(code, KeyModifiers::NONE)
+    KeyEvent::new(code, Modifiers::NONE)
 }
 
 fn ctrl(c: char) -> KeyEvent {
-    KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+    KeyEvent::new(KeyCode::Char(c), Modifiers::CONTROL)
 }
 
 fn type_text(app: &mut App, text: &str) {

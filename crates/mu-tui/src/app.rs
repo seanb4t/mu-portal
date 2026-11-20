@@ -3,7 +3,6 @@
 
 use std::collections::VecDeque;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use mu_client::ClientEvent;
 use mu_proto::{Event, Source};
 use ratatui::Frame;
@@ -11,7 +10,8 @@ use ratatui::layout::{Constraint, Layout};
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
-use ratatui_textarea::{CursorMove, TextArea};
+use ratatui_textarea::{CursorMove, Input, Key, TextArea};
+use termina::event::{KeyCode, KeyEvent, KeyEventKind, Modifiers};
 
 /// The lines that the client keeps for each world.
 const KEPT_LINES: usize = 2000;
@@ -188,14 +188,14 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return None;
         }
-        let control = key.modifiers.contains(KeyModifiers::CONTROL);
+        let control = key.modifiers.contains(Modifiers::CONTROL);
         match key.code {
             KeyCode::Char('c') if control => return Some(Action::Quit),
             KeyCode::Char('n') if control => self.move_focus(true),
             KeyCode::Char('p') if control => self.move_focus(false),
             KeyCode::Enter => return self.enter(),
             _ => {
-                self.input.input(key);
+                self.input.input(input_key(key));
             }
         }
         None
@@ -274,6 +274,35 @@ impl App {
             .collect();
         frame.render_widget(Paragraph::new(shown), body);
         frame.render_widget(&self.input, bottom);
+    }
+}
+
+/// `key` as the input line reads it. A key that the input line does not know becomes
+/// `Key::Null`, which it ignores.
+fn input_key(key: KeyEvent) -> Input {
+    let key_code = match key.code {
+        KeyCode::Char(c) => Key::Char(c),
+        KeyCode::Function(n) => Key::F(n),
+        KeyCode::Backspace => Key::Backspace,
+        KeyCode::Enter => Key::Enter,
+        KeyCode::Left => Key::Left,
+        KeyCode::Right => Key::Right,
+        KeyCode::Up => Key::Up,
+        KeyCode::Down => Key::Down,
+        KeyCode::Tab => Key::Tab,
+        KeyCode::Delete => Key::Delete,
+        KeyCode::Home => Key::Home,
+        KeyCode::End => Key::End,
+        KeyCode::PageUp => Key::PageUp,
+        KeyCode::PageDown => Key::PageDown,
+        KeyCode::Escape => Key::Esc,
+        _ => Key::Null,
+    };
+    Input {
+        key: key_code,
+        ctrl: key.modifiers.contains(Modifiers::CONTROL),
+        alt: key.modifiers.contains(Modifiers::ALT),
+        shift: key.modifiers.contains(Modifiers::SHIFT),
     }
 }
 
