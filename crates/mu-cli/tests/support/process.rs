@@ -616,7 +616,8 @@ fn grapheme(before: &[u8]) -> String {
     String::from_utf8_lossy(&before[start..]).into_owned()
 }
 
-/// `mu client` in a pseudo-terminal of 80 by 24, with its screen read by `vt100`.
+/// `mu client` in a pseudo-terminal, 80 by 24 unless it starts with another size, with its
+/// screen read by `vt100`.
 pub struct PtyClient {
     screen: Arc<watch::Sender<vt100::Parser>>,
     /// Every byte that the client wrote, in order.
@@ -637,12 +638,24 @@ impl PtyClient {
 
     /// Starts `mu client` as [`Self::start`] does, with `answers` to the probe.
     pub fn start_with(socket: &Path, cwd: &Path, answers: Answers) -> Self {
+        Self::start_sized(socket, cwd, answers, (24, 80))
+    }
+
+    /// Starts `mu client` as [`Self::start_with`] does, in a pseudo-terminal of `rows` by
+    /// `cols`, with no `LINES` or `COLUMNS` in its environment. The screen that `vt100` reads
+    /// stays 80 by 24.
+    pub fn start_sized(
+        socket: &Path,
+        cwd: &Path,
+        answers: Answers,
+        (rows, cols): (u16, u16),
+    ) -> Self {
         use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
         let pair = native_pty_system()
             .openpty(PtySize {
-                rows: 24,
-                cols: 80,
+                rows,
+                cols,
                 pixel_width: 0,
                 pixel_height: 0,
             })
@@ -658,6 +671,8 @@ impl PtyClient {
             }
         }
         command.env("TERM", "xterm-256color");
+        command.env_remove("LINES");
+        command.env_remove("COLUMNS");
         let mut child = pair.slave.spawn_command(command).unwrap();
         drop(pair.slave);
         let killer = child.clone_killer();

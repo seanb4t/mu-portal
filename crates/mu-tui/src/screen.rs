@@ -57,11 +57,12 @@ pub fn leave(out: &mut impl Write, grapheme_mode: bool) -> io::Result<()> {
 }
 
 /// Enters raw mode and the alternate screen and turns on mouse capture. Sets a panic hook that
-/// undoes each, and turns off mode 2027 if `grapheme_mode` holds true.
+/// undoes each, and turns off mode 2027 if `grapheme_mode` holds true. On an error, the terminal
+/// leaves each mode that this turned on.
 ///
 /// # Errors
 ///
-/// An I/O error of the terminal.
+/// An I/O error of the terminal, or a terminal that gives no size.
 pub fn open(grapheme_mode: &Arc<AtomicBool>) -> io::Result<(Screen, EventReader)> {
     let mut platform = PlatformTerminal::new()?;
     platform.enter_raw_mode()?;
@@ -70,17 +71,29 @@ pub fn open(grapheme_mode: &Arc<AtomicBool>) -> io::Result<(Screen, EventReader)
         // The panic hook has no caller to report a failed write to.
         let _ = leave(out, hook_mode.load(Ordering::Relaxed));
     });
+    let reader = platform.event_reader();
+    // The ratatui terminal reads the size, so it comes before the first mode.
+    let mut screen = Terminal::new(TerminaBackend::new(platform))?;
+    let out = screen.backend_mut();
+    if let Err(error) = enter(out) {
+        // The error of the write that failed is the one to report.
+        let _ = leave(out, false);
+        return Err(error);
+    }
+    Ok((screen, reader))
+}
+
+/// Enters the alternate screen and turns on mouse capture.
+fn enter(out: &mut impl Write) -> io::Result<()> {
     write!(
-        platform,
+        out,
         "{}",
         private_mode(DecPrivateModeCode::ClearAndEnableAlternateScreen, true)
     )?;
     for mode in MOUSE {
-        write!(platform, "{}", private_mode(mode, true))?;
+        write!(out, "{}", private_mode(mode, true))?;
     }
-    platform.flush()?;
-    let reader = platform.event_reader();
-    Ok((Terminal::new(TerminaBackend::new(platform))?, reader))
+    out.flush()
 }
 
 /// The size of one cell in pixels, from the size of the window. None if the terminal gives no

@@ -456,3 +456,21 @@ async fn mode_2027_already_on() {
         output.escape_ascii()
     );
 }
+
+#[tokio::test]
+async fn failed_start_leaves_the_terminal_as_it_was() {
+    let session = Session::with_worlds(TWO_WORLDS).await;
+    let mut client = PtyClient::start_sized(
+        session.server.socket(),
+        session.server.dir().path(),
+        Answers::Default,
+        (0, 0),
+    );
+    let status = client.exit_within(BOUND).await.expect("the client exits");
+    let output = client.output();
+    let entered = holds(&output, b"\x1b[?1049h") || holds(&output, b"\x1b[?1000h");
+    assert_eq!(
+        (status.success(), entered && !holds(&output, b"\x1b[?1049l")),
+        (false, false)
+    );
+}
