@@ -137,3 +137,27 @@ fn reply_after_da1_is_input() {
     feed(&mut model, b"\x1b[?62;22c\x1b_Gx\x1b\\");
     assert_eq!(model.input(), "Gx");
 }
+
+#[test]
+fn notice_comes_back_after_a_reset() {
+    let mut model = model();
+    model.notice("note");
+    update(
+        &mut model,
+        Msg::Client(ClientEvent::Reset {
+            instance_id: "i".to_owned(),
+        }),
+    );
+    let mut terminal = Terminal::new(TestBackend::new(20, 4)).unwrap();
+    terminal.draw(|frame| view(&mut model, frame)).unwrap();
+    let rows: Vec<String> = (0..4)
+        .map(|y| {
+            (0..20)
+                .map(|x| terminal.backend().buffer()[(x, y)].symbol())
+                .collect::<String>()
+                .trim_end()
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(rows.iter().filter(|row| *row == "-- note").count(), 1);
+}

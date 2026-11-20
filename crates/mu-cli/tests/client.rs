@@ -273,6 +273,12 @@ async fn probe_with_no_answer() {
         .wait_top("the world", |top| top.contains("alpha/aria"))
         .await;
     x_at(&client, 2).await;
+    client
+        .wait_rows("the notice of no widths", |rows| {
+            rows.iter()
+                .any(|row| row.starts_with("-- the terminal gave no character widths"))
+        })
+        .await;
 }
 
 #[tokio::test]

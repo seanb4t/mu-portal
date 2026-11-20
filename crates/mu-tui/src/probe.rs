@@ -172,12 +172,16 @@ pub struct Outcome {
     pub graphics: bool,
     /// True if DA1 answered, so every reply came.
     pub complete: bool,
+    /// True if the cursor replies gave the width of each grapheme of [`GRAPHEMES`]. If false,
+    /// every class keeps the `unicode-width` value.
+    pub measured: bool,
 }
 
 impl Outcome {
     /// Learns from the replies in order. The cursor position after each grapheme of
-    /// [`GRAPHEMES`] gives its width. Before DA1, the replies are not complete, and every class
-    /// keeps the `unicode-width` value.
+    /// [`GRAPHEMES`] gives its width. Before DA1, the replies are not complete. With no DA1, or
+    /// with a count of cursor replies that differs from the count of graphemes, every class keeps
+    /// the `unicode-width` value.
     #[must_use]
     pub fn learn(replies: &[Reply]) -> Self {
         let mut outcome = Self::default();
@@ -194,7 +198,8 @@ impl Outcome {
                 Reply::Da1 => outcome.complete = true,
             }
         }
-        if outcome.complete {
+        outcome.measured = outcome.complete && cursors.len() == GRAPHEMES.len();
+        if outcome.measured {
             let measured: Vec<(&str, u16)> = GRAPHEMES.iter().copied().zip(cursors).collect();
             outcome.profile = Profile::learn(&measured);
         }

@@ -47,6 +47,9 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
             if !outcome.complete {
                 model.await_late_replies();
             }
+            if !outcome.measured {
+                model.notice(WIDTH_NOTICE);
+            }
             let mut parser = termina::Parser::default();
             parser.parse(&input, false);
             let early = std::iter::from_fn(|| parser.pop()).collect();
@@ -61,6 +64,10 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
     );
     result.and(left)
 }
+
+/// The notice when the probe gives no character widths.
+const WIDTH_NOTICE: &str =
+    "the terminal gave no character widths, so wide characters can be out of line";
 
 async fn event_loop(
     terminal: &mut Screen,

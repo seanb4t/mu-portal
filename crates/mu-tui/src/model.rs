@@ -50,6 +50,8 @@ pub struct Model {
     pub(crate) keymap: Keymap,
     pub(crate) layout: Node,
     pub(crate) late: Late,
+    /// The notices of the client, which a reset of the panes keeps.
+    pub(crate) notices: Vec<String>,
 }
 
 /// The wait for the probe replies that came after the probe stopped reading. Termina gives the
@@ -81,6 +83,7 @@ impl Model {
             keymap: Keymap::default(),
             layout: Node::default(),
             late: Late::None,
+            notices: Vec::new(),
         };
         for id in worlds {
             model.world(&id);
@@ -166,6 +169,14 @@ impl Model {
         self.focus
             .and_then(|index| self.worlds.get(index))
             .map_or(PaneId::NOTICES, |world| world.pane)
+    }
+
+    /// Adds the system line `-- <text>` at the bottom of the pane in focus. After a reset of
+    /// the panes, the line comes back in the pane in focus.
+    pub fn notice(&mut self, text: &str) {
+        let line = format!("-- {text}");
+        self.push(self.focused_pane(), &line);
+        self.notices.push(line);
     }
 
     /// Adds `line` at the bottom of `pane`.

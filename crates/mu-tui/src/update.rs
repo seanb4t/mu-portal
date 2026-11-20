@@ -274,6 +274,10 @@ fn on_client(model: &mut Model, item: ClientEvent) {
                     pane.clear();
                 }
             }
+            let pane = model.focused_pane();
+            for line in model.notices.clone() {
+                model.push(pane, &line);
+            }
         }
         ClientEvent::Resumed => model.lost = false,
         ClientEvent::Lost => model.lost = true,

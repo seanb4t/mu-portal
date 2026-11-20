@@ -121,3 +121,19 @@ fn permanently_set_mode_stays() {
     }]);
     assert!(!outcome.resets_grapheme_mode());
 }
+
+#[test]
+fn cursor_reply_for_each_grapheme_measures_the_widths() {
+    assert!(Outcome::learn(&replies(eight_wide_zwj, true)).measured);
+}
+
+#[test]
+fn extra_cursor_reply_keeps_the_default_profile() {
+    let mut extra = replies(eight_wide_zwj, true);
+    extra.insert(0, Reply::Cursor { row: 1, col: 3 });
+    let outcome = Outcome::learn(&extra);
+    assert_eq!(
+        (outcome.measured, outcome.profile.rule(Class::Zwj)),
+        (false, Rule::Unicode)
+    );
+}
