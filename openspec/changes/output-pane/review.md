@@ -1,5 +1,5 @@
 ---
-verdict: approve-with-notes
+verdict: approve
 phase: plan
 reviewed_at: 2026-11-20T01:29:38+00:00
 head: 113b6ea10c1388a3d1e3549a07c79216b69c775c
@@ -216,5 +216,5 @@ None.
 | R-63 | 2 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A pane of no rows"] | refuted | Each of these scenarios was added in round 1 fixes and tasks.md names its test (for example empty_line_takes_a_row in 3.2, late_answer in 9.3); the coverage matrix predates them because a follow-up round runs no coverage lens. |  |  | delta scenario 'A pane of no rows' has no matrix row |
 | R-64 | 2 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A late answer"] | refuted | Each of these scenarios was added in round 1 fixes and tasks.md names its test (for example empty_line_takes_a_row in 3.2, late_answer in 9.3); the coverage matrix predates them because a follow-up round runs no coverage lens. |  |  | delta scenario 'A late answer' has no matrix row |
 | R-65 | 2 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Mode 2027 was already on"] | refuted | Each of these scenarios was added in round 1 fixes and tasks.md names its test (for example empty_line_takes_a_row in 3.2, late_answer in 9.3); the coverage matrix predates them because a follow-up round runs no coverage lens. |  |  | delta scenario 'Mode 2027 was already on' has no matrix row |
-| R-66 | 4 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A selection with both ends on dropped lines"] |  |  |  |  | delta scenario 'A selection with both ends on dropped lines' has no matrix row |
-| R-67 | 4 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Rows that fit only at the full width"] |  |  |  |  | delta scenario 'Rows that fit only at the full width' has no matrix row |
+| R-66 | 4 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A selection with both ends on dropped lines"] | refuted | Both scenarios were added in the round 3 fix and task 4.2 names their tests (selection_cleared_when_both_ends_drop, no_scroll_bar_when_rows_fit_only_at_full_width); the coverage matrix predates them because a follow-up round runs no coverage lens. |  |  | delta scenario 'A selection with both ends on dropped lines' has no matrix row |
+| R-67 | 4 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Rows that fit only at the full width"] | refuted | Both scenarios were added in the round 3 fix and task 4.2 names their tests (selection_cleared_when_both_ends_drop, no_scroll_bar_when_rows_fit_only_at_full_width); the coverage matrix predates them because a follow-up round runs no coverage lens. |  |  | delta scenario 'Rows that fit only at the full width' has no matrix row |
