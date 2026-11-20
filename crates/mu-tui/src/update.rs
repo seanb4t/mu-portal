@@ -1,13 +1,15 @@
 //! [`update`]: the only function that changes the [`Model`]. It does no I/O.
 
 use mu_client::ClientEvent;
-use mu_proto::EventKind;
+use mu_proto::{EventKind, Source};
+use ratatui::style::Style;
 use ratatui_textarea::{Input, Key};
 use termina::Event as TermEvent;
 use termina::event::{
     KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 
+use crate::convert::convert;
 use crate::model::{Model, PaneId};
 use crate::text::{clean, line};
 
@@ -164,6 +166,7 @@ fn on_client(model: &mut Model, item: ClientEvent) {
             model.lost = false;
             for world in &mut model.worlds {
                 world.unseen = false;
+                world.style = Style::default();
                 if let Some(pane) = model.panes.get_mut(&world.pane) {
                     pane.clear();
                 }
@@ -177,13 +180,20 @@ fn on_client(model: &mut Model, item: ClientEvent) {
             let unseen = model.focus != Some(index);
             let world = &mut model.worlds[index];
             world.unseen |= unseen;
-            let pane = world.pane;
-            if event.kind.as_known() == Some(EventKind::EVENT_KIND_PROMPT) {
-                if let Some(state) = model.panes.get_mut(&pane) {
-                    state.set_unfinished(Some(clean(&event.text)));
+            let pane = model.panes.entry(world.pane).or_default();
+            let prompt = event.kind.as_known() == Some(EventKind::EVENT_KIND_PROMPT);
+            match event.source.as_known() {
+                Some(Source::SOURCE_PLAYER | Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => {
+                    pane.push(&line(&event));
                 }
-            } else {
-                model.push(pane, &line(&event));
+                _ if prompt => {
+                    let mut style = world.style;
+                    pane.set_unfinished(Some(convert(&event.text, &mut style)));
+                }
+                _ => {
+                    let converted = convert(&event.text, &mut world.style);
+                    pane.push_styled(&converted.text, &converted.spans);
+                }
             }
         }
     }

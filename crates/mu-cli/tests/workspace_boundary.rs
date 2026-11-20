@@ -104,6 +104,7 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "tokio",
             "unicode-segmentation",
             "unicode-width",
+            "vte",
         ],
     ),
     (

@@ -25,6 +25,8 @@ pub(crate) struct World {
     pub(crate) id: String,
     pub(crate) pane: PaneId,
     pub(crate) unseen: bool,
+    /// The SGR style at the end of the last game line, which the next game line starts with.
+    pub(crate) style: Style,
 }
 
 /// The order of the worlds: by the game part, then by the character part.
@@ -105,6 +107,7 @@ impl Model {
                         id: id.to_owned(),
                         pane,
                         unseen: false,
+                        style: Style::default(),
                     },
                 );
                 match self.focus {

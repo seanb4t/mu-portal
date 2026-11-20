@@ -5,11 +5,12 @@ use std::time::Duration;
 use mu_client::PortalClient;
 use mu_proto::{EventKind, WorldState};
 
+use mu_fake_server::{Listening, Script, ScriptedGame};
 use support::process::{
     BOUND, PtyClient, PtyOn, Reaper, Relay, SERVING, ServerBuilder, Session, TWO_WORLDS, mu_on_pty,
     private_tempdir,
 };
-use support::{mode, stderr};
+use support::{ConfigDir, mode, stderr};
 
 mod support;
 
@@ -202,4 +203,67 @@ async fn ctrl_c_quits_client_only() {
             .iter()
             .all(|world| world.state == WorldState::WORLD_STATE_CONNECTED)
     );
+}
+
+/// A server with the configured world `alpha/aria` on `game`, and a client on it. The game
+/// listens and the configuration stays until the last part drops.
+async fn on_game(game: &ScriptedGame) -> (Session, PtyClient, (Listening, ConfigDir)) {
+    let listening = game.listen().await.unwrap();
+    let conf = ConfigDir::tcp_world(listening.addr().port(), "autoconnect = true\n");
+    let session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
+    let client = PtyClient::start(session.server.socket(), session.server.dir().path());
+    (session, client, (listening, conf))
+}
+
+#[tokio::test]
+async fn colors_on_the_terminal() {
+    let game = ScriptedGame::new(
+        Script::new()
+            .send(b"\x1b[1;31mred\x1b[0m plain\r\n")
+            .silent(),
+    );
+    let (_session, client, _held) = on_game(&game).await;
+    client
+        .wait_rows("the colored line", |rows| {
+            rows.iter().any(|row| row.trim_end() == "red plain")
+        })
+        .await;
+    let looks = client.looks("red plain");
+    assert_eq!(
+        (&looks[..3], &looks[3..]),
+        (
+            &[(vt100::Color::Idx(1), true); 3][..],
+            &[(vt100::Color::Default, false); 6][..]
+        )
+    );
+}
+
+#[tokio::test]
+async fn line_in_two_reads() {
+    let game = ScriptedGame::new(
+        Script::new()
+            .send(b"hel")
+            .wait_for(b"x")
+            .send(b"lo\r\n")
+            .silent(),
+    );
+    let (_session, mut client, _held) = on_game(&game).await;
+    client
+        .wait_rows("the unfinished line", |rows| {
+            rows.iter().any(|row| row.trim_end() == "hel")
+        })
+        .await;
+    client.send(b"x\r");
+    client
+        .wait_rows("the finished line", |rows| {
+            rows.iter().any(|row| row.trim_end() == "hello")
+        })
+        .await;
+    let rows = client.rows();
+    let shown: Vec<&str> = rows
+        .iter()
+        .map(|row| row.trim_end())
+        .filter(|row| row.starts_with("hel"))
+        .collect();
+    assert_eq!(shown, ["hello"], "{}", client.contents());
 }

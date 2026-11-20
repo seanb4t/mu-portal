@@ -12,6 +12,7 @@ use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState, Stateful
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+use crate::convert::Converted;
 use crate::store::{CAPACITY, LineId, LineStore};
 use crate::wrap::{Row, wrap};
 
@@ -55,7 +56,7 @@ pub struct PaneState {
     anchor: Option<Position>,
     /// The two ends of the selection, in the order of the drag.
     selection: Option<(Position, Position)>,
-    unfinished: Option<String>,
+    unfinished: Option<Converted>,
     drawn: Vec<DrawnRow>,
     geometry: Option<Geometry>,
 }
@@ -122,8 +123,9 @@ impl PaneState {
         *self = Self::new(self.store.capacity());
     }
 
-    /// Shows `text` as the unfinished line after the newest line, or no unfinished line.
-    pub fn set_unfinished(&mut self, text: Option<String>) {
+    /// Shows `text` with its styles as the unfinished line after the newest line, or no
+    /// unfinished line.
+    pub fn set_unfinished(&mut self, text: Option<Converted>) {
         self.unfinished = text;
     }
 
@@ -379,37 +381,54 @@ impl OutputPane {
         let Some(row_text) = text.text.get(row.start..row.end) else {
             return;
         };
-        let (x, y) = at;
-        let mut cells = 0;
-        for (offset, grapheme) in row_text.grapheme_indices(true) {
+        let style_at = |offset: usize| {
             let byte = row.start + offset;
-            let grapheme_cells = cell_width(grapheme, width);
-            if cells + grapheme_cells > usize::from(width) {
-                break;
-            }
             let style = text
                 .spans
                 .iter()
                 .take_while(|span| span.start <= byte)
                 .last()
                 .map_or_else(Style::default, |span| state.store.style(span.style));
-            let style = if selected(state.selection, Position { line, byte }) {
+            if selected(state.selection, Position { line, byte }) {
                 style.add_modifier(Modifier::REVERSED)
             } else {
                 style
-            };
-            let symbol = if grapheme.width() > usize::from(width) {
-                "\u{fffd}"
-            } else {
-                grapheme
-            };
-            let cell_x = x + u16::try_from(cells).unwrap_or(u16::MAX);
-            buf[(cell_x, y)].set_symbol(symbol).set_style(style);
-            for extra in 1..grapheme_cells {
-                buf[(cell_x + u16::try_from(extra).unwrap_or(u16::MAX), y)].reset();
             }
-            cells += grapheme_cells;
+        };
+        draw_text(row_text, style_at, at, width, buf);
+    }
+}
+
+/// Draws the graphemes of `text` from `at`, in at most `width` cells. `style_at` gives the style
+/// of the grapheme at a byte offset of `text`. A grapheme wider than `width` shows as U+FFFD,
+/// and the cells after the first cell of a wide grapheme are reset.
+fn draw_text(
+    text: &str,
+    style_at: impl Fn(usize) -> Style,
+    at: (u16, u16),
+    width: u16,
+    buf: &mut Buffer,
+) {
+    let (x, y) = at;
+    let mut cells = 0;
+    for (offset, grapheme) in text.grapheme_indices(true) {
+        let grapheme_cells = cell_width(grapheme, width);
+        if cells + grapheme_cells > usize::from(width) {
+            break;
         }
+        let symbol = if grapheme.width() > usize::from(width) {
+            "\u{fffd}"
+        } else {
+            grapheme
+        };
+        let cell_x = x + u16::try_from(cells).unwrap_or(u16::MAX);
+        buf[(cell_x, y)]
+            .set_symbol(symbol)
+            .set_style(style_at(offset));
+        for extra in 1..grapheme_cells {
+            buf[(cell_x + u16::try_from(extra).unwrap_or(u16::MAX), y)].reset();
+        }
+        cells += grapheme_cells;
     }
 }
 
@@ -438,9 +457,17 @@ impl StatefulWidget for OutputPane {
                 drawn: Drawn::Text { line, row },
             });
         }
-        if let Some(text) = state.unfinished.as_deref().filter(|_| unfinished_row == 1) {
+        if let Some(unfinished) = state.unfinished.as_ref().filter(|_| unfinished_row == 1) {
             let y = area.y + full.height;
-            buf.set_stringn(area.x, y, text, usize::from(area.width), Style::default());
+            let style_at = |offset: usize| {
+                unfinished
+                    .spans
+                    .iter()
+                    .take_while(|(start, _)| *start <= offset)
+                    .last()
+                    .map_or_else(Style::default, |(_, style)| *style)
+            };
+            draw_text(&unfinished.text, style_at, (area.x, y), area.width, buf);
             state.drawn.push(DrawnRow {
                 y,
                 drawn: Drawn::Unfinished,

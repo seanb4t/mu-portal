@@ -4,6 +4,7 @@
 //! the [`Model`] and returns the [`Effect`]s for the loop to perform, and [`view`] draws the
 //! model by walking its layout tree.
 
+pub mod convert;
 mod keymap;
 mod layout;
 mod model;

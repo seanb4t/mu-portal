@@ -241,7 +241,7 @@ fn past_the_end_of_a_line() {
 #[test]
 fn no_position() {
     let mut pane = pane_with(numbers(1..=10));
-    pane.set_unfinished(Some("Name: ".to_owned()));
+    pane.set_unfinished(Some("Name: ".into()));
     let buf = render(&mut pane, 10, 3);
     assert!(has_bar(&buf));
     assert_eq!((pane.position(9, 0), pane.position(0, 2)), (None, None));
@@ -270,7 +270,7 @@ fn wide_grapheme_at_the_end_of_a_row() {
 #[test]
 fn unfinished_line_replaced_by_line() {
     let mut pane = pane_with(numbers(1..=2));
-    pane.set_unfinished(Some("hel".to_owned()));
+    pane.set_unfinished(Some("hel".into()));
     assert_eq!(rows(&render(&mut pane, 20, 4))[3], "hel");
     pane.push("hello");
     let shown = rows(&render(&mut pane, 20, 4));
@@ -281,9 +281,9 @@ fn unfinished_line_replaced_by_line() {
 #[test]
 fn unfinished_line_replaced_by_unfinished_line() {
     let mut pane = pane_with(numbers(1..=2));
-    pane.set_unfinished(Some("Name: ".to_owned()));
+    pane.set_unfinished(Some("Name: ".into()));
     render(&mut pane, 20, 4);
-    pane.set_unfinished(Some("Password: ".to_owned()));
+    pane.set_unfinished(Some("Password: ".into()));
     let shown = rows(&render(&mut pane, 20, 4));
     assert_eq!(shown[3], "Password:");
     assert!(

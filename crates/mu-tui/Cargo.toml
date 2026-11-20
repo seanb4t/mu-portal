@@ -21,6 +21,7 @@ termina = { workspace = true }
 tokio = { workspace = true }
 unicode-segmentation = { workspace = true }
 unicode-width = { workspace = true }
+vte = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

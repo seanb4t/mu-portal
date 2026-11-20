@@ -123,6 +123,8 @@ Each event starts a new parser in its ground state, so a read that ends inside a
 
 Candidates under the rule of reuse before writing: `vte` (the parser of Alacritty), `anstyle-parse`, and `ansi-to-tui`. `ansi-to-tui` builds ratatui text, but the store needs spans of its own shape, and a world needs SGR state across lines. So a state-machine parser such as `vte` fits better. Task 5.1 reads the current documentation of each candidate and records the choice in the design of this change before code depends on it.
 
+The choice, from task 5.1: `vte`. Its `Perform` trait gives printable chars, C0 and C1 controls, and each CSI, OSC and ESC sequence with its parameters, so the client maps only the SGR parameters to a style. `anstyle-parse` is a fork of the same state machine that takes one byte at a time, and the workspace already resolves `vte` through `vt100`.
+
 A player line and a system line keep their prefixes, and their text goes through `clean` as today. Only game text has styles.
 
 Enforced by: unit tests of the conversion, and the pseudo-terminal scenarios that read cell colors from `vt100`. The test data comes from the two telnet transcripts that hold plain escape bytes, `aresmush` and `rhostmush`. The pennmush and tinymux transcripts hold no escape byte, and the Evennia reads are compressed with MCCP. Task 5.3 decodes the hex of the two files once, runs them through the framer of `mu-core` outside `mu-tui`, and commits the game lines as test data. The 256 and 24-bit colors come from the scenarios, not from a transcript.
@@ -252,6 +254,9 @@ Each row is a fact that a task read in the current source or documentation. The 
 | A cell can carry a forced width | Yes, `Cell::set_diff_option(CellDiffOption::ForcedWidth(NonZeroU16))`. The diff writes the cell and skips the next width less one cells. `cell_width` gives the forced width | ratatui-core 0.1.2, `src/buffer/cell.rs`, `src/buffer/diff.rs` |
 | A test can read the cells that a render drew | Yes, `TestBackend::buffer` gives the `Buffer`, and `TestBackend` formats as one quoted string for each row | ratatui-core 0.1.2, `src/backend/test.rs` |
 | The scroll bar takes a length and a position | Yes, `ScrollbarState::new(content_length).position(n)`. The thumb starts at the position times the track length, divided by the last position plus the viewport length. The default vertical bar has an arrow at each end | ratatui-widgets 0.3.2, `src/scrollbar.rs` |
+| `vte` splits text into chars, controls and sequences | Yes. `Parser::advance` takes a byte slice and calls `print` for a char, `execute` for a C0 or C1 control, and `csi_dispatch`, `osc_dispatch` or `esc_dispatch` for a sequence. In ground state, a C0 or C1 char, such as BEL or U+009B, goes to `execute`, and DEL goes to `print`. A new `Parser` starts in its ground state. The license is Apache-2.0 OR MIT | vte 0.15.0, `src/lib.rs` |
+| `anstyle-parse` has the same parser | Yes, a fork of the `vte` state machine whose `advance` takes one byte | anstyle-parse 1.0.0, `src/lib.rs` |
+| `ansi-to-tui` gives ratatui text | Yes, `IntoText` turns bytes into a ratatui `Text`. It keeps no SGR state from one call to the next | ansi-to-tui 8.0.1, `src/lib.rs` (`IntoText`) and README |
 
 ## Risks / Trade-offs
 

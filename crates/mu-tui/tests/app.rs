@@ -3,10 +3,13 @@
 
 use mu_client::ClientEvent;
 use mu_proto::{Event, EventKind, Source};
+use mu_tui::convert::convert;
 use mu_tui::{Effect, Model, Msg, Reply, update, view};
 use proptest::prelude::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use ratatui::buffer::{Buffer, Cell};
+use ratatui::style::{Color, Modifier, Style};
 use termina::Event as TermEvent;
 use termina::event::{KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
@@ -14,11 +17,16 @@ fn app(worlds: &[&str]) -> Model {
     Model::new(worlds.iter().map(|world| (*world).to_owned()))
 }
 
-/// The rows of an 80 by 24 screen, with no trailing spaces.
-fn screen(app: &mut Model) -> Vec<String> {
+/// An 80 by 24 screen.
+fn draw(app: &mut Model) -> Buffer {
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
     terminal.draw(|frame| view(app, frame)).unwrap();
-    let buffer = terminal.backend().buffer();
+    terminal.backend().buffer().clone()
+}
+
+/// The rows of an 80 by 24 screen, with no trailing spaces.
+fn screen(app: &mut Model) -> Vec<String> {
+    let buffer = draw(app);
     (0..buffer.area.height)
         .map(|y| {
             let row: String = (0..buffer.area.width)
@@ -27,6 +35,29 @@ fn screen(app: &mut Model) -> Vec<String> {
             row.trim_end().to_owned()
         })
         .collect()
+}
+
+/// The cells of the first row of the screen that starts with `text`, one for each char of
+/// `text`.
+fn cells_of(app: &mut Model, text: &str) -> Vec<Cell> {
+    let buffer = draw(app);
+    let y = screen(app)
+        .iter()
+        .position(|row| row.starts_with(text))
+        .unwrap_or_else(|| panic!("no row starts with {text:?}"));
+    let y = u16::try_from(y).unwrap();
+    (0..u16::try_from(text.chars().count()).unwrap())
+        .map(|x| buffer[(x, y)].clone())
+        .collect()
+}
+
+/// The foreground color and the modifiers of each cell.
+fn looks(cells: &[Cell]) -> Vec<(Color, Modifier)> {
+    cells.iter().map(|cell| (cell.fg, cell.modifier)).collect()
+}
+
+fn plain(count: usize) -> Vec<(Color, Modifier)> {
+    vec![(Color::Reset, Modifier::empty()); count]
 }
 
 fn top(app: &mut Model) -> String {
@@ -164,7 +195,7 @@ fn control_characters_are_replaced() {
     assert_eq!(
         rows(&mut app),
         [
-            "\u{fffd}[2Jhi there\u{fffd}\u{fffd}\u{fffd}~\u{a0}.",
+            "hi there\u{fffd}\u{fffd}\u{fffd}~\u{a0}.",
             "-- bad\u{fffd}]0;title\u{fffd}"
         ]
     );
@@ -375,7 +406,6 @@ proptest! {
         character in "[a\\x00-\\x1f\\x7f\\u{80}-\\u{9f}]{1,10}",
         line in "[a \\x00-\\x1f\\x7f\\u{80}-\\u{9f}]{0,40}",
         source in prop::sample::select(vec![
-            Source::SOURCE_GAME,
             Source::SOURCE_PLAYER,
             Source::SOURCE_SYSTEM,
             Source::SOURCE_CREDENTIAL,
@@ -384,17 +414,175 @@ proptest! {
         let world = format!("alpha/{character}");
         let mut app = app(&[&world]);
         on_event(&mut app, event(&world, source, &line));
-        let prefix = match source {
-            Source::SOURCE_PLAYER => "> ",
-            Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL => "-- ",
-            _ => "",
-        };
+        let prefix = if source == Source::SOURCE_PLAYER { "> " } else { "-- " };
         let want = format!("{prefix}{}", shown(&line));
         let drawn = rows(&mut app).first().cloned().unwrap_or_default();
         prop_assert_eq!(drawn, want.trim_end());
         let top_want = format!("[alpha/{}]", shown(&character));
         prop_assert_eq!(top(&mut app), top_want.trim_end());
     }
+}
+
+proptest! {
+    #[test]
+    fn game_line_draws_no_control_character(
+        line in "[a; \x1b\x07\x00-\x1f\x7f\u{80}-\u{9f}\\[\\]0-9m]{0,40}",
+    ) {
+        let mut app = app(&["alpha/aria"]);
+        on_event(&mut app, game("alpha/aria", &line));
+        let drawn = rows(&mut app).first().cloned().unwrap_or_default();
+        prop_assert!(!drawn.chars().any(char::is_control), "{:?}", drawn);
+        let want = convert(&line, &mut Style::default()).text;
+        prop_assert_eq!(drawn, want.trim_end());
+    }
+}
+
+#[test]
+fn colors() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(
+        &mut app,
+        game("alpha/aria", "\u{1b}[1;31mred\u{1b}[0m plain"),
+    );
+    assert_eq!(rows(&mut app), ["red plain"]);
+    let cells = cells_of(&mut app, "red plain");
+    assert_eq!(
+        (looks(&cells[..3]), looks(&cells[3..])),
+        (vec![(Color::Red, Modifier::BOLD); 3], plain(6))
+    );
+}
+
+#[test]
+fn other_escape_sequences() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, game("alpha/aria", "before"));
+    on_event(
+        &mut app,
+        game("alpha/aria", "a\u{1b}]0;title\u{7}b\u{1b}[2Jc"),
+    );
+    assert_eq!(rows(&mut app), ["before", "abc"]);
+}
+
+#[test]
+fn color_across_two_lines() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, game("alpha/aria", "\u{1b}[32mgreen"));
+    on_event(&mut app, game("alpha/aria", "still\u{1b}[0m done"));
+    let green = vec![(Color::Green, Modifier::empty()); 5];
+    let still = cells_of(&mut app, "still done");
+    assert_eq!(
+        (
+            looks(&cells_of(&mut app, "green")),
+            looks(&still[..5]),
+            looks(&still[5..])
+        ),
+        (green.clone(), green, plain(5))
+    );
+}
+
+#[test]
+fn indexed_and_24_bit_colors() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(
+        &mut app,
+        game("alpha/aria", "\u{1b}[38;5;208mA\u{1b}[38;2;10;20;30mB"),
+    );
+    let cells = cells_of(&mut app, "AB");
+    assert_eq!(
+        (cells[0].fg, cells[1].fg),
+        (Color::Indexed(208), Color::Rgb(10, 20, 30))
+    );
+}
+
+/// The game lines of the `aresmush` and `rhostmush` transcripts, after the line that names
+/// the command that made them.
+const TRANSCRIPT_LINES: &str = include_str!("data/transcript-lines.txt");
+
+#[test]
+fn transcript_lines_convert() {
+    let (header, lines) = TRANSCRIPT_LINES.split_once('\n').unwrap();
+    assert!(header.starts_with("# made by: "), "{header}");
+    let mut style = Style::default();
+    let mut spans = 0;
+    for line in lines.lines() {
+        let converted = convert(line, &mut style);
+        assert!(
+            !converted.text.chars().any(char::is_control),
+            "{:?}",
+            converted.text
+        );
+        spans += converted.spans.len();
+    }
+    assert!(spans > 0);
+}
+
+#[test]
+fn prompt_with_no_line_end() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, prompt("alpha/aria", "Name: "));
+    assert_eq!(screen(&mut app)[22], "Name:");
+}
+
+#[test]
+fn read_ends_inside_an_escape() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, prompt("alpha/aria", "ab\u{1b}[3"));
+    on_event(&mut app, game("alpha/aria", "ab\u{1b}[31mred"));
+    assert_eq!(rows(&mut app), ["abred"]);
+    let cells = cells_of(&mut app, "abred");
+    assert_eq!(
+        (looks(&cells[..2]), looks(&cells[2..])),
+        (plain(2), vec![(Color::Red, Modifier::empty()); 3])
+    );
+}
+
+#[test]
+fn prompt_does_not_carry_its_style() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, prompt("alpha/aria", "\u{1b}[31mName: "));
+    on_event(&mut app, game("alpha/aria", "plain"));
+    assert_eq!(looks(&cells_of(&mut app, "plain")), plain(5));
+}
+
+#[test]
+fn open_osc() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, game("alpha/aria", "a\u{1b}]0;title"));
+    on_event(&mut app, game("alpha/aria", "next"));
+    assert_eq!(rows(&mut app), ["a", "next"]);
+}
+
+#[test]
+fn reset_clears_each_pane() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, game("alpha/aria", "\u{1b}[31mred"));
+    on_event(&mut app, prompt("alpha/aria", "Name: "));
+    draw(&mut app);
+    let press = MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 0,
+        row: 1,
+        modifiers: Modifiers::NONE,
+    };
+    assert_eq!(update(&mut app, Msg::Terminal(TermEvent::Mouse(press))), []);
+    assert!(app.pane(app.focused_pane()).unwrap().selection().is_some());
+    on_event(
+        &mut app,
+        ClientEvent::Reset {
+            instance_id: "i".to_owned(),
+        },
+    );
+    on_event(&mut app, game("alpha/aria", "after"));
+    assert_eq!(rows(&mut app), ["after"]);
+    let pane = app.pane(app.focused_pane()).unwrap();
+    assert_eq!(
+        (
+            pane.selection(),
+            pane.anchor(),
+            looks(&cells_of(&mut app, "after"))
+        ),
+        (None, None, plain(5))
+    );
 }
 
 #[derive(Clone, Debug)]

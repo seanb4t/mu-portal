@@ -558,6 +558,24 @@ impl PtyClient {
         self.screen.borrow().screen().rows(0, 80).collect()
     }
 
+    /// The foreground color and the bold flag of each cell of the first row that starts with
+    /// `text`, one for each char of `text`.
+    pub fn looks(&self, text: &str) -> Vec<(vt100::Color, bool)> {
+        let parser = self.screen.borrow();
+        let screen = parser.screen();
+        let row = screen
+            .rows(0, 80)
+            .position(|row| row.starts_with(text))
+            .unwrap_or_else(|| panic!("no row starts with {text:?}"));
+        let row = u16::try_from(row).unwrap();
+        (0..u16::try_from(text.chars().count()).unwrap())
+            .map(|col| {
+                let cell = screen.cell(row, col).unwrap();
+                (cell.fgcolor(), cell.bold())
+            })
+            .collect()
+    }
+
     /// The text of the screen now.
     pub fn contents(&self) -> String {
         self.screen.borrow().screen().contents()

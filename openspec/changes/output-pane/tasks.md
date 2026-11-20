@@ -61,22 +61,22 @@ Load the `rust-best-practices` skill before this group.
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 5.1 Read the current documentation of `vte`, `anstyle-parse` and `ansi-to-tui`. Choose one with the rule of D4, and add it to `[workspace.dependencies]`. Add it to the `mu-tui` row of `ALLOWED_CRATES` in `crates/mu-cli/tests/workspace_boundary.rs`. Add the rows to the table "Checked facts", and the choice to D4. Make sure that `cargo deny check` passes.
-- [ ] 5.2 Convert each game line at its arrival, with a parser in its ground state for each event and an SGR style for each world, as D4 describes. Move the char mapping of `clean` into one function that `clean` and the parser both call. Update `control_characters_are_replaced` in `crates/mu-tui/tests/app.rs` to the scenario "Control characters". Add these tests to `crates/mu-tui/tests/app.rs`:
+- [x] 5.1 Read the current documentation of `vte`, `anstyle-parse` and `ansi-to-tui`. Choose one with the rule of D4, and add it to `[workspace.dependencies]`. Add it to the `mu-tui` row of `ALLOWED_CRATES` in `crates/mu-cli/tests/workspace_boundary.rs`. Add the rows to the table "Checked facts", and the choice to D4. Make sure that `cargo deny check` passes.
+- [x] 5.2 Convert each game line at its arrival, with a parser in its ground state for each event and an SGR style for each world, as D4 describes. Move the char mapping of `clean` into one function that `clean` and the parser both call. Update `control_characters_are_replaced` in `crates/mu-tui/tests/app.rs` to the scenario "Control characters". Add these tests to `crates/mu-tui/tests/app.rs`:
   - `colors`, for "Colors"
   - `other_escape_sequences`, for "Other escape sequences"
   - `color_across_two_lines`, for "A color across two lines"
   - `indexed_and_24_bit_colors`, for "Indexed and 24-bit colors"
 
   Restate the property test `no_control_character_is_drawn` for game lines. For any byte string with ESC, CSI, OSC and C1 bytes, no drawn cell holds a control character, and the text equals the printable chars that the parser gives. Keep the old rule, ESC shows as U+FFFD, for player, system and credential lines only. Make sure that the six tests pass.
-- [ ] 5.3 Take the game lines of the `aresmush` and `rhostmush` transcripts in `crates/mu-core/tests/fixtures/telnet`, as D4 describes. Decode the hex once, run the bytes through the framer of `mu-core` outside `mu-tui`, and commit the game lines to `crates/mu-tui/tests/data/`. Write in the data file the command that made it. Add `transcript_lines_convert` to `crates/mu-tui/tests/app.rs`: each line converts with no control character in its text, and the data holds at least one SGR sequence. Make sure that the test passes, and that no file in `crates/` reads a path in `spikes/`.
-- [ ] 5.4 Add a pseudo-terminal test `colors_on_the_terminal` to `crates/mu-cli/tests/client.rs`. A scripted fake game sends the line of the scenario "Colors", and the test reads the colors of the cells from `vt100`. Make sure that the test passes.
+- [x] 5.3 Take the game lines of the `aresmush` and `rhostmush` transcripts in `crates/mu-core/tests/fixtures/telnet`, as D4 describes. Decode the hex once, run the bytes through the framer of `mu-core` outside `mu-tui`, and commit the game lines to `crates/mu-tui/tests/data/`. Write in the data file the command that made it. Add `transcript_lines_convert` to `crates/mu-tui/tests/app.rs`: each line converts with no control character in its text, and the data holds at least one SGR sequence. Make sure that the test passes, and that no file in `crates/` reads a path in `spikes/`.
+- [x] 5.4 Add a pseudo-terminal test `colors_on_the_terminal` to `crates/mu-cli/tests/client.rs`. A scripted fake game sends the line of the scenario "Colors", and the test reads the colors of the cells from `vt100`. Make sure that the test passes.
 
 ## 6. Unfinished lines
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 6.1 Send a prompt event to the pane of its world as its unfinished line. A line event adds a line and clears it. Convert a prompt on a copy of the SGR style of its world, as D4 describes. Clear each pane and each SGR style at a Reset, as D5 describes. Add these tests to `crates/mu-tui/tests/app.rs`:
+- [x] 6.1 Send a prompt event to the pane of its world as its unfinished line. A line event adds a line and clears it. Convert a prompt on a copy of the SGR style of its world, as D4 describes. Clear each pane and each SGR style at a Reset, as D5 describes. Add these tests to `crates/mu-tui/tests/app.rs`:
   - `prompt_with_no_line_end`, for "A prompt with no line end"
   - `read_ends_inside_an_escape`, for "A read that ends inside an escape sequence"
   - `prompt_does_not_carry_its_style`, for "A prompt does not carry its style"
@@ -84,7 +84,7 @@ Load the `rust-best-practices` skill before this group.
   - `reset_clears_each_pane`, for "A reset"
 
   Make sure that the five tests pass.
-- [ ] 6.2 Add `line_in_two_reads` to `crates/mu-cli/tests/client.rs` for "A line in two reads". A scripted fake game in `mu-fake-server` sends `hel` and then, after it reads a byte from the client, `lo` with a line end. Make sure that the test passes, and that it fails while the client shows a prompt event as a line.
+- [x] 6.2 Add `line_in_two_reads` to `crates/mu-cli/tests/client.rs` for "A line in two reads". A scripted fake game in `mu-fake-server` sends `hel` and then, after it reads a byte from the client, `lo` with a line end. Make sure that the test passes, and that it fails while the client shows a prompt event as a line.
 
 ## 7. Scrollback keys and the mouse
 
