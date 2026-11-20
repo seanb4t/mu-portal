@@ -3,11 +3,12 @@
 use std::num::NonZeroU16;
 use std::sync::Arc;
 
-use mu_tui::store::LineId;
+use mu_tui::store::{Image, LineId};
 use mu_tui::width::Profile;
-use mu_tui::{OutputPane, PaneState, Position};
+use mu_tui::{Caps, OutputPane, PaneState, Position};
 use ratatui::buffer::{Buffer, CellDiffOption};
 use ratatui::layout::Rect;
+use ratatui::style::Color;
 use ratatui::widgets::StatefulWidget;
 use unicode_width::UnicodeWidthStr;
 
@@ -253,7 +254,7 @@ fn no_position() {
 
 #[test]
 fn style_follows_its_text_across_a_wrap() {
-    use ratatui::style::{Color, Style};
+    use ratatui::style::Style;
     let mut pane = PaneState::default();
     pane.push_styled("aaaaaaaa redword", &[(9, Style::new().fg(Color::Red))]);
     let buf = render(&mut pane, 10, 3);
@@ -275,7 +276,10 @@ const FAMILY: &str = "👨\u{200D}👩\u{200D}👧";
 
 #[test]
 fn cells_take_the_learned_width() {
-    let mut pane = PaneState::with_profile(Arc::new(Profile::learn(&[(FAMILY, 8)])));
+    let mut pane = PaneState::with_caps(Arc::new(Caps {
+        profile: Profile::learn(&[(FAMILY, 8)]),
+        graphics: false,
+    }));
     pane.push(&format!("{FAMILY}x"));
     let buf = render(&mut pane, 20, 3);
     let family = &buf[(0, 0)];
@@ -357,4 +361,125 @@ fn selection_shows_in_reverse() {
         .filter(|x| buf[(*x, 0)].modifier.contains(Modifier::REVERSED))
         .collect();
     assert_eq!(reversed, [11, 12, 13, 14]);
+}
+
+const MAP: &str = "https://example.com/map.png";
+
+/// An empty pane in a terminal that draws kitty images if `graphics`.
+fn image_pane(graphics: bool) -> PaneState {
+    PaneState::with_caps(Arc::new(Caps {
+        profile: Profile::default(),
+        graphics,
+    }))
+}
+
+fn is_placeholder(buf: &Buffer, x: u16, y: u16) -> bool {
+    buf[(x, y)].symbol().starts_with('\u{10EEEE}')
+}
+
+/// The number of rows of `buf` that start with a placeholder, and the number of placeholders
+/// in the first row.
+fn placeholder_size(buf: &Buffer) -> (usize, usize) {
+    let rows = (0..buf.area.height)
+        .filter(|&y| is_placeholder(buf, 0, y))
+        .count();
+    let columns = (0..buf.area.width)
+        .filter(|&x| is_placeholder(buf, x, 0))
+        .count();
+    (rows, columns)
+}
+
+#[test]
+fn image_rows_do_not_wrap() {
+    let mut pane = image_pane(true);
+    pane.push_image(MAP, Image::new(7, 4, 10));
+    let rows: Vec<usize> = [40, 20]
+        .map(|width| placeholder_size(&render(&mut pane, width, 10)).0)
+        .to_vec();
+    assert_eq!(rows, [4, 4]);
+}
+
+#[test]
+fn image_placeholder_cells() {
+    let mut pane = image_pane(true);
+    pane.push_image(MAP, Image::new(7, 4, 10));
+    let buf = render(&mut pane, 40, 10);
+    let cell = &buf[(2, 1)];
+    assert_eq!(
+        (cell.symbol(), cell.fg),
+        ("\u{10EEEE}\u{030D}\u{030E}", Color::Rgb(0, 0, 7))
+    );
+}
+
+#[test]
+fn image_rows_capped_at_297() {
+    let sizes: Vec<(usize, usize)> = [(297, 10), (298, 10), (400, 10), (1, 298), (0, 0)]
+        .into_iter()
+        .map(|(rows, columns)| {
+            let mut pane = image_pane(true);
+            pane.push_image(MAP, Image::new(7, rows, columns));
+            placeholder_size(&render(&mut pane, 300, 400))
+        })
+        .collect();
+    assert_eq!(sizes, [(297, 10), (297, 10), (297, 10), (1, 297), (1, 1)]);
+}
+
+#[test]
+fn image_id_above_255() {
+    let mut pane = image_pane(true);
+    pane.push_image(MAP, Image::new(256, 2, 3));
+    let buf = render(&mut pane, 10, 4);
+    let colors: Vec<Color> = (0..2)
+        .flat_map(|y| (0..3).map(move |x| (x, y)))
+        .map(|(x, y)| buf[(x, y)].fg)
+        .collect();
+    assert_eq!(colors, [Color::Rgb(0, 1, 0); 6]);
+}
+
+#[test]
+fn image_wider_than_the_pane() {
+    let mut pane = image_pane(true);
+    pane.push_image(MAP, Image::new(7, 2, 10));
+    let buf = render(&mut pane, 5, 4);
+    let cells: Vec<String> = (0..2)
+        .flat_map(|y| (0..5).map(move |x| (x, y)))
+        .map(|(x, y)| buf[(x, y)].symbol().to_owned())
+        .collect();
+    let marks = ['\u{0305}', '\u{030D}', '\u{030E}', '\u{0310}', '\u{0312}'];
+    let want: Vec<String> = (0..2)
+        .flat_map(|row| (0..5).map(move |column| (row, column)))
+        .map(|(row, column)| ['\u{10EEEE}', marks[row], marks[column]].iter().collect())
+        .collect();
+    assert_eq!(cells, want);
+}
+
+#[test]
+fn image_url_fallback() {
+    let mut pane = image_pane(false);
+    pane.push_image(MAP, Image::new(7, 4, 10));
+    assert_eq!(rows(&render(&mut pane, 40, 3)), [MAP, "", ""]);
+}
+
+#[test]
+fn url_with_control_characters() {
+    let mut pane = image_pane(false);
+    pane.push_image("https://x/\x1b[2J\x07", Image::new(7, 4, 10));
+    assert_eq!(
+        rows(&render(&mut pane, 40, 1)),
+        ["https://x/\u{FFFD}[2J\u{FFFD}"]
+    );
+}
+
+#[test]
+fn image_copies_its_url() {
+    let mut pane = image_pane(true);
+    pane.push("before");
+    pane.push_image(MAP, Image::new(7, 2, 10));
+    pane.push("after");
+    render(&mut pane, 40, 6);
+    let press = pane.position(1, 1).unwrap();
+    let end = pane.position(4, 2).unwrap();
+    pane.press(press);
+    pane.drag(end);
+    assert_eq!(pane.release().as_deref(), Some(MAP));
 }

@@ -38,11 +38,54 @@ pub struct Span {
     pub style: StyleId,
 }
 
+/// The most rows and the most columns of an image: the number of kitty diacritics.
+pub const IMAGE_CELLS: u16 = 297;
+
+/// The kitty image of an image line: its id and its size in cells.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Image {
+    id: u32,
+    rows: u16,
+    columns: u16,
+}
+
+impl Image {
+    /// An image with the id `id` of `rows` and `columns` cells. A size of 0 becomes 1, and a
+    /// size above [`IMAGE_CELLS`] becomes [`IMAGE_CELLS`]. The id keeps its low 24 bits.
+    #[must_use]
+    pub fn new(id: u32, rows: u16, columns: u16) -> Self {
+        Self {
+            id: id & 0x00FF_FFFF,
+            rows: rows.clamp(1, IMAGE_CELLS),
+            columns: columns.clamp(1, IMAGE_CELLS),
+        }
+    }
+
+    /// The id, from 0 to 2^24 - 1.
+    #[must_use]
+    pub const fn id(self) -> u32 {
+        self.id
+    }
+
+    /// The rows that the image takes.
+    #[must_use]
+    pub const fn rows(self) -> u16 {
+        self.rows
+    }
+
+    /// The columns that the image takes.
+    #[must_use]
+    pub const fn columns(self) -> u16 {
+        self.columns
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 struct Record {
     text_end: usize,
     span_end: usize,
     width: u32,
+    image: Option<Image>,
 }
 
 #[derive(Debug, Default)]
@@ -61,6 +104,8 @@ pub struct Line<'a> {
     pub spans: &'a [Span],
     /// The display width of the text.
     pub width: u32,
+    /// The image of an image line, whose text is the URL of the image.
+    pub image: Option<Image>,
 }
 
 /// The lines of one pane.
@@ -158,6 +203,16 @@ impl LineStore {
     /// capacity. `spans` are pairs of a byte offset and a style, in order. `text` must hold no
     /// control character.
     pub fn push(&mut self, text: &str, spans: &[(usize, Style)]) -> LineId {
+        self.push_line(text, spans, None)
+    }
+
+    /// Adds an image line at the end, as [`Self::push`] does. `url` must hold no control
+    /// character.
+    pub fn push_image(&mut self, url: &str, image: Image) -> LineId {
+        self.push_line(url, &[], Some(image))
+    }
+
+    fn push_line(&mut self, text: &str, spans: &[(usize, Style)], image: Option<Image>) -> LineId {
         debug_assert!(!text.chars().any(char::is_control), "{text:?}");
         let spans: Vec<Span> = spans
             .iter()
@@ -184,6 +239,7 @@ impl LineStore {
                 text_end: chunk.text.len(),
                 span_end: chunk.spans.len(),
                 width,
+                image,
             });
         }
         let id = LineId(self.end);
@@ -228,6 +284,7 @@ impl LineStore {
             text: chunk.text.get(text_start..record.text_end)?,
             spans: chunk.spans.get(span_start..record.span_end)?,
             width: record.width,
+            image: record.image,
         })
     }
 

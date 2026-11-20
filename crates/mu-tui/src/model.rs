@@ -9,8 +9,7 @@ use ratatui_textarea::{CursorMove, TextArea};
 
 use crate::keymap::Keymap;
 use crate::layout::Node;
-use crate::pane::PaneState;
-use crate::width::Profile;
+use crate::pane::{Caps, PaneState};
 
 /// The id of an output pane. Each world has one pane, and one more pane holds the lines of no
 /// world.
@@ -43,8 +42,8 @@ pub struct Model {
     /// An index into `worlds`. None if and only if there is no world.
     pub(crate) focus: Option<usize>,
     pub(crate) panes: HashMap<PaneId, PaneState>,
-    /// The widths of the graphemes on the terminal, which every pane shares.
-    pub(crate) profile: Arc<Profile>,
+    /// What the terminal can draw, which every pane shares.
+    pub(crate) caps: Arc<Caps>,
     next_pane: u32,
     pub(crate) input: TextArea<'static>,
     pub(crate) lost: bool,
@@ -61,7 +60,7 @@ impl Model {
             worlds: Vec::new(),
             focus: None,
             panes: HashMap::from([(PaneId::NOTICES, PaneState::default())]),
-            profile: Arc::default(),
+            caps: Arc::default(),
             next_pane: 1,
             input: input_line(String::new()),
             lost: false,
@@ -106,7 +105,7 @@ impl Model {
                 let pane = PaneId(self.next_pane);
                 self.next_pane += 1;
                 self.panes
-                    .insert(pane, PaneState::with_profile(Arc::clone(&self.profile)));
+                    .insert(pane, PaneState::with_caps(Arc::clone(&self.caps)));
                 self.worlds.insert(
                     index,
                     World {
@@ -126,11 +125,11 @@ impl Model {
         }
     }
 
-    /// Wraps and draws every pane with the widths of `profile`.
-    pub fn set_profile(&mut self, profile: Profile) {
-        self.profile = Arc::new(profile);
+    /// Wraps and draws every pane for a terminal with `caps`.
+    pub fn set_caps(&mut self, caps: Caps) {
+        self.caps = Arc::new(caps);
         for pane in self.panes.values_mut() {
-            pane.set_profile(Arc::clone(&self.profile));
+            pane.set_caps(Arc::clone(&self.caps));
         }
     }
 
@@ -152,7 +151,7 @@ impl Model {
     pub(crate) fn push(&mut self, pane: PaneId, line: &str) {
         self.panes
             .entry(pane)
-            .or_insert_with(|| PaneState::with_profile(Arc::clone(&self.profile)))
+            .or_insert_with(|| PaneState::with_caps(Arc::clone(&self.caps)))
             .push(line);
     }
 

@@ -10,12 +10,14 @@ use std::sync::Arc;
 
 use ratatui::buffer::{Buffer, CellDiffOption};
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::convert::Converted;
-use crate::store::{CAPACITY, LineId, LineStore};
+use crate::diacritics::DIACRITICS;
+use crate::store::{CAPACITY, Image, LineId, LineStore};
+use crate::text::clean;
 use crate::width::{Class, Profile};
 use crate::wrap::{Row, wrap};
 
@@ -51,6 +53,18 @@ struct Geometry {
     height: u16,
 }
 
+/// What the terminal can draw, as the startup probe learned it. Every pane shares it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Caps {
+    /// The widths of the graphemes.
+    pub profile: Profile,
+    /// True if the terminal draws kitty images.
+    pub graphics: bool,
+}
+
+/// The kitty unicode placeholder.
+const PLACEHOLDER: char = '\u{10EEEE}';
+
 /// The state of one output pane.
 #[derive(Debug)]
 pub struct PaneState {
@@ -62,8 +76,7 @@ pub struct PaneState {
     /// The cell of the press of a drag that has not ended.
     pressed: Option<Position>,
     unfinished: Option<Converted>,
-    /// The widths of the graphemes on the terminal.
-    profile: Arc<Profile>,
+    caps: Arc<Caps>,
     drawn: Vec<DrawnRow>,
     geometry: Option<Geometry>,
 }
@@ -84,7 +97,7 @@ impl PaneState {
             selection: None,
             pressed: None,
             unfinished: None,
-            profile: Arc::default(),
+            caps: Arc::default(),
             drawn: Vec::new(),
             geometry: None,
         }
@@ -108,6 +121,19 @@ impl PaneState {
     pub fn push_styled(&mut self, text: &str, spans: &[(usize, Style)]) {
         self.unfinished = None;
         self.store.push(text, spans);
+        self.keep_live();
+    }
+
+    /// Removes the unfinished line, then adds an image line at the bottom, as
+    /// [`Self::push_styled`] does. The pane shows each control character of `url` as U+FFFD.
+    pub fn push_image(&mut self, url: &str, image: Image) {
+        self.unfinished = None;
+        self.store.push_image(&clean(url), image);
+        self.keep_live();
+    }
+
+    /// Moves each position on a line that the store dropped to the oldest live line.
+    fn keep_live(&mut self) {
         let first = self.store.first_id();
         let keep = |position: Position| {
             if position.line < first {
@@ -130,23 +156,23 @@ impl PaneState {
 
     /// Removes every line, the unfinished line, the selection and the scroll position.
     pub fn clear(&mut self) {
-        let profile = Arc::clone(&self.profile);
+        let caps = Arc::clone(&self.caps);
         *self = Self::new(self.store.capacity());
-        self.profile = profile;
+        self.caps = caps;
     }
 
-    /// An empty pane that wraps and draws with the widths of `profile`.
+    /// An empty pane that wraps and draws for a terminal with `caps`.
     #[must_use]
-    pub fn with_profile(profile: Arc<Profile>) -> Self {
+    pub fn with_caps(caps: Arc<Caps>) -> Self {
         Self {
-            profile,
+            caps,
             ..Self::default()
         }
     }
 
-    /// Wraps and draws with the widths of `profile`.
-    pub fn set_profile(&mut self, profile: Arc<Profile>) {
-        self.profile = profile;
+    /// Wraps and draws for a terminal with `caps`.
+    pub fn set_caps(&mut self, caps: Arc<Caps>) {
+        self.caps = caps;
     }
 
     /// Shows `text` with its styles as the unfinished line after the newest line, or no
@@ -207,9 +233,14 @@ impl PaneState {
 
     /// The position after the grapheme at `position`, or `position` at the end of its line.
     fn after(&self, position: Position) -> Position {
-        let len = self
-            .store
-            .line(position.line)
+        let line = self.store.line(position.line);
+        if let Some(line) = line.filter(|line| line.image.is_some()) {
+            return Position {
+                byte: line.text.len(),
+                ..position
+            };
+        }
+        let len = line
             .and_then(|line| line.text.get(position.byte..))
             .and_then(|rest| rest.graphemes(true).next())
             .map_or(0, str::len);
@@ -219,16 +250,27 @@ impl PaneState {
         }
     }
 
-    /// The selected text of each line, with one LF between lines and no style.
+    /// The selected text of each line, with one LF between lines and no style. The text of an
+    /// image line is its whole URL.
     #[must_use]
     pub fn copy_text(&self) -> Option<String> {
         let (a, b) = self.selection?;
         let (from, to) = if a <= b { (a, b) } else { (b, a) };
         let mut copy = String::new();
         for id in from.line.0..=to.line.0 {
-            let text = self.store.line(LineId(id))?.text;
-            let start = if id == from.line.0 { from.byte } else { 0 };
-            let end = if id == to.line.0 { to.byte } else { text.len() };
+            let line = self.store.line(LineId(id))?;
+            let text = line.text;
+            let whole = line.image.is_some();
+            let start = if id == from.line.0 && !whole {
+                from.byte
+            } else {
+                0
+            };
+            let end = if id == to.line.0 && !whole {
+                to.byte
+            } else {
+                text.len()
+            };
             if id > from.line.0 {
                 copy.push('\n');
             }
@@ -248,11 +290,25 @@ impl PaneState {
         self.anchor = None;
     }
 
-    /// The rows of `line` at `width`.
+    /// The rows of `line` at `width`. With kitty graphics, the rows of an image line are its
+    /// row indexes, `n..n + 1` for the row `n`. Without, an image line is one row of its URL.
     fn rows_of(&self, line: LineId, width: u16) -> Vec<Row> {
         let mut rows = Vec::new();
-        if let Some(text) = self.store.line(line) {
-            wrap(text.text, width, &self.profile, &mut rows);
+        let Some(text) = self.store.line(line).filter(|_| width > 0) else {
+            return rows;
+        };
+        match text.image {
+            Some(image) if self.caps.graphics => {
+                rows.extend((0..usize::from(image.rows())).map(|n| Row {
+                    start: n,
+                    end: n + 1,
+                }));
+            }
+            Some(_) => rows.push(Row {
+                start: 0,
+                end: text.text.len(),
+            }),
+            None => wrap(text.text, width, &self.caps.profile, &mut rows),
         }
         rows
     }
@@ -368,11 +424,15 @@ impl PaneState {
                 byte: 0,
             });
         }
-        let text = self.store.line(line)?.text;
+        let text = self.store.line(line)?;
+        if text.image.is_some() && self.caps.graphics {
+            return Some(Position { line, byte: 0 });
+        }
+        let text = text.text;
         let column = usize::from(x - geometry.x);
         let mut cells = 0;
         for (at, grapheme) in text.get(row.start..row.end)?.grapheme_indices(true) {
-            let width = cell_width(&self.profile, grapheme, geometry.width);
+            let width = cell_width(&self.caps.profile, grapheme, geometry.width);
             if column < cells + width {
                 return Some(Position {
                     line,
@@ -462,6 +522,10 @@ impl OutputPane {
         let Some(text) = state.store.line(line) else {
             return;
         };
+        if let Some(image) = text.image.filter(|_| state.caps.graphics) {
+            draw_placeholders(image, row.start, at, width, buf);
+            return;
+        }
         let Some(row_text) = text.text.get(row.start..row.end) else {
             return;
         };
@@ -479,7 +543,29 @@ impl OutputPane {
                 style
             }
         };
-        draw_text(row_text, style_at, at, width, &state.profile, buf);
+        draw_text(row_text, style_at, at, width, &state.caps.profile, buf);
+    }
+}
+
+/// Draws the row `row` of `image` from `at` as kitty placeholders, in at most `width` cells.
+/// Each cell holds the diacritic of its row and of its column, and its foreground color is the
+/// image id.
+fn draw_placeholders(image: Image, row: usize, at: (u16, u16), width: u16, buf: &mut Buffer) {
+    let (x, y) = at;
+    let [_, red, green, blue] = image.id().to_be_bytes();
+    let row_mark = DIACRITICS[row.min(DIACRITICS.len() - 1)];
+    let mut symbol = String::new();
+    for (column, column_mark) in DIACRITICS
+        .iter()
+        .take(usize::from(image.columns().min(width)))
+        .enumerate()
+    {
+        symbol.clear();
+        symbol.extend([PLACEHOLDER, row_mark, *column_mark]);
+        let cell_x = x + u16::try_from(column).unwrap_or(u16::MAX);
+        buf[(cell_x, y)]
+            .set_symbol(&symbol)
+            .set_style(Style::default().fg(Color::Rgb(red, green, blue)));
     }
 }
 
@@ -563,7 +649,7 @@ impl StatefulWidget for OutputPane {
                 style_at,
                 (area.x, y),
                 area.width,
-                &state.profile,
+                &state.caps.profile,
                 buf,
             );
             state.drawn.push(DrawnRow {

@@ -14,6 +14,7 @@ use termina::{Event as TermEvent, EventReader, EventStream, PlatformTerminal, Te
 use tokio::sync::mpsc;
 
 use crate::model::Model;
+use crate::pane::Caps;
 use crate::probe;
 use crate::update::{Effect, Msg, Reply, update};
 use crate::view::view;
@@ -39,9 +40,10 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
     let result = match probed {
         Ok((outcome, input)) => {
             grapheme_mode.store(outcome.turned_grapheme_mode_on(), Ordering::Relaxed);
-            if outcome.complete {
-                model.set_profile(outcome.profile);
-            }
+            model.set_caps(Caps {
+                profile: outcome.profile,
+                graphics: outcome.graphics,
+            });
             let mut parser = termina::Parser::default();
             parser.parse(&input, false);
             let early = std::iter::from_fn(|| parser.pop()).collect();

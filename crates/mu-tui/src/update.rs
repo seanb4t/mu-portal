@@ -232,7 +232,7 @@ fn on_client(model: &mut Model, item: ClientEvent) {
             let pane = model
                 .panes
                 .entry(world.pane)
-                .or_insert_with(|| PaneState::with_profile(Arc::clone(&model.profile)));
+                .or_insert_with(|| PaneState::with_caps(Arc::clone(&model.caps)));
             let prompt = event.kind.as_known() == Some(EventKind::EVENT_KIND_PROMPT);
             match event.source.as_known() {
                 Some(Source::SOURCE_PLAYER | Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => {

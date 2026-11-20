@@ -5,6 +5,7 @@
 //! model by walking its layout tree.
 
 pub mod convert;
+mod diacritics;
 mod keymap;
 mod layout;
 mod model;
@@ -21,7 +22,7 @@ pub mod wrap;
 pub use keymap::{Chord, Keymap};
 pub use layout::{Leaf, Node};
 pub use model::{Model, PaneId};
-pub use pane::{OutputPane, PaneState, Position};
+pub use pane::{Caps, OutputPane, PaneState, Position};
 pub use run::run;
 pub use update::{Action, Effect, Msg, Reply, update};
 pub use view::view;
