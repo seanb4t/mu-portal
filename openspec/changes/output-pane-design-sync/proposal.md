@@ -10,7 +10,7 @@ The change is tracked by issue #112.
 
 - The probe result enters the model as a `Msg`, so only `update` changes the model (R-88).
 - The probe keeps its wait inside its bound of 500 milliseconds (R-91).
-- The probe gives the CSI replies (cursor position, DECRPM, DA1) and every other input byte to `termina::Parser`. It parses only the kitty graphics reply (APC) itself (R-93). `probe::Reply` goes away with the hand parser (QUAL-22).
+- The probe frames its input itself, by the rules of ECMA-48, and gives each complete CSI to `termina::Parser` to decode (R-93). It decodes only the kitty graphics reply (APC) itself. The hand CSI decoder goes away, and the reply type becomes `probe::Answer` (QUAL-22).
 - The probe reads past an Alt+`[` that the user presses during the probe (QUAL-3).
 - An APC with no end no longer stalls the probe (SEC-6, the stall part).
 - The read and the restore of the terminal mode can both fail. Then the probe returns the read error, with the restore error in its message (QUAL-12).
@@ -36,7 +36,8 @@ None. No requirement changes, so `.openspec.yaml` sets `skip_specs: true`. Each 
 
 ## Impact
 
-- Code: `crates/mu-tui/src/probe.rs`, `run.rs`, `update.rs`, `model.rs`, `pane.rs` and `lib.rs`. Tests: `crates/mu-tui/tests/app.rs` and `crates/mu-cli/tests/support/process.rs`.
+- Code: `crates/mu-tui/src/probe.rs`, `run.rs`, `update.rs`, `model.rs`, `pane.rs`, `screen.rs` and `lib.rs`, and the example `crates/mu-tui/examples/image-pane.rs`.
+- Tests: `crates/mu-tui/tests/probe.rs`, `update.rs`, `pane.rs` and `app.rs`, and `crates/mu-cli/tests/support/process.rs`.
 - Dependencies: none new. `mu-tui` already uses `termina`, and `rustix` with `termios`.
 - Docs: `decisions/character-width.md` and `decisions/terminal-client-architecture.md`.
 
