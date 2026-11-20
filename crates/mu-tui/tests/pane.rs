@@ -293,6 +293,23 @@ fn cells_take_the_learned_width() {
 }
 
 #[test]
+fn learned_width_of_a_class_that_is_not_risky_is_forced() {
+    let mut pane = PaneState::with_caps(Arc::new(Caps {
+        profile: Profile::learn(&[("①", 2)]),
+        graphics: false,
+    }));
+    pane.push("①x");
+    let buf = render(&mut pane, 20, 3);
+    assert_eq!(
+        (buf[(0, 0)].diff_option, buf[(2, 0)].symbol()),
+        (
+            CellDiffOption::ForcedWidth(NonZeroU16::new(2).unwrap()),
+            "x"
+        )
+    );
+}
+
+#[test]
 fn cells_take_the_default_width() {
     let mut pane = pane_with([format!("{FAMILY}x")]);
     let buf = render(&mut pane, 20, 3);

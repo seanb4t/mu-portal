@@ -13,6 +13,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget};
 use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use crate::convert::Converted;
 use crate::diacritics::DIACRITICS;
@@ -571,8 +572,9 @@ fn draw_placeholders(image: Image, row: usize, at: (u16, u16), width: u16, buf: 
 
 /// Draws the graphemes of `text` from `at`, in at most `width` cells, with the widths of
 /// `profile`. `style_at` gives the style of the grapheme at a byte offset of `text`. A grapheme
-/// wider than `width` shows as U+FFFD. A grapheme of a risky class gets its width as a forced
-/// width, and the cells after the first cell of a wide grapheme are reset.
+/// wider than `width` shows as U+FFFD. A grapheme of a risky class, or one whose learned width
+/// differs from its `unicode-width` value, gets its width as a forced width. The cells after the
+/// first cell of a wide grapheme are reset.
 fn draw_text(
     text: &str,
     style_at: impl Fn(usize) -> Style,
@@ -590,7 +592,7 @@ fn draw_text(
         }
         let (symbol, forced) = if profile.width(grapheme) > usize::from(width) {
             ("\u{fffd}", None)
-        } else if Class::of(grapheme).risky() {
+        } else if Class::of(grapheme).risky() || grapheme_cells != grapheme.width() {
             let forced = u16::try_from(grapheme_cells).ok().and_then(NonZeroU16::new);
             (grapheme, forced)
         } else {

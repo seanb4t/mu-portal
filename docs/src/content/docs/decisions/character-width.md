@@ -21,7 +21,7 @@ If the terminal does not answer in that time, the client uses the `unicode-width
 
 The command `cargo run -p char-width -- list` in `spikes/` prints the class of each grapheme.
 
-The client computes the display width of each line with the learned rules. The output pane gives every cell of a risky class the learned width with the ratatui cell option `ForcedWidth`. The buffer and the diff then use the same width as the terminal. After a cell with a width above one, ratatui moves the cursor before it writes the next cell.
+The client computes the display width of each line with the learned rules. The output pane gives the learned width to every cell of a risky class, and to every cell whose learned width differs from the `unicode-width` value. It uses the ratatui cell option `ForcedWidth`. The buffer and the diff then use the same width as the terminal. After a cell with a width above one, ratatui moves the cursor before it writes the next cell.
 
 ## Reason
 
