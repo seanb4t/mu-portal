@@ -8,6 +8,7 @@ use std::collections::{HashMap, VecDeque};
 
 use ratatui::style::Style;
 
+use crate::diacritics::DIACRITICS;
 use crate::text::clean_styled;
 
 /// The number of lines in one chunk.
@@ -41,6 +42,8 @@ pub struct Span {
 
 /// The most rows and the most columns of an image: the number of kitty diacritics.
 pub const IMAGE_CELLS: u16 = 297;
+
+const _: () = assert!(IMAGE_CELLS as usize == DIACRITICS.len());
 
 /// The ids of an image: the foreground color of a placeholder holds the id in 24 bits, and 0
 /// means no image.
