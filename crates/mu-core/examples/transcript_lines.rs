@@ -1,4 +1,6 @@
 //! Prints the game lines of a telnet transcript, one per line, as the telnet framer gives them.
+//! Each line shows in quotes, with each control character as an escape, so no line sends a
+//! sequence to the terminal.
 //!
 //! Each `<` record of the transcript holds the hex of one read from the game. The other records
 //! are notes or the bytes of the client, and the framer does not see them.
@@ -21,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for read in transcript_reads(&fs::read_to_string(&path)?) {
             for inbound in framer.feed(&read) {
                 if let Inbound::Line(line) = inbound {
-                    writeln!(out, "{line}")?;
+                    writeln!(out, "{line:?}")?;
                 }
             }
         }
