@@ -620,6 +620,13 @@ impl StatefulWidget for OutputPane {
             width: area.width,
             height: area.height - unfinished_row,
         };
+        // A resize can bring the last row of the newest line onto the screen. The pane is then
+        // at the bottom, so it follows new lines again.
+        if let Some(top) = state.anchor.and_then(|_| state.top_row(full))
+            && state.bottom_shows(top, full)
+        {
+            state.anchor = None;
+        }
         let bar = area.width > 0 && !Self::fits(state, full);
         let geometry = Geometry {
             width: full.width - u16::from(bar),

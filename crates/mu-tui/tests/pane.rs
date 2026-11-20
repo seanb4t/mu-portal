@@ -483,3 +483,23 @@ fn image_copies_its_url() {
     pane.drag(end);
     assert_eq!(pane.release().as_deref(), Some(MAP));
 }
+
+#[test]
+fn resize_that_shows_the_bottom_follows_new_lines() {
+    let mut pane = pane_with(numbers(1..=10));
+    render(&mut pane, 20, 3);
+    pane.scroll_rows(-1);
+    render(&mut pane, 20, 5);
+    pane.push("11");
+    pane.push("12");
+    assert_eq!(rows(&render(&mut pane, 20, 5)).last().unwrap(), "12");
+}
+
+#[test]
+fn resize_that_fits_every_row_hides_the_bar() {
+    let mut pane = pane_with(numbers(1..=4));
+    render(&mut pane, 20, 2);
+    pane.scroll_rows(-1);
+    let buf = render(&mut pane, 20, 6);
+    assert_eq!((has_bar(&buf), pane.anchor()), (false, None));
+}
