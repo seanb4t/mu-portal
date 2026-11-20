@@ -5,7 +5,7 @@ The change has no spec delta, so no task names a spec scenario. Each task names 
 ## 1. Test helper and snapshot
 
 - [x] 1.1 Make `wait_rows` in `crates/mu-cli/tests/support/process.rs` call `wait_screen` with a check on the rows of the screen (D6). Make sure that `cargo nextest run -p mu-cli --test client --locked` passes with no edit to a test.
-- [ ] 1.2 Add to `first_view_snapshot` in `crates/mu-tui/tests/app.rs` the asserts of D7: the top row starts with `[alpha/aria]` and then `beta/bryn`, and the rows between show `Welcome, aria.` and no `Welcome, bryn.`. Make sure that the test fails with a wrong world order. Make sure that it fails with the pane of `beta/bryn` in focus. Make sure that it passes at the end of the task.
+- [x] 1.2 Add to `first_view_snapshot` in `crates/mu-tui/tests/app.rs` the asserts of D7: the top row starts with `[alpha/aria]` and then `beta/bryn`, and the rows between show `Welcome, aria.` and no `Welcome, bryn.`. Make sure that the test fails with a wrong world order. Make sure that it fails with the pane of `beta/bryn` in focus. Make sure that it passes at the end of the task.
 
 ## 2. The probe frames its input, and Termina decodes each CSI
 

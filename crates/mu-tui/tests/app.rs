@@ -156,6 +156,10 @@ fn first_view_snapshot() {
     type_text(&mut app, "look");
     let mut terminal = Terminal::new(TestBackend::new(40, 6)).unwrap();
     terminal.draw(|frame| view(&mut app, frame)).unwrap();
+    let rows = text_rows(terminal.backend().buffer());
+    assert!(rows[0].starts_with("[alpha/aria] beta/bryn"), "{}", rows[0]);
+    assert!(rows[1..5].iter().any(|row| row == "Welcome, aria."));
+    assert!(rows.iter().all(|row| row != "Welcome, bryn."));
     insta::assert_snapshot!(terminal.backend());
 }
 
