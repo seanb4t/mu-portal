@@ -192,7 +192,7 @@ Each cell of a text row SHALL map to a position. Each cell of a wide grapheme SH
 - **THEN** neither cell has a position
 
 ### Requirement: Cells take the learned width
-The pane SHALL give each cell of a grapheme in a risky width class the width that the width profile gives that class. The pane SHALL use the same width to wrap the line. A profile width of 0 SHALL count as no answer for that class.
+The pane SHALL give each cell of a grapheme the width that the width profile gives it, when the grapheme is in a risky width class or that width differs from the `unicode-width` value. The pane SHALL use the same width to wrap the line. A profile width of 0 SHALL count as no answer for that class.
 
 #### Scenario: A profile that adds code point widths
 - **GIVEN** a width profile that gives the family emoji `👨‍👩‍👧` a width of 8
