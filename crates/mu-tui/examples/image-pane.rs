@@ -62,7 +62,7 @@ fn session(
     png: &[u8],
     (width, height): (u32, u32),
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let cell = screen::cell(terminal);
+    let cell = screen::cell(terminal)?;
     let (outcome, _input) = probe::run(terminal.backend_mut(), probe::WAIT)?;
     grapheme_mode.store(outcome.resets_grapheme_mode(), Ordering::Relaxed);
     let graphics = outcome.graphics;
