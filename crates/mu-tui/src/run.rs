@@ -31,7 +31,7 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
     let grapheme_mode = Arc::new(AtomicBool::new(true));
     let (mut terminal, reader) = screen::open(&grapheme_mode)?;
     let cell = screen::cell(&mut terminal).unwrap_or_else(|error| {
-        model.notice(&format!("the terminal gave no window size: {error}"));
+        model.window_size_failed(&error);
         None
     });
     let probed = probe::run(terminal.backend_mut(), probe::WAIT);

@@ -108,21 +108,11 @@ pub fn cell_pixels(size: &WindowSize) -> Option<Size> {
     (cell.width > 0 && cell.height > 0).then_some(cell)
 }
 
-/// The size of one cell in pixels from the answer of a window size query: None if the terminal
-/// gives no pixel size, and the error if the query failed.
-///
-/// # Errors
-///
-/// The error of the query.
-pub fn window_cell(size: io::Result<WindowSize>) -> io::Result<Option<Size>> {
-    size.map(|size| cell_pixels(&size))
-}
-
-/// The size of one cell of `screen` in pixels, if the terminal gives its pixel size.
+/// The size of one cell of `screen` in pixels. None if the terminal gives no pixel size.
 ///
 /// # Errors
 ///
 /// An I/O error of the window size query.
 pub fn cell(screen: &mut Screen) -> io::Result<Option<Size>> {
-    window_cell(Backend::window_size(screen.backend_mut()))
+    Backend::window_size(screen.backend_mut()).map(|size| cell_pixels(&size))
 }

@@ -3,6 +3,7 @@
 //! a scrolled pane to the bottom when the newest row shows.
 
 use std::collections::HashMap;
+use std::io;
 use std::sync::Arc;
 
 use mu_client::ClientError;
@@ -110,6 +111,11 @@ impl Model {
                 model
             }
         }
+    }
+
+    /// Adds a notice that the query for the window size failed with `error`.
+    pub fn window_size_failed(&mut self, error: &io::Error) {
+        self.notice(&format!("the terminal gave no window size: {error}"));
     }
 
     /// True if a late reply gave mode 2027 as set before the probe, so the client leaves the
