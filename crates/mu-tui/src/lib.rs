@@ -20,7 +20,7 @@ mod view;
 pub mod width;
 pub mod wrap;
 
-pub use keymap::{Chord, Keymap};
+pub use keymap::{Chord, Keymap, Wheel};
 pub use layout::{Leaf, Node};
 pub use model::{Model, PaneId};
 pub use pane::{Caps, OutputPane, PaneState, Position};

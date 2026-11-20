@@ -12,6 +12,7 @@ use termina::event::{
 };
 
 use crate::convert::convert;
+use crate::keymap::Wheel;
 use crate::model::{Model, PaneId};
 use crate::pane::PaneState;
 use crate::store::Image;
@@ -48,9 +49,6 @@ pub enum Action {
     /// positive one.
     ScrollRows(i32),
 }
-
-/// The rows that one step of the mouse wheel scrolls.
-const WHEEL_ROWS: i32 = 3;
 
 /// What the loop must do after an update.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -126,8 +124,8 @@ fn on_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
 /// and its release copies the selection. A press on no position clears the selection.
 fn on_mouse(model: &mut Model, mouse: MouseEvent) -> Vec<Effect> {
     match mouse.kind {
-        MouseEventKind::ScrollUp => act(model, Action::ScrollRows(-WHEEL_ROWS)),
-        MouseEventKind::ScrollDown => act(model, Action::ScrollRows(WHEEL_ROWS)),
+        MouseEventKind::ScrollUp => wheel(model, Wheel::Up),
+        MouseEventKind::ScrollDown => wheel(model, Wheel::Down),
         MouseEventKind::Down(MouseButton::Left) => {
             if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
                 match state.position(mouse.column, mouse.row) {
@@ -153,6 +151,13 @@ fn on_mouse(model: &mut Model, mouse: MouseEvent) -> Vec<Effect> {
             .into_iter()
             .collect(),
         _ => Vec::new(),
+    }
+}
+
+fn wheel(model: &mut Model, step: Wheel) -> Vec<Effect> {
+    match model.keymap.wheel(step) {
+        Some(action) => act(model, action),
+        None => Vec::new(),
     }
 }
 

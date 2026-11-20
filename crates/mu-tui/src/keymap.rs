@@ -1,4 +1,5 @@
-//! The keymap: a table from a key with its modifiers to an [`Action`].
+//! The keymap: a table from a key with its modifiers, or a step of the mouse wheel, to an
+//! [`Action`].
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
@@ -33,11 +34,21 @@ impl Chord {
     }
 }
 
-/// The table from a [`Chord`] to an [`Action`]. A key that is in no entry goes to the input
-/// line.
+/// One step of the mouse wheel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Wheel {
+    /// A step up, away from the user.
+    Up,
+    /// A step down, toward the user.
+    Down,
+}
+
+/// The table from a [`Chord`] or a [`Wheel`] step to an [`Action`]. A key that is in no entry
+/// goes to the input line.
 #[derive(Clone, Debug)]
 pub struct Keymap {
     entries: Vec<(Chord, Action)>,
+    wheel: Vec<(Wheel, Action)>,
 }
 
 impl Keymap {
@@ -46,7 +57,25 @@ impl Keymap {
     pub const fn empty() -> Self {
         Self {
             entries: Vec::new(),
+            wheel: Vec::new(),
         }
+    }
+
+    /// Maps the wheel step `step` to `action`, in place of an earlier entry of the same step.
+    pub fn bind_wheel(&mut self, step: Wheel, action: Action) {
+        match self.wheel.iter_mut().find(|(each, _)| *each == step) {
+            Some(entry) => entry.1 = action,
+            None => self.wheel.push((step, action)),
+        }
+    }
+
+    /// The action of the wheel step `step`.
+    #[must_use]
+    pub fn wheel(&self, step: Wheel) -> Option<Action> {
+        self.wheel
+            .iter()
+            .find(|(each, _)| *each == step)
+            .map(|(_, action)| *action)
     }
 
     /// Maps `chord` to `action`, in place of an earlier entry of the same chord.
@@ -78,7 +107,8 @@ impl Keymap {
 }
 
 impl Default for Keymap {
-    /// Ctrl+C quits, Ctrl+N and Ctrl+P move the focus, and Enter sends the input line.
+    /// Ctrl+C quits, Ctrl+N and Ctrl+P move the focus, and Enter sends the input line. The page
+    /// keys scroll one page, and each step of the mouse wheel scrolls three rows.
     fn default() -> Self {
         let mut keymap = Self::empty();
         keymap.bind(Chord::ctrl('c'), Action::Quit);
@@ -87,6 +117,8 @@ impl Default for Keymap {
         keymap.bind(Chord::plain(KeyCode::Enter), Action::Submit);
         keymap.bind(Chord::plain(KeyCode::PageUp), Action::ScrollPage(-1));
         keymap.bind(Chord::plain(KeyCode::PageDown), Action::ScrollPage(1));
+        keymap.bind_wheel(Wheel::Up, Action::ScrollRows(-3));
+        keymap.bind_wheel(Wheel::Down, Action::ScrollRows(3));
         keymap
     }
 }
