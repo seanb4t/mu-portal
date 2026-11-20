@@ -27,7 +27,8 @@ use crate::wrap::{Row, wrap};
 pub struct Position {
     /// The line.
     pub line: LineId,
-    /// The byte offset in the text of the line.
+    /// The byte offset in the text of the line. The anchor on an image line that the pane draws
+    /// as an image holds the index of the image row instead.
     pub byte: usize,
 }
 
