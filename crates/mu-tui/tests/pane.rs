@@ -8,7 +8,7 @@ use mu_tui::width::Profile;
 use mu_tui::{Caps, OutputPane, PaneState, Position};
 use ratatui::buffer::{Buffer, CellDiffOption};
 use ratatui::layout::Rect;
-use ratatui::style::Color;
+use ratatui::style::{Color, Style};
 use ratatui::widgets::StatefulWidget;
 use unicode_width::UnicodeWidthStr;
 
@@ -254,7 +254,6 @@ fn no_position() {
 
 #[test]
 fn style_follows_its_text_across_a_wrap() {
-    use ratatui::style::Style;
     let mut pane = PaneState::default();
     pane.push_styled("aaaaaaaa redword", &[(9, Style::new().fg(Color::Red))]);
     let buf = render(&mut pane, 10, 3);
@@ -602,4 +601,41 @@ fn zero_width_grapheme_after_a_full_unfinished_line_draws_nothing() {
 fn zero_width_grapheme_at_the_end_of_a_row_takes_no_cell() {
     let mut pane = pane_with(["ab\u{200B}".to_owned()]);
     assert_eq!(render(&mut pane, 20, 1)[(2, 0)].symbol(), " ");
+}
+
+/// The foreground color of each cell of the first row.
+fn colors(buf: &Buffer, width: u16) -> Vec<Color> {
+    (0..width).map(|x| buf[(x, 0)].fg).collect()
+}
+
+#[test]
+fn pushed_escape_reaches_no_cell() {
+    let mut pane = PaneState::default();
+    pane.push("a\x1b[2Jb");
+    assert_eq!(rows(&render(&mut pane, 10, 1)), ["a\u{FFFD}[2Jb"]);
+}
+
+#[test]
+fn unfinished_escape_reaches_no_cell() {
+    let mut pane = PaneState::default();
+    pane.set_unfinished(Some("a\x07b".into()));
+    assert_eq!(rows(&render(&mut pane, 10, 1)), ["a\u{FFFD}b"]);
+}
+
+#[test]
+fn style_after_a_wider_replacement_starts_at_its_char() {
+    let mut pane = PaneState::default();
+    let (red, blue) = (Style::new().fg(Color::Red), Style::new().fg(Color::Blue));
+    pane.push_styled("\u{85}ab", &[(0, red), (3, blue)]);
+    assert_eq!(
+        colors(&render(&mut pane, 3, 1), 3),
+        [Color::Red, Color::Red, Color::Blue]
+    );
+}
+
+#[test]
+fn placeholder_char_in_text_is_a_replacement() {
+    let mut pane = PaneState::default();
+    pane.push("\u{10EEEE}b");
+    assert_eq!(rows(&render(&mut pane, 3, 1)), ["\u{FFFD}b"]);
 }

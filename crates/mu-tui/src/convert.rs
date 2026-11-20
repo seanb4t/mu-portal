@@ -19,10 +19,10 @@ pub struct Converted {
 }
 
 impl From<&str> for Converted {
-    /// Text with no style. It must hold no control character.
+    /// Text with no style, with each control character as U+FFFD.
     fn from(text: &str) -> Self {
         Self {
-            text: text.to_owned(),
+            text: crate::text::clean(text),
             spans: Vec::new(),
         }
     }

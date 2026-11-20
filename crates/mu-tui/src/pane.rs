@@ -18,7 +18,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::convert::Converted;
 use crate::diacritics::DIACRITICS;
 use crate::store::{CAPACITY, Image, LineId, LineStore};
-use crate::text::clean;
+use crate::text::{PLACEHOLDER, clean_styled};
 use crate::width::{Class, Profile};
 use crate::wrap::{Row, wrap};
 
@@ -64,9 +64,6 @@ pub struct Caps {
     /// The size of one cell in pixels, if the terminal gives it.
     pub cell: Option<Size>,
 }
-
-/// The kitty unicode placeholder.
-const PLACEHOLDER: char = '\u{10EEEE}';
 
 /// The state of one output pane.
 #[derive(Debug)]
@@ -128,10 +125,10 @@ impl PaneState {
     }
 
     /// Removes the unfinished line, then adds an image line at the bottom, as
-    /// [`Self::push_styled`] does. The pane shows each control character of `url` as U+FFFD.
+    /// [`Self::push_styled`] does.
     pub fn push_image(&mut self, url: &str, image: Image) {
         self.unfinished = None;
-        self.store.push_image(&clean(url), image);
+        self.store.push_image(url, image);
         self.keep_live();
     }
 
@@ -186,9 +183,15 @@ impl PaneState {
     }
 
     /// Shows `text` with its styles as the unfinished line after the newest line, or no
-    /// unfinished line.
+    /// unfinished line. Each control character of the text shows as U+FFFD.
     pub fn set_unfinished(&mut self, text: Option<Converted>) {
-        self.unfinished = text;
+        self.unfinished = text.map(|line| {
+            let (text, spans) = clean_styled(&line.text, &line.spans);
+            Converted {
+                text: text.into_owned(),
+                spans: spans.into_owned(),
+            }
+        });
     }
 
     /// The scroll anchor: the position that the top row holds. None at the bottom.

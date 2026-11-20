@@ -8,6 +8,8 @@ use std::collections::{HashMap, VecDeque};
 
 use ratatui::style::Style;
 
+use crate::text::clean_styled;
+
 /// The number of lines in one chunk.
 pub const CHUNK_LINES: usize = 4096;
 
@@ -201,20 +203,19 @@ impl LineStore {
     }
 
     /// Adds a line at the end, and drops the oldest line if the store is then over its
-    /// capacity. `spans` are pairs of a byte offset and a style, in order. `text` must hold no
-    /// control character.
+    /// capacity. `spans` are pairs of a byte offset and a style, in order. The store keeps each
+    /// control character of `text` as U+FFFD.
     pub fn push(&mut self, text: &str, spans: &[(usize, Style)]) -> LineId {
         self.push_line(text, spans, None)
     }
 
-    /// Adds an image line at the end, as [`Self::push`] does. `url` must hold no control
-    /// character.
+    /// Adds an image line at the end, as [`Self::push`] does, with `url` as its text.
     pub fn push_image(&mut self, url: &str, image: Image) -> LineId {
         self.push_line(url, &[], Some(image))
     }
 
     fn push_line(&mut self, text: &str, spans: &[(usize, Style)], image: Option<Image>) -> LineId {
-        debug_assert!(!text.chars().any(char::is_control), "{text:?}");
+        let (text, spans) = clean_styled(text, spans);
         let spans: Vec<Span> = spans
             .iter()
             .map(|&(start, style)| Span {
@@ -233,7 +234,7 @@ impl LineStore {
             });
         }
         if let Some(chunk) = self.chunks.back_mut() {
-            chunk.text.push_str(text);
+            chunk.text.push_str(&text);
             chunk.spans.extend(spans);
             chunk.records.push(Record {
                 text_end: chunk.text.len(),
