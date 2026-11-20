@@ -7,6 +7,7 @@
 pub mod convert;
 mod diacritics;
 mod keymap;
+pub mod kitty;
 mod layout;
 mod model;
 mod pane;

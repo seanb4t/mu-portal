@@ -12,6 +12,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+base64 = { workspace = true }
 futures = { workspace = true }
 mu-client = { path = "../mu-client" }
 mu-proto = { path = "../mu-proto" }

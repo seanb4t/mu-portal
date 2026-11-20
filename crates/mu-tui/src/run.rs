@@ -13,6 +13,7 @@ use termina::escape::osc::{Osc, Selection};
 use termina::{Event as TermEvent, EventReader, EventStream, PlatformTerminal, Terminal as _};
 use tokio::sync::mpsc;
 
+use crate::kitty;
 use crate::model::Model;
 use crate::pane::Caps;
 use crate::probe;
@@ -150,6 +151,11 @@ async fn event_loop(
         for effect in update(model, msg) {
             match effect {
                 Effect::Quit => return Ok(()),
+                Effect::TransmitImage { image, png } => {
+                    let out = terminal.backend_mut();
+                    out.write_all(&kitty::transmit(image, &png))?;
+                    out.flush()?;
+                }
                 Effect::ClipboardWrite(text) => {
                     let out = terminal.backend_mut();
                     write!(out, "{}", Osc::SetSelection(Selection::CLIPBOARD, &text))?;

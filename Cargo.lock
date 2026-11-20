@@ -1933,6 +1933,7 @@ dependencies = [
 name = "mu-tui"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "futures",
  "insta",
  "mu-client",

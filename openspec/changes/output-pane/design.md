@@ -149,7 +149,7 @@ Enforced by: unit tests of `update` for each action, and the pseudo-terminal sce
 
 ### D7. A drag selects, and the release copies through OSC 52
 
-A press of the left button starts a selection at its line and byte. A drag moves its end, and a release ends it and returns an `Effect::ClipboardWrite`. `run.rs` writes the copy text with `Osc::SetSelection(Selection::CLIPBOARD, text)` of Termina, the chosen backend. Thus the client needs no base64 crate of its own. A press with no drag clears the selection. The copy text joins the selected text of each line with LF. An image line gives its URL.
+A press of the left button starts a selection at its line and byte. A drag moves its end, and a release ends it and returns an `Effect::ClipboardWrite`. `run.rs` writes the copy text with `Osc::SetSelection(Selection::CLIPBOARD, text)` of Termina, the chosen backend. Thus the copy needs no base64 code of its own. A press with no drag clears the selection. The copy text joins the selected text of each line with LF. An image line gives its URL.
 
 Enforced by: unit tests of the copy text, and a pseudo-terminal scenario that reads the raw bytes that the client writes.
 
@@ -176,6 +176,8 @@ Enforced by: unit tests of the reply parser and of the learned profile, with the
 An image line holds an image id, a name and its size in cells, from 1 to 297 rows and columns. A size of 0 becomes 1, and a size above 297 becomes 297. The pane renders each cell as U+10EEEE with the diacritic of its row and of its column. The foreground color of the cell is the image id as a 24-bit color, so the client assigns ids from 1 to 2^24 - 1 and needs no third diacritic. The pane clips the columns of the image at the right edge of the area. ratatui passes these cells through its buffer with no change, as the spike showed.
 
 The pixels go to the terminal once, as an effect. `Effect::TransmitImage` writes a kitty graphics command with a virtual placement before the next frame.
+
+The command is `a=T,U=1,f=100` with the id, the columns and the rows, so the terminal reads the size in pixels from the PNG. The PNG goes in base64 chunks of at most 4096 bytes. Only the first chunk holds the keys, and each chunk holds `m` and `q=2`, so the terminal sends no reply that the event reader gives as keys. `kitty::transmit` writes the command with the `base64` crate, which the lockfile already holds. `kitty-graphics-protocol` 0.1.3 builds the same command, but the client does not use it: the command is about 30 lines over `base64`, and the crate adds a young dependency and its own error type for no other use.
 
 Before code depends on this design, task 10.1 checks `ratatui-image` under the rule of reuse. The check: can it render kitty unicode placeholders into the ratatui buffer as a line of fixed rows? If it can, the pane uses it. Otherwise the pane writes the placeholders itself, from the spike as an example only. Task 10.2 follows the result of 10.1.
 

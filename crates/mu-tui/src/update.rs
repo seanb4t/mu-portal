@@ -14,6 +14,7 @@ use termina::event::{
 use crate::convert::convert;
 use crate::model::{Model, PaneId};
 use crate::pane::PaneState;
+use crate::store::Image;
 use crate::text::{clean, line};
 
 /// One input of the model.
@@ -65,6 +66,14 @@ pub enum Effect {
     Quit,
     /// Write `text` to the clipboard of the terminal.
     ClipboardWrite(String),
+    /// Send the PNG `png` to the terminal as `image`, with a virtual placement of its size,
+    /// before the next frame.
+    TransmitImage {
+        /// The id and the size of the image.
+        image: Image,
+        /// The bytes of a PNG file.
+        png: Vec<u8>,
+    },
 }
 
 /// The result of an [`Effect::Send`].
