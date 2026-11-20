@@ -178,17 +178,40 @@ fn listed_worlds_are_the_worlds() {
     assert_eq!(top(&mut app), "[alpha/aria] beta/bryn");
 }
 
-#[test]
-fn failed_list_of_worlds_shows_its_error() {
-    let mut app = Model::from_listing(Err(ClientError {
+const LIST_FAILED: &str = "-- could not list the worlds: unavailable: no server";
+
+fn failed_listing() -> Model {
+    Model::from_listing(Err(ClientError {
         code: "unavailable",
         message: "no server".to_owned(),
-    }));
+    }))
+}
+
+#[test]
+fn failed_list_of_worlds_shows_its_error() {
+    let mut app = failed_listing();
     assert_eq!(top(&mut app), "no worlds");
-    assert_eq!(
-        rows(&mut app),
-        ["-- could not list the worlds: unavailable: no server"]
+    assert_eq!(rows(&mut app), [LIST_FAILED]);
+}
+
+#[test]
+fn notice_stays_when_the_first_world_event_comes() {
+    let mut app = failed_listing();
+    on_event(&mut app, game("alpha/aria", "hello"));
+    assert_eq!(rows(&mut app), [LIST_FAILED, "hello"]);
+}
+
+#[test]
+fn notice_shows_once_after_a_reset_that_follows_the_first_world_event() {
+    let mut app = failed_listing();
+    on_event(&mut app, game("alpha/aria", "hello"));
+    on_event(
+        &mut app,
+        ClientEvent::Reset {
+            instance_id: "i".to_owned(),
+        },
     );
+    assert_eq!(rows(&mut app), [LIST_FAILED]);
 }
 
 #[test]

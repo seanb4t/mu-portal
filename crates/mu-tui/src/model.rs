@@ -146,7 +146,8 @@ impl Model {
     }
 
     /// The index of `id`, which this adds in its order, with a new pane, if it is new. A new
-    /// world takes the focus when no world has it, and the focus stays on its world.
+    /// world takes the focus when no world has it, with the notices in its pane, and the focus
+    /// stays on its world.
     pub(crate) fn world(&mut self, id: &str) -> usize {
         match self
             .worlds
@@ -169,7 +170,12 @@ impl Model {
                 );
                 match self.focus {
                     Some(focus) if focus >= index => self.focus = Some(focus + 1),
-                    None => self.focus = Some(index),
+                    None => {
+                        self.focus = Some(index);
+                        for line in self.notices.clone() {
+                            self.push(pane, &line);
+                        }
+                    }
                     Some(_) => {}
                 }
                 index
