@@ -26,16 +26,14 @@ use crate::view::view;
 ///
 /// An I/O error of the terminal.
 pub async fn run(client: PortalClient) -> io::Result<()> {
-    // A failed call leaves the list empty, and the events of each world add it.
-    let worlds = client.list_worlds().await.map_or_else(
-        |_| Vec::new(),
-        |worlds| worlds.into_iter().map(|world| world.id).collect(),
-    );
-    let mut model = Model::new(worlds);
+    let mut model = Model::from_listing(client.list_worlds().await);
     // The probe sets mode 2027, so a panic before its replies turns the mode off.
     let grapheme_mode = Arc::new(AtomicBool::new(true));
     let (mut terminal, reader) = screen::open(&grapheme_mode)?;
-    let cell = screen::cell(&mut terminal);
+    let cell = screen::cell(&mut terminal).unwrap_or_else(|error| {
+        model.window_size_failed(&error);
+        None
+    });
     let probed = probe::run(terminal.backend_mut(), probe::WAIT);
     let result = match probed {
         Ok((outcome, input)) => {

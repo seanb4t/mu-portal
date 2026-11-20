@@ -3,8 +3,11 @@
 //! a scrolled pane to the bottom when the newest row shows.
 
 use std::collections::HashMap;
+use std::io;
 use std::sync::Arc;
 
+use mu_client::ClientError;
+use mu_proto::World as ProtoWorld;
 use ratatui::style::Style;
 use ratatui_textarea::{CursorMove, TextArea};
 
@@ -71,8 +74,8 @@ pub(crate) enum Late {
 }
 
 impl Model {
-    /// A model with these worlds, in their order, the default keymap and the default layout.
-    /// The first world has the focus.
+    /// A model with these worlds, the default keymap and the default layout. The worlds are in
+    /// order by game and then by character, and the first world in that order has the focus.
     #[must_use]
     pub fn new(worlds: impl IntoIterator<Item = String>) -> Self {
         let mut model = Self {
@@ -94,6 +97,25 @@ impl Model {
         }
         model.focus = (!model.worlds.is_empty()).then_some(0);
         model
+    }
+
+    /// A model with the worlds of a list of worlds. A failed list gives no worlds and a notice
+    /// with its error. The events of each world add the world later.
+    #[must_use]
+    pub fn from_listing(listed: Result<Vec<ProtoWorld>, ClientError>) -> Self {
+        match listed {
+            Ok(worlds) => Self::new(worlds.into_iter().map(|world| world.id)),
+            Err(error) => {
+                let mut model = Self::new([]);
+                model.notice(&format!("could not list the worlds: {error}"));
+                model
+            }
+        }
+    }
+
+    /// Adds a notice that the query for the window size failed with `error`.
+    pub fn window_size_failed(&mut self, error: &io::Error) {
+        self.notice(&format!("the terminal gave no window size: {error}"));
     }
 
     /// True if a late reply gave mode 2027 as set before the probe, so the client leaves the
@@ -130,7 +152,8 @@ impl Model {
     }
 
     /// The index of `id`, which this adds in its order, with a new pane, if it is new. A new
-    /// world takes the focus when no world has it, and the focus stays on its world.
+    /// world takes the focus when no world has it, with the notices in its pane, and the focus
+    /// stays on its world.
     pub(crate) fn world(&mut self, id: &str) -> usize {
         match self
             .worlds
@@ -153,7 +176,12 @@ impl Model {
                 );
                 match self.focus {
                     Some(focus) if focus >= index => self.focus = Some(focus + 1),
-                    None => self.focus = Some(index),
+                    None => {
+                        self.focus = Some(index);
+                        for line in self.notices.clone() {
+                            self.push(pane, &line);
+                        }
+                    }
                     Some(_) => {}
                 }
                 index

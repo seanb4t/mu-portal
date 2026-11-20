@@ -1,8 +1,10 @@
 //! The scenarios of the terminal-client capability on `update` and `view`, drawn on a
 //! `TestBackend`.
 
-use mu_client::ClientEvent;
-use mu_proto::{Event, EventKind, Source};
+use std::io;
+
+use mu_client::{ClientError, ClientEvent};
+use mu_proto::{Event, EventKind, Source, World};
 use mu_tui::convert::convert;
 use mu_tui::{Effect, Model, Msg, Reply, update, view};
 use proptest::prelude::*;
@@ -166,6 +168,62 @@ fn world_order() {
 #[test]
 fn no_worlds() {
     assert_eq!(top(&mut app(&[])), "no worlds");
+}
+
+#[test]
+fn listed_worlds_are_the_worlds() {
+    let worlds = ["beta/bryn", "alpha/aria"].map(|id| World {
+        id: id.to_owned(),
+        ..Default::default()
+    });
+    let mut app = Model::from_listing(Ok(worlds.to_vec()));
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn");
+}
+
+const LIST_FAILED: &str = "-- could not list the worlds: unavailable: no server";
+
+fn failed_listing() -> Model {
+    Model::from_listing(Err(ClientError {
+        code: "unavailable",
+        message: "no server".to_owned(),
+    }))
+}
+
+#[test]
+fn failed_list_of_worlds_shows_its_error() {
+    let mut app = failed_listing();
+    assert_eq!(top(&mut app), "no worlds");
+    assert_eq!(rows(&mut app), [LIST_FAILED]);
+}
+
+#[test]
+fn notice_stays_when_the_first_world_event_comes() {
+    let mut app = failed_listing();
+    on_event(&mut app, game("alpha/aria", "hello"));
+    assert_eq!(rows(&mut app), [LIST_FAILED, "hello"]);
+}
+
+#[test]
+fn notice_shows_once_after_a_reset_that_follows_the_first_world_event() {
+    let mut app = failed_listing();
+    on_event(&mut app, game("alpha/aria", "hello"));
+    on_event(
+        &mut app,
+        ClientEvent::Reset {
+            instance_id: "i".to_owned(),
+        },
+    );
+    assert_eq!(rows(&mut app), [LIST_FAILED]);
+}
+
+#[test]
+fn failed_window_size_shows_its_error() {
+    let mut app = app(&[]);
+    app.window_size_failed(&io::Error::other("no tty"));
+    assert_eq!(
+        rows(&mut app),
+        ["-- the terminal gave no window size: no tty"]
+    );
 }
 
 #[test]
@@ -520,8 +578,8 @@ fn indexed_and_24_bit_colors() {
     );
 }
 
-/// The game lines of the `aresmush` and `rhostmush` transcripts, after the line that names
-/// the command that made them.
+/// The raw game lines of the `aresmush` and `rhostmush` transcripts, with their escape
+/// sequences, after the line that names the command with `--raw` that made them.
 const TRANSCRIPT_LINES: &str = include_str!("data/transcript-lines.txt");
 
 #[test]
