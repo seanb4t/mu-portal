@@ -82,7 +82,7 @@ Enforced by: review of the decision page. The programs stay out of `crates/`, so
 - `update` changes the model and returns a list of `Effect`. It does no I/O. `run.rs` performs each effect: a call of `mu-client`, a write to the terminal, or the end of the loop.
 - `view` walks the layout tree. The tree has three node kinds: a split with a direction and constraints, tabs, and a leaf. A leaf names a view: the world tabs, an output pane by id, or the input line. The client builds the tree of today's screen in code. #101 owns the schema and the file.
 - Each widget is a ratatui `StatefulWidget`. Its state knows nothing of the app. The model holds the pane states in a map by pane id, and each world has one pane id.
-- The render of a pane also stores the map from screen rows to lines and bytes in the pane state. `update` uses that map to turn a mouse position into a line and a byte. Each cell of a wide grapheme maps to the byte where that grapheme starts. A cell past the end of the text maps to the end of its line. A cell of the scroll bar or of the unfinished line maps to no position, so a press there starts no selection.
+- The render of a pane also stores the map from screen rows to lines and bytes in the pane state. `update` uses that map to turn a mouse position into a line and a byte. The map can be older than the last trim. So `update` moves a position on a line behind the first live line to the start of the oldest live line, the rule of D3 for a selection end. Each cell of a wide grapheme maps to the byte where that grapheme starts. A cell past the end of the text maps to the end of its line. A cell of the scroll bar or of the unfinished line maps to no position, so a press there starts no selection.
 
 The move of the plain view onto the skeleton comes first, with no change in behavior. The scenarios of `terminal-client` have tests at two levels today. `crates/mu-tui/tests/app.rs` drives `App` and draws it on a `TestBackend`. `crates/mu-cli/tests/client.rs` runs the built binary in a pseudo-terminal. After the move, the tests in `app.rs` call the new API, and each assertion stays the same. The tests in `client.rs` pass with no edit.
 
@@ -103,7 +103,7 @@ The store keeps lines in chunks of 4096 lines, the size that the spike measured.
 - The scroll bar is the ratatui `Scrollbar` widget. Its `ScrollbarState` takes the count of live lines as the content length and the index of the top line as the position. It uses lines, not rows, because the pane keeps no index of rows for the whole store.
 - The pane first wraps at the full width. If the rows do not fit in the height, it shows the bar and wraps again at the width less one. Thus the bar does not turn on and off from one render to the next.
 
-Enforced by: unit tests of the store and the wrap in `mu-tui`, and the scenarios of `output-pane` on `TestBackend`. A property test checks that a wrap at any width from 0 to 300 keeps every byte of the line, in order, in rows no wider than the area, and gives each line at least one row when the width is above 0.
+Enforced by: unit tests of the store and the wrap in `mu-tui`, and the scenarios of `output-pane` on `TestBackend`. A property test checks the wrap at any width from 0 to 300. At width 0 it gives no rows. At a width above 0, it keeps every byte of the line, in order, in rows no wider than the area, and gives each line at least one row.
 
 ### D4. SGR to styles at the arrival of a line, with a parser from a crate
 

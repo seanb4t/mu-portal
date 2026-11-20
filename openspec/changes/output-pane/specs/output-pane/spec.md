@@ -119,7 +119,7 @@ If the pane holds more rows than its area shows, its last column SHALL show a sc
 - **THEN** the last column shows no scroll bar
 
 #### Scenario: The scroll bar takes a column
-- **GIVEN** a pane 10 columns wide and 2 rows high that holds the lines `aaaaaaaaa` and `bbbbbbbbbb`
+- **GIVEN** a pane 10 columns wide and 2 rows high that holds the lines `aaaaaaaaa` and `bbbbbbbbbbb`
 - **WHEN** the pane renders
 - **THEN** the last column shows a scroll bar
 - **AND** the rows wrap at 9 columns
