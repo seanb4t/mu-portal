@@ -35,12 +35,13 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
         |worlds| worlds.into_iter().map(|world| world.id).collect(),
     );
     let mut model = Model::new(worlds);
-    let grapheme_mode = Arc::new(AtomicBool::new(false));
+    // The probe sets mode 2027, so a panic before its replies turns the mode off.
+    let grapheme_mode = Arc::new(AtomicBool::new(true));
     let (mut terminal, reader) = open(&grapheme_mode)?;
     let probed = probe::run(terminal.backend_mut(), probe::WAIT);
     let result = match probed {
         Ok((outcome, input)) => {
-            grapheme_mode.store(outcome.turned_grapheme_mode_on(), Ordering::Relaxed);
+            grapheme_mode.store(outcome.resets_grapheme_mode(), Ordering::Relaxed);
             model.set_caps(Caps {
                 profile: outcome.profile,
                 graphics: outcome.graphics,

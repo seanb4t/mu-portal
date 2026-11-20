@@ -11,13 +11,13 @@ The terminal client measures the width of characters at startup. It does not tru
 
 The probe runs once, on the alternate screen, before the first frame:
 
-1. The client asks for the state of mode 2027 with DECRQM. Mode 2027 makes the terminal measure grapheme clusters, not code points. If the terminal knows the mode and it is off, the client turns it on.
+1. The client asks for the state of mode 2027 with DECRQM. Mode 2027 makes the terminal measure grapheme clusters, not code points. Then the client turns the mode on. A terminal that does not know the mode ignores it.
 2. The client writes one grapheme from each width class and asks for the cursor position after each one. It also asks whether the terminal draws kitty images. It sends all the queries in one write and ends them with a device attributes query (DA1). Every terminal answers DA1, so the DA1 reply marks the end of the answers.
 3. For each class, the client keeps the rule that gives the measured width. The rules are the `unicode-width` value, the sum of the code point widths, or a constant. A zero-width probe sets the width of a joiner (ZWJ) inside a sum.
 
 The client reads the replies itself, before its event reader starts, and waits at most 500 milliseconds for DA1. The event reader drops some replies and gives the kitty graphics reply as key presses, so the replies must not reach it. A key that the user presses during the probe still reaches the client.
 
-If the terminal does not answer in that time, the client uses the `unicode-width` value for every class. When the client exits, it turns off mode 2027 if the probe turned it on.
+If the terminal does not answer in that time, the client uses the `unicode-width` value for every class. When the client exits, it turns off mode 2027, unless the terminal gave the mode as on before the probe.
 
 The command `cargo run -p char-width -- list` in `spikes/` prints the class of each grapheme.
 

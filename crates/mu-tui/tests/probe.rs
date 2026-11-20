@@ -93,7 +93,7 @@ fn mode_reset_means_the_probe_turned_it_on() {
         },
         Reply::Da1,
     ]);
-    assert!(outcome.turned_grapheme_mode_on());
+    assert!(outcome.resets_grapheme_mode());
 }
 
 #[test]
@@ -105,5 +105,19 @@ fn mode_set_means_the_probe_left_it() {
         },
         Reply::Da1,
     ]);
-    assert!(!outcome.turned_grapheme_mode_on());
+    assert!(!outcome.resets_grapheme_mode());
+}
+
+#[test]
+fn no_mode_reply_means_the_mode_goes_off() {
+    assert!(Outcome::learn(&[]).resets_grapheme_mode());
+}
+
+#[test]
+fn permanently_set_mode_stays() {
+    let outcome = Outcome::learn(&[Reply::Mode {
+        mode: 2027,
+        value: 3,
+    }]);
+    assert!(!outcome.resets_grapheme_mode());
 }

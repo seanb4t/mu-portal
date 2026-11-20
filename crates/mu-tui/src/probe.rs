@@ -201,10 +201,12 @@ impl Outcome {
         outcome
     }
 
-    /// True if the probe turned mode 2027 on: the terminal gave the mode as reset.
+    /// True if the client turns mode 2027 off at exit: the probe set it, and the terminal did
+    /// not give it as set before. With no reply in time, the probe cannot know, and the mode
+    /// goes off.
     #[must_use]
-    pub const fn turned_grapheme_mode_on(&self) -> bool {
-        matches!(self.grapheme_mode, Some(2))
+    pub const fn resets_grapheme_mode(&self) -> bool {
+        !matches!(self.grapheme_mode, Some(1 | 3))
     }
 }
 
