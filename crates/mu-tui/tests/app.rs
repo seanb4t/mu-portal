@@ -1,8 +1,8 @@
 //! The scenarios of the terminal-client capability on `update` and `view`, drawn on a
 //! `TestBackend`.
 
-use mu_client::ClientEvent;
-use mu_proto::{Event, EventKind, Source};
+use mu_client::{ClientError, ClientEvent};
+use mu_proto::{Event, EventKind, Source, World};
 use mu_tui::convert::convert;
 use mu_tui::{Effect, Model, Msg, Reply, update, view};
 use proptest::prelude::*;
@@ -166,6 +166,29 @@ fn world_order() {
 #[test]
 fn no_worlds() {
     assert_eq!(top(&mut app(&[])), "no worlds");
+}
+
+#[test]
+fn listed_worlds_are_the_worlds() {
+    let worlds = ["beta/bryn", "alpha/aria"].map(|id| World {
+        id: id.to_owned(),
+        ..Default::default()
+    });
+    let mut app = Model::from_listing(Ok(worlds.to_vec()));
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn");
+}
+
+#[test]
+fn failed_list_of_worlds_shows_its_error() {
+    let mut app = Model::from_listing(Err(ClientError {
+        code: "unavailable",
+        message: "no server".to_owned(),
+    }));
+    assert_eq!(top(&mut app), "no worlds");
+    assert_eq!(
+        rows(&mut app),
+        ["-- could not list the worlds: unavailable: no server"]
+    );
 }
 
 #[test]

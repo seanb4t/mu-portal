@@ -5,6 +5,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use mu_client::ClientError;
+use mu_proto::World as ProtoWorld;
 use ratatui::style::Style;
 use ratatui_textarea::{CursorMove, TextArea};
 
@@ -94,6 +96,20 @@ impl Model {
         }
         model.focus = (!model.worlds.is_empty()).then_some(0);
         model
+    }
+
+    /// A model with the worlds of a list of worlds. A failed list gives no worlds and a notice
+    /// with its error.
+    #[must_use]
+    pub fn from_listing(listed: Result<Vec<ProtoWorld>, ClientError>) -> Self {
+        match listed {
+            Ok(worlds) => Self::new(worlds.into_iter().map(|world| world.id)),
+            Err(error) => {
+                let mut model = Self::new([]);
+                model.notice(&format!("could not list the worlds: {error}"));
+                model
+            }
+        }
     }
 
     /// True if a late reply gave mode 2027 as set before the probe, so the client leaves the
