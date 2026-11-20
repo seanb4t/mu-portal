@@ -31,7 +31,7 @@ The change has no spec delta, so no task names a spec scenario. Each task names 
 
 ## 5. Design facts that no code task owns
 
-- [ ] 5.1 Write the rows R-89, R-90 and R-92 of D8 into `character-width.md`. A kitty reply turns graphics on, with or without DA1. The probe reads stdin or `/dev/tty`. `mu-tui` uses `rustix` with `termios` for the timed read. R-87 names only a type of the code, so it goes into no page. Make sure that `mise run docs:check` passes and that no page states a version literal.
+- [x] 5.1 Write the rows R-89, R-90 and R-92 of D8 into `character-width.md`. A kitty reply turns graphics on, with or without DA1. The probe reads stdin or `/dev/tty`. `mu-tui` uses `rustix` with `termios` for the timed read. R-87 names only a type of the code, so it goes into no page. Make sure that `mise run docs:check` passes and that no page states a version literal.
 
 ## 6. Integration
 

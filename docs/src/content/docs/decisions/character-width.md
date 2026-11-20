@@ -23,6 +23,10 @@ Termina decodes each CSI. The probe gives each complete CSI to a Termina parser 
 
 An escape byte ends an open sequence. So does a byte that cannot be part of a CSI. The probe then turns the bytes of the broken sequence into key presses for the client, and a new frame starts. A stray Alt+`[` or an open APC cannot hide a reply that follows it. A sequence that is still open when the probe stops also becomes key presses.
 
+The probe reads from stdin if stdin is a terminal. If it is not, the probe opens `/dev/tty`. Termina makes the same choice. The `mu-tui` crate uses `rustix` with its `termios` feature for the timed read.
+
+A kitty graphics reply turns graphics on, with or without DA1. The reply proves that the terminal supports images. Only the width profile needs DA1.
+
 The probe reads with a timed read. It sets the terminal to return from a read after at most one tenth of a second, even with no input. The terminal setting is VMIN 0 and VTIME 1. A read starts only if it can end before the 500 milliseconds are over. So a terminal that stays silent costs the client at most 500 milliseconds. The probe can stop up to one tenth of a second early. A DA1 reply in that last tenth of a second counts as a late reply.
 
 The probe sets the terminal back after its reads. If the read fails and the restore fails too, the client reports the read error. The message of that error also holds the restore error. The same rule holds when the client leaves, and when it enters the alternate screen. If only the restore fails, the client reports the restore error.
