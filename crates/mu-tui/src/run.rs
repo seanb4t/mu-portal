@@ -53,7 +53,11 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
             let mut parser = termina::Parser::default();
             parser.parse(&input, false);
             let early = std::iter::from_fn(|| parser.pop()).collect();
-            event_loop(&mut terminal, reader, early, &mut model, &client).await
+            let result = event_loop(&mut terminal, reader, early, &mut model, &client).await;
+            if model.keeps_grapheme_mode() {
+                grapheme_mode.store(false, Ordering::Relaxed);
+            }
+            result
         }
         Err(error) => Err(error),
     };

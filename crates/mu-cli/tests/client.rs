@@ -449,6 +449,12 @@ async fn late_mode_reply_still_turns_mode_2027_off() {
 }
 
 #[tokio::test]
+async fn late_reply_of_mode_2027_as_set_keeps_it_on() {
+    let output = output_at_exit(Answers::LateGraphemeModeSet).await;
+    assert!(!holds(&output, b"\x1b[?2027l"), "{}", output.escape_ascii());
+}
+
+#[tokio::test]
 async fn mode_2027_already_on() {
     let output = output_at_exit(Answers::GraphemeModeSet).await;
     let mouse_off: Vec<bool> = MOUSE_OFF

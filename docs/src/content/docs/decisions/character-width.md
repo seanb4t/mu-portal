@@ -17,7 +17,7 @@ The probe runs once, on the alternate screen, before the first frame:
 
 The client reads the replies itself, before its event reader starts, and waits at most 500 milliseconds for DA1. The event reader drops some replies and gives the kitty graphics reply as key presses, so the replies must not reach it. A key that the user presses during the probe still reaches the client.
 
-If the terminal does not answer in that time, the client uses the `unicode-width` value for every class. When the client exits, it turns off mode 2027, unless the terminal gave the mode as on before the probe.
+If the terminal does not answer in that time, the client uses the `unicode-width` value for every class. When the client exits, it turns off mode 2027, unless the terminal gave the mode as on before the probe. A reply that comes after the wait still counts, if it comes before the client exits.
 
 The command `cargo run -p char-width -- list` in `spikes/` prints the class of each grapheme.
 

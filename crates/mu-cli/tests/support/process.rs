@@ -499,6 +499,8 @@ pub enum Answers {
     None,
     /// The default answers, and a kitty graphics reply before DA1, after the first frame.
     Late,
+    /// The answers of [`Self::Late`], with mode 2027 as set.
+    LateGraphemeModeSet,
 }
 
 /// The queries of the probe that the pseudo-terminal answers.
@@ -562,7 +564,7 @@ impl Answerer {
             .unwrap_or(self.pending.len());
         parser.process(&self.pending[..keep]);
         self.pending.drain(..keep);
-        if let Answers::Late = self.answers {
+        if matches!(self.answers, Answers::Late | Answers::LateGraphemeModeSet) {
             self.held.append(&mut out);
             let drawn = self.probed
                 && parser
@@ -592,16 +594,17 @@ impl Answerer {
                 };
                 format!("\x1b[{};{}R", row + 1, col + 1).into_bytes()
             }
-            b"\x1b[c" if matches!(self.answers, Answers::Late) => {
+            b"\x1b[c" if matches!(self.answers, Answers::Late | Answers::LateGraphemeModeSet) => {
                 b"\x1b_Gi=31;OK\x1b\\\x1b[?62;22c".to_vec()
             }
             b"\x1b[c" => b"\x1b[?62;22c".to_vec(),
             _ => {
-                let value = if let Answers::GraphemeModeSet = self.answers {
-                    1
-                } else {
-                    2
-                };
+                let value =
+                    if let Answers::GraphemeModeSet | Answers::LateGraphemeModeSet = self.answers {
+                        1
+                    } else {
+                        2
+                    };
                 format!("\x1b[?2027;{value}$y").into_bytes()
             }
         }

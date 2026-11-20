@@ -7,7 +7,7 @@ use mu_proto::{EventKind, Source};
 use ratatui::style::Style;
 use ratatui_textarea::{Input, Key};
 use termina::Event as TermEvent;
-use termina::escape::csi::{Csi, Device};
+use termina::escape::csi::{Csi, DecModeSetting, DecPrivateMode, DecPrivateModeCode, Device, Mode};
 use termina::event::{
     KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
 };
@@ -98,6 +98,19 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
         Msg::Terminal(TermEvent::Mouse(mouse)) => on_mouse(model, mouse),
         Msg::Terminal(TermEvent::Csi(Csi::Device(Device::DeviceAttributes(())))) => {
             model.late = Late::None;
+            Vec::new()
+        }
+        Msg::Terminal(TermEvent::Csi(Csi::Mode(Mode::ReportDecPrivateMode {
+            mode: DecPrivateMode::Code(DecPrivateModeCode::GraphemeClustering),
+            setting,
+        }))) => {
+            // Only the probe asks for the mode, and its reply comes before DA1.
+            if model.late != Late::None {
+                model.keeps_grapheme_mode = matches!(
+                    setting,
+                    DecModeSetting::Set | DecModeSetting::PermanentlySet
+                );
+            }
             Vec::new()
         }
         Msg::Terminal(_) => Vec::new(),

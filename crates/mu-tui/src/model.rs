@@ -52,6 +52,8 @@ pub struct Model {
     pub(crate) late: Late,
     /// The notices of the client, which a reset of the panes keeps.
     pub(crate) notices: Vec<String>,
+    /// True if a late reply gave mode 2027 as set before the probe.
+    pub(crate) keeps_grapheme_mode: bool,
 }
 
 /// The wait for the probe replies that came after the probe stopped reading. Termina gives the
@@ -84,12 +86,20 @@ impl Model {
             layout: Node::default(),
             late: Late::None,
             notices: Vec::new(),
+            keeps_grapheme_mode: false,
         };
         for id in worlds {
             model.world(&id);
         }
         model.focus = (!model.worlds.is_empty()).then_some(0);
         model
+    }
+
+    /// True if a late reply gave mode 2027 as set before the probe, so the client leaves the
+    /// mode on at exit.
+    #[must_use]
+    pub const fn keeps_grapheme_mode(&self) -> bool {
+        self.keeps_grapheme_mode
     }
 
     /// Drops the keys of a kitty graphics reply until a DA1 reply comes. The client calls this

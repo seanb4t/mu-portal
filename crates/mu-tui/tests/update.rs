@@ -161,3 +161,18 @@ fn notice_comes_back_after_a_reset() {
         .collect();
     assert_eq!(rows.iter().filter(|row| *row == "-- note").count(), 1);
 }
+
+#[test]
+fn late_mode_reply_as_set_keeps_mode_2027() {
+    let mut model = model();
+    model.await_late_replies();
+    feed(&mut model, b"\x1b[?2027;1$y\x1b[?62;22c");
+    assert!(model.keeps_grapheme_mode());
+}
+
+#[test]
+fn mode_reply_with_no_late_wait_changes_nothing() {
+    let mut model = model();
+    feed(&mut model, b"\x1b[?2027;1$y");
+    assert!(!model.keeps_grapheme_mode());
+}
