@@ -8,6 +8,7 @@ use std::collections::{HashMap, VecDeque};
 
 use ratatui::style::Style;
 
+use crate::diacritics::DIACRITICS;
 use crate::text::clean_styled;
 
 /// The number of lines in one chunk.
@@ -41,6 +42,8 @@ pub struct Span {
 
 /// The most rows and the most columns of an image: the number of kitty diacritics.
 pub const IMAGE_CELLS: u16 = 297;
+
+const _: () = assert!(IMAGE_CELLS as usize == DIACRITICS.len());
 
 /// The ids of an image: the foreground color of a placeholder holds the id in 24 bits, and 0
 /// means no image.
@@ -203,8 +206,8 @@ impl LineStore {
     }
 
     /// Adds a line at the end, and drops the oldest line if the store is then over its
-    /// capacity. `spans` are pairs of a byte offset and a style, in order. The store keeps each
-    /// control character of `text` as U+FFFD.
+    /// capacity. `spans` are pairs of a byte offset and a style. The store keeps them in the order
+    /// of their offset, and keeps `text` as `crate::text::clean` gives it.
     pub fn push(&mut self, text: &str, spans: &[(usize, Style)]) -> LineId {
         self.push_line(text, spans, None)
     }

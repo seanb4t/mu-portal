@@ -50,11 +50,11 @@ fn render(node: &Node, area: Rect, frame: &mut Frame, parts: &mut Parts) {
     match node {
         Node::Split {
             direction,
-            constraints,
             children,
         } => {
-            let areas = Layout::new(*direction, constraints.iter().copied()).split(area);
-            for (child, child_area) in children.iter().zip(areas.iter()) {
+            let constraints = children.iter().map(|(constraint, _)| *constraint);
+            let areas = Layout::new(*direction, constraints).split(area);
+            for ((_, child), child_area) in children.iter().zip(areas.iter()) {
                 render(child, *child_area, frame, parts);
             }
         }

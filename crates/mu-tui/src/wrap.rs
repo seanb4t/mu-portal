@@ -10,12 +10,13 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::width::Profile;
 
-/// One row of a wrapped line: the bytes `start..end` of the line.
+/// One row of a wrapped line: the bytes `start..end` of the line. For an image line that the pane
+/// draws as an image, the row `n` of the image is `n..n + 1`, a row index and not bytes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Row {
-    /// The first byte of the row.
+    /// The start of the row.
     pub start: usize,
-    /// One past the last byte of the row.
+    /// The end of the row, which the row does not hold.
     pub end: usize,
 }
 

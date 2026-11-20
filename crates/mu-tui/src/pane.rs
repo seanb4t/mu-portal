@@ -27,14 +27,15 @@ use crate::wrap::{Row, wrap};
 pub struct Position {
     /// The line.
     pub line: LineId,
-    /// The byte offset in the text of the line.
+    /// The byte offset in the text of the line. The anchor on an image line that the pane draws
+    /// as an image holds the index of the image row instead.
     pub byte: usize,
 }
 
 /// What one row of the screen showed at the last render.
 #[derive(Clone, Copy, Debug)]
 enum Drawn {
-    /// The bytes of `row` in `line`.
+    /// The row `row` of `line`.
     Text { line: LineId, row: Row },
     /// The unfinished line.
     Unfinished,
@@ -116,9 +117,9 @@ impl PaneState {
     }
 
     /// Removes the unfinished line, then adds a line at the bottom. `spans` are pairs of a byte
-    /// offset and a style, in order. If the store drops its oldest line, an anchor, a press or a
-    /// selection end on that line moves to the start of the oldest live line, and a selection
-    /// with both ends on dropped lines goes.
+    /// offset and a style, which the pane keeps in the order of their offset. If the store drops
+    /// its oldest line, an anchor, a press or a selection end on that line moves to the start of
+    /// the oldest live line, and a selection with both ends on dropped lines goes.
     pub fn push_styled(&mut self, text: &str, spans: &[(usize, Style)]) {
         self.unfinished = None;
         self.store.push(text, spans);
@@ -207,22 +208,63 @@ impl PaneState {
         self.selection
     }
 
-    /// Selects from `from` to `to`.
-    pub fn select(&mut self, from: Position, to: Position) {
-        self.selection = Some((from, to));
+    /// The live position nearest to `position`: a position on a dropped line moves to the start
+    /// of the oldest live line, a position past the newest line moves to the end of that line,
+    /// and a byte past the end of a text line or inside a char moves to the end of the line or
+    /// the start of the char. A byte on an image line stays as it is. None if the pane holds no
+    /// line.
+    fn live(&self, position: Position) -> Option<Position> {
+        let first = self.store.first_id();
+        let end = self.store.end_id();
+        if self.store.is_empty() {
+            return None;
+        }
+        if position.line < first {
+            return Some(Position {
+                line: first,
+                byte: 0,
+            });
+        }
+        let line = LineId(position.line.0.min(end.0 - 1));
+        let text = self.store.line(line)?;
+        let byte = if line != position.line {
+            text.text.len()
+        } else if text.image.is_some() {
+            position.byte
+        } else {
+            text.text.floor_char_boundary(position.byte)
+        };
+        Some(Position { line, byte })
     }
 
-    /// Starts a drag at `position`, the cell under the press, with an empty selection there.
+    /// Selects from `from` to `to`, each moved to the live position nearest to it. A selection
+    /// with both ends on dropped lines, or in a pane with no line, is no selection.
+    pub fn select(&mut self, from: Position, to: Position) {
+        let first = self.store.first_id();
+        self.selection = if from.line < first && to.line < first {
+            None
+        } else {
+            self.live(from).zip(self.live(to))
+        };
+    }
+
+    /// Starts a drag at the live position nearest to `position`, the cell under the press, with
+    /// an empty selection there. In a pane with no line, it starts no drag and clears the
+    /// selection.
     pub fn press(&mut self, position: Position) {
-        self.pressed = Some(position);
-        self.selection = Some((position, position));
+        self.pressed = self.live(position);
+        self.selection = self.pressed.map(|position| (position, position));
     }
 
     /// Moves the end of the drag to `position`, the cell under the pointer. The selection holds
-    /// the graphemes of both cells and every grapheme between them. A drag with no press does
+    /// the graphemes of both cells and every grapheme between them. The end moves to the live
+    /// position nearest to `position`. A drag with no press, or in a pane with no line, does
     /// nothing.
     pub fn drag(&mut self, position: Position) {
         let Some(pressed) = self.pressed else {
+            return;
+        };
+        let Some(position) = self.live(position) else {
             return;
         };
         self.selection = Some(if position >= pressed {
