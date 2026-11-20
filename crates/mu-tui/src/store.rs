@@ -112,6 +112,12 @@ impl LineStore {
         LineId(self.end)
     }
 
+    /// The most lines that the store keeps.
+    #[must_use]
+    pub const fn capacity(&self) -> usize {
+        self.capacity
+    }
+
     /// The number of lines that the store keeps.
     #[must_use]
     pub fn len(&self) -> usize {

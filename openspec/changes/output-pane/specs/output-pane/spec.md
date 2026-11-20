@@ -174,7 +174,7 @@ A selection SHALL run from one position to another, where a position is a line a
 - **THEN** the four cells of `here` are in reverse
 
 ### Requirement: Each cell maps to a position
-Each cell of a text row SHALL map to a position. Each cell of a wide grapheme SHALL map to the start of that grapheme. A cell past the end of the text SHALL map to the end of its line. A cell of the scroll bar or of the unfinished line SHALL map to no position.
+Each cell of a text row SHALL map to a position. Each cell of a wide grapheme SHALL map to the start of that grapheme. A cell past the end of the text of a row SHALL map to the end of that row. On the last row of a line, that is the end of the line. A cell of the scroll bar or of the unfinished line SHALL map to no position.
 
 #### Scenario: The second cell of a wide grapheme
 - **GIVEN** a pane that holds the line `a日b`

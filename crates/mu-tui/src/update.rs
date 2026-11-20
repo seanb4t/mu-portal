@@ -3,7 +3,9 @@
 use mu_client::ClientEvent;
 use ratatui_textarea::{Input, Key};
 use termina::Event as TermEvent;
-use termina::event::{KeyCode, KeyEvent, KeyEventKind, Modifiers};
+use termina::event::{
+    KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 
 use crate::model::{Model, PaneId};
 use crate::text::{clean, line};
@@ -68,6 +70,10 @@ pub enum Reply {
 pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
     match msg {
         Msg::Terminal(TermEvent::Key(key)) => on_key(model, key),
+        Msg::Terminal(TermEvent::Mouse(mouse)) => {
+            on_mouse(model, mouse);
+            Vec::new()
+        }
         Msg::Terminal(_) => Vec::new(),
         Msg::Action(action) => act(model, action),
         Msg::Client(item) => {
@@ -93,6 +99,20 @@ fn on_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
     }
 }
 
+/// A press of the left button starts a selection at the position under the pointer.
+fn on_mouse(model: &mut Model, mouse: MouseEvent) {
+    if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
+        return;
+    }
+    let pane = model.focused_pane();
+    if let Some(state) = model.panes.get_mut(&pane) {
+        match state.position(mouse.column, mouse.row) {
+            Some(position) => state.select(position, position),
+            None => state.clear_selection(),
+        }
+    }
+}
+
 fn act(model: &mut Model, action: Action) -> Vec<Effect> {
     match action {
         Action::Quit => vec![Effect::Quit],
@@ -112,7 +132,7 @@ fn submit(model: &mut Model) -> Option<Effect> {
     let Some(world) = model.focused().map(str::to_owned) else {
         model.push(
             PaneId::NOTICES,
-            "-- no world has the focus, so the line goes nowhere".to_owned(),
+            "-- no world has the focus, so the line goes nowhere",
         );
         return None;
     };
@@ -157,7 +177,7 @@ fn on_client(model: &mut Model, item: ClientEvent) {
             let world = &mut model.worlds[index];
             world.unseen |= unseen;
             let pane = world.pane;
-            model.push(pane, line(&event));
+            model.push(pane, &line(&event));
         }
     }
 }
@@ -177,7 +197,7 @@ fn on_reply(model: &mut Model, reply: Reply) {
         .iter()
         .find(|each| each.id == world)
         .map_or(PaneId::NOTICES, |world| world.pane);
-    model.push(pane, notice);
+    model.push(pane, &notice);
     model.set_input(text);
 }
 

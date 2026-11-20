@@ -117,15 +117,22 @@ impl Model {
         }
     }
 
+    /// The state of the pane `id`.
+    #[must_use]
+    pub fn pane(&self, id: PaneId) -> Option<&PaneState> {
+        self.panes.get(&id)
+    }
+
     /// The pane of the world in focus, or the pane of notices.
-    pub(crate) fn focused_pane(&self) -> PaneId {
+    #[must_use]
+    pub fn focused_pane(&self) -> PaneId {
         self.focus
             .and_then(|index| self.worlds.get(index))
             .map_or(PaneId::NOTICES, |world| world.pane)
     }
 
     /// Adds `line` at the bottom of `pane`.
-    pub(crate) fn push(&mut self, pane: PaneId, line: String) {
+    pub(crate) fn push(&mut self, pane: PaneId, line: &str) {
         self.panes.entry(pane).or_default().push(line);
     }
 

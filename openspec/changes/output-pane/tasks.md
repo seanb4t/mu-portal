@@ -30,8 +30,8 @@ Load the `rust-best-practices` skill before this group.
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 4.1 Read the current documentation of ratatui for the cell option `ForcedWidth`, for `TestBackend`, and for `Scrollbar` with `ScrollbarState`. Add the rows to the table "Checked facts". Make sure that each difference from the sources is an edit of the design.
-- [ ] 4.2 Add the pane as a `StatefulWidget` with the anchor of D3, the follow at the bottom and the clear of the anchor. Add the ratatui `Scrollbar` with the two-pass wrap of D3, and the map from cells to positions of D2. Move an anchor or a selection end on a dropped line as D3 says. Add these tests:
+- [x] 4.1 Read the current documentation of ratatui for the cell option `ForcedWidth`, for `TestBackend`, and for `Scrollbar` with `ScrollbarState`. Add the rows to the table "Checked facts". Make sure that each difference from the sources is an edit of the design.
+- [x] 4.2 Add the pane as a `StatefulWidget` with the anchor of D3, the follow at the bottom and the clear of the anchor. Add the ratatui `Scrollbar` with the two-pass wrap of D3, and the map from cells to positions of D2. Move an anchor or a selection end on a dropped line as D3 says. Add these tests:
   - `follows_at_the_bottom`, for "At the bottom"
   - `holds_when_scrolled_back`, for "Scrolled back"
   - `holds_when_scrolled_back_one_row`, for "Scrolled back by one row"
