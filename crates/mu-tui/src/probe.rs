@@ -47,9 +47,6 @@ const GRAPHICS_ID: &str = "i=31";
 /// The kitty graphics query: one RGB pixel, sent directly, with the query action.
 const GRAPHICS_QUERY: &str = "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\";
 
-/// The DEC private mode that makes the terminal measure grapheme clusters.
-pub const GRAPHEME_MODE: u16 = 2027;
-
 /// The bytes of every query, in one write.
 #[must_use]
 pub fn queries() -> Vec<u8> {
