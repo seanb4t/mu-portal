@@ -1,22 +1,36 @@
-//! The scenarios of the terminal-client capability on `App`, drawn on a `TestBackend`.
+//! The scenarios of the terminal-client capability on `update` and `view`, drawn on a
+//! `TestBackend`.
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use mu_client::ClientEvent;
 use mu_proto::{Event, EventKind, Source};
-use mu_tui::{Action, App, Reply};
+use mu_tui::convert::convert;
+use mu_tui::{Effect, Model, Msg, Reply, update, view};
 use proptest::prelude::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use ratatui::buffer::{Buffer, Cell};
+use ratatui::style::{Color, Modifier, Style};
+use termina::Event as TermEvent;
+use termina::event::{KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
-fn app(worlds: &[&str]) -> App {
-    App::new(worlds.iter().map(|world| (*world).to_owned()))
+fn app(worlds: &[&str]) -> Model {
+    Model::new(worlds.iter().map(|world| (*world).to_owned()))
 }
 
-/// The rows of an 80 by 24 screen, with no trailing spaces.
-fn screen(app: &App) -> Vec<String> {
-    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
-    terminal.draw(|frame| app.draw(frame)).unwrap();
-    let buffer = terminal.backend().buffer();
+/// An 80 by 24 screen.
+fn draw(app: &mut Model) -> Buffer {
+    draw_sized(app, 24)
+}
+
+/// A screen 80 cells wide and `height` rows high.
+fn draw_sized(app: &mut Model, height: u16) -> Buffer {
+    let mut terminal = Terminal::new(TestBackend::new(80, height)).unwrap();
+    terminal.draw(|frame| view(app, frame)).unwrap();
+    terminal.backend().buffer().clone()
+}
+
+/// The rows of `buffer`, with no trailing spaces.
+fn text_rows(buffer: &Buffer) -> Vec<String> {
     (0..buffer.area.height)
         .map(|y| {
             let row: String = (0..buffer.area.width)
@@ -27,12 +41,40 @@ fn screen(app: &App) -> Vec<String> {
         .collect()
 }
 
-fn top(app: &App) -> String {
+/// The rows of an 80 by 24 screen, with no trailing spaces.
+fn screen(app: &mut Model) -> Vec<String> {
+    text_rows(&draw(app))
+}
+
+/// The cells of the first row of the screen that starts with `text`, one for each char of
+/// `text`.
+fn cells_of(app: &mut Model, text: &str) -> Vec<Cell> {
+    let buffer = draw(app);
+    let y = screen(app)
+        .iter()
+        .position(|row| row.starts_with(text))
+        .unwrap_or_else(|| panic!("no row starts with {text:?}"));
+    let y = u16::try_from(y).unwrap();
+    (0..u16::try_from(text.chars().count()).unwrap())
+        .map(|x| buffer[(x, y)].clone())
+        .collect()
+}
+
+/// The foreground color and the modifiers of each cell.
+fn looks(cells: &[Cell]) -> Vec<(Color, Modifier)> {
+    cells.iter().map(|cell| (cell.fg, cell.modifier)).collect()
+}
+
+fn plain(count: usize) -> Vec<(Color, Modifier)> {
+    vec![(Color::Reset, Modifier::empty()); count]
+}
+
+fn top(app: &mut Model) -> String {
     screen(app).remove(0)
 }
 
 /// The rows between the top row and the input line, with no empty row.
-fn rows(app: &App) -> Vec<String> {
+fn rows(app: &mut Model) -> Vec<String> {
     let screen = screen(app);
     screen[1..screen.len() - 1]
         .iter()
@@ -61,61 +103,85 @@ fn game(world: &str, text: &str) -> ClientEvent {
 }
 
 fn key(code: KeyCode) -> KeyEvent {
-    KeyEvent::new(code, KeyModifiers::NONE)
+    KeyEvent::new(code, Modifiers::NONE)
 }
 
 fn ctrl(c: char) -> KeyEvent {
-    KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+    KeyEvent::new(KeyCode::Char(c), Modifiers::CONTROL)
 }
 
-fn type_text(app: &mut App, text: &str) {
+/// Presses `key` and returns the effects.
+fn press(app: &mut Model, key: KeyEvent) -> Vec<Effect> {
+    update(app, Msg::Terminal(TermEvent::Key(key)))
+}
+
+fn on_event(app: &mut Model, item: ClientEvent) {
+    assert_eq!(update(app, Msg::Client(item)), []);
+}
+
+fn on_reply(app: &mut Model, reply: Reply) {
+    assert_eq!(update(app, Msg::Reply(reply)), []);
+}
+
+fn type_text(app: &mut Model, text: &str) {
     for c in text.chars() {
-        assert_eq!(app.on_key(key(KeyCode::Char(c))), None);
+        assert_eq!(press(app, key(KeyCode::Char(c))), []);
     }
 }
 
 /// Two worlds, each with its greeting.
-fn two_worlds() -> App {
+fn two_worlds() -> Model {
     let mut app = app(&["alpha/aria", "beta/bryn"]);
-    app.on_event(game("alpha/aria", "Welcome, aria."));
-    app.on_event(game("beta/bryn", "Welcome, bryn."));
+    on_event(&mut app, game("alpha/aria", "Welcome, aria."));
+    on_event(&mut app, game("beta/bryn", "Welcome, bryn."));
     app
 }
 
 #[test]
 fn first_view() {
-    let app = two_worlds();
+    let mut app = two_worlds();
     assert!(
-        top(&app).starts_with("[alpha/aria] beta/bryn"),
+        top(&mut app).starts_with("[alpha/aria] beta/bryn"),
         "{}",
-        top(&app)
+        top(&mut app)
     );
-    assert_eq!(rows(&app), ["Welcome, aria."]);
+    assert_eq!(rows(&mut app), ["Welcome, aria."]);
+}
+
+#[test]
+fn first_view_snapshot() {
+    let mut app = two_worlds();
+    type_text(&mut app, "look");
+    let mut terminal = Terminal::new(TestBackend::new(40, 6)).unwrap();
+    terminal.draw(|frame| view(&mut app, frame)).unwrap();
+    insta::assert_snapshot!(terminal.backend());
 }
 
 #[test]
 fn world_order() {
-    let app = app(&["alpha-2/cy", "alpha/bea", "alpha/aria"]);
-    assert_eq!(top(&app), "[alpha/aria] alpha/bea alpha-2/cy");
+    let mut app = app(&["alpha-2/cy", "alpha/bea", "alpha/aria"]);
+    assert_eq!(top(&mut app), "[alpha/aria] alpha/bea alpha-2/cy");
 }
 
 #[test]
 fn no_worlds() {
-    assert_eq!(top(&app(&[])), "no worlds");
+    assert_eq!(top(&mut app(&[])), "no worlds");
 }
 
 #[test]
 fn line_prefixes() {
     let mut app = app(&["alpha/aria"]);
-    app.on_event(event(
-        "alpha/aria",
-        Source::SOURCE_CREDENTIAL,
-        "connect aria ****",
-    ));
-    app.on_event(event("alpha/aria", Source::SOURCE_PLAYER, "hello"));
-    app.on_event(game("alpha/aria", "You say, \"hello\""));
+    on_event(
+        &mut app,
+        event("alpha/aria", Source::SOURCE_CREDENTIAL, "connect aria ****"),
+    );
+    on_event(
+        &mut app,
+        event("alpha/aria", Source::SOURCE_PLAYER, "hello"),
+    );
+    on_event(&mut app, game("alpha/aria", "You say, \"hello\""));
     assert_eq!(
-        rows(&app),
+        rows(&mut app),
         ["-- connect aria ****", "> hello", "You say, \"hello\""]
     );
 }
@@ -123,19 +189,22 @@ fn line_prefixes() {
 #[test]
 fn control_characters_are_replaced() {
     let mut app = app(&["alpha/aria"]);
-    app.on_event(game(
-        "alpha/aria",
-        "\u{1b}[2Jhi\tthere\u{7}\u{7f}\u{9b}~\u{a0}.",
-    ));
-    app.on_reply(Reply::Refused {
-        world: "alpha/aria".to_owned(),
-        text: String::new(),
-        reason: "bad\u{1b}]0;title\u{7}".to_owned(),
-    });
+    on_event(
+        &mut app,
+        game("alpha/aria", "\u{1b}[2Jhi\tthere\u{7}\u{7f}\u{9b}~\u{a0}."),
+    );
+    on_reply(
+        &mut app,
+        Reply::Refused {
+            world: "alpha/aria".to_owned(),
+            text: String::new(),
+            reason: "bad\u{1b}]0;title\u{7}".to_owned(),
+        },
+    );
     assert_eq!(
-        rows(&app),
+        rows(&mut app),
         [
-            "\u{fffd}[2Jhi there\u{fffd}\u{fffd}\u{fffd}~\u{a0}.",
+            "hi there\u{fffd}\u{fffd}\u{fffd}~\u{a0}.",
             "-- bad\u{fffd}]0;title\u{fffd}"
         ]
     );
@@ -145,12 +214,15 @@ fn control_characters_are_replaced() {
 fn control_characters_are_replaced_in_every_part() {
     let world = "alpha/a\u{1b}x";
     let mut app = app(&[world]);
-    app.on_event(event(world, Source::SOURCE_PLAYER, "hi\u{7}"));
-    app.on_event(event(world, Source::SOURCE_SYSTEM, "up\u{9b}"));
-    app.on_event(event(world, Source::SOURCE_CREDENTIAL, "pw\u{7f}"));
-    assert_eq!(top(&app), "[alpha/a\u{fffd}x]");
+    on_event(&mut app, event(world, Source::SOURCE_PLAYER, "hi\u{7}"));
+    on_event(&mut app, event(world, Source::SOURCE_SYSTEM, "up\u{9b}"));
+    on_event(
+        &mut app,
+        event(world, Source::SOURCE_CREDENTIAL, "pw\u{7f}"),
+    );
+    assert_eq!(top(&mut app), "[alpha/a\u{fffd}x]");
     assert_eq!(
-        rows(&app),
+        rows(&mut app),
         ["> hi\u{fffd}", "-- up\u{fffd}", "-- pw\u{fffd}"]
     );
 }
@@ -158,15 +230,15 @@ fn control_characters_are_replaced_in_every_part() {
 #[test]
 fn enter_sends_to_world_in_focus() {
     let mut app = two_worlds();
-    app.on_key(ctrl('n'));
+    press(&mut app, ctrl('n'));
     type_text(&mut app, "hi");
-    let action = app.on_key(key(KeyCode::Enter));
+    let action = press(&mut app, key(KeyCode::Enter));
     assert_eq!(
         action,
-        Some(Action::Send {
+        [Effect::Send {
             world: "beta/bryn".to_owned(),
             text: "hi".to_owned()
-        })
+        }]
     );
     assert_eq!(app.input(), "");
 }
@@ -174,13 +246,13 @@ fn enter_sends_to_world_in_focus() {
 #[test]
 fn empty_enter_sends_empty_line() {
     let mut app = two_worlds();
-    let action = app.on_key(key(KeyCode::Enter));
+    let action = press(&mut app, key(KeyCode::Enter));
     assert_eq!(
         action,
-        Some(Action::Send {
+        [Effect::Send {
             world: "alpha/aria".to_owned(),
             text: String::new()
-        })
+        }]
     );
 }
 
@@ -188,8 +260,8 @@ fn empty_enter_sends_empty_line() {
 fn enter_with_no_world() {
     let mut app = app(&[]);
     type_text(&mut app, "hi");
-    assert_eq!(app.on_key(key(KeyCode::Enter)), None);
-    let rows = rows(&app);
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    let rows = rows(&mut app);
     assert!(
         rows.iter()
             .any(|row| row.starts_with("-- ") && row.contains("no world")),
@@ -202,94 +274,127 @@ fn enter_with_no_world() {
 fn refused_line_keeps_input() {
     let mut app = two_worlds();
     type_text(&mut app, "hi");
-    assert!(app.on_key(key(KeyCode::Enter)).is_some());
-    app.on_reply(Reply::Refused {
-        world: "alpha/aria".to_owned(),
-        text: "hi".to_owned(),
-        reason: "alpha/aria is not connected".to_owned(),
-    });
-    assert_eq!(rows(&app).last().unwrap(), "-- alpha/aria is not connected");
+    assert_ne!(press(&mut app, key(KeyCode::Enter)), [] as [Effect; 0]);
+    on_reply(
+        &mut app,
+        Reply::Refused {
+            world: "alpha/aria".to_owned(),
+            text: "hi".to_owned(),
+            reason: "alpha/aria is not connected".to_owned(),
+        },
+    );
+    assert_eq!(
+        rows(&mut app).last().unwrap(),
+        "-- alpha/aria is not connected"
+    );
     assert_eq!(app.input(), "hi");
-    assert_eq!(screen(&app).last().unwrap(), "hi");
+    assert_eq!(screen(&mut app).last().unwrap(), "hi");
 }
 
 #[test]
 fn ctrl_n_moves_focus() {
     let mut app = two_worlds();
-    app.on_key(ctrl('n'));
-    assert_eq!(top(&app), "alpha/aria [beta/bryn]");
-    assert_eq!(rows(&app), ["Welcome, bryn."]);
+    press(&mut app, ctrl('n'));
+    assert_eq!(top(&mut app), "alpha/aria [beta/bryn]");
+    assert_eq!(rows(&mut app), ["Welcome, bryn."]);
 }
 
 #[test]
 fn ctrl_p_wraps_around() {
     let mut app = two_worlds();
-    app.on_key(ctrl('p'));
-    assert_eq!(top(&app), "alpha/aria [beta/bryn]");
+    press(&mut app, ctrl('p'));
+    assert_eq!(top(&mut app), "alpha/aria [beta/bryn]");
 }
 
 #[test]
 fn ctrl_n_wraps_at_the_end() {
     let mut app = two_worlds();
-    app.on_key(ctrl('n'));
-    app.on_key(ctrl('n'));
-    assert_eq!(top(&app), "[alpha/aria] beta/bryn");
+    press(&mut app, ctrl('n'));
+    press(&mut app, ctrl('n'));
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn");
 }
 
 #[test]
 fn keys_with_no_world() {
     let mut app = app(&[]);
-    assert_eq!(app.on_key(ctrl('n')), None);
-    assert_eq!(app.on_key(ctrl('p')), None);
-    assert_eq!(top(&app), "no worlds");
+    assert_eq!(press(&mut app, ctrl('n')), []);
+    assert_eq!(press(&mut app, ctrl('p')), []);
+    assert_eq!(top(&mut app), "no worlds");
 }
 
 #[test]
 fn one_world_keeps_focus() {
     let mut app = app(&["alpha/aria"]);
-    app.on_key(ctrl('n'));
-    app.on_key(ctrl('p'));
-    assert_eq!(top(&app), "[alpha/aria]");
+    press(&mut app, ctrl('n'));
+    press(&mut app, ctrl('p'));
+    assert_eq!(top(&mut app), "[alpha/aria]");
 }
 
 #[test]
 fn activity_mark() {
     let mut app = app(&["alpha/aria", "beta/bryn"]);
-    app.on_event(game("beta/bryn", "You say, \"ping\""));
-    assert_eq!(top(&app), "[alpha/aria] beta/bryn*");
-    app.on_key(ctrl('n'));
-    assert_eq!(top(&app), "alpha/aria [beta/bryn]");
+    on_event(&mut app, game("beta/bryn", "You say, \"ping\""));
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn*");
+    press(&mut app, ctrl('n'));
+    assert_eq!(top(&mut app), "alpha/aria [beta/bryn]");
 }
 
 #[test]
 fn lost_stream_resumes() {
     let mut app = two_worlds();
-    app.on_event(ClientEvent::Lost);
-    assert!(top(&app).contains("disconnected"));
-    app.on_event(ClientEvent::Resumed);
-    app.on_event(game("alpha/aria", "You say, \"after the cut\""));
-    let rows = rows(&app);
+    on_event(&mut app, ClientEvent::Lost);
+    assert!(top(&mut app).contains("disconnected"));
+    on_event(&mut app, ClientEvent::Resumed);
+    on_event(&mut app, game("alpha/aria", "You say, \"after the cut\""));
+    let rows = rows(&mut app);
     assert_eq!(
         rows.iter()
             .filter(|row| *row == "You say, \"after the cut\"")
             .count(),
         1
     );
-    assert!(!top(&app).contains("disconnected"));
+    assert!(!top(&mut app).contains("disconnected"));
 }
 
 #[test]
 fn resumed_clears_disconnected() {
     let mut app = two_worlds();
-    app.on_event(ClientEvent::Lost);
-    assert!(top(&app).contains("disconnected"));
-    app.on_event(ClientEvent::Resumed);
-    assert!(!top(&app).contains("disconnected"));
+    on_event(&mut app, ClientEvent::Lost);
+    assert!(top(&mut app).contains("disconnected"));
+    on_event(&mut app, ClientEvent::Resumed);
+    assert!(!top(&mut app).contains("disconnected"));
+}
+
+/// A prompt event of the game: text with no line end.
+fn prompt(world: &str, text: &str) -> ClientEvent {
+    ClientEvent::Event(Event {
+        world: world.to_owned(),
+        kind: EventKind::EVENT_KIND_PROMPT.into(),
+        source: Source::SOURCE_GAME.into(),
+        text: text.to_owned(),
+        ..Default::default()
+    })
+}
+
+#[test]
+fn press_on_the_unfinished_line() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, game("alpha/aria", "Welcome, aria."));
+    on_event(&mut app, prompt("alpha/aria", "Name: "));
+    assert_eq!(screen(&mut app)[22], "Name:");
+    let press = MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 1,
+        row: 22,
+        modifiers: Modifiers::NONE,
+    };
+    assert_eq!(update(&mut app, Msg::Terminal(TermEvent::Mouse(press))), []);
+    assert_eq!(app.pane(app.focused_pane()).unwrap().selection(), None);
 }
 
 #[test]
 fn ctrl_c_quits() {
-    assert_eq!(app(&["alpha/aria"]).on_key(ctrl('c')), Some(Action::Quit));
+    assert_eq!(press(&mut app(&["alpha/aria"]), ctrl('c')), [Effect::Quit]);
 }
 
 /// The view of `text` on the screen: a tab as a space and each other control character as
@@ -310,7 +415,6 @@ proptest! {
         character in "[a\\x00-\\x1f\\x7f\\u{80}-\\u{9f}]{1,10}",
         line in "[a \\x00-\\x1f\\x7f\\u{80}-\\u{9f}]{0,40}",
         source in prop::sample::select(vec![
-            Source::SOURCE_GAME,
             Source::SOURCE_PLAYER,
             Source::SOURCE_SYSTEM,
             Source::SOURCE_CREDENTIAL,
@@ -318,18 +422,364 @@ proptest! {
     ) {
         let world = format!("alpha/{character}");
         let mut app = app(&[&world]);
-        app.on_event(event(&world, source, &line));
-        let prefix = match source {
-            Source::SOURCE_PLAYER => "> ",
-            Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL => "-- ",
-            _ => "",
-        };
+        on_event(&mut app, event(&world, source, &line));
+        let prefix = if source == Source::SOURCE_PLAYER { "> " } else { "-- " };
         let want = format!("{prefix}{}", shown(&line));
-        let drawn = rows(&app).first().cloned().unwrap_or_default();
+        let drawn = rows(&mut app).first().cloned().unwrap_or_default();
         prop_assert_eq!(drawn, want.trim_end());
         let top_want = format!("[alpha/{}]", shown(&character));
-        prop_assert_eq!(top(&app), top_want.trim_end());
+        prop_assert_eq!(top(&mut app), top_want.trim_end());
     }
+}
+
+proptest! {
+    #[test]
+    fn game_line_draws_no_control_character(
+        line in "[a; \x1b\x07\x00-\x1f\x7f\u{80}-\u{9f}\\[\\]0-9m]{0,40}",
+    ) {
+        let mut app = app(&["alpha/aria"]);
+        on_event(&mut app, game("alpha/aria", &line));
+        let drawn = rows(&mut app).first().cloned().unwrap_or_default();
+        prop_assert!(!drawn.chars().any(char::is_control), "{:?}", drawn);
+    }
+}
+
+#[test]
+fn game_line_drops_escape_sequences() {
+    let drawn: Vec<String> = [
+        "a\x1b[31mb\x1b[0mc",
+        "a\x1b[2Jb",
+        "x\x1b]0;title\x07y",
+        "a\x07b",
+        "a\tb",
+    ]
+    .into_iter()
+    .map(|line| {
+        let mut app = app(&["alpha/aria"]);
+        on_event(&mut app, game("alpha/aria", line));
+        rows(&mut app).first().cloned().unwrap_or_default()
+    })
+    .collect();
+    assert_eq!(drawn, ["abc", "ab", "xy", "a\u{FFFD}b", "a b"]);
+}
+
+#[test]
+fn colors() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(
+        &mut app,
+        game("alpha/aria", "\u{1b}[1;31mred\u{1b}[0m plain"),
+    );
+    assert_eq!(rows(&mut app), ["red plain"]);
+    let cells = cells_of(&mut app, "red plain");
+    assert_eq!(
+        (looks(&cells[..3]), looks(&cells[3..])),
+        (vec![(Color::Red, Modifier::BOLD); 3], plain(6))
+    );
+}
+
+#[test]
+fn other_escape_sequences() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, game("alpha/aria", "before"));
+    on_event(
+        &mut app,
+        game("alpha/aria", "a\u{1b}]0;title\u{7}b\u{1b}[2Jc"),
+    );
+    assert_eq!(rows(&mut app), ["before", "abc"]);
+}
+
+#[test]
+fn color_across_two_lines() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, game("alpha/aria", "\u{1b}[32mgreen"));
+    on_event(&mut app, game("alpha/aria", "still\u{1b}[0m done"));
+    let green = vec![(Color::Green, Modifier::empty()); 5];
+    let still = cells_of(&mut app, "still done");
+    assert_eq!(
+        (
+            looks(&cells_of(&mut app, "green")),
+            looks(&still[..5]),
+            looks(&still[5..])
+        ),
+        (green.clone(), green, plain(5))
+    );
+}
+
+#[test]
+fn indexed_and_24_bit_colors() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(
+        &mut app,
+        game("alpha/aria", "\u{1b}[38;5;208mA\u{1b}[38;2;10;20;30mB"),
+    );
+    let cells = cells_of(&mut app, "AB");
+    assert_eq!(
+        (cells[0].fg, cells[1].fg),
+        (Color::Indexed(208), Color::Rgb(10, 20, 30))
+    );
+}
+
+/// The game lines of the `aresmush` and `rhostmush` transcripts, after the line that names
+/// the command that made them.
+const TRANSCRIPT_LINES: &str = include_str!("data/transcript-lines.txt");
+
+#[test]
+fn transcript_lines_convert() {
+    let (header, lines) = TRANSCRIPT_LINES.split_once('\n').unwrap();
+    assert!(header.starts_with("# made by: "), "{header}");
+    let mut style = Style::default();
+    let mut spans = 0;
+    for line in lines.lines() {
+        let converted = convert(line, &mut style);
+        assert!(
+            !converted.text.chars().any(char::is_control),
+            "{:?}",
+            converted.text
+        );
+        spans += converted.spans.len();
+    }
+    assert!(spans > 0);
+}
+
+#[test]
+fn prompt_with_no_line_end() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, prompt("alpha/aria", "Name: "));
+    assert_eq!(screen(&mut app)[22], "Name:");
+}
+
+#[test]
+fn read_ends_inside_an_escape() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, prompt("alpha/aria", "ab\u{1b}[3"));
+    on_event(&mut app, game("alpha/aria", "ab\u{1b}[31mred"));
+    assert_eq!(rows(&mut app), ["abred"]);
+    let cells = cells_of(&mut app, "abred");
+    assert_eq!(
+        (looks(&cells[..2]), looks(&cells[2..])),
+        (plain(2), vec![(Color::Red, Modifier::empty()); 3])
+    );
+}
+
+#[test]
+fn prompt_does_not_carry_its_style() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, prompt("alpha/aria", "\u{1b}[31mName: "));
+    on_event(&mut app, game("alpha/aria", "plain"));
+    assert_eq!(looks(&cells_of(&mut app, "plain")), plain(5));
+}
+
+#[test]
+fn open_osc() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, game("alpha/aria", "a\u{1b}]0;title"));
+    on_event(&mut app, game("alpha/aria", "next"));
+    assert_eq!(rows(&mut app), ["a", "next"]);
+}
+
+#[test]
+fn reset_clears_each_pane() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, game("alpha/aria", "\u{1b}[31mred"));
+    on_event(&mut app, prompt("alpha/aria", "Name: "));
+    draw(&mut app);
+    let press = MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 0,
+        row: 1,
+        modifiers: Modifiers::NONE,
+    };
+    assert_eq!(update(&mut app, Msg::Terminal(TermEvent::Mouse(press))), []);
+    assert!(app.pane(app.focused_pane()).unwrap().selection().is_some());
+    on_event(
+        &mut app,
+        ClientEvent::Reset {
+            instance_id: "i".to_owned(),
+        },
+    );
+    on_event(&mut app, game("alpha/aria", "after"));
+    assert_eq!(rows(&mut app), ["after"]);
+    let pane = app.pane(app.focused_pane()).unwrap();
+    assert_eq!(
+        (
+            pane.selection(),
+            pane.anchor(),
+            looks(&cells_of(&mut app, "after"))
+        ),
+        (None, None, plain(5))
+    );
+}
+
+/// `alpha/aria` with the game lines `1` to `count`, drawn once.
+fn numbered(count: u32) -> Model {
+    let mut app = app(&["alpha/aria"]);
+    for n in 1..=count {
+        on_event(&mut app, game("alpha/aria", &n.to_string()));
+    }
+    draw(&mut app);
+    app
+}
+
+/// The rows of the pane on an 80 by 24 screen, with no scroll bar column.
+fn pane_rows(app: &mut Model) -> Vec<String> {
+    let screen = screen(app);
+    screen[1..screen.len() - 1]
+        .iter()
+        .map(|row| {
+            row.chars()
+                .take(79)
+                .collect::<String>()
+                .trim_end()
+                .to_owned()
+        })
+        .collect()
+}
+
+fn wheel(app: &mut Model, kind: MouseEventKind) -> Vec<Effect> {
+    let mouse = MouseEvent {
+        kind,
+        column: 10,
+        row: 10,
+        modifiers: Modifiers::NONE,
+    };
+    update(app, Msg::Terminal(TermEvent::Mouse(mouse)))
+}
+
+#[test]
+fn back_and_forward() {
+    let mut app = numbered(40);
+    assert_eq!(press(&mut app, key(KeyCode::PageUp)), []);
+    let back = pane_rows(&mut app);
+    assert_eq!(
+        (back[0].as_str(), back.contains(&"40".to_owned())),
+        ("1", false)
+    );
+    assert_eq!(press(&mut app, key(KeyCode::PageDown)), []);
+    assert_eq!(pane_rows(&mut app).last().unwrap(), "40");
+}
+
+#[test]
+fn new_line_while_scrolled_back() {
+    let mut app = numbered(40);
+    press(&mut app, key(KeyCode::PageUp));
+    let before = pane_rows(&mut app);
+    on_event(&mut app, game("alpha/aria", "ping"));
+    assert_eq!(pane_rows(&mut app), before);
+}
+
+#[test]
+fn enter_returns_to_the_bottom() {
+    let mut app = numbered(40);
+    press(&mut app, key(KeyCode::PageUp));
+    type_text(&mut app, "hi");
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [Effect::Send {
+            world: "alpha/aria".to_owned(),
+            text: "hi".to_owned()
+        }]
+    );
+    on_event(&mut app, event("alpha/aria", Source::SOURCE_PLAYER, "hi"));
+    on_event(&mut app, game("alpha/aria", "You say, \"hi\""));
+    assert_eq!(pane_rows(&mut app).last().unwrap(), "You say, \"hi\"");
+}
+
+#[test]
+fn mouse_wheel_scrolls_three_rows() {
+    let mut app = numbered(40);
+    assert_eq!(
+        (
+            pane_rows(&mut app)[0].as_str(),
+            wheel(&mut app, MouseEventKind::ScrollUp)
+        ),
+        ("19", vec![])
+    );
+    let rows = pane_rows(&mut app);
+    assert_eq!((rows[0].as_str(), rows[21].as_str()), ("16", "37"));
+}
+
+#[test]
+fn back_to_a_scrolled_world() {
+    let mut app = two_worlds();
+    for n in 1..=40 {
+        on_event(&mut app, game("alpha/aria", &n.to_string()));
+    }
+    draw(&mut app);
+    press(&mut app, key(KeyCode::PageUp));
+    let before = pane_rows(&mut app);
+    press(&mut app, ctrl('n'));
+    draw(&mut app);
+    press(&mut app, ctrl('p'));
+    assert_eq!(pane_rows(&mut app), before);
+}
+
+#[test]
+fn page_up_in_a_pane_of_one_row() {
+    let mut app = app(&["alpha/aria"]);
+    for n in 1..=5 {
+        on_event(&mut app, game("alpha/aria", &n.to_string()));
+    }
+    let first = |app: &mut Model| text_rows(&draw_sized(app, 3))[1].chars().next();
+    assert_eq!(first(&mut app), Some('5'));
+    assert_eq!(press(&mut app, key(KeyCode::PageUp)), []);
+    assert_eq!(first(&mut app), Some('4'));
+}
+
+#[test]
+fn page_keys_in_a_pane_of_no_rows() {
+    let mut app = numbered(5);
+    draw_sized(&mut app, 2);
+    assert_eq!(
+        (
+            press(&mut app, key(KeyCode::PageUp)),
+            press(&mut app, key(KeyCode::PageDown))
+        ),
+        (vec![], vec![])
+    );
+    type_text(&mut app, "hi");
+    let rows = text_rows(&draw_sized(&mut app, 2));
+    assert_eq!(
+        (rows[0].starts_with("[alpha/aria]"), rows[1].as_str()),
+        (true, "hi")
+    );
+}
+
+/// A mouse report of the left button at the cell `column`, `row`.
+fn left(app: &mut Model, kind: MouseEventKind, column: u16, row: u16) -> Vec<Effect> {
+    let mouse = MouseEvent {
+        kind,
+        column,
+        row,
+        modifiers: Modifiers::NONE,
+    };
+    update(app, Msg::Terminal(TermEvent::Mouse(mouse)))
+}
+
+/// The number of reversed cells of the pane, with no cell of the top row or the input line.
+fn reversed_cells(app: &mut Model) -> usize {
+    let buffer = draw(app);
+    (1..23)
+        .flat_map(|y| (0..80).map(move |x| (x, y)))
+        .filter(|&at| buffer[at].modifier.contains(Modifier::REVERSED))
+        .count()
+}
+
+#[test]
+fn click_clears_selection() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, game("alpha/aria", "You say, \"hello\""));
+    draw(&mut app);
+    left(&mut app, MouseEventKind::Down(MouseButton::Left), 10, 1);
+    left(&mut app, MouseEventKind::Drag(MouseButton::Left), 14, 1);
+    let copied = left(&mut app, MouseEventKind::Up(MouseButton::Left), 14, 1);
+    assert_eq!(
+        (copied, reversed_cells(&mut app)),
+        (vec![Effect::ClipboardWrite("hello".to_owned())], 5)
+    );
+    left(&mut app, MouseEventKind::Down(MouseButton::Left), 3, 1);
+    let clicked = left(&mut app, MouseEventKind::Up(MouseButton::Left), 3, 1);
+    assert_eq!((clicked, reversed_cells(&mut app)), (vec![], 0));
 }
 
 #[derive(Clone, Debug)]
@@ -361,12 +811,12 @@ proptest! {
         let mut app = app(&IDS[..start]);
         for step in steps {
             match step {
-                Step::Next => { app.on_key(ctrl('n')); }
-                Step::Previous => { app.on_key(ctrl('p')); }
-                Step::Enter => { app.on_key(key(KeyCode::Enter)); }
-                Step::Line(n) => app.on_event(game(IDS[n], "line")),
-                Step::Reset => app.on_event(ClientEvent::Reset { instance_id: "i".to_owned() }),
-                Step::Lost => app.on_event(ClientEvent::Lost),
+                Step::Next => { press(&mut app, ctrl('n')); }
+                Step::Previous => { press(&mut app, ctrl('p')); }
+                Step::Enter => { press(&mut app, key(KeyCode::Enter)); }
+                Step::Line(n) => on_event(&mut app, game(IDS[n], "line")),
+                Step::Reset => on_event(&mut app, ClientEvent::Reset { instance_id: "i".to_owned() }),
+                Step::Lost => on_event(&mut app, ClientEvent::Lost),
             }
             let ids = app.world_ids();
             match app.focused() {

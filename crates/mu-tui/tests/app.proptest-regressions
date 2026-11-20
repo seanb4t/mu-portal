@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc d34b8d5970fbb8a87d52c3a73b213bef692ff2800366616dde7fa8e8e9ad8b26 # shrinks to character = "\u{7f}", line = "\u{1b}", source = SOURCE_GAME

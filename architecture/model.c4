@@ -16,6 +16,34 @@ model {
 
     terminal = client 'Terminal client' {
       description 'The default verb of the mu binary. It runs in a terminal.'
+
+      loop = part 'Event loop' {
+        description 'Reads the terminal events, the event stream and the call replies, and performs each effect.'
+      }
+      keymap = part 'Keymap' {
+        description 'A table from a key with its modifiers to an Action.'
+      }
+      update = part 'update' {
+        description 'Changes the model for a Msg or an Action and returns the effects. It does no I/O.'
+      }
+      state = part 'Model' {
+        description 'The focus, the worlds, the pane states by pane id, the input line and the layout tree.'
+      }
+      render = part 'view' {
+        description 'Walks the layout tree and renders each widget with its state.'
+      }
+      outputPane = part 'Output pane' {
+        description 'A StatefulWidget over a line store. One for each world.'
+      }
+
+      loop -> keymap 'a key event'
+      keymap -> update 'an Action'
+      loop -> update 'a Msg'
+      update -> state 'changes'
+      update -> loop 'effects'
+      loop -> render 'draws a frame'
+      render -> state 'reads'
+      render -> outputPane 'renders'
     }
 
     devices = client 'Other paired devices' {
@@ -40,7 +68,7 @@ model {
       journal -> api 'feeds the event stream'
     }
 
-    terminal -> server.api 'commands and event stream'
+    terminal.loop -> server.api 'commands and event stream'
     devices -> server.api 'commands and event stream'
   }
 

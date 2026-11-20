@@ -95,12 +95,18 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
     (
         "mu-tui",
         &[
-            "crossterm",
+            "base64",
             "futures",
+            "insta",
             "proptest",
             "ratatui",
             "ratatui-textarea",
+            "rustix",
+            "termina",
             "tokio",
+            "unicode-segmentation",
+            "unicode-width",
+            "vte",
         ],
     ),
     (

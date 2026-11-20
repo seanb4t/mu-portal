@@ -44,11 +44,12 @@
       ]
     },
     {
-      "description": "ratatui uses one crossterm version and mu-tui must use the same one, so they move together",
-      "groupName": "crossterm",
+      "description": "ratatui-termina uses one termina version and mu-tui must use the same one, so they move together",
+      "groupName": "termina",
       "matchPackageNames": [
-        "crossterm",
+        "termina",
         "ratatui",
+        "ratatui-termina",
         "ratatui-textarea"
       ]
     }

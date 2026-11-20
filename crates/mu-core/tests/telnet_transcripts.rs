@@ -5,7 +5,8 @@ use mu_core::{Framer as _, Inbound, TelnetFramer, TelnetSettings, Transport as _
 use mu_fake_server::{Script, ScriptedGame};
 use tokio::io::AsyncReadExt as _;
 
-use support::{parse_reads, reads, transcript_reads, transcripts};
+use support::transcript::transcript_reads;
+use support::{parse_reads, reads, transcripts};
 
 mod support;
 

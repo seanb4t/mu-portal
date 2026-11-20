@@ -1,0 +1,117 @@
+# made by: cargo run -q -p mu-core --example transcript_lines -- crates/mu-core/tests/fixtures/telnet/aresmush.txt crates/mu-core/tests/fixtures/telnet/rhostmush.txt
+           |\                     /)
+         /\_\\__               (_//
+         |   `>\-`     _._       //`)  [31m     \ [0m
+          \ /` \\  _.-`   `-._  //     [31m    _ \    __| _ \  __|[0m
+           `    \|\     \     /|/      [31m   ___ \  |    __/\__ \ [0m
+                 |     / \\    |       [31m _/    _\_|  \___|____/[0m
+                 |   //----\   |
+                 | //--    -\\ |       [31m  \  | |   |  ___|  |   |[0m
+                 */-          \*       [31m |\/ | |   |\___ \  |   |[0m
+                 \             /       [31m |   | |   |      | ___ |[0m
+                  \           /        [31m_|  _|\___/ _____/ _|  _|[0m
+                   `-.     .-'
+                    //`:::`\\          +-------------------------+
+                   //   '   \\         | Still in Development    |
+                  |/         \\        |                         |
+                                       |                         |
+                                       |                         |
+                                       | https://aresmush.com |
+          [30m[1mASCII Art modified from jgs[0m  +-------------------------+[0m
+[36m%% Welcome to AresMUSH version 2.16.0! https://aresmush.com
+%% Type 'help' to learn how to play.  Type 'tour' to connect to a temporary character to explore.[0m[0m
+[34m+==~~~~~====~~~~====~~~~====~~~~=====~~~~=====~~~~====~~~~====~~~~====~~~~~==+[0m
+Your game has not listed any terms of service. Play nice.
+Type [36mtos/agree[0m to agree to these terms of service.
+[34m+==~~~~~====~~~~====~~~~====~~~~=====~~~~=====~~~~====~~~~====~~~~====~~~~~==+[0m[0m
+[32m%% Headwiz has connected here.[0m[0m
+[34m+==~~~~~====~~~~====~~~~====~~~~=====~~~~=====~~~~====~~~~====~~~~====~~~~~==+[0m
+Welcome Room                                                          Offstage
+11/15/2026 ~ 11/15/2026
+[34m------------------------------------------------------------------------------[0m
+Welcome!
+
+New to MUSHing?  Visit https://aresmush.com/mush-101/ for an interactive tutorial.
+
+New to Ares?  https://aresmush.com/tutorials/play/ares-for-vets.html for a quick intro geared towards veteran players.
+
+You may need to configure your MU Client to take full advantage of Ares' features.  See https://aresmush.com/clients.html for details.
+
+Type [36mchannels[0m for a list of available chat channels and the commands to speak on them.
+[34m------------------------------------------------------------------------------[0m
+[32mCharacters:[0m
+[1mHeadwiz[0m [34m[Admin][0m 
+
+[32mExits:[0m
+[1m[O]  [0m Offstage                      
+[34m+==~~~~~====~~~~====~~~~====~~~~=====~~~~=====~~~~====~~~~====~~~~====~~~~~==+[0m[0m
+[32m%% There are no new posts to read.[0m[0m
+[34m+==~~~~~====~~~~====~~~~====~~~~=====~~~~=====~~~~====~~~~====~~~~====~~~~~==+[0m
+No new notifications.
+[34m+==~~~~~====~~~~====~~~~====~~~~=====~~~~=====~~~~====~~~~====~~~~====~~~~~==+[0m[0m
+[34m+==~~~~~====~~~~====~~~~====~~~~=====~~~~=====~~~~====~~~~====~~~~====~~~~~==+[0m
+Welcome Room                                                          Offstage
+11/15/2026 ~ 11/15/2026
+[34m------------------------------------------------------------------------------[0m
+Welcome!
+
+New to MUSHing?  Visit https://aresmush.com/mush-101/ for an interactive tutorial.
+
+New to Ares?  https://aresmush.com/tutorials/play/ares-for-vets.html for a quick intro geared towards veteran players.
+
+You may need to configure your MU Client to take full advantage of Ares' features.  See https://aresmush.com/clients.html for details.
+
+Type [36mchannels[0m for a list of available chat channels and the commands to speak on them.
+[34m------------------------------------------------------------------------------[0m
+[32mCharacters:[0m
+[1mHeadwiz[0m [34m[Admin][0m 
+
+[32mExits:[0m
+[1m[O]  [0m Offstage                      
+[34m+==~~~~~====~~~~====~~~~====~~~~=====~~~~=====~~~~====~~~~====~~~~====~~~~~==+[0m[0m
+[34m+==~~~~~====~~~~====~~~~====~~~~=====~~~~=====~~~~====~~~~====~~~~====~~~~~==+[0m
+                                  Test Game                                   
+[34m------------------------------------------------------------------------------[0m
+[1mStatus  Name                 Department       Position           Conn    Idle [0m
+[34mADM[0m     Headwiz                                                  9s      0s   
+[34m------------------------------------------------------------------------------[0m
+[31m        1 Online         [0m [32m          0 IC           [0m [34m        1 Record         [0m
+[34m+==~~~~~====~~~~====~~~~====~~~~=====~~~~=====~~~~====~~~~====~~~~====~~~~~==+[0m[0m
+
+Plain text, then UTF-8: café ✓ 日本 😀[0m
+[36m%% Goodbye![0m[0m
+                           Welcome to RhostMUSH
+
+ /~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\ 
+((  To create new character     ----------=>   create <player> <password>  ))
+ )) To continue old character   ----------=>   connect <player> <password>(( 
+((  To connect a guest          ----------=>   connect guest guest         ))
+ )) To see who is on            ----------=>   WHO                        (( 
+((  To quit your character      ----------=>   QUIT                        ))
+ )) To get help once connected  ----------=>   help (i.e. : help commands)(( 
+((                                                                         ))
+ )) Note: use double quotes around name for names with spaces.            (( 
+((  Example: cr "player with spaces" password                              ))
+ \_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/
+  ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~  
+//////////////////////////////////////////////////////////////////////////////
+NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE 
+
+				   No News.
+  
+NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE
+//////////////////////////////////////////////////////////////////////////////
+No current wizard motd news.
+Limbo[0m(#0R)[0m
+Limbo[0m(#0R)[0m
+Player Name          On For Idle  Room     Ports Host
+Wizard                00:00   0s  #0          16 [192.168.215.1]
+1 Player logged in. (Bummer.)
+Plain text, then UTF-8: cafe ? ?? ?
+[31m[1mRed[0m [33;1mOrange[0m[0m
+ /~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\=/~\ 
+((                                                                         ))
+ ))                   *** RhostMUSH Disconnected. ***                     ((
+((                                                                         ))
+ \_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/=\_/
+  ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~   ~  

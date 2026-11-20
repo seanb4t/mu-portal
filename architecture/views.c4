@@ -16,4 +16,23 @@ views {
     description 'The seven crates and their allowed dependencies.'
     include *
   }
+
+  view terminalClient of mu.terminal {
+    title 'Terminal client'
+    description 'The parts of mu-tui: the event loop, the keymap, update, the model, view and the output pane.'
+    include *
+  }
+
+  dynamic view keyPress {
+    title 'One key press'
+    description 'Enter sends the input line to the world in focus.'
+    player -> mu.terminal.loop 'presses Enter'
+    mu.terminal.loop -> mu.terminal.keymap 'looks up the key'
+    mu.terminal.keymap -> mu.terminal.update 'Submit'
+    mu.terminal.update -> mu.terminal.state 'clears the input line and returns the pane to the bottom'
+    mu.terminal.update -> mu.terminal.loop 'the effect Send'
+    mu.terminal.loop -> mu.server.api 'sends the line'
+    mu.terminal.loop -> mu.terminal.render 'draws a frame'
+    mu.terminal.render -> mu.terminal.state 'reads'
+  }
 }

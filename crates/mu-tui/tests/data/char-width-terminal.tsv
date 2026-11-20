@@ -1,0 +1,51 @@
+terminal	xtversion=-	TERM_PROGRAM=Apple_Terminal 488.9	TERM=xterm-256color	mode2027=-
+pass	default	probe set measured in 0.3 ms
+probe	ascii	uw=1	term=1	rule=unicode	U+0061
+probe	narrow	uw=1	term=1	rule=unicode	U+00E9
+probe	wide	uw=2	term=2	rule=unicode	U+6F22
+probe	ambiguous	uw=1	term=1	rule=unicode	U+2460
+probe	combining	uw=1	term=1	rule=unicode	U+0065 U+0301
+probe	vs16	uw=2	term=1	rule=char-sum	U+2764 U+FE0F
+probe	vs15	uw=1	term=2	rule=char-sum	U+231A U+FE0E
+probe	zwj	uw=2	term=8	rule=char-sum	U+1F468 U+200D U+1F469 U+200D U+1F467
+probe	flag	uw=2	term=2	rule=unicode	U+1F1FA U+1F1F8
+probe	skin-tone	uw=2	term=4	rule=char-sum	U+1F44D U+1F3FD
+probe	keycap	uw=2	term=2	rule=unicode	U+0031 U+FE0F U+20E3
+probe	emoji-ext-a	uw=2	term=2	rule=unicode	U+1FAE9
+probe	zero	uw=0	term=1	rule=char-sum	U+200B
+test	narrow	uw=1	term=1	model=1	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+00F1
+test	narrow	uw=1	term=1	model=1	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+0436
+test	wide	uw=2	term=2	model=2	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+5B57
+test	wide	uw=2	term=2	model=2	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+30A2
+test	wide	uw=2	term=2	model=2	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+D55C
+test	wide	uw=2	term=2	model=2	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+1F600
+test	wide	uw=2	term=2	model=2	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+1F389
+test	ambiguous	uw=1	term=1	model=1	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+00A7
+test	ambiguous	uw=1	term=1	model=1	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+00B1
+test	ambiguous	uw=1	term=1	model=1	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+2192
+test	combining	uw=1	term=1	model=1	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+0061 U+0308
+test	combining	uw=1	term=1	model=1	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+006E U+0303
+test	combining	uw=1	term=1	model=1	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+006F U+0302 U+0323
+test	vs16	uw=2	term=1	model=1	drift naive=0 model=0 reserve=0	overlap naive=-1 model=0 reserve=-1	U+2600 U+FE0F
+test	vs16	uw=2	term=1	model=1	drift naive=0 model=0 reserve=0	overlap naive=-1 model=0 reserve=-1	U+2708 U+FE0F
+test	vs16	uw=2	term=1	model=1	drift naive=0 model=0 reserve=0	overlap naive=-1 model=0 reserve=-1	U+263A U+FE0F
+test	vs16	uw=2	term=1	model=1	drift naive=0 model=0 reserve=0	overlap naive=-1 model=0 reserve=-1	U+26A0 U+FE0F
+test	vs15	uw=1	term=2	model=2	drift naive=1 model=0 reserve=0	overlap naive=1 model=0 reserve=0	U+2615 U+FE0E
+test	vs15	uw=1	term=2	model=2	drift naive=1 model=0 reserve=0	overlap naive=1 model=0 reserve=0	U+26A1 U+FE0E
+test	zwj	uw=2	term=5	model=5	drift naive=0 model=0 reserve=0	overlap naive=3 model=0 reserve=3	U+1F469 U+200D U+1F4BB
+test	zwj	uw=2	term=8	model=8	drift naive=0 model=0 reserve=0	overlap naive=6 model=0 reserve=6	U+1F9D1 U+200D U+1F91D U+200D U+1F9D1
+test	zwj	uw=2	term=4	model=4	drift naive=0 model=0 reserve=0	overlap naive=2 model=0 reserve=2	U+1F3F3 U+FE0F U+200D U+1F308
+test	zwj	uw=2	term=5	model=5	drift naive=0 model=0 reserve=0	overlap naive=3 model=0 reserve=3	U+1F408 U+200D U+2B1B
+test	flag	uw=2	term=2	model=2	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+1F1EF U+1F1F5
+test	flag	uw=2	term=2	model=2	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+1F1E9 U+1F1EA
+test	skin-tone	uw=2	term=4	model=4	drift naive=0 model=0 reserve=0	overlap naive=2 model=0 reserve=2	U+1F44B U+1F3FF
+test	skin-tone	uw=2	term=4	model=4	drift naive=0 model=0 reserve=0	overlap naive=2 model=0 reserve=2	U+270B U+1F3FB
+test	keycap	uw=2	term=2	model=2	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+0023 U+FE0F U+20E3
+test	keycap	uw=2	term=2	model=2	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+0039 U+FE0F U+20E3
+test	emoji-ext-a	uw=2	term=2	model=2	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+1FA90
+test	emoji-ext-a	uw=2	term=2	model=2	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+1FAE0
+test	emoji-ext-a	uw=2	term=2	model=2	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+1FAE8
+test	emoji-ext-a	uw=2	term=2	model=2	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+1FABF
+test	emoji-ext-a	uw=2	term=2	model=2	drift naive=0 model=0 reserve=0	overlap naive=0 model=0 reserve=0	U+1FADF
+test	zero	uw=0	term=1	model=1	drift naive=0 model=0 reserve=0	overlap naive=1 model=0 reserve=1	U+2060
+summary	default	width misses: unicode-width 13/35, profile 0/35	rows with drift: naive 2, model 0, reserve 0	rows with overlap: naive 9, model 0, reserve 7
