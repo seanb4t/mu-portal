@@ -4,7 +4,7 @@ use mu_client::ClientEvent;
 use mu_proto::{Event, EventKind, Source};
 use std::num::NonZeroU16;
 
-use mu_tui::probe::Outcome;
+use mu_tui::probe::{Outcome, PENDING_MAX};
 use mu_tui::store::CAPACITY;
 use mu_tui::width::Profile;
 use mu_tui::{Effect, Model, Msg, Position, update, view};
@@ -180,6 +180,27 @@ fn other_key_drops_a_cut_reply() {
     press(&mut model, KeyCode::Char('n'), Modifiers::CONTROL);
     type_text(&mut model, "c");
     assert_eq!((model.focused(), model.input()), (Some("beta/bryn"), "c"));
+}
+
+#[test]
+fn lone_esc_then_bracket_continues_a_cut_reply() {
+    let mut model = model();
+    probe(&mut model, &cut_at(b"\x1b"));
+    type_text(&mut model, "[?62");
+    press(&mut model, KeyCode::Char('c'), Modifiers::NONE);
+    assert_eq!(model.input(), "");
+    feed(&mut model, b"\x1b_Gx\x1b\\");
+    assert_eq!(model.input(), "Gx");
+}
+
+#[test]
+fn cut_reply_past_the_cap_is_dropped() {
+    let mut model = model();
+    let held = [b"\x1b[".as_slice(), &vec![b'1'; PENDING_MAX - 2]].concat();
+    probe(&mut model, &cut_at(&held));
+    type_text(&mut model, "1");
+    press(&mut model, KeyCode::Char('c'), Modifiers::NONE);
+    assert_eq!(model.input(), "1c");
 }
 
 /// The notice that the probe adds when it gives no widths.

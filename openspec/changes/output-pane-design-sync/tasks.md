@@ -45,7 +45,7 @@ The change has no spec delta, so no task names a spec scenario. Each task names 
 - [x] 7.3 Write `cut_da1_ends_the_wait`, `cut_cursor_reply_is_not_typed` and `other_key_drops_a_cut_reply` in `crates/mu-tui/tests/update.rs` (D10). Make sure that each one fails at the start of the task.
 - [x] 7.4 Make `update` hold `Outcome::open` in its late state and rebuild the reply from the keys after it, with the decoder of the framer (D3). Make sure that `cargo nextest run -p mu-tui --locked` passes.
 - [x] 7.5 Write the split keys, the cap and the rebuild of a cut reply into `character-width.md`. Then run `mise run docs:check`, `mise run check`, `mise run test`, `mise run deny` and `openspec validate output-pane-design-sync --strict`. Make sure that each one passes.
-- [ ] 7.6 Write `lone_esc_then_bracket_continues_a_cut_reply` and `cut_reply_past_the_cap_is_dropped` in `crates/mu-tui/tests/update.rs` (D10). If one passes at once, make sure that it fails when the branch it covers is removed. Make sure that `cargo nextest run -p mu-tui --locked` passes.
+- [x] 7.6 Write `lone_esc_then_bracket_continues_a_cut_reply` and `cut_reply_past_the_cap_is_dropped` in `crates/mu-tui/tests/update.rs` (D10). If one passes at once, make sure that it fails when the branch it covers is removed. Make sure that `cargo nextest run -p mu-tui --locked` passes.
 
 ## Workflow follow-up
 
