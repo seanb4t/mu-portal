@@ -2,10 +2,15 @@
 
 use mu_client::ClientEvent;
 use mu_proto::{Event, EventKind, Source};
+use std::num::NonZeroU16;
+
+use mu_tui::probe::Outcome;
 use mu_tui::store::CAPACITY;
+use mu_tui::width::Profile;
 use mu_tui::{Effect, Model, Msg, Position, update, view};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use ratatui::buffer::CellDiffOption;
 use termina::Event as TermEvent;
 use termina::event::{KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
@@ -115,7 +120,7 @@ fn feed(model: &mut Model, bytes: &[u8]) {
 #[test]
 fn late_graphics_reply_does_not_reach_the_input_line() {
     let mut model = model();
-    model.await_late_replies();
+    probe(&mut model, &incomplete());
     feed(&mut model, b"\x1b_Gi=31;OK\x1b\\\x1b[?62;22c");
     type_text(&mut model, "hi");
     assert_eq!(model.input(), "hi");
@@ -124,7 +129,7 @@ fn late_graphics_reply_does_not_reach_the_input_line() {
 #[test]
 fn alt_underscore_with_no_reply_after_it_keeps_the_next_key() {
     let mut model = model();
-    model.await_late_replies();
+    probe(&mut model, &incomplete());
     press(&mut model, KeyCode::Char('_'), Modifiers::ALT);
     type_text(&mut model, "hi");
     assert_eq!(model.input(), "hi");
@@ -133,55 +138,143 @@ fn alt_underscore_with_no_reply_after_it_keeps_the_next_key() {
 #[test]
 fn reply_after_da1_is_input() {
     let mut model = model();
-    model.await_late_replies();
+    probe(&mut model, &incomplete());
     feed(&mut model, b"\x1b[?62;22c\x1b_Gx\x1b\\");
     assert_eq!(model.input(), "Gx");
 }
 
-/// The count of rows of `model` on a 20 by 4 screen that read `-- note`.
-fn note_rows(model: &mut Model) -> usize {
-    let mut terminal = Terminal::new(TestBackend::new(20, 4)).unwrap();
+/// The notice that the probe adds when it gives no widths.
+const WIDTH_NOTICE: &str =
+    "-- the terminal gave no character widths, so wide characters can be out of line";
+
+/// The count of rows of `model` on an 80 by 4 screen that read the width notice.
+fn notice_rows(model: &mut Model) -> usize {
+    let mut terminal = Terminal::new(TestBackend::new(80, 4)).unwrap();
     terminal.draw(|frame| view(model, frame)).unwrap();
     (0..4)
         .filter(|&y| {
-            let row: String = (0..20)
+            let row: String = (0..80)
                 .map(|x| terminal.backend().buffer()[(x, y)].symbol())
                 .collect();
-            row.trim_end() == "-- note"
+            row.trim_end() == WIDTH_NOTICE
         })
         .count()
+}
+
+/// The outcome of a probe that measured nothing and did not see DA1.
+fn incomplete() -> Outcome {
+    Outcome::default()
+}
+
+/// The outcome of a probe that saw DA1 and measured every grapheme.
+fn complete() -> Outcome {
+    Outcome {
+        complete: true,
+        measured: true,
+        ..Outcome::default()
+    }
+}
+
+fn probe(model: &mut Model, outcome: &Outcome) {
+    assert_eq!(update(model, Msg::Probe(outcome.clone())), []);
+}
+
+fn reset() -> Msg {
+    Msg::Client(ClientEvent::Reset {
+        instance_id: "i".to_owned(),
+    })
 }
 
 #[test]
 fn notice_with_no_world_shows_once_after_a_reset() {
     let mut model = Model::new([]);
-    model.notice("note");
-    update(
-        &mut model,
-        Msg::Client(ClientEvent::Reset {
-            instance_id: "i".to_owned(),
-        }),
-    );
-    assert_eq!(note_rows(&mut model), 1);
+    probe(&mut model, &Outcome::default());
+    update(&mut model, reset());
+    assert_eq!(notice_rows(&mut model), 1);
 }
 
 #[test]
 fn notice_comes_back_after_a_reset() {
     let mut model = model();
-    model.notice("note");
-    update(
+    probe(&mut model, &Outcome::default());
+    update(&mut model, reset());
+    assert_eq!(notice_rows(&mut model), 1);
+}
+
+#[test]
+fn unmeasured_probe_shows_the_width_notice() {
+    let mut model = model();
+    probe(&mut model, &Outcome::default());
+    assert_eq!(notice_rows(&mut model), 1);
+}
+
+#[test]
+fn measured_probe_shows_no_width_notice() {
+    let mut model = model();
+    probe(&mut model, &complete());
+    assert_eq!(notice_rows(&mut model), 0);
+}
+
+#[test]
+fn incomplete_probe_waits_for_late_replies() {
+    let mut model = model();
+    probe(&mut model, &incomplete());
+    feed(&mut model, b"\x1b_Gi=31;OK\x1b\\");
+    feed(&mut model, b"\x1b[?62;22c");
+    type_text(&mut model, "hi");
+    assert_eq!(model.input(), "hi");
+}
+
+#[test]
+fn complete_probe_does_not_wait_for_late_replies() {
+    let mut model = model();
+    probe(&mut model, &complete());
+    feed(&mut model, b"\x1b_Gx\x1b\\");
+    assert_ne!(model.input(), "");
+}
+
+/// True if the first cell of the first row that starts with `①` has its width forced to 2.
+fn forced_width_of_circled_one(model: &mut Model) -> bool {
+    let mut terminal = Terminal::new(TestBackend::new(20, 4)).unwrap();
+    terminal.draw(|frame| view(model, frame)).unwrap();
+    let buffer = terminal.backend().buffer();
+    (0..4)
+        .find(|&y| buffer[(0, y)].symbol() == "①")
+        .is_some_and(|y| {
+            buffer[(0, y)].diff_option == CellDiffOption::ForcedWidth(NonZeroU16::new(2).unwrap())
+        })
+}
+
+#[test]
+fn probe_sets_the_caps_of_every_pane() {
+    let mut model = model();
+    for world in ["alpha/aria", "beta/bryn"] {
+        let event = Event {
+            world: world.to_owned(),
+            kind: EventKind::EVENT_KIND_LINE.into(),
+            source: Source::SOURCE_GAME.into(),
+            text: "①x".to_owned(),
+            ..Default::default()
+        };
+        update(&mut model, Msg::Client(ClientEvent::Event(event)));
+    }
+    probe(
         &mut model,
-        Msg::Client(ClientEvent::Reset {
-            instance_id: "i".to_owned(),
-        }),
+        &Outcome {
+            profile: Profile::learn(&[("①", 2)]),
+            ..complete()
+        },
     );
-    assert_eq!(note_rows(&mut model), 1);
+    let first = forced_width_of_circled_one(&mut model);
+    press(&mut model, KeyCode::Char('n'), Modifiers::CONTROL);
+    let second = forced_width_of_circled_one(&mut model);
+    assert_eq!((first, second), (true, true));
 }
 
 #[test]
 fn late_mode_reply_as_set_keeps_mode_2027() {
     let mut model = model();
-    model.await_late_replies();
+    probe(&mut model, &incomplete());
     feed(&mut model, b"\x1b[?2027;1$y\x1b[?62;22c");
     assert!(model.keeps_grapheme_mode());
 }
