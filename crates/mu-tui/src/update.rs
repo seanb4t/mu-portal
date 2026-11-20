@@ -1,4 +1,6 @@
-//! [`update`]: the only function that changes the [`Model`]. It does no I/O.
+//! [`update`]: the function that changes the [`Model`] for each message. It does no I/O. Only
+//! the render of [`view`](crate::view) also changes the model, as the module doc of
+//! [`model`](crate::model) says.
 
 use std::sync::Arc;
 
@@ -44,7 +46,8 @@ pub enum Action {
     /// Send the input line to the world in focus, and return its pane to the bottom.
     Submit,
     /// Scroll the pane in focus by this many pages: back for a negative count, forward for a
-    /// positive one. A page is the height of the pane less one row, and at least one row.
+    /// positive one. A page is the height of the text area less one row, and at least one row. The text
+    /// area has no row of the unfinished line.
     ScrollPage(i32),
     /// Scroll the pane in focus by this many rows: back for a negative count, forward for a
     /// positive one.

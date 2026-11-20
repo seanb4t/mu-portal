@@ -18,7 +18,8 @@ use crate::screen::{self, Screen};
 use crate::update::{Effect, Msg, Reply, update};
 use crate::view::view;
 
-/// Runs the client on the alternate screen until Ctrl+C. The terminal comes back on exit,
+/// Runs the client on the alternate screen until the Quit action or the end of terminal input.
+/// The terminal comes back on exit,
 /// and on a panic through the panic hook of Termina.
 ///
 /// # Errors

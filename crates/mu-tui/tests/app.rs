@@ -756,7 +756,7 @@ fn left(app: &mut Model, kind: MouseEventKind, column: u16, row: u16) -> Vec<Eff
     update(app, Msg::Terminal(TermEvent::Mouse(mouse)))
 }
 
-/// The cells of the pane in reverse, with no cell of the top row or the input line.
+/// The number of reversed cells of the pane, with no cell of the top row or the input line.
 fn reversed_cells(app: &mut Model) -> usize {
     let buffer = draw(app);
     (1..23)

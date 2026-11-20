@@ -403,7 +403,7 @@ async fn copy_by_drag() {
 const MOUSE_OFF: [&[u8]; 3] = [b"\x1b[?1006l", b"\x1b[?1002l", b"\x1b[?1000l"];
 
 /// Starts a client with `answers`, presses Ctrl+C, and returns every byte that the client wrote
-/// after the greeting, up to the exit from the alternate screen, which comes after the modes.
+/// after the greeting. The exit from the alternate screen comes after the modes.
 async fn output_at_exit(answers: Answers) -> Vec<u8> {
     let session = Session::with_worlds(TWO_WORLDS).await;
     let mut client = PtyClient::start_with(

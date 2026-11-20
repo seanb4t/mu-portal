@@ -1,4 +1,4 @@
-//! `update` for each default entry of the keymap, with no terminal.
+//! `update` for keys, mouse presses, client events and terminal replies.
 
 use mu_client::ClientEvent;
 use mu_proto::{Event, EventKind, Source};

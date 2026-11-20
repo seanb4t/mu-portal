@@ -22,9 +22,9 @@ The backend is Termina, through the `termina` feature of ratatui. The client doe
 
 ## Reason
 
-A comparison checked three things in each backend, in Rex:
+A comparison checked three things in each backend, in Rex. The spike in `spikes/terminal-backend` ran the checks. To see the version of each backend that it used, run `cargo tree --manifest-path spikes/Cargo.toml -p terminal-backend --depth 1`.
 
-| Check | crossterm 0.29.0 | Termina 0.3.3 |
+| Check | crossterm | Termina |
 |---|---|---|
 | The replies to terminal queries arrive as events, and a key pressed during the queries still arrives as a key | Fails. The mode report, the cursor position and the device attributes reply are dropped. The XTVERSION reply arrives as 23 keys, Alt+P first | Passes for the mode report, the cursor position and the device attributes reply. The XTVERSION reply is dropped, with no stray key |
 | Shift+Enter arrives with its modifier, and a paste of several lines arrives as one event | Passes | Passes |
@@ -38,7 +38,7 @@ One `update` at the top keeps the keymap in one place, and later the Lua scripts
 
 - The comparison ran in Rex on macOS only. It tests how each library parses bytes, and that does not depend on the terminal.
 - The paste of check 2 was the bracketed paste bytes that `rex send` wrote. The paste action of the Rex app did not reach the pane.
-- `ratatui-termina` needs termina 0.3, and termina 0.4 is out. No check covered termina 0.4.
+- `ratatui-termina` needs an older minor version of termina than the newest one. No check covered the newest termina. To see the version that the client uses, run `cargo tree -p mu-tui -i termina`.
 - The client on Termina ran in Rex only. There, the owner checked the copy by drag, the live resize and the kitty image by hand. No other terminal ran the client.
 
 ## Source

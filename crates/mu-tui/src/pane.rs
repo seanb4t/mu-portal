@@ -46,7 +46,7 @@ struct DrawnRow {
     drawn: Drawn,
 }
 
-/// The text area at the last render, with no scroll bar column and no unfinished row.
+/// A text area: its left column, its width and its height.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Geometry {
     x: u16,
@@ -78,6 +78,7 @@ pub struct PaneState {
     unfinished: Option<Converted>,
     caps: Arc<Caps>,
     drawn: Vec<DrawnRow>,
+    /// The text area at the last render, with no scroll bar column and no unfinished row.
     geometry: Option<Geometry>,
 }
 
@@ -641,9 +642,9 @@ impl StatefulWidget for OutputPane {
             width: area.width,
             height: area.height - unfinished_row,
         };
-        // A resize can bring the last row of the newest line onto the screen. The pane is then
-        // at the bottom, so it follows new lines again. With an anchor, the rows are drawn beside
-        // the scroll bar. An area with no column shows no row, so it keeps the anchor.
+        // With an anchor, the pane returns to the bottom when the last row of the newest line
+        // shows beside the scroll bar, or when every line fits. An area with no column keeps
+        // the anchor.
         if state.anchor.is_some() && full.width > 0 {
             let beside_bar = Geometry {
                 width: full.width.saturating_sub(1),

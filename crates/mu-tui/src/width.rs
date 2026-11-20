@@ -130,7 +130,7 @@ pub enum Rule {
     Const(u16),
 }
 
-/// The rule of each class, as the terminal measured it.
+/// The rule of each class, from the widths that the terminal gave the probe graphemes.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Profile {
     rules: HashMap<Class, Rule>,
@@ -139,8 +139,8 @@ pub struct Profile {
 }
 
 impl Profile {
-    /// Learns the rule of each class from pairs of a probe grapheme and its measured width. A
-    /// measured width of 0 keeps the `unicode-width` value of its class.
+    /// Learns the rule of each class from pairs of a probe grapheme and the width that the
+    /// terminal gave it. A width of 0 keeps the `unicode-width` value of its class.
     #[must_use]
     pub fn learn(measured: &[(&str, u16)]) -> Self {
         let zero = measured

@@ -1,5 +1,6 @@
-//! The model of the terminal client: one value that the loop owns and only
-//! [`update`](crate::update) changes.
+//! The model of the terminal client: one value that the loop owns. [`update`](crate::update)
+//! changes it for each message. [`view`](crate::view) records what each pane drew, and returns
+//! a scrolled pane to the bottom when the newest row shows.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -128,7 +129,8 @@ impl Model {
         self.input.lines().first().map_or("", String::as_str)
     }
 
-    /// The index of `id`, which this adds in its order, with a new pane, if it is new.
+    /// The index of `id`, which this adds in its order, with a new pane, if it is new. A new
+    /// world takes the focus when no world has it, and the focus stays on its world.
     pub(crate) fn world(&mut self, id: &str) -> usize {
         match self
             .worlds

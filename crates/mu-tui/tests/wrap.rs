@@ -68,7 +68,7 @@ fn cells(profile: &Profile, row: &str, width: u16) -> usize {
     }
 }
 
-/// A profile where a terminal measured a ZWJ sequence as 8 cells wide.
+/// A profile that gives a ZWJ sequence 8 cells.
 fn wide_zwj() -> Profile {
     Profile::learn(&[("👨\u{200D}👩\u{200D}👧", 8)])
 }

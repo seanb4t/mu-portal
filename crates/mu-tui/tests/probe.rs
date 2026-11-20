@@ -52,7 +52,7 @@ fn incomplete_graphics_reply_stays() {
     assert_eq!(parsed.used, 0);
 }
 
-/// The replies of a terminal that gives every probe grapheme `width` cells, with no DA1 if
+/// The replies of a terminal that gives each probe grapheme the width that `width` returns, with no DA1 if
 /// `complete` is false.
 fn replies(width: impl Fn(&str) -> u16, complete: bool) -> Vec<Reply> {
     let mut replies: Vec<Reply> = GRAPHEMES
