@@ -670,6 +670,22 @@ fn select_on_a_dropped_line_starts_at_the_oldest_live_line() {
 }
 
 #[test]
+fn select_with_both_ends_on_dropped_lines_selects_nothing() {
+    let mut pane = small_pane_without_its_first_line();
+    pane.select(
+        Position {
+            line: LineId(0),
+            byte: 0,
+        },
+        Position {
+            line: LineId(0),
+            byte: 1,
+        },
+    );
+    assert_eq!(pane.selection(), None);
+}
+
+#[test]
 fn press_on_a_dropped_line_starts_at_the_oldest_live_line() {
     let mut pane = small_pane_without_its_first_line();
     let b = id_of(&pane, "b");
