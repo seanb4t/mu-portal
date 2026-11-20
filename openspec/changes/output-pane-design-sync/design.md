@@ -180,9 +180,10 @@ Checked by the plan review with a scratch crate on the same version (rows R-1, R
 - The parser gives no event for a bare ESC `[`.
 - After ESC `[` `?`, the parser reads up to the next `u`, `c`, `n` or `y`. A cursor reply in between is lost.
 
-Not checked yet. Task 2.1 checks it before the work depends on it:
+Checked by task 2.1, in `src/parse.rs` of `termina` at the same version (`Parser::parse`, `process_bytes` and `parse_event`), and with a scratch crate:
 
-- One complete CSI, given alone to a new parser with no more input to come, gives exactly one event.
+- One complete CSI, given alone to a new parser with no more input to come, gives exactly one event. `process_bytes` takes the bytes as a growing slice and returns the first event that `parse_event` gives for it. A slice that ends in the middle of a CSI gives no event. With `maybe_more` false, the last byte of the CSI ends it. This holds for a cursor reply (`ESC [ 12 ; 5 R`), a DECRPM reply (`ESC [ ? 2027 ; 2 $ y`) and DA1 (`ESC [ ? 62 ; 22 c`).
+- The test `replies_come_from_termina` of task 2.2 runs this check through the framer: each of the three replies gives its answer and no early event.
 
 ## Risks / Trade-offs
 
