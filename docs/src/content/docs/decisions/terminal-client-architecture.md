@@ -43,4 +43,4 @@ One `update` at the top keeps the keymap in one place, and later the Lua scripts
 
 ## Source
 
-The comparison of issue 55, in pull request 111. The code is `spikes/terminal-backend`, and the reports are in `spikes/terminal-backend/results`. In `spikes/`, the commands `cargo run -p terminal-backend --bin crossterm-check` and `cargo run -p terminal-backend --bin termina-check` run the checks in the current terminal. Each one asks for the keys and the paste.
+The comparison of issue 55, in the pull request that closes it. The code is `spikes/terminal-backend`, and the reports are in `spikes/terminal-backend/results`. In `spikes/`, the commands `cargo run -p terminal-backend --bin crossterm-check` and `cargo run -p terminal-backend --bin termina-check` run the checks in the current terminal. Each one asks for the keys and the paste.
