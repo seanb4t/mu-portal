@@ -97,3 +97,41 @@ fn style_past_the_table_limit_is_the_default() {
         (style(65_534), Style::default())
     );
 }
+
+fn span_starts(store: &LineStore, id: mu_tui::store::LineId) -> Vec<usize> {
+    store
+        .line(id)
+        .unwrap()
+        .spans
+        .iter()
+        .map(|span| span.start)
+        .collect()
+}
+
+#[test]
+fn spans_out_of_order_are_stored_in_order() {
+    use ratatui::style::{Color, Style};
+    let mut store = LineStore::new(10);
+    let id = store.push(
+        "ab",
+        &[
+            (1, Style::new().fg(Color::Red)),
+            (0, Style::new().fg(Color::Blue)),
+        ],
+    );
+    assert_eq!(span_starts(&store, id), [0, 1]);
+}
+
+#[test]
+fn spans_out_of_order_are_stored_in_order_after_a_control_character() {
+    use ratatui::style::{Color, Style};
+    let mut store = LineStore::new(10);
+    let id = store.push(
+        "a\u{1}b",
+        &[
+            (2, Style::new().fg(Color::Red)),
+            (0, Style::new().fg(Color::Blue)),
+        ],
+    );
+    assert_eq!(span_starts(&store, id), [0, 4]);
+}

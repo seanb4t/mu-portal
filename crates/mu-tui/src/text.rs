@@ -24,14 +24,22 @@ pub(crate) fn printable(c: char) -> char {
     }
 }
 
-/// `text` as [`clean`] gives it, and `spans` with each byte offset moved to the same char in
-/// that text. An offset inside a char moves to the start of the next char.
+/// `text` as [`clean`] gives it, and `spans` in the order of their start, with each byte offset
+/// moved to the same char in that text. An offset inside a char moves to the start of the next
+/// char. Spans with the same start keep their order.
 pub(crate) fn clean_styled<'a>(
     text: &'a str,
     spans: &'a [(usize, Style)],
 ) -> (Cow<'a, str>, Cow<'a, [(usize, Style)]>) {
+    let spans = if spans.is_sorted_by_key(|&(start, _)| start) {
+        Cow::Borrowed(spans)
+    } else {
+        let mut sorted = spans.to_vec();
+        sorted.sort_by_key(|&(start, _)| start);
+        Cow::Owned(sorted)
+    };
     if text.chars().all(|c| printable(c) == c) {
-        return (Cow::Borrowed(text), Cow::Borrowed(spans));
+        return (Cow::Borrowed(text), spans);
     }
     let mut out = String::with_capacity(text.len());
     let mut moved = Vec::with_capacity(spans.len());

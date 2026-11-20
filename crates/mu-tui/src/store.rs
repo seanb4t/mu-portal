@@ -203,8 +203,8 @@ impl LineStore {
     }
 
     /// Adds a line at the end, and drops the oldest line if the store is then over its
-    /// capacity. `spans` are pairs of a byte offset and a style, in order. The store keeps each
-    /// control character of `text` as U+FFFD.
+    /// capacity. `spans` are pairs of a byte offset and a style. The store keeps them in the order
+    /// of their offset, and keeps each control character of `text` as U+FFFD.
     pub fn push(&mut self, text: &str, spans: &[(usize, Style)]) -> LineId {
         self.push_line(text, spans, None)
     }
