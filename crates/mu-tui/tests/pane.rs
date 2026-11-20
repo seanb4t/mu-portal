@@ -409,7 +409,7 @@ fn placeholder_size(buf: &Buffer) -> (usize, usize) {
 #[test]
 fn image_rows_do_not_wrap() {
     let mut pane = image_pane(true);
-    pane.push_image(MAP, Image::new(7, 4, 10));
+    pane.push_image(MAP, Image::new(7, 4, 10).unwrap());
     let rows: Vec<usize> = [40, 20]
         .map(|width| placeholder_size(&render(&mut pane, width, 10)).0)
         .to_vec();
@@ -419,7 +419,7 @@ fn image_rows_do_not_wrap() {
 #[test]
 fn image_placeholder_cells() {
     let mut pane = image_pane(true);
-    pane.push_image(MAP, Image::new(7, 4, 10));
+    pane.push_image(MAP, Image::new(7, 4, 10).unwrap());
     let buf = render(&mut pane, 40, 10);
     let cell = &buf[(2, 1)];
     assert_eq!(
@@ -434,7 +434,7 @@ fn image_rows_capped_at_297() {
         .into_iter()
         .map(|(rows, columns)| {
             let mut pane = image_pane(true);
-            pane.push_image(MAP, Image::new(7, rows, columns));
+            pane.push_image(MAP, Image::new(7, rows, columns).unwrap());
             placeholder_size(&render(&mut pane, 300, 400))
         })
         .collect();
@@ -444,7 +444,7 @@ fn image_rows_capped_at_297() {
 #[test]
 fn image_id_above_255() {
     let mut pane = image_pane(true);
-    pane.push_image(MAP, Image::new(256, 2, 3));
+    pane.push_image(MAP, Image::new(256, 2, 3).unwrap());
     let buf = render(&mut pane, 10, 4);
     let colors: Vec<Color> = (0..2)
         .flat_map(|y| (0..3).map(move |x| (x, y)))
@@ -456,7 +456,7 @@ fn image_id_above_255() {
 #[test]
 fn image_wider_than_the_pane() {
     let mut pane = image_pane(true);
-    pane.push_image(MAP, Image::new(7, 2, 10));
+    pane.push_image(MAP, Image::new(7, 2, 10).unwrap());
     let buf = render(&mut pane, 5, 4);
     let cells: Vec<String> = (0..2)
         .flat_map(|y| (0..5).map(move |x| (x, y)))
@@ -473,14 +473,14 @@ fn image_wider_than_the_pane() {
 #[test]
 fn image_url_fallback() {
     let mut pane = image_pane(false);
-    pane.push_image(MAP, Image::new(7, 4, 10));
+    pane.push_image(MAP, Image::new(7, 4, 10).unwrap());
     assert_eq!(rows(&render(&mut pane, 40, 3)), [MAP, "", ""]);
 }
 
 #[test]
 fn url_with_control_characters() {
     let mut pane = image_pane(false);
-    pane.push_image("https://x/\x1b[2J\x07", Image::new(7, 4, 10));
+    pane.push_image("https://x/\x1b[2J\x07", Image::new(7, 4, 10).unwrap());
     assert_eq!(
         rows(&render(&mut pane, 40, 1)),
         ["https://x/\u{FFFD}[2J\u{FFFD}"]
@@ -491,7 +491,7 @@ fn url_with_control_characters() {
 fn image_copies_its_url() {
     let mut pane = image_pane(true);
     pane.push("before");
-    pane.push_image(MAP, Image::new(7, 2, 10));
+    pane.push_image(MAP, Image::new(7, 2, 10).unwrap());
     pane.push("after");
     render(&mut pane, 40, 6);
     let press = pane.position(1, 1).unwrap();
@@ -519,4 +519,13 @@ fn resize_that_fits_every_row_hides_the_bar() {
     pane.scroll_rows(-1);
     let buf = render(&mut pane, 20, 6);
     assert_eq!((has_bar(&buf), pane.anchor()), (false, None));
+}
+
+#[test]
+fn image_ids_outside_24_bits_are_refused() {
+    let ids: Vec<Option<u32>> = [0, 1, 0x00FF_FFFF, 0x0100_0000]
+        .into_iter()
+        .map(|id| Image::new(id, 1, 1).map(Image::id))
+        .collect();
+    assert_eq!(ids, [None, Some(1), Some(0x00FF_FFFF), None]);
 }

@@ -41,6 +41,10 @@ pub struct Span {
 /// The most rows and the most columns of an image: the number of kitty diacritics.
 pub const IMAGE_CELLS: u16 = 297;
 
+/// The ids of an image: the foreground color of a placeholder holds the id in 24 bits, and 0
+/// means no image.
+pub const IMAGE_IDS: std::ops::RangeInclusive<u32> = 1..=0x00FF_FFFF;
+
 /// The kitty image of an image line: its id and its size in cells.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Image {
@@ -50,18 +54,19 @@ pub struct Image {
 }
 
 impl Image {
-    /// An image with the id `id` of `rows` and `columns` cells. A size of 0 becomes 1, and a
-    /// size above [`IMAGE_CELLS`] becomes [`IMAGE_CELLS`]. The id keeps its low 24 bits.
+    /// An image with the id `id` of `rows` and `columns` cells, or none for an id outside
+    /// [`IMAGE_IDS`]. A size of 0 becomes 1, and a size above [`IMAGE_CELLS`] becomes
+    /// [`IMAGE_CELLS`].
     #[must_use]
-    pub fn new(id: u32, rows: u16, columns: u16) -> Self {
-        Self {
-            id: id & 0x00FF_FFFF,
+    pub fn new(id: u32, rows: u16, columns: u16) -> Option<Self> {
+        IMAGE_IDS.contains(&id).then(|| Self {
+            id,
             rows: rows.clamp(1, IMAGE_CELLS),
             columns: columns.clamp(1, IMAGE_CELLS),
-        }
+        })
     }
 
-    /// The id, from 0 to 2^24 - 1.
+    /// The id, in [`IMAGE_IDS`].
     #[must_use]
     pub const fn id(self) -> u32 {
         self.id

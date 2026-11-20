@@ -81,7 +81,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (cell_width, cell_height) = cell_size(&platform.get_dimensions()?);
     let (outcome, _input) = probe::run(&mut platform, probe::WAIT)?;
     let graphics = outcome.graphics;
-    let image = Image::new(ID, cells(height, cell_height), cells(width, cell_width));
+    let image = Image::new(ID, cells(height, cell_height), cells(width, cell_width))
+        .ok_or("the image id is out of range")?;
 
     let mut pane = PaneState::with_caps(
         Caps {
