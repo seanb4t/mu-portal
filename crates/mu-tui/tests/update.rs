@@ -143,7 +143,7 @@ fn reply_after_da1_is_input() {
     assert_eq!(model.input(), "Gx");
 }
 
-/// Sends the probe result with no DA1, then `bytes` as the cut reply.
+/// Sends the probe result with no DA1, then `bytes` as the cut answer.
 fn cut_at(model: &mut Model, bytes: &[u8]) {
     probe(model, &incomplete());
     update(model, Msg::CutReply(bytes.to_vec()));
@@ -223,7 +223,7 @@ fn graphics_reply_cut_at_its_end() {
     assert_eq!(model.input(), "");
 }
 
-/// The notice that the probe adds when it gives no widths.
+/// The notice that `Msg::Probe` adds when the outcome has no widths.
 const WIDTH_NOTICE: &str =
     "-- the terminal gave no character widths, so wide characters can be out of line";
 
@@ -241,12 +241,12 @@ fn notice_rows(model: &mut Model) -> usize {
         .count()
 }
 
-/// An outcome with no DA1 and no measured width. It holds no bytes of a cut reply.
+/// Outcome with no DA1 answer and no measured width.
 fn incomplete() -> Outcome {
     Outcome::default()
 }
 
-/// An outcome with DA1 and every width measured.
+/// Outcome with a DA1 answer and every width measured.
 fn complete() -> Outcome {
     Outcome {
         complete: true,

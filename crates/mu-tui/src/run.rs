@@ -36,7 +36,7 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
             grapheme_mode.store(outcome.resets_grapheme_mode(), Ordering::Relaxed);
             let open = std::mem::take(&mut outcome.open);
             // The probe result goes first, then the input that came during the probe, then the
-            // bytes of a cut reply. The input came before those bytes.
+            // bytes of a cut answer. The input came before those bytes.
             let early = std::iter::once(Msg::Probe(outcome))
                 .chain(input.into_iter().map(Msg::Terminal))
                 .chain((!open.is_empty()).then_some(Msg::CutReply(open)))

@@ -55,25 +55,25 @@ pub struct Model {
     pub(crate) late: Late,
     /// The notices of the client, which a reset of the panes keeps.
     pub(crate) notices: Vec<String>,
-    /// True if a late reply gave mode 2027 as set before the probe.
+    /// True if a late answer gave mode 2027 as set before the probe.
     pub(crate) keeps_grapheme_mode: bool,
 }
 
-/// The wait for the probe replies that came after the probe stopped reading. Termina gives the
-/// kitty graphics reply as keys: Alt+`_`, the keys of its text, then Alt+`\`.
+/// The wait for the probe answers that came after the probe stopped reading. Termina gives the
+/// kitty graphics answer as keys: Alt+`_`, the keys of its text, then Alt+`\`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Late {
-    /// Every reply came, or the probe did not stop early.
+    /// Every answer came, or the probe did not stop early.
     #[default]
     None,
-    /// The replies after the probe end with DA1.
+    /// The answers after the probe end with DA1.
     Waiting,
-    /// A graphics reply started with Alt+`_`, and `keys` of its text came.
+    /// A graphics answer started with Alt+`_`, and `keys` of its text came.
     Graphics { keys: usize },
-    /// A graphics reply started with Alt+`_`, and the key Escape came. A `\` key ends the reply.
+    /// A graphics answer started with Alt+`_`, and the key Escape came. A `\` key ends the answer.
     GraphicsEscape,
-    /// The probe stopped inside a CSI reply, or after the ESC of one. The held bytes start with
-    /// ESC, and the keys of the rest of the reply add to them until the final byte. At most
+    /// The probe stopped inside a CSI answer, or after the ESC of one. The held bytes start with
+    /// ESC, and the keys of the rest of the answer add to them until the final byte. At most
     /// [`PENDING_MAX`](crate::probe::PENDING_MAX) bytes.
     Csi(Vec<u8>),
 }
@@ -118,28 +118,28 @@ impl Model {
         }
     }
 
-    /// True if a late reply gave mode 2027 as set before the probe, so the client leaves the
+    /// True if a late answer gave mode 2027 as set before the probe, so the client leaves the
     /// mode on at exit.
     #[must_use]
     pub const fn keeps_grapheme_mode(&self) -> bool {
         self.keeps_grapheme_mode
     }
 
-    /// Waits for the late replies of the probe until a DA1 reply comes. It drops the keys of a
-    /// kitty graphics reply.
+    /// Waits for the late answers of the probe until DA1 comes. It drops the keys of a kitty
+    /// graphics answer.
     pub(crate) fn await_late_replies(&mut self) {
         self.late = Late::Waiting;
     }
 
-    /// Holds `bytes`, the start of a CSI reply that the probe cut, and rebuilds the reply from the
-    /// keys after it. `bytes` start with ESC, and have `[` second if they hold more than one byte.
-    /// They hold at most [`PENDING_MAX`](crate::probe::PENDING_MAX) bytes.
+    /// Holds `bytes`, the start of a CSI answer that the probe cut, and rebuilds the answer from
+    /// the keys after it. `bytes` start with ESC, and have `[` second if they hold more than one
+    /// byte. They hold at most [`PENDING_MAX`](crate::probe::PENDING_MAX) bytes.
     pub(crate) fn hold_cut_reply(&mut self, bytes: Vec<u8>) {
         debug_assert!(
             bytes.first() == Some(&0x1b)
                 && bytes.len() <= crate::probe::PENDING_MAX
                 && (bytes.len() == 1 || bytes[1] == b'['),
-            "a cut reply starts with ESC, and a longer one with ESC [: {bytes:?}"
+            "a cut answer starts with ESC, and a longer one with ESC [: {bytes:?}"
         );
         self.late = Late::Csi(bytes);
     }

@@ -1,5 +1,5 @@
-//! The terminal of the client: raw mode, the alternate screen and mouse capture, and the
-//! sequences that undo them.
+//! The terminal of the client: raw mode, the alternate screen and mouse capture, the sequences
+//! that undo them, and [`finish`], which keeps the first error when a restore also fails.
 
 use std::io::{self, Write};
 use std::sync::Arc;

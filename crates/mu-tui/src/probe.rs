@@ -1,14 +1,15 @@
 //! The startup probe: the queries, the framer of the input, and what the answers give.
 //!
-//! The probe writes every query in one write. It asks for the state of mode 2027, sets the
-//! mode, writes one grapheme of each width class with a cursor position query after each, asks
-//! whether the terminal draws kitty images, and ends with DA1. Every terminal answers DA1, so
-//! its answer ends the answers.
+//! The probe writes every query in one write. An answer is the reply of the terminal to a query.
+//! The probe asks for the state of mode 2027, sets the mode, writes one grapheme of each width
+//! class with a cursor position query after each, asks whether the terminal draws kitty images,
+//! and ends with DA1. Every terminal answers DA1, so its answer ends the answers.
 //!
 //! The probe reads the answers itself, before the Termina event reader starts. The event reader
 //! gives the kitty graphics answer as keys, and its parser loses an answer that follows a stray
-//! ESC. The probe cuts the input into frames by the rules of ECMA-48 and gives each complete CSI
-//! to a Termina parser alone. It decodes the kitty graphics answer itself.
+//! ESC. The probe cuts the input into frames by the byte classes of ECMA-48 and by its own rule for
+//! a broken sequence. It gives each complete CSI to a Termina parser alone. It decodes the kitty
+//! graphics answer itself.
 
 use std::fs::File;
 use std::io::{self, IsTerminal, Write};
@@ -122,7 +123,7 @@ pub enum Skip {
 /// APC grows past that limit, the framer drops its bytes, and `skip` makes it drop each byte of
 /// the later reads up to the end of that sequence.
 ///
-/// - A complete CSI goes alone to a Termina parser. An answer of the three kinds is an
+/// - A complete CSI goes alone to a Termina parser. A cursor position, DECRPM or DA1 event is an
 ///   [`Answer`]. Each other event is input.
 /// - An APC is the graphics answer, or it is dropped.
 /// - An ESC inside an open CSI or APC, or a byte outside the bytes of a CSI, ends the sequence
@@ -220,8 +221,8 @@ fn skipped(skip: &mut Skip, read: &[u8], pending: &mut Vec<u8>) -> usize {
     read.len()
 }
 
-/// The count of bytes at the end of `run` that need bytes of the next read: an ESC with one byte
-/// after it, or the first bytes of a UTF-8 character.
+/// The count of bytes at the end of `run` that can need bytes of the next read: an ESC with one
+/// byte after it, or the first bytes of a UTF-8 character.
 fn unfinished_tail(run: &[u8]) -> usize {
     if run.len() >= 2 && run[run.len() - 2] == ESC {
         return 2;
@@ -302,7 +303,7 @@ fn csi(bytes: &[u8], framed: &mut Framed) {
     }
 }
 
-/// The events of bytes that are not a sequence of the framer, from a Termina parser.
+/// The events that a Termina parser gives for `bytes`, with no more input to come.
 fn plain(bytes: &[u8]) -> Vec<Event> {
     let mut parser = Parser::default();
     parser.parse(bytes, false);

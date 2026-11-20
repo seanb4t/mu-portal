@@ -33,8 +33,8 @@ pub enum Msg {
     Client(ClientEvent),
     /// The result of the startup probe.
     Probe(Outcome),
-    /// The bytes of a reply that the end of the probe cut, after the early input. The model
-    /// holds them if it waits for late replies, and drops them if it does not.
+    /// The bytes of an answer that the end of the probe cut, after the early input. The model
+    /// holds them if it waits for late answers, and drops them if it does not.
     CutReply(Vec<u8>),
     /// The reply of a call.
     Reply(Reply),
@@ -214,8 +214,8 @@ fn on_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
     on_input_key(model, key)
 }
 
-/// `key` after the start of a graphics reply that did not go on. The model waits for late replies
-/// again, and the Alt+`_` that started the reply and `key` are the user's.
+/// `key` after the start of a graphics answer that did not go on. The model waits for late
+/// answers again, and the Alt+`_` that started the answer and `key` are the user's.
 fn not_a_graphics_reply(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
     model.late = Late::Waiting;
     let mut effects = on_input_key(model, KeyEvent::new(KeyCode::Char('_'), Modifiers::ALT));
@@ -223,11 +223,11 @@ fn not_a_graphics_reply(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
     effects
 }
 
-/// A key while the model holds `bytes` of a reply that the probe cut. A key that is a CSI byte
+/// A key while the model holds `bytes` of an answer that the probe cut. A key that is a CSI byte
 /// as text adds its byte. At the final byte, the bytes go to the decoder of the probe, and each
 /// event is handled as a terminal event. After a lone ESC, `[` continues the CSI, and `_` starts
-/// a graphics reply. Any other key, or a byte past [`probe::PENDING_MAX`], drops the held bytes,
-/// and the key acts as it does while the model waits for late replies.
+/// a graphics answer. Any other key, or a byte past [`probe::PENDING_MAX`], drops the held bytes,
+/// and the key acts as it does while the model waits for late answers.
 fn on_cut_reply_key(model: &mut Model, mut bytes: Vec<u8>, key: KeyEvent) -> Vec<Effect> {
     let byte = text(key)
         .and_then(|c| u8::try_from(c).ok())
