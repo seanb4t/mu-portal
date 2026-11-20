@@ -53,7 +53,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Probes the terminal, shows the pane with the image until the user leaves, and deletes the
-/// image. The caller restores the terminal after it, also after an error.
+/// image. The error is the one of the pane, the one of the delete, or both. The caller restores
+/// the terminal after it, also after an error.
 fn session(
     terminal: &mut Screen,
     reader: &EventReader,
@@ -91,12 +92,20 @@ fn session(
         out.flush()?;
     }
     let shown = show(terminal, reader, &mut pane);
-    if graphics {
-        let out = terminal.backend_mut();
-        write!(out, "\x1b_Ga=d,d=I,i={ID},q=2\x1b\\")?;
-        out.flush()?;
+    let deleted = if graphics { delete(terminal) } else { Ok(()) };
+    match (shown, deleted) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error.into()),
+        (Err(shown), Err(deleted)) => {
+            Err(format!("{shown}; the delete of the image also failed: {deleted}").into())
+        }
     }
-    Ok(shown?)
+}
+
+fn delete(terminal: &mut Screen) -> io::Result<()> {
+    let out = terminal.backend_mut();
+    write!(out, "\x1b_Ga=d,d=I,i={ID},q=2\x1b\\")?;
+    out.flush()
 }
 
 fn show(terminal: &mut Screen, reader: &EventReader, pane: &mut PaneState) -> io::Result<()> {
