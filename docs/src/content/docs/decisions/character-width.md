@@ -11,11 +11,13 @@ The terminal client measures the width of characters at startup. It does not tru
 
 The probe runs once, on the alternate screen, before the first frame:
 
-1. The client asks for the terminal name with XTVERSION and for the state of mode 2027 with DECRQM. Mode 2027 makes the terminal measure grapheme clusters, not code points. If the terminal knows the mode and it is off, the client turns it on.
-2. The client writes one grapheme from each width class and asks for the cursor position after each one. It sends all the queries in one write and ends them with a device attributes query (DA1). Every terminal answers DA1, so the DA1 reply marks the end of the answers.
+1. The client asks for the state of mode 2027 with DECRQM. Mode 2027 makes the terminal measure grapheme clusters, not code points. If the terminal knows the mode and it is off, the client turns it on.
+2. The client writes one grapheme from each width class and asks for the cursor position after each one. It also asks whether the terminal draws kitty images. It sends all the queries in one write and ends them with a device attributes query (DA1). Every terminal answers DA1, so the DA1 reply marks the end of the answers.
 3. For each class, the client keeps the rule that gives the measured width. The rules are the `unicode-width` value, the sum of the code point widths, or a constant. A zero-width probe sets the width of a joiner (ZWJ) inside a sum.
 
-If the terminal does not answer, the client uses the `unicode-width` value for every class.
+The client reads the replies itself, before its event reader starts, and waits at most 500 milliseconds for DA1. The event reader drops some replies and gives the kitty graphics reply as key presses, so the replies must not reach it. A key that the user presses during the probe still reaches the client.
+
+If the terminal does not answer in that time, the client uses the `unicode-width` value for every class. When the client exits, it turns off mode 2027 if the probe turned it on.
 
 The command `cargo run -p char-width -- list` in `spikes/` prints the class of each grapheme.
 
@@ -41,6 +43,11 @@ A fixed reservation of two cells for each risky grapheme, with no probe, stopped
 
 ## Not tested
 
+The tests of the client cover a terminal that adds the widths of code points, a terminal that does not answer, and a terminal that answers after the first frame. A pseudo-terminal plays each terminal. In Rex, the client starts with the probe, and no reply reaches the input line.
+
+These cases have no test:
+
+- A kitty graphics reply that comes after the wait of 500 milliseconds. The event reader gives it to the input line as key presses.
 - tmux. tmux answers the cursor position query from its own grid, so the probe measures the widths of tmux. A difference between tmux and the terminal outside it is not visible to the client.
 - An East Asian locale where the terminal draws ambiguous characters two cells wide. The ambiguous class has its own probe, so the profile follows it.
 
