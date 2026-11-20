@@ -53,8 +53,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Probes the terminal, shows the pane with the image until the user leaves, and deletes the
-/// image. The error is the one of the pane, the one of the delete, or both. The caller restores
-/// the terminal after it, also after an error.
+/// image. After the pane shows, the error is the one of `show`, the one of the delete, or both.
+/// The caller restores the terminal after it, also after an error.
 fn session(
     terminal: &mut Screen,
     reader: &EventReader,

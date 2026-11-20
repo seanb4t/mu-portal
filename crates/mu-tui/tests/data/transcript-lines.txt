@@ -1,4 +1,4 @@
-# made by: cargo run -q -p mu-core --example transcript_lines -- crates/mu-core/tests/fixtures/telnet/aresmush.txt crates/mu-core/tests/fixtures/telnet/rhostmush.txt
+# made by: cargo run -q -p mu-core --example transcript_lines -- --raw crates/mu-core/tests/fixtures/telnet/aresmush.txt crates/mu-core/tests/fixtures/telnet/rhostmush.txt
            |\                     /)
          /\_\\__               (_//
          |   `>\-`     _._       //`)  [31m     \ [0m

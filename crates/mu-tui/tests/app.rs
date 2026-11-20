@@ -578,8 +578,8 @@ fn indexed_and_24_bit_colors() {
     );
 }
 
-/// The game lines of the `aresmush` and `rhostmush` transcripts, after the line that names
-/// the command that made them.
+/// The raw game lines of the `aresmush` and `rhostmush` transcripts, with their escape
+/// sequences, after the line that names the command with `--raw` that made them.
 const TRANSCRIPT_LINES: &str = include_str!("data/transcript-lines.txt");
 
 #[test]
