@@ -3,6 +3,7 @@
 use std::num::NonZeroU16;
 use std::sync::Arc;
 
+use mu_tui::probe::Outcome;
 use mu_tui::store::{Image, LineId};
 use mu_tui::width::Profile;
 use mu_tui::{Caps, OutputPane, PaneState, Position};
@@ -278,7 +279,6 @@ fn cells_take_the_learned_width() {
     let mut pane = PaneState::with_caps(Arc::new(Caps {
         profile: Profile::learn(&[(FAMILY, 8)]),
         graphics: false,
-        cell: None,
     }));
     pane.push(&format!("{FAMILY}x"));
     let buf = render(&mut pane, 20, 3);
@@ -297,7 +297,6 @@ fn learned_width_of_a_class_that_is_not_risky_is_forced() {
     let mut pane = PaneState::with_caps(Arc::new(Caps {
         profile: Profile::learn(&[("①", 2)]),
         graphics: false,
-        cell: None,
     }));
     pane.push("①x");
     let buf = render(&mut pane, 20, 3);
@@ -388,7 +387,6 @@ fn image_pane(graphics: bool) -> PaneState {
     PaneState::with_caps(Arc::new(Caps {
         profile: Profile::default(),
         graphics,
-        cell: None,
     }))
 }
 
@@ -758,4 +756,21 @@ fn select_in_an_empty_pane_selects_nothing() {
         },
     );
     assert_eq!(pane.selection(), None);
+}
+
+#[test]
+fn caps_come_from_the_outcome() {
+    let profile = Profile::learn(&[("①", 2)]);
+    let outcome = Outcome {
+        profile: profile.clone(),
+        graphics: true,
+        ..Outcome::default()
+    };
+    assert_eq!(
+        Caps::from(&outcome),
+        Caps {
+            profile,
+            graphics: true,
+        }
+    );
 }

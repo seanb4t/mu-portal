@@ -138,11 +138,7 @@ const WIDTH_NOTICE: &str =
     "the terminal gave no character widths, so wide characters can be out of line";
 
 fn on_probe(model: &mut Model, outcome: &Outcome) {
-    model.set_caps(Caps {
-        profile: outcome.profile.clone(),
-        graphics: outcome.graphics,
-        cell: None,
-    });
+    model.set_caps(Caps::from(outcome));
     if !outcome.complete {
         model.await_late_replies();
     }

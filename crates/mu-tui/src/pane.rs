@@ -9,7 +9,7 @@ use std::num::NonZeroU16;
 use std::sync::Arc;
 
 use ratatui::buffer::{Buffer, CellDiffOption};
-use ratatui::layout::{Rect, Size};
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget};
 use unicode_segmentation::UnicodeSegmentation;
@@ -17,6 +17,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::convert::Converted;
 use crate::diacritics::DIACRITICS;
+use crate::probe::Outcome;
 use crate::store::{CAPACITY, Image, LineId, LineStore};
 use crate::text::{PLACEHOLDER, clean_styled};
 use crate::width::{Class, Profile};
@@ -62,8 +63,15 @@ pub struct Caps {
     pub profile: Profile,
     /// True if the terminal draws kitty images.
     pub graphics: bool,
-    /// The size of one cell in pixels, if the terminal gives it.
-    pub cell: Option<Size>,
+}
+
+impl From<&Outcome> for Caps {
+    fn from(outcome: &Outcome) -> Self {
+        Self {
+            profile: outcome.profile.clone(),
+            graphics: outcome.graphics,
+        }
+    }
 }
 
 /// The state of one output pane.

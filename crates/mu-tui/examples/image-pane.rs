@@ -71,14 +71,7 @@ fn session(
     let image = Image::new(ID, cells(height, size.height), cells(width, size.width))
         .ok_or("the image id is out of range")?;
 
-    let mut pane = PaneState::with_caps(
-        Caps {
-            profile: outcome.profile,
-            graphics,
-            cell,
-        }
-        .into(),
-    );
+    let mut pane = PaneState::with_caps(Caps::from(&outcome).into());
     for n in 1..=200 {
         pane.push(&format!("line {n} before the image"));
     }
