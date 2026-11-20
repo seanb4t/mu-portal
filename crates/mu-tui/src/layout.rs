@@ -11,10 +11,8 @@ pub enum Node {
     Split {
         /// The direction of the split.
         direction: Direction,
-        /// One constraint for each child.
-        constraints: Vec<Constraint>,
-        /// The children, in order.
-        children: Vec<Node>,
+        /// The children, in order, each with its constraint.
+        children: Vec<(Constraint, Node)>,
     },
     /// One tab for each world. It shows the output pane of the world in focus, or the pane of
     /// notices when no world has the focus.
@@ -40,15 +38,10 @@ impl Default for Node {
     fn default() -> Self {
         Self::Split {
             direction: Direction::Vertical,
-            constraints: vec![
-                Constraint::Length(1),
-                Constraint::Min(0),
-                Constraint::Length(1),
-            ],
             children: vec![
-                Self::Leaf(Leaf::WorldTabs),
-                Self::Tabs,
-                Self::Leaf(Leaf::Input),
+                (Constraint::Length(1), Self::Leaf(Leaf::WorldTabs)),
+                (Constraint::Min(0), Self::Tabs),
+                (Constraint::Length(1), Self::Leaf(Leaf::Input)),
             ],
         }
     }
