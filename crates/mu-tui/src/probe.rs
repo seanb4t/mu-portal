@@ -305,6 +305,13 @@ pub const fn is_set(setting: DecModeSetting) -> bool {
 /// The longest time that the probe waits for DA1.
 pub const WAIT: Duration = Duration::from_millis(500);
 
+/// The time that one read of the probe waits, in tenths of a second. It is the VTIME value of
+/// the terminal.
+const TICK_TENTHS: u8 = 1;
+
+/// The longest time that one read of the probe blocks.
+pub const TICK: Duration = Duration::from_millis(TICK_TENTHS as u64 * 100);
+
 /// Writes the queries to `out` and reads the answers from the terminal until DA1 or `wait`.
 /// Returns what the answers give, and the input that is not an answer, as events. The terminal
 /// must be in raw mode.
@@ -322,10 +329,10 @@ pub fn run(out: &mut impl Write, wait: Duration) -> io::Result<(Outcome, Vec<Eve
     let stdin = io::stdin();
     let fd = tty.as_ref().map_or_else(|| stdin.as_fd(), AsFd::as_fd);
     let raw = tcgetattr(fd)?;
-    // With VMIN 0 and VTIME 1, a read returns after at most one tenth of a second.
+    // With VMIN 0, a read returns after at most `TICK`.
     let mut timed = raw.clone();
     timed.special_codes[SpecialCodeIndex::VMIN] = 0;
-    timed.special_codes[SpecialCodeIndex::VTIME] = 1;
+    timed.special_codes[SpecialCodeIndex::VTIME] = TICK_TENTHS;
     tcsetattr(fd, OptionalActions::Now, &timed)?;
     let read = write_and_read(fd, out, wait);
     tcsetattr(fd, OptionalActions::Now, &raw)?;
@@ -340,16 +347,30 @@ fn write_and_read(
 ) -> io::Result<(Vec<Answer>, Vec<Event>)> {
     out.write_all(&queries())?;
     out.flush()?;
-    let deadline = Instant::now() + wait;
+    read_answers(|buf| Ok(rustix::io::read(fd, buf)?), Instant::now, wait)
+}
+
+/// Reads with `read` and frames the bytes until DA1 or the time `wait` after the start. `now`
+/// is the clock. Returns the answers, and the input that is not an answer, as events.
+///
+/// # Errors
+///
+/// An error of `read` other than an interrupt.
+pub fn read_answers(
+    mut read: impl FnMut(&mut [u8]) -> io::Result<usize>,
+    now: impl Fn() -> Instant,
+    wait: Duration,
+) -> io::Result<(Vec<Answer>, Vec<Event>)> {
+    let deadline = now() + wait;
     let mut pending = Vec::new();
     let mut answers = Vec::new();
     let mut events = Vec::new();
     let mut chunk = [0; 1024];
-    while !answers.contains(&Answer::Da1) && Instant::now() < deadline {
-        let count = match rustix::io::read(fd, &mut chunk) {
+    while !answers.contains(&Answer::Da1) && now() < deadline {
+        let count = match read(&mut chunk) {
             Ok(count) => count,
-            Err(rustix::io::Errno::INTR) => continue,
-            Err(error) => return Err(error.into()),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
         };
         let framed = frame(&mut pending, &chunk[..count]);
         answers.extend(framed.answers);

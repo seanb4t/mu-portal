@@ -1,6 +1,10 @@
 //! The framer of the probe input and what the answers give.
 
-use mu_tui::probe::{Answer, GRAPHEMES, Outcome, flush, frame, is_set};
+use std::cell::Cell;
+use std::io;
+use std::time::{Duration, Instant};
+
+use mu_tui::probe::{Answer, GRAPHEMES, Outcome, TICK, WAIT, flush, frame, is_set, read_answers};
 use mu_tui::width::{Class, Rule};
 use termina::Event;
 use termina::escape::csi::{DecModeSetting, DecPrivateMode, DecPrivateModeCode};
@@ -112,13 +116,61 @@ fn question_csi_before_a_reply() {
     );
 }
 
+/// A clock that only the reads move, and the reads that it moved so far.
+struct FakeClock {
+    start: Instant,
+    elapsed: Cell<Duration>,
+    reads: Cell<usize>,
+}
+
+impl FakeClock {
+    fn new() -> Self {
+        Self {
+            start: Instant::now(),
+            elapsed: Cell::new(Duration::ZERO),
+            reads: Cell::new(0),
+        }
+    }
+
+    fn now(&self) -> Instant {
+        self.start + self.elapsed.get()
+    }
+
+    /// A read that gives `bytes` once, then no bytes. Each read takes one tick, and the first
+    /// read takes 1 millisecond more.
+    fn read<'a>(&'a self, bytes: &'a [u8]) -> impl FnMut(&mut [u8]) -> io::Result<usize> + 'a {
+        move |buf| {
+            let first = self.reads.get() == 0;
+            self.reads.set(self.reads.get() + 1);
+            let slow = if first {
+                Duration::from_millis(1)
+            } else {
+                Duration::ZERO
+            };
+            self.elapsed.set(self.elapsed.get() + TICK + slow);
+            let given = if first { bytes.len() } else { 0 };
+            buf[..given].copy_from_slice(&bytes[..given]);
+            Ok(given)
+        }
+    }
+}
+
 #[test]
 fn open_apc_does_not_hide_da1() {
-    let framing = framed(&[b"\x1b_\x1b[?62c"]);
+    let clock = FakeClock::new();
+    let (answers, events) =
+        read_answers(clock.read(b"\x1b_\x1b[?62c"), || clock.now(), WAIT).unwrap();
     assert_eq!(
-        (framing.answers, framing.events),
-        (vec![Answer::Da1], vec![key('_', Modifiers::ALT)])
+        (answers, events, clock.reads.get()),
+        (vec![Answer::Da1], vec![key('_', Modifiers::ALT)], 1)
     );
+}
+
+#[test]
+fn silent_terminal_keeps_the_bound() {
+    let clock = FakeClock::new();
+    read_answers(clock.read(b""), || clock.now(), WAIT).unwrap();
+    assert!(clock.elapsed.get() <= WAIT, "{:?}", clock.elapsed.get());
 }
 
 #[test]
