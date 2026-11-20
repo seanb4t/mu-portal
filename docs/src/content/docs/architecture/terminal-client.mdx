@@ -1,0 +1,18 @@
+---
+title: Terminal client
+description: The parts of the terminal client and the path of one key press.
+sidebar:
+  order: 4
+---
+
+import LikeC4View from '../../../components/LikeC4View.astro';
+
+The terminal client follows the Elm architecture. The event loop turns each input into a message, `update` changes the model and returns effects, and `view` draws the model. The [terminal client architecture decision](/decisions/terminal-client-architecture/) gives the reason.
+
+<LikeC4View viewId="terminalClient" />
+
+## One key press
+
+When the player presses Enter, the keymap gives the action Submit. `update` clears the input line, returns the pane to the bottom and returns the effect Send. The event loop sends the line to the API and draws a frame.
+
+<LikeC4View viewId="keyPress" />

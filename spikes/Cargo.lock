@@ -666,6 +666,7 @@ dependencies = [
  "crossterm_winapi",
  "derive_more",
  "document-features",
+ "futures-core",
  "mio",
  "parking_lot",
  "rustix",
@@ -3430,10 +3431,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9048a889effe34a5cddee0af7f53285198b16dca3be510858d38dfdb3e62a04e"
 dependencies = [
  "bitflags 2.13.2",
+ "futures-core",
  "parking_lot",
  "rustix",
  "signal-hook",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "terminal-backend"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "futures",
+ "termina",
+ "tokio",
 ]
 
 [[package]]

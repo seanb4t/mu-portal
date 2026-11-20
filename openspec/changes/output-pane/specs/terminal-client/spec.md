@@ -163,7 +163,7 @@ A drag of the left mouse button in the pane SHALL select the text from the press
 - **THEN** no cell of the pane is in reverse
 
 ### Requirement: The client measures character widths at startup
-Before its first frame, the client SHALL ask the terminal for its name and for the state of mode 2027. It SHALL also ask for the cursor position after one grapheme of each width class. It SHALL end the queries with a device attributes query. If the terminal knows mode 2027 and the mode is off, the client SHALL turn it on. The pane SHALL use the widths that the terminal gave.
+Before its first frame, the client SHALL ask the terminal for the state of mode 2027. It SHALL also ask for the cursor position after one grapheme of each width class. It SHALL end the queries with a device attributes query. If the terminal knows mode 2027 and the mode is off, the client SHALL turn it on. The pane SHALL use the widths that the terminal gave.
 
 #### Scenario: A terminal that adds code point widths
 - **GIVEN** a terminal that answers the cursor position query after `👨‍👩‍👧` at column 9, so the width of that class is 8

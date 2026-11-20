@@ -51,6 +51,16 @@ The rule for the choice: the backend that passes all three wins. If both pass, c
 
 Alternative: a separate spike issue. The owner decided on 2026-11-18 that the comparison is the first task of #55.
 
+The result, from the reports in `spikes/terminal-backend/results` (Rex, 2026-11-20):
+
+| Check | crossterm 0.29.0 | Termina 0.3.3 |
+|---|---|---|
+| 1. Replies as events, and a key during the probe | Fails. The mode report, the cursor position and DA1 are dropped. The XTVERSION reply arrives as 23 keys, Alt+P first | Passes for the mode report, the cursor position and DA1. The XTVERSION reply is dropped, with no stray key. The key `x` arrives |
+| 2. Shift+Enter, and a paste of three lines | Passes | Passes |
+| 3. A stream in `tokio::select!` beside a second stream | Passes | Passes |
+
+Neither backend passes all three checks, so the rule above does not decide. The owner chose Termina on 2026-11-20. Termina gives every reply that the client reads as an event, so a late reply can be dropped by kind. crossterm turns a late XTVERSION reply into keys that reach the input line. The client does not ask for XTVERSION, because Termina 0.3.3 and 0.4.0 parse no reply to it and no rule uses the name. The paste in check 2 is the bracketed paste bytes that `rex send` wrote, because the `pane.paste` action of the Rex app did not reach the pane.
+
 Enforced by: review of the decision page. The programs stay out of `crates/`, so no test of the workspace depends on them.
 
 ### D2. The skeleton: TEA with an Action enum and widgets by pane id
@@ -143,13 +153,13 @@ Enforced by: unit tests of the copy text, and a pseudo-terminal scenario that re
 
 ### D8. The width probe runs before the first frame, and the test helper answers it
 
-The probe follows the character-width decision. It also asks for the size of a cell in pixels and sends a kitty graphics query, because the image path needs both. All queries go in one write, and DA1 ends them. The probe waits at most 500 milliseconds for the DA1 reply. With no reply, every class keeps the `unicode-width` value, and an image line shows its URL. A class that the terminal reports as 0 wide also keeps the `unicode-width` value, because `ForcedWidth` holds a `NonZeroU16`. After the probe ends, the event loop drops each terminal reply, so a late reply never reaches the input line.
+The probe follows the character-width decision, with one difference: it does not send XTVERSION, because Termina drops the reply (D1). It also asks for the size of a cell in pixels and sends a kitty graphics query, because the image path needs both. All queries go in one write, and DA1 ends them. The probe waits at most 500 milliseconds for the DA1 reply. With no reply, every class keeps the `unicode-width` value, and an image line shows its URL. A class that the terminal reports as 0 wide also keeps the `unicode-width` value, because `ForcedWidth` holds a `NonZeroU16`. After the probe ends, the event loop drops each terminal reply, so a late reply never reaches the input line.
 
 If the probe turned mode 2027 on, the client turns it off at exit. If the mode was already on, the client leaves it on. The client sets its own panic hook after `ratatui::try_init`. The hook writes the sequences that turn off mouse capture and, if the probe turned it on, mode 2027. Then it calls the hook that `try_init` installed, which leaves raw mode and the alternate screen.
 
 `ForcedWidth` is a ratatui cell option. The pane sets it on each cell of a risky class. After a cell wider than one, ratatui moves the cursor before the next cell, so the terminal and the buffer agree. The review of #30 found a row render that wrote past the buffer for a wide forced width. The pane wraps with the forced width, so no row is wider than the area. The scenario "A wide grapheme at the end of a row" tests that.
 
-The pseudo-terminal test helper answers the queries from its `vt100` screen. It answers DA1 at once and answers each cursor position query from the cursor of the screen. It answers XTVERSION with a fixed name, and DECRQM 2027 as known and off. The scenario "The modes at exit" uses this default. Other variants answer with a scripted width table, with DECRQM 2027 as set, with no answer, or with every answer after the first frame. Thus every existing client test starts at once, and the tests need no wait on a clock.
+The pseudo-terminal test helper answers the queries from its `vt100` screen. It answers DA1 at once and answers each cursor position query from the cursor of the screen. It answers DECRQM 2027 as known and off. The scenario "The modes at exit" uses this default. Other variants answer with a scripted width table, with DECRQM 2027 as set, with no answer, or with every answer after the first frame. Thus every existing client test starts at once, and the tests need no wait on a clock.
 
 Enforced by: unit tests of the reply parser and of the learned profile, with the replies in `spikes/char-width/results` copied into `mu-tui` as test data. Also the pseudo-terminal scenarios.
 
@@ -178,7 +188,7 @@ No test sleeps or waits on a clock. The pseudo-terminal tests wait on the screen
 The design follows the part "Using a spike" of the Contributing page for spikes.
 
 1. The decision pages and the pull requests are in the table under Context.
-2. The review threads: #29 found the empty trim and the 297-row limit (D3, D9). #30 found the row render past the buffer (D8). #50 is the editor and only shapes the backend criteria in D1. Task 1.1 reads each thread of the three pull requests again before the work starts.
+2. The review threads: #29 found the empty trim and the 297-row limit (D3, D9). #30 found the row render past the buffer (D8). #50 is the editor and only shapes the backend criteria in D1. Its one finding, numbers on the editor page that differ from `bench.tsv`, concerns that page only and does not apply here. Task 1.1 read each thread of the three pull requests again on 2026-11-20 and found no other defect.
 3. The items under Not tested:
 
    | Page | Item | Where it goes |
@@ -218,13 +228,27 @@ Each fact below comes from a spike or from memory, not from the current document
 | ratatui has the cell option `ForcedWidth`, and `TestBackend` keeps it | 4.1 |
 | `vte`, `anstyle-parse` and `ansi-to-tui` parse SGR as D4 needs | 5.1 |
 | The format of OSC 52 that Rex accepts | 8.1 |
-| The replies to XTVERSION, DECRQM, the cell size query and the kitty graphics query | 9.1 |
+| The replies to DECRQM, the cell size query and the kitty graphics query | 9.1 |
 | `vt100` gives the cursor position and the colors of a cell | 9.1 |
 | The kitty unicode placeholder: U+10EEEE, the table of 297 diacritics, the virtual placement | 10.1 |
 | `ratatui-image` can render kitty placeholders into the buffer | 10.1 |
 | crossterm `CopyToClipboard` and the Termina OSC 52 command write the format that D7 needs | 8.1 |
 | ratatui `Scrollbar` takes a content length and a position in lines | 4.2 |
 | `insta` snapshots a ratatui `Buffer` | 2.4 |
+
+### Checked facts
+
+Each row is a fact that a task read in the current source or documentation. The Source column names where.
+
+| Fact | Result | Source |
+|---|---|---|
+| crossterm gives the replies to terminal queries as events | No. A cursor position report and DA1 are internal events that `read` and `EventStream` drop. crossterm has no DCS parser, so an XTVERSION reply (`ESC P`) reads as Alt+P | crossterm 0.29.0, `src/event.rs` (`InternalEvent`), `src/event/sys/unix/parse.rs` |
+| crossterm has an async event stream | Yes, `EventStream` with the `event-stream` feature, which the workspace already turns on | crossterm 0.29.0 README, feature table |
+| crossterm has the kitty keyboard protocol and bracketed paste | Yes: `PushKeyboardEnhancementFlags`, `EnableBracketedPaste` and `Event::Paste` | crossterm 0.29.0, `src/event/commands.rs` |
+| Termina gives the replies to terminal queries as events | Yes. `Event::Csi` holds a cursor position report, DA1 and a mode report. No `DcsResponse` matches the XTVERSION reply, so the parser drops it | termina 0.3.3 and 0.4.0, `event::Event`, `src/escape/dcs.rs`, `parse_dcs` in `src/parse.rs` |
+| Termina has an async event stream | Yes, `EventStream` with the `event-stream` feature. It is a `futures` `Stream` that a helper thread wakes, as crossterm does | termina 0.3.3, `src/event/stream.rs` |
+| Termina has the kitty keyboard protocol and bracketed paste | Yes: `KittyKeyboardFlags`, `Event::Paste`, and `Event::Key` with modifiers | termina 0.3.3, `escape::csi`, `event::Event` |
+| ratatui has a Termina backend | Yes, the `termina` feature of ratatui 0.30.2 pulls `ratatui-termina` 0.1.0. That crate needs termina `^0.3`, while termina 0.4.0 is out | crates.io, ratatui 0.30.2 features and `ratatui-termina` 0.1.0 dependencies |
 
 ## Risks / Trade-offs
 

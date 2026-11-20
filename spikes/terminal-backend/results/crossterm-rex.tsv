@@ -1,0 +1,40 @@
+backend	crossterm 0.29.0
+check1.key_x_arrived	true
+check1.replies_as_events	0
+check1.xtversion_as_event	false
+check1.decrpm_2027_as_event	false
+check1.cursor_position_as_event	false
+check1.da1_as_event	false
+check1.stray_events	24
+check1.stray	Key { code: "P", shift: true, alt: true, ctrl: false }
+check1.stray	Key { code: ">", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "|", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "r", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "e", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: " ", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "0", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: ".", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "1", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: ".", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "0", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "-", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "p", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "r", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "e", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "v", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "i", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "e", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "w", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: ".", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "2", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "0", shift: false, alt: false, ctrl: false }
+check1.stray	Key { code: "\\", shift: false, alt: true, ctrl: false }
+check1.stray	Other("Resize(190, 18)")
+check2.enter	Some(Key { code: "Enter", shift: true, alt: false, ctrl: false })
+check2.shift_enter	true
+check2.paste_lines_in_one_event	3
+check3.ticks	67
+check3.events	29
+pass.check1	false
+pass.check2	true
+pass.check3	true
