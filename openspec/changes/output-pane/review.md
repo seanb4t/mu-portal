@@ -1,10 +1,10 @@
 ---
-verdict: approve
+verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-20T03:33:47+00:00
-head: b3c4b591cffba229bb747c298bb1004aaccf8a6a
-round: 8
-next_id: 94
+reviewed_at: 2026-11-20T04:48:13+00:00
+head: cd59fe6cbe5c799e761ac3c0c4a6030f4a50e0d1
+round: 9
+next_id: 95
 lenses:
   spec-lint: not-applicable
   approach: ok
@@ -20,6 +20,7 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
+| R-94 | verify | should-fix | in-change | A Reset pushes each kept notice again into the pane in focus, but clears only the panes of worlds. With no world, the pane in focus is the notices pane, which the Reset does not clear, so each notice shows once more at each Reset. mu-client gives a Reset as the first item of the stream, so a terminal that gives no widths and a server with no world show the width notice twice at startup. | crates/mu-tui/src/update.rs:293 — "let pane = model.focused_pane();" | Clear the notices pane at a Reset too, or push the notices again only into a pane that the Reset cleared. Add a case with no world to notice_comes_back_after_a_reset. |  |  | wrong-behaviour |
 
 ## Repeats
 
@@ -60,10 +61,11 @@ None.
 | 6 | implementation | follow-up | 78d4d37b8d17c126435001926b2e379aadaf6268 | 2b491780e6c49a3253d354def358fd699fb9cd3edeb8e52b8ce98da2692941ff | approve-with-notes | 0 | 0 | 1 | 17 | 0 |  |
 | 7 | implementation | follow-up | a791882b38af41f3e77b40bf42c73008d32b396e | 504cf63a9cc562d28c9a396896ca15987d375e3e56b99bc600d2620894c93bcb | approve-with-notes | 0 | 0 | 1 | 0 | 0 |  |
 | 8 | implementation | follow-up | b3c4b591cffba229bb747c298bb1004aaccf8a6a | 504cf63a9cc562d28c9a396896ca15987d375e3e56b99bc600d2620894c93bcb | approve | 0 | 0 | 0 | 1 | 0 |  |
+| 9 | implementation | follow-up | cd59fe6cbe5c799e761ac3c0c4a6030f4a50e0d1 | 1aa4a87e2e77b0f4a3bec1dcff688f986fc2f01395ac9530f0b7186ebbac9f10 | approve-with-notes | 1 | 0 | 0 | 0 | 0 |  |
 
 ## Judge
 
-judge: 0 questions, 0.000 USD
+judge: 2 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -219,11 +221,10 @@ None.
 
 ## Lens notes
 
-- verify: R-12: the fix adds the guard full.width > 0 to the anchor clear in render (pane.rs 641). Before it, a render at width 0 cleared the anchor: top_row gives None at width 0, and all_fit counts 0 rows for every line at width 0, so it returned true. Now a 0-column render keeps the anchor, which matches the spec rule that an area 0 columns wide shows no row, so the newest line is not on the screen.
-- verify: R-12: the anchor still clears where the spec needs it. scroll_rows sets it to None when bottom_shows holds (pane.rs 397), so PageDown to the end clears it. render clears it when the newest row shows beside the bar or every row fits at the full width (pane.rs 646-651).
-- verify: R-12: I checked the edge cases next to the guard. At width 1, beside_bar has width 0, so bottom is false and the anchor stays unless every row fits at width 1. That is the same as before the fix. At height 0, bottom_shows and all_fit both return false for a non-empty store, so the anchor stays.
-- verify: R-12: the test render_at_zero_width_keeps_the_scroll_position (tests/pane.rs 575-582) sets an anchor with scroll_rows(-2) at 20x3 and renders at width 0. It then asserts that the anchor is unchanged. With the old condition the anchor would be None and the assertion would fail, so the test detects the defect.
-- verify: The review.md ranges of diff-hunks.txt were not read, because the agent rules forbid a read of review.md. They are review output, not code of the change.
+- verify: prior.json holds no row with the disposition fixed, so fixes is empty.
+- verify: update.rs on_key: in Late::Graphics, a non-text key after Alt+_ G and more text keys replays only Alt+_ and that key, so the text keys that the wait ate are lost. Only a user who types Alt+_ G before a late DA1 meets it, so this is no finding.
+- verify: screen.rs open and run.rs: the panic hook reads the mode 2027 flag that run.rs updates only after the event loop, so a panic after a late reply of mode 2027 as set still writes the reset. The window is the life of the loop, and the reset does no harm on a terminal that knows the mode.
+- verify: text.rs clean_styled, store.rs push_line and pane.rs set_unfinished: the moved span offsets were read with a 2-byte C1 char and the 4-byte placeholder char; the style starts at its char in both cases.
 
 ## Ledger
 
@@ -322,6 +323,7 @@ None.
 | R-91 | 5 | 5 | suggestion | in-change |  | ["artifact",["design.md","Risks / Trade-offs"],"The probe waits at most 500 milliseconds, once."] | deferred | ticket: https://github.com/seanb4t/mu-portal/issues/112; reason: Output-pane implementation review, round 5: the wait_screen and wait_rows duplication in the pty helper, and design text that differs from the code (ScrollPage(n), the probe as a Msg, the tty read and its bound, rustix, graphics without DA1, the CSI parser, the snapshot asserts). None changes behaviour. |  | severity? should-fix 0.75 | The design bounds the probe at 500 ms. The loop checks the deadline and then starts a read that can block for one VTIME of 100 ms, so a silent terminal waits up to about 600 ms. |
 | R-92 | 5 | 5 | suggestion | in-change |  | ["artifact",["proposal.md","Impact"],"Dependencies: a parser of escape sequences from an existing crate, and a snapshot test library"] | deferred | ticket: https://github.com/seanb4t/mu-portal/issues/112; reason: Output-pane implementation review, round 5: the wait_screen and wait_rows duplication in the pty helper, and design text that differs from the code (ScrollPage(n), the probe as a Msg, the tty read and its bound, rustix, graphics without DA1, the CSI parser, the snapshot asserts). None changes behaviour. |  | severity? should-fix 0.83 | mu-tui gains rustix with the termios feature, and it joins the mu-tui row of ALLOWED_CRATES. Neither the Dependencies part of the proposal nor any decision names it. The probe of D8 uses it for its timed read. |
 | R-93 | 5 | 5 | suggestion | in-change |  | ["path","crates/mu-tui/src/probe.rs",137] | deferred | ticket: https://github.com/seanb4t/mu-portal/issues/112; reason: Output-pane implementation review, round 5: the wait_screen and wait_rows duplication in the pty helper, and design text that differs from the code (ScrollPage(n), the probe as a Msg, the tty read and its bound, rustix, graphics without DA1, the CSI parser, the snapshot asserts). None changes behaviour. |  | severity? should-fix 0.72 | The probe parses the cursor position, DECRPM and DA1 replies by hand, while the termina::Parser it already feeds the other bytes gives each of them as Event::Csi. Only the APC reply needs a parser of its own, and D8 names no reason for the CSI part. |
+| R-94 | 9 | 9 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-tui/src/update.rs",293] |  |  |  |  | A Reset pushes each kept notice again into the pane in focus, but clears only the panes of worlds. With no world, the pane in focus is the notices pane, which the Reset does not clear, so each notice shows once more at each Reset. mu-client gives a Reset as the first item of the stream, so a terminal that gives no widths and a server with no world show the width notice twice at startup. |
 
 ## Reviewed files
 
@@ -331,9 +333,9 @@ None.
 | Cargo.toml | b41ef43534f9a429ce8a0d56d392915d5d5ac320 |
 | architecture/model.c4 | 002b00f517c07007aab8b2c4a0e705a06af87cf4 |
 | architecture/views.c4 | 4401a3d7ead5ee4bf34da01cce78c1ead0c90a82 |
-| crates/mu-cli/tests/client.rs | aa9c79f8ece17c9737821e7e3c7f50e4bd5561f8 |
-| crates/mu-cli/tests/support/process.rs | 331ebd0d722ad526371efa8ed3020d6d344a69cf |
-| crates/mu-cli/tests/workspace_boundary.rs | 917acc3c80b6c9010a3e3a6d35e22b2342493f56 |
+| crates/mu-cli/tests/client.rs | 0cf8ff9cfd8699c60aaa2f3497b506d1699a45f1 |
+| crates/mu-cli/tests/support/process.rs | 6d29ed6614d697818ad38312c0b570516c84c4e2 |
+| crates/mu-cli/tests/workspace_boundary.rs | 30a6cf7834f80a1128fdba4eab3a4eb2e11fbaf9 |
 | crates/mu-core/examples/transcript_lines.rs | ab496354f3811a784d7bda902a8a29578b33dfe7 |
 | crates/mu-core/tests/support/mod.rs | efe56a459e86d4907fb42bea1b851c25502f3aaa |
 | crates/mu-core/tests/support/transcript.rs | bf2c31bb9dbf5951cc8066fd697fa72bcbc96c06 |
@@ -341,51 +343,53 @@ None.
 | crates/mu-tui/Cargo.toml | 3785799cce4ce95c9e2055fb94ca3d5e96a36750 |
 | crates/mu-tui/examples/image-pane.rs | 021f9fe6b7f33651f76ac3ce27fcfe1ed3adf8a5 |
 | crates/mu-tui/src/app.rs | absent |
-| crates/mu-tui/src/convert.rs | c749870948260741605c580fb41cae87044e7a16 |
+| crates/mu-tui/src/convert.rs | 7e7cb1b48b5e68d2c5512fe71564920bf3f073e7 |
 | crates/mu-tui/src/diacritics.rs | 6030a14cfbbdbacfcc2fb55c4384286078f13ede |
 | crates/mu-tui/src/keymap.rs | ab82acedba3698bca8c5e0478974af126c3150de |
 | crates/mu-tui/src/kitty.rs | 8d9ae18e195c47aaeb9d3bfa78df64a3dfb2d755 |
 | crates/mu-tui/src/layout.rs | 1c0527ed55f420181f4466e059076ab9a82d5b91 |
 | crates/mu-tui/src/lib.rs | d3aca2f8da9fa91dd9ba3b291e0a2cb5269e4137 |
-| crates/mu-tui/src/model.rs | 75987f22e576a1240b6906d28f2e076a97f16884 |
-| crates/mu-tui/src/pane.rs | 041a8a5a3bfaa26fe9466989f044c2060ad6a316 |
-| crates/mu-tui/src/probe.rs | 3aaa1f8481267d17de6114d854d5d23bd4418568 |
-| crates/mu-tui/src/run.rs | b522ef46def93ebe2f6b157c847a71178f319e92 |
-| crates/mu-tui/src/screen.rs | 4133fac26a75eb3239ee6a8bf62657a992cbc26e |
-| crates/mu-tui/src/store.rs | 095da8573381e44c56d11e6364b6de97ba4af820 |
-| crates/mu-tui/src/text.rs | bb7b00248971d7e06a5f5c53c89bed00bee841e3 |
-| crates/mu-tui/src/update.rs | 3ad8253822461da4ef96b7b6ae18cca59d3dfff6 |
+| crates/mu-tui/src/model.rs | 23f01e2a4f942d59d3ec34c8ea889df17c06fa47 |
+| crates/mu-tui/src/pane.rs | 2fa1665bd444546cc82b7496b3e57413e509f165 |
+| crates/mu-tui/src/probe.rs | 4474b2f92ac76702c6ee51d9215c8d2145b619b1 |
+| crates/mu-tui/src/run.rs | b0de97ec4b43627c4304f619f5c6079dee128a14 |
+| crates/mu-tui/src/screen.rs | 2cb155eb1c81a859cef4010bd372ab41d45179da |
+| crates/mu-tui/src/store.rs | 05642b53d76b5c36d614d12aa72051d7a2ad9720 |
+| crates/mu-tui/src/text.rs | 59209e40281df68d6c3e92862797ff8f888450ff |
+| crates/mu-tui/src/update.rs | bb1c0076f456812ef5fa8278c86be82beacece58 |
 | crates/mu-tui/src/view.rs | b68a45df8b1eeea6937df4577fcbc809cf61cfc0 |
-| crates/mu-tui/src/width.rs | 924b70d12206c31476244e4f5ac0e1587f90102b |
+| crates/mu-tui/src/width.rs | 8eaff2bf04da276226d0517d3ae50a984f75ef34 |
 | crates/mu-tui/src/wrap.rs | 71f7dcac265fa495459b2c8359b572ef8305311c |
 | crates/mu-tui/tests/app.proptest-regressions | c3d13b81b74af37408bb3df9956830bb61235f11 |
-| crates/mu-tui/tests/app.rs | 6e71ce9f619d437e9e298a9d184039aeb565d3e0 |
+| crates/mu-tui/tests/app.rs | a0a35ccfbc2bcd21d97d507bf33c00753da68cb6 |
 | crates/mu-tui/tests/data/char-width-ghostty.tsv | bb27e98275a7bbf6f6e7d0424f6f964bde2c672a |
 | crates/mu-tui/tests/data/char-width-rex.tsv | acfb4e21ecd7673aca5cf7ad647037dfc1a1e85d |
 | crates/mu-tui/tests/data/char-width-terminal.tsv | 3b2a59f6fdb7a6d931acf3a544d73e10dfa25c25 |
 | crates/mu-tui/tests/data/transcript-lines.txt | 34083fad979786f7212be1ee0e50fbead6ac828c |
 | crates/mu-tui/tests/keymap.rs | 8b37a9a9242c1a949e505772cccceed422b96260 |
 | crates/mu-tui/tests/kitty.rs | e39a2f5666d10bd0cf9b327341d49cfd2a613f0d |
-| crates/mu-tui/tests/pane.rs | 8fbef7aebf5faf8dc846117c9aecb445a55b0319 |
-| crates/mu-tui/tests/probe.rs | f8f22f2e1f0e707fcf0d10263808b3a30bd43d64 |
+| crates/mu-tui/tests/pane.rs | f9d815f29f24ff7cd73144982c56692df09c8d2f |
+| crates/mu-tui/tests/probe.rs | b90b0e8a633181fb71db1be018860cb3df3a2624 |
 | crates/mu-tui/tests/screen.rs | 14f8e8ca1998447c4c9da91a2b6b783c3dd9a2e0 |
 | crates/mu-tui/tests/snapshots/app__first_view_snapshot.snap | 4f61093601e1a81c3933bc090c0442d1357a46e4 |
 | crates/mu-tui/tests/store.rs | ab07a16294c360039247880430e6b3af563bf20f |
-| crates/mu-tui/tests/update.rs | b40d34d4531fbd992d2f992e79632207423fab83 |
+| crates/mu-tui/tests/update.rs | 7619787098f27615fd412ef61c8fecee6532010a |
 | crates/mu-tui/tests/width.rs | 5f005e395f9bd44faf22491afaa354d87102dfd0 |
-| crates/mu-tui/tests/wrap.rs | 023ee3c33463fabd91fbcf28c6c320ef704b20a4 |
+| crates/mu-tui/tests/wrap.rs | 6e2abe5dc9525f323b04f4a1c8af0582bdc34709 |
+| deny.toml | 94857513f354b7d42f5c02e797edc200d11ca90d |
 | docs/src/content/docs/architecture/terminal-client.mdx | 0e8f734774a78b6bacbb5cdcd9d34a0bd46e5fde |
-| docs/src/content/docs/decisions/character-width.md | be04ad0d65236d367b919db74076a69fd8f9c4a4 |
+| docs/src/content/docs/decisions/character-width.md | 8e6b847a8d7ed734a22348e689aceba5652047fe |
 | docs/src/content/docs/decisions/output-pane.md | 03a0cbb0c577797a56e62f206da10e9af39198e8 |
-| docs/src/content/docs/decisions/terminal-client-architecture.md | beceb9b347c094303c862a91845b2250096bb8dc |
+| docs/src/content/docs/decisions/terminal-client-architecture.md | 4887a78c9fe8c63fd74dbee9155b7536ebee07aa |
 | docs/src/content/docs/guides/first-run.md | 1d7c40e14152f113c50ab9cf1034450c8861eee9 |
 | openspec/changes/output-pane/.openspec.yaml | 56d16f001e73f64dfad7c20b1dc221e8c7dcba66 |
-| openspec/changes/output-pane/design.md | 7515f6249761b2e388084b4190f7a75531b866ba |
-| openspec/changes/output-pane/proposal.md | 941bc7d8d1e370464ac50a9d690c8a0ae2aac2ad |
-| openspec/changes/output-pane/specs/output-pane/spec.md | 1b437e2834794d0ab7b93d56df1b4903fc5e04a5 |
+| openspec/changes/output-pane/design.md | eee82112d87f098aecd5b34fe45862011fda1478 |
+| openspec/changes/output-pane/proposal.md | 374ccd82e6777249f4e2faae8a673edea3e96ddf |
+| openspec/changes/output-pane/specs/output-pane/spec.md | 0b5ad47cfcdae971643d73fc9e55b2867dc407ce |
 | openspec/changes/output-pane/specs/terminal-client/spec.md | 7e17ae38d5617956806ed066c9a3a5b3b30237c6 |
 | openspec/changes/output-pane/tasks.md | sha256:3fa6c454d3e176030f82ef0ae5a19267766c9b105752c387c3971393c1040f59 |
 | openspec/review.json | absent |
+| renovate.json | 1379cb325dbbdee25f463bfc3d18e79ba78f1d26 |
 | spikes/Cargo.lock | e8bfc666d56a8da1a0eea5ec35878fb612f30829 |
 | spikes/terminal-backend/Cargo.toml | 2c327de16eed5c56b21e3a1ecbaf002eb7e4502d |
 | spikes/terminal-backend/results/crossterm-rex.tsv | 8b81c1fc52eab3b86256d20a4de81ec7b5f2fb34 |
