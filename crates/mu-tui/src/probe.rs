@@ -350,8 +350,9 @@ fn write_and_read(
     read_answers(|buf| Ok(rustix::io::read(fd, buf)?), Instant::now, wait)
 }
 
-/// Reads with `read` and frames the bytes until DA1 or the time `wait` after the start. `now`
-/// is the clock. Returns the answers, and the input that is not an answer, as events.
+/// Reads with `read` and frames the bytes until DA1 or the time `wait` after the start. A read
+/// starts only if it can end by then, so the last tick can stay unread. `now` is the clock.
+/// Returns the answers, and the input that is not an answer, as events.
 ///
 /// # Errors
 ///
@@ -366,7 +367,7 @@ pub fn read_answers(
     let mut answers = Vec::new();
     let mut events = Vec::new();
     let mut chunk = [0; 1024];
-    while !answers.contains(&Answer::Da1) && now() < deadline {
+    while !answers.contains(&Answer::Da1) && now() + TICK <= deadline {
         let count = match read(&mut chunk) {
             Ok(count) => count,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,

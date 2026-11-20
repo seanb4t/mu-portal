@@ -18,7 +18,7 @@ The change has no spec delta, so no task names a spec scenario. Each task names 
 ## 3. The bound of the probe and its errors
 
 - [x] 3.1 Add the constant of the tick in tenths of a second, and set VTIME and the `Duration` of the tick from it. Make the read loop a public function that takes the read and the clock. Keep the current loop condition. Write `silent_terminal_keeps_the_bound` in `tests/probe.rs`. Its fake read returns no bytes and moves the fake clock one tick, plus 1 millisecond on the first read. Make sure that it fails with the current condition.
-- [ ] 3.2 Change the condition so that a read starts only while the time now plus one tick is not past the deadline (D2). Make sure that `silent_terminal_keeps_the_bound` and `open_apc_does_not_hide_da1` pass.
+- [x] 3.2 Change the condition so that a read starts only while the time now plus one tick is not past the deadline (D2). Make sure that `silent_terminal_keeps_the_bound` and `open_apc_does_not_hide_da1` pass.
 - [ ] 3.3 Add the public function of D4 to `screen`, and call it from `probe::run`, `run::run` and `screen::open`. Write `both_errors_keep_the_first`, `read_error_alone`, `restore_error_alone` and `both_ok` in `crates/mu-tui/tests/screen.rs`. Make sure that `both_errors_keep_the_first` and `read_error_alone` fail before the function keeps the first error.
 - [ ] 3.4 Write D2 and D4 into `character-width.md`: the timed read, the bound of 500 milliseconds, why the probe can stop one tick early, and which error the client reports. Make sure that `mise run docs:check` passes.
 
