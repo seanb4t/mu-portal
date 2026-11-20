@@ -165,7 +165,7 @@ The decision page `character-width.md` gets these facts, and D2 to D4. The page 
 
 ### D10. The tests of the probe
 
-All tests of the probe stay in `crates/mu-tui/tests/probe.rs`. The 14 tests there move from `parse` and `Reply` to the framer and `Answer`, with the same inputs and the same expected outcome. New tests:
+All tests of the probe stay in `crates/mu-tui/tests/probe.rs`. The 14 tests there move from `parse` and `Reply` to the framer and `Answer`, with the same inputs and the same expected outcome. The test `keys_between_replies_are_other_input` becomes `keys_during_the_probe_are_early_events`, with the same input. New tests:
 
 | Test | What it proves |
 |---|---|
@@ -189,6 +189,8 @@ New tests in `crates/mu-tui/tests/update.rs`:
 | `cut_da1_ends_the_wait` | An outcome with `ESC [ ? 62 ; 2` open, then the keys `2` and `c`, ends the wait, and the input line stays empty. |
 | `cut_cursor_reply_is_not_typed` | An outcome with `ESC [ 12 ;` open, then the keys `5` and `R`, leaves the input line empty. |
 | `other_key_drops_a_cut_reply` | An outcome with `ESC [ 1` open, then a key that is no CSI byte, drops the held bytes, and the key acts as usual. |
+| `lone_esc_then_bracket_continues_a_cut_reply` | An outcome with a lone ESC open, then the keys `[`, `?`, `62`, `c`, ends the wait, and the input line stays empty. |
+| `cut_reply_past_the_cap_is_dropped` | An outcome with an open CSI, then CSI bytes past 4 KiB, drops the held bytes, and the next final byte is typed as usual. |
 
 ### Facts about third-party tools
 
