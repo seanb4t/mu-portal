@@ -86,15 +86,17 @@ impl PaneState {
         &self.store
     }
 
-    /// Adds a line with no style at the bottom.
+    /// Removes the unfinished line, then adds a line with no style at the bottom.
     pub fn push(&mut self, text: &str) {
         self.push_styled(text, &[]);
     }
 
-    /// Adds a line at the bottom. `spans` are pairs of a byte offset and a style, in order. If
+    /// Removes the unfinished line, then adds a line at the bottom. `spans` are pairs of a byte
+    /// offset and a style, in order. If
     /// the store drops its oldest line, an anchor or a selection end on that line moves to the
     /// start of the oldest live line, and a selection with both ends on dropped lines goes.
     pub fn push_styled(&mut self, text: &str, spans: &[(usize, Style)]) {
+        self.unfinished = None;
         self.store.push(text, spans);
         let first = self.store.first_id();
         let keep = |position: Position| {

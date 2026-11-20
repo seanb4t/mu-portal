@@ -5,6 +5,7 @@ use mu_tui::{OutputPane, PaneState, Position};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::widgets::StatefulWidget;
+use unicode_width::UnicodeWidthStr;
 
 /// The symbols of the scroll bar: the thumb and the track.
 const BAR: [&str; 2] = ["█", "║"];
@@ -15,7 +16,8 @@ fn render(pane: &mut PaneState, width: u16, height: u16) -> Buffer {
     buf
 }
 
-/// The rows of `buf` with no trailing spaces, and with no scroll bar column if it shows one.
+/// The rows of `buf` with no trailing spaces, and with no scroll bar column if it shows one. A
+/// cell after a wide grapheme belongs to that grapheme.
 fn rows(buf: &Buffer) -> Vec<String> {
     let width = if has_bar(buf) {
         buf.area.width - 1
@@ -24,11 +26,14 @@ fn rows(buf: &Buffer) -> Vec<String> {
     };
     (0..buf.area.height)
         .map(|y| {
-            (0..width)
-                .map(|x| buf[(x, y)].symbol())
-                .collect::<String>()
-                .trim_end()
-                .to_owned()
+            let mut row = String::new();
+            let mut x = 0;
+            while x < width {
+                let symbol = buf[(x, y)].symbol();
+                row.push_str(symbol);
+                x += u16::try_from(symbol.width().max(1)).unwrap();
+            }
+            row.trim_end().to_owned()
         })
         .collect()
 }
@@ -240,4 +245,81 @@ fn no_position() {
     let buf = render(&mut pane, 10, 3);
     assert!(has_bar(&buf));
     assert_eq!((pane.position(9, 0), pane.position(0, 2)), (None, None));
+}
+
+#[test]
+fn style_follows_its_text_across_a_wrap() {
+    use ratatui::style::{Color, Style};
+    let mut pane = PaneState::default();
+    pane.push_styled("aaaaaaaa redword", &[(9, Style::new().fg(Color::Red))]);
+    let buf = render(&mut pane, 10, 3);
+    assert_eq!(rows(&buf)[..2], ["aaaaaaaa", "redword"]);
+    let red: Vec<Color> = (0..7).map(|x| buf[(x, 1)].fg).collect();
+    let plain: Vec<Color> = (0..8).map(|x| buf[(x, 0)].fg).collect();
+    assert_eq!((red, plain), (vec![Color::Red; 7], vec![Color::Reset; 8]));
+}
+
+#[test]
+fn wide_grapheme_at_the_end_of_a_row() {
+    let mut pane = pane_with(["abcd日本".to_owned()]);
+    let buf = render(&mut pane, 5, 3);
+    assert_eq!(rows(&buf)[..2], ["abcd", "日本"]);
+    assert_eq!(buf[(4, 0)].symbol(), " ");
+}
+
+#[test]
+fn unfinished_line_replaced_by_line() {
+    let mut pane = pane_with(numbers(1..=2));
+    pane.set_unfinished(Some("hel".to_owned()));
+    assert_eq!(rows(&render(&mut pane, 20, 4))[3], "hel");
+    pane.push("hello");
+    let shown = rows(&render(&mut pane, 20, 4));
+    assert_eq!(shown.iter().rfind(|row| !row.is_empty()).unwrap(), "hello");
+    assert!(!shown.iter().any(|row| row == "hel"), "{shown:?}");
+}
+
+#[test]
+fn unfinished_line_replaced_by_unfinished_line() {
+    let mut pane = pane_with(numbers(1..=2));
+    pane.set_unfinished(Some("Name: ".to_owned()));
+    render(&mut pane, 20, 4);
+    pane.set_unfinished(Some("Password: ".to_owned()));
+    let shown = rows(&render(&mut pane, 20, 4));
+    assert_eq!(shown[3], "Password:");
+    assert!(
+        !shown.iter().any(|row| row.starts_with("Name:")),
+        "{shown:?}"
+    );
+}
+
+#[test]
+fn selection_copies_game_lines() {
+    let mut pane = pane_with(["first line here".to_owned(), "second".to_owned()]);
+    render(&mut pane, 10, 5);
+    let first = id_of(&pane, "first line here");
+    let second = id_of(&pane, "second");
+    pane.select(
+        Position {
+            line: first,
+            byte: 6,
+        },
+        Position {
+            line: second,
+            byte: 6,
+        },
+    );
+    assert_eq!(pane.copy_text().as_deref(), Some("line here\nsecond"));
+}
+
+#[test]
+fn selection_shows_in_reverse() {
+    use ratatui::style::Modifier;
+    let mut pane = pane_with(["first line here".to_owned()]);
+    let line = id_of(&pane, "first line here");
+    pane.select(Position { line, byte: 11 }, Position { line, byte: 15 });
+    let buf = render(&mut pane, 20, 3);
+    let reversed: Vec<u16> = (0..20)
+        .filter(|x| buf[(*x, 0)].modifier.contains(Modifier::REVERSED))
+        .collect();
+    assert_eq!(reversed, [11, 12, 13, 14]);
 }

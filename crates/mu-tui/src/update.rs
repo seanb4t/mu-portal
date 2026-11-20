@@ -1,6 +1,7 @@
 //! [`update`]: the only function that changes the [`Model`]. It does no I/O.
 
 use mu_client::ClientEvent;
+use mu_proto::EventKind;
 use ratatui_textarea::{Input, Key};
 use termina::Event as TermEvent;
 use termina::event::{
@@ -177,7 +178,13 @@ fn on_client(model: &mut Model, item: ClientEvent) {
             let world = &mut model.worlds[index];
             world.unseen |= unseen;
             let pane = world.pane;
-            model.push(pane, &line(&event));
+            if event.kind.as_known() == Some(EventKind::EVENT_KIND_PROMPT) {
+                if let Some(state) = model.panes.get_mut(&pane) {
+                    state.set_unfinished(Some(clean(&event.text)));
+                }
+            } else {
+                model.push(pane, &line(&event));
+            }
         }
     }
 }

@@ -52,10 +52,10 @@ Load the `rust-best-practices` skill before this group.
   - `press_after_a_trim`, a unit test of `update`: a press maps through a row map drawn before a trim, onto a line that the trim dropped, and the selection starts at the oldest live line
 
   Make sure that the eighteen tests pass.
-- [ ] 4.3 Draw the spans with their styles. A wide grapheme that does not fit at the end of a row goes on the next row. Add `style_follows_its_text_across_a_wrap` for "A red word that wraps" and `wide_grapheme_at_the_end_of_a_row` for "A wide grapheme at the end of a row". Make sure that both tests pass.
-- [ ] 4.4 Add the unfinished line of D5 to the pane. Add `unfinished_line_replaced_by_line` for "Replaced by the finished line" and `unfinished_line_replaced_by_unfinished_line` for "Replaced by a new unfinished line". Make sure that both tests pass.
-- [ ] 4.5 Add the selection: two positions, the cells in reverse and the copy text. Add `selection_copies_game_lines` for "A selection across a wrapped line" and `selection_shows_in_reverse` for "The selection shows". Add `press_on_the_unfinished_line` to `crates/mu-tui/tests/app.rs`: a press on the unfinished row starts no selection. Make sure that the three tests pass.
-- [ ] 4.6 Replace the list of 2000 strings of each world with one pane by pane id, with a capacity of 100000 lines. Make sure that every test in `crates/mu-tui/tests/app.rs` and `crates/mu-cli/tests/client.rs` passes, and that the test of "The first view" still passes.
+- [x] 4.3 Draw the spans with their styles. A wide grapheme that does not fit at the end of a row goes on the next row. Add `style_follows_its_text_across_a_wrap` for "A red word that wraps" and `wide_grapheme_at_the_end_of_a_row` for "A wide grapheme at the end of a row". Make sure that both tests pass.
+- [x] 4.4 Add the unfinished line of D5 to the pane. Add `unfinished_line_replaced_by_line` for "Replaced by the finished line" and `unfinished_line_replaced_by_unfinished_line` for "Replaced by a new unfinished line". Make sure that both tests pass.
+- [x] 4.5 Add the selection: two positions, the cells in reverse and the copy text. Add `selection_copies_game_lines` for "A selection across a wrapped line" and `selection_shows_in_reverse` for "The selection shows". Add `press_on_the_unfinished_line` to `crates/mu-tui/tests/app.rs`: a press on the unfinished row starts no selection. Make sure that the three tests pass.
+- [x] 4.6 Replace the list of 2000 strings of each world with one pane by pane id, with a capacity of 100000 lines. Make sure that every test in `crates/mu-tui/tests/app.rs` and `crates/mu-cli/tests/client.rs` passes, and that the test of "The first view" still passes.
 
 ## 5. Colors
 

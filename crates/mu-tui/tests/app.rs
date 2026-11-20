@@ -8,7 +8,7 @@ use proptest::prelude::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use termina::Event as TermEvent;
-use termina::event::{KeyCode, KeyEvent, Modifiers};
+use termina::event::{KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
 fn app(worlds: &[&str]) -> Model {
     Model::new(worlds.iter().map(|world| (*world).to_owned()))
@@ -323,6 +323,33 @@ fn resumed_clears_disconnected() {
     assert!(top(&mut app).contains("disconnected"));
     on_event(&mut app, ClientEvent::Resumed);
     assert!(!top(&mut app).contains("disconnected"));
+}
+
+/// A prompt event of the game: text with no line end.
+fn prompt(world: &str, text: &str) -> ClientEvent {
+    ClientEvent::Event(Event {
+        world: world.to_owned(),
+        kind: EventKind::EVENT_KIND_PROMPT.into(),
+        source: Source::SOURCE_GAME.into(),
+        text: text.to_owned(),
+        ..Default::default()
+    })
+}
+
+#[test]
+fn press_on_the_unfinished_line() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, game("alpha/aria", "Welcome, aria."));
+    on_event(&mut app, prompt("alpha/aria", "Name: "));
+    assert_eq!(screen(&mut app)[22], "Name:");
+    let press = MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 1,
+        row: 22,
+        modifiers: Modifiers::NONE,
+    };
+    assert_eq!(update(&mut app, Msg::Terminal(TermEvent::Mouse(press))), []);
+    assert_eq!(app.pane(app.focused_pane()).unwrap().selection(), None);
 }
 
 #[test]
