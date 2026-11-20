@@ -36,7 +36,7 @@ The change has no spec delta, so no task names a spec scenario. Each task names 
 ## 6. Integration
 
 - [x] 6.1 Check the state of #121 with `gh issue view 121`. If its pull request merged, rebase the branch on `main` and run the tests again. Then run `mise run check`, `mise run test` and `mise run deny`. Make sure that each one passes.
-- [ ] 6.2 Run `openspec validate output-pane-design-sync --strict`. Make sure that it passes with `skip_specs: true` and no spec file in the change.
+- [x] 6.2 Run `openspec validate output-pane-design-sync --strict`. Make sure that it passes with `skip_specs: true` and no spec file in the change.
 
 ## Workflow follow-up
 
