@@ -587,7 +587,7 @@ fn draw_placeholders(image: Image, row: usize, at: (u16, u16), width: u16, buf: 
 /// `profile`. `style_at` gives the style of the grapheme at a byte offset of `text`. A grapheme
 /// wider than `width` shows as U+FFFD. A grapheme of a risky class, or one whose learned width
 /// differs from its `unicode-width` value, gets its width as a forced width. The cells after the
-/// first cell of a wide grapheme are reset.
+/// first cell of a wide grapheme are reset. A grapheme of no cell is not drawn.
 fn draw_text(
     text: &str,
     style_at: impl Fn(usize) -> Style,
@@ -600,6 +600,9 @@ fn draw_text(
     let mut cells = 0;
     for (offset, grapheme) in text.grapheme_indices(true) {
         let grapheme_cells = cell_width(profile, grapheme, width);
+        if grapheme_cells == 0 {
+            continue;
+        }
         if cells + grapheme_cells > usize::from(width) {
             break;
         }

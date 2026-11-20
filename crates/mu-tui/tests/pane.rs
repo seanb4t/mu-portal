@@ -580,3 +580,26 @@ fn render_at_zero_width_keeps_the_scroll_position() {
     render(&mut pane, 0, 3);
     assert_eq!((anchor.is_some(), pane.anchor()), (true, anchor));
 }
+
+#[test]
+fn zero_width_grapheme_after_a_full_row_draws_nothing() {
+    let mut pane = pane_with(["a".repeat(20) + "\u{200B}"]);
+    assert_eq!(
+        rows(&render(&mut pane, 20, 3)),
+        ["a".repeat(20), String::new(), String::new()]
+    );
+}
+
+#[test]
+fn zero_width_grapheme_after_a_full_unfinished_line_draws_nothing() {
+    let mut pane = PaneState::default();
+    let prompt = "a".repeat(20) + "\u{200B}";
+    pane.set_unfinished(Some(prompt.as_str().into()));
+    assert_eq!(rows(&render(&mut pane, 20, 1)), ["a".repeat(20)]);
+}
+
+#[test]
+fn zero_width_grapheme_at_the_end_of_a_row_takes_no_cell() {
+    let mut pane = pane_with(["ab\u{200B}".to_owned()]);
+    assert_eq!(render(&mut pane, 20, 1)[(2, 0)].symbol(), " ");
+}
