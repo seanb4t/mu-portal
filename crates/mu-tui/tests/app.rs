@@ -1,21 +1,23 @@
-//! The scenarios of the terminal-client capability on `App`, drawn on a `TestBackend`.
+//! The scenarios of the terminal-client capability on `update` and `view`, drawn on a
+//! `TestBackend`.
 
 use mu_client::ClientEvent;
 use mu_proto::{Event, EventKind, Source};
-use mu_tui::{Action, App, Reply};
+use mu_tui::{Effect, Model, Msg, Reply, update, view};
 use proptest::prelude::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use termina::Event as TermEvent;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-fn app(worlds: &[&str]) -> App {
-    App::new(worlds.iter().map(|world| (*world).to_owned()))
+fn app(worlds: &[&str]) -> Model {
+    Model::new(worlds.iter().map(|world| (*world).to_owned()))
 }
 
 /// The rows of an 80 by 24 screen, with no trailing spaces.
-fn screen(app: &App) -> Vec<String> {
+fn screen(app: &mut Model) -> Vec<String> {
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
-    terminal.draw(|frame| app.draw(frame)).unwrap();
+    terminal.draw(|frame| view(app, frame)).unwrap();
     let buffer = terminal.backend().buffer();
     (0..buffer.area.height)
         .map(|y| {
@@ -27,12 +29,12 @@ fn screen(app: &App) -> Vec<String> {
         .collect()
 }
 
-fn top(app: &App) -> String {
+fn top(app: &mut Model) -> String {
     screen(app).remove(0)
 }
 
 /// The rows between the top row and the input line, with no empty row.
-fn rows(app: &App) -> Vec<String> {
+fn rows(app: &mut Model) -> Vec<String> {
     let screen = screen(app);
     screen[1..screen.len() - 1]
         .iter()
@@ -68,54 +70,69 @@ fn ctrl(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c), Modifiers::CONTROL)
 }
 
-fn type_text(app: &mut App, text: &str) {
+/// Presses `key` and returns the effects.
+fn press(app: &mut Model, key: KeyEvent) -> Vec<Effect> {
+    update(app, Msg::Terminal(TermEvent::Key(key)))
+}
+
+fn on_event(app: &mut Model, item: ClientEvent) {
+    assert_eq!(update(app, Msg::Client(item)), []);
+}
+
+fn on_reply(app: &mut Model, reply: Reply) {
+    assert_eq!(update(app, Msg::Reply(reply)), []);
+}
+
+fn type_text(app: &mut Model, text: &str) {
     for c in text.chars() {
-        assert_eq!(app.on_key(key(KeyCode::Char(c))), None);
+        assert_eq!(press(app, key(KeyCode::Char(c))), []);
     }
 }
 
 /// Two worlds, each with its greeting.
-fn two_worlds() -> App {
+fn two_worlds() -> Model {
     let mut app = app(&["alpha/aria", "beta/bryn"]);
-    app.on_event(game("alpha/aria", "Welcome, aria."));
-    app.on_event(game("beta/bryn", "Welcome, bryn."));
+    on_event(&mut app, game("alpha/aria", "Welcome, aria."));
+    on_event(&mut app, game("beta/bryn", "Welcome, bryn."));
     app
 }
 
 #[test]
 fn first_view() {
-    let app = two_worlds();
+    let mut app = two_worlds();
     assert!(
-        top(&app).starts_with("[alpha/aria] beta/bryn"),
+        top(&mut app).starts_with("[alpha/aria] beta/bryn"),
         "{}",
-        top(&app)
+        top(&mut app)
     );
-    assert_eq!(rows(&app), ["Welcome, aria."]);
+    assert_eq!(rows(&mut app), ["Welcome, aria."]);
 }
 
 #[test]
 fn world_order() {
-    let app = app(&["alpha-2/cy", "alpha/bea", "alpha/aria"]);
-    assert_eq!(top(&app), "[alpha/aria] alpha/bea alpha-2/cy");
+    let mut app = app(&["alpha-2/cy", "alpha/bea", "alpha/aria"]);
+    assert_eq!(top(&mut app), "[alpha/aria] alpha/bea alpha-2/cy");
 }
 
 #[test]
 fn no_worlds() {
-    assert_eq!(top(&app(&[])), "no worlds");
+    assert_eq!(top(&mut app(&[])), "no worlds");
 }
 
 #[test]
 fn line_prefixes() {
     let mut app = app(&["alpha/aria"]);
-    app.on_event(event(
-        "alpha/aria",
-        Source::SOURCE_CREDENTIAL,
-        "connect aria ****",
-    ));
-    app.on_event(event("alpha/aria", Source::SOURCE_PLAYER, "hello"));
-    app.on_event(game("alpha/aria", "You say, \"hello\""));
+    on_event(
+        &mut app,
+        event("alpha/aria", Source::SOURCE_CREDENTIAL, "connect aria ****"),
+    );
+    on_event(
+        &mut app,
+        event("alpha/aria", Source::SOURCE_PLAYER, "hello"),
+    );
+    on_event(&mut app, game("alpha/aria", "You say, \"hello\""));
     assert_eq!(
-        rows(&app),
+        rows(&mut app),
         ["-- connect aria ****", "> hello", "You say, \"hello\""]
     );
 }
@@ -123,17 +140,20 @@ fn line_prefixes() {
 #[test]
 fn control_characters_are_replaced() {
     let mut app = app(&["alpha/aria"]);
-    app.on_event(game(
-        "alpha/aria",
-        "\u{1b}[2Jhi\tthere\u{7}\u{7f}\u{9b}~\u{a0}.",
-    ));
-    app.on_reply(Reply::Refused {
-        world: "alpha/aria".to_owned(),
-        text: String::new(),
-        reason: "bad\u{1b}]0;title\u{7}".to_owned(),
-    });
+    on_event(
+        &mut app,
+        game("alpha/aria", "\u{1b}[2Jhi\tthere\u{7}\u{7f}\u{9b}~\u{a0}."),
+    );
+    on_reply(
+        &mut app,
+        Reply::Refused {
+            world: "alpha/aria".to_owned(),
+            text: String::new(),
+            reason: "bad\u{1b}]0;title\u{7}".to_owned(),
+        },
+    );
     assert_eq!(
-        rows(&app),
+        rows(&mut app),
         [
             "\u{fffd}[2Jhi there\u{fffd}\u{fffd}\u{fffd}~\u{a0}.",
             "-- bad\u{fffd}]0;title\u{fffd}"
@@ -145,12 +165,15 @@ fn control_characters_are_replaced() {
 fn control_characters_are_replaced_in_every_part() {
     let world = "alpha/a\u{1b}x";
     let mut app = app(&[world]);
-    app.on_event(event(world, Source::SOURCE_PLAYER, "hi\u{7}"));
-    app.on_event(event(world, Source::SOURCE_SYSTEM, "up\u{9b}"));
-    app.on_event(event(world, Source::SOURCE_CREDENTIAL, "pw\u{7f}"));
-    assert_eq!(top(&app), "[alpha/a\u{fffd}x]");
+    on_event(&mut app, event(world, Source::SOURCE_PLAYER, "hi\u{7}"));
+    on_event(&mut app, event(world, Source::SOURCE_SYSTEM, "up\u{9b}"));
+    on_event(
+        &mut app,
+        event(world, Source::SOURCE_CREDENTIAL, "pw\u{7f}"),
+    );
+    assert_eq!(top(&mut app), "[alpha/a\u{fffd}x]");
     assert_eq!(
-        rows(&app),
+        rows(&mut app),
         ["> hi\u{fffd}", "-- up\u{fffd}", "-- pw\u{fffd}"]
     );
 }
@@ -158,15 +181,15 @@ fn control_characters_are_replaced_in_every_part() {
 #[test]
 fn enter_sends_to_world_in_focus() {
     let mut app = two_worlds();
-    app.on_key(ctrl('n'));
+    press(&mut app, ctrl('n'));
     type_text(&mut app, "hi");
-    let action = app.on_key(key(KeyCode::Enter));
+    let action = press(&mut app, key(KeyCode::Enter));
     assert_eq!(
         action,
-        Some(Action::Send {
+        [Effect::Send {
             world: "beta/bryn".to_owned(),
             text: "hi".to_owned()
-        })
+        }]
     );
     assert_eq!(app.input(), "");
 }
@@ -174,13 +197,13 @@ fn enter_sends_to_world_in_focus() {
 #[test]
 fn empty_enter_sends_empty_line() {
     let mut app = two_worlds();
-    let action = app.on_key(key(KeyCode::Enter));
+    let action = press(&mut app, key(KeyCode::Enter));
     assert_eq!(
         action,
-        Some(Action::Send {
+        [Effect::Send {
             world: "alpha/aria".to_owned(),
             text: String::new()
-        })
+        }]
     );
 }
 
@@ -188,8 +211,8 @@ fn empty_enter_sends_empty_line() {
 fn enter_with_no_world() {
     let mut app = app(&[]);
     type_text(&mut app, "hi");
-    assert_eq!(app.on_key(key(KeyCode::Enter)), None);
-    let rows = rows(&app);
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    let rows = rows(&mut app);
     assert!(
         rows.iter()
             .any(|row| row.starts_with("-- ") && row.contains("no world")),
@@ -202,94 +225,100 @@ fn enter_with_no_world() {
 fn refused_line_keeps_input() {
     let mut app = two_worlds();
     type_text(&mut app, "hi");
-    assert!(app.on_key(key(KeyCode::Enter)).is_some());
-    app.on_reply(Reply::Refused {
-        world: "alpha/aria".to_owned(),
-        text: "hi".to_owned(),
-        reason: "alpha/aria is not connected".to_owned(),
-    });
-    assert_eq!(rows(&app).last().unwrap(), "-- alpha/aria is not connected");
+    assert_ne!(press(&mut app, key(KeyCode::Enter)), [] as [Effect; 0]);
+    on_reply(
+        &mut app,
+        Reply::Refused {
+            world: "alpha/aria".to_owned(),
+            text: "hi".to_owned(),
+            reason: "alpha/aria is not connected".to_owned(),
+        },
+    );
+    assert_eq!(
+        rows(&mut app).last().unwrap(),
+        "-- alpha/aria is not connected"
+    );
     assert_eq!(app.input(), "hi");
-    assert_eq!(screen(&app).last().unwrap(), "hi");
+    assert_eq!(screen(&mut app).last().unwrap(), "hi");
 }
 
 #[test]
 fn ctrl_n_moves_focus() {
     let mut app = two_worlds();
-    app.on_key(ctrl('n'));
-    assert_eq!(top(&app), "alpha/aria [beta/bryn]");
-    assert_eq!(rows(&app), ["Welcome, bryn."]);
+    press(&mut app, ctrl('n'));
+    assert_eq!(top(&mut app), "alpha/aria [beta/bryn]");
+    assert_eq!(rows(&mut app), ["Welcome, bryn."]);
 }
 
 #[test]
 fn ctrl_p_wraps_around() {
     let mut app = two_worlds();
-    app.on_key(ctrl('p'));
-    assert_eq!(top(&app), "alpha/aria [beta/bryn]");
+    press(&mut app, ctrl('p'));
+    assert_eq!(top(&mut app), "alpha/aria [beta/bryn]");
 }
 
 #[test]
 fn ctrl_n_wraps_at_the_end() {
     let mut app = two_worlds();
-    app.on_key(ctrl('n'));
-    app.on_key(ctrl('n'));
-    assert_eq!(top(&app), "[alpha/aria] beta/bryn");
+    press(&mut app, ctrl('n'));
+    press(&mut app, ctrl('n'));
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn");
 }
 
 #[test]
 fn keys_with_no_world() {
     let mut app = app(&[]);
-    assert_eq!(app.on_key(ctrl('n')), None);
-    assert_eq!(app.on_key(ctrl('p')), None);
-    assert_eq!(top(&app), "no worlds");
+    assert_eq!(press(&mut app, ctrl('n')), []);
+    assert_eq!(press(&mut app, ctrl('p')), []);
+    assert_eq!(top(&mut app), "no worlds");
 }
 
 #[test]
 fn one_world_keeps_focus() {
     let mut app = app(&["alpha/aria"]);
-    app.on_key(ctrl('n'));
-    app.on_key(ctrl('p'));
-    assert_eq!(top(&app), "[alpha/aria]");
+    press(&mut app, ctrl('n'));
+    press(&mut app, ctrl('p'));
+    assert_eq!(top(&mut app), "[alpha/aria]");
 }
 
 #[test]
 fn activity_mark() {
     let mut app = app(&["alpha/aria", "beta/bryn"]);
-    app.on_event(game("beta/bryn", "You say, \"ping\""));
-    assert_eq!(top(&app), "[alpha/aria] beta/bryn*");
-    app.on_key(ctrl('n'));
-    assert_eq!(top(&app), "alpha/aria [beta/bryn]");
+    on_event(&mut app, game("beta/bryn", "You say, \"ping\""));
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn*");
+    press(&mut app, ctrl('n'));
+    assert_eq!(top(&mut app), "alpha/aria [beta/bryn]");
 }
 
 #[test]
 fn lost_stream_resumes() {
     let mut app = two_worlds();
-    app.on_event(ClientEvent::Lost);
-    assert!(top(&app).contains("disconnected"));
-    app.on_event(ClientEvent::Resumed);
-    app.on_event(game("alpha/aria", "You say, \"after the cut\""));
-    let rows = rows(&app);
+    on_event(&mut app, ClientEvent::Lost);
+    assert!(top(&mut app).contains("disconnected"));
+    on_event(&mut app, ClientEvent::Resumed);
+    on_event(&mut app, game("alpha/aria", "You say, \"after the cut\""));
+    let rows = rows(&mut app);
     assert_eq!(
         rows.iter()
             .filter(|row| *row == "You say, \"after the cut\"")
             .count(),
         1
     );
-    assert!(!top(&app).contains("disconnected"));
+    assert!(!top(&mut app).contains("disconnected"));
 }
 
 #[test]
 fn resumed_clears_disconnected() {
     let mut app = two_worlds();
-    app.on_event(ClientEvent::Lost);
-    assert!(top(&app).contains("disconnected"));
-    app.on_event(ClientEvent::Resumed);
-    assert!(!top(&app).contains("disconnected"));
+    on_event(&mut app, ClientEvent::Lost);
+    assert!(top(&mut app).contains("disconnected"));
+    on_event(&mut app, ClientEvent::Resumed);
+    assert!(!top(&mut app).contains("disconnected"));
 }
 
 #[test]
 fn ctrl_c_quits() {
-    assert_eq!(app(&["alpha/aria"]).on_key(ctrl('c')), Some(Action::Quit));
+    assert_eq!(press(&mut app(&["alpha/aria"]), ctrl('c')), [Effect::Quit]);
 }
 
 /// The view of `text` on the screen: a tab as a space and each other control character as
@@ -318,17 +347,17 @@ proptest! {
     ) {
         let world = format!("alpha/{character}");
         let mut app = app(&[&world]);
-        app.on_event(event(&world, source, &line));
+        on_event(&mut app, event(&world, source, &line));
         let prefix = match source {
             Source::SOURCE_PLAYER => "> ",
             Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL => "-- ",
             _ => "",
         };
         let want = format!("{prefix}{}", shown(&line));
-        let drawn = rows(&app).first().cloned().unwrap_or_default();
+        let drawn = rows(&mut app).first().cloned().unwrap_or_default();
         prop_assert_eq!(drawn, want.trim_end());
         let top_want = format!("[alpha/{}]", shown(&character));
-        prop_assert_eq!(top(&app), top_want.trim_end());
+        prop_assert_eq!(top(&mut app), top_want.trim_end());
     }
 }
 
@@ -361,12 +390,12 @@ proptest! {
         let mut app = app(&IDS[..start]);
         for step in steps {
             match step {
-                Step::Next => { app.on_key(ctrl('n')); }
-                Step::Previous => { app.on_key(ctrl('p')); }
-                Step::Enter => { app.on_key(key(KeyCode::Enter)); }
-                Step::Line(n) => app.on_event(game(IDS[n], "line")),
-                Step::Reset => app.on_event(ClientEvent::Reset { instance_id: "i".to_owned() }),
-                Step::Lost => app.on_event(ClientEvent::Lost),
+                Step::Next => { press(&mut app, ctrl('n')); }
+                Step::Previous => { press(&mut app, ctrl('p')); }
+                Step::Enter => { press(&mut app, key(KeyCode::Enter)); }
+                Step::Line(n) => on_event(&mut app, game(IDS[n], "line")),
+                Step::Reset => on_event(&mut app, ClientEvent::Reset { instance_id: "i".to_owned() }),
+                Step::Lost => on_event(&mut app, ClientEvent::Lost),
             }
             let ids = app.world_ids();
             match app.focused() {
