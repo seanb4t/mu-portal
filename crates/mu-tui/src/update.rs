@@ -9,7 +9,7 @@ use mu_proto::{EventKind, Source};
 use ratatui::style::Style;
 use ratatui_textarea::{Input, Key};
 use termina::Event as TermEvent;
-use termina::escape::csi::{Csi, DecModeSetting, DecPrivateMode, DecPrivateModeCode, Device, Mode};
+use termina::escape::csi::{Csi, DecPrivateMode, DecPrivateModeCode, Device, Mode};
 use termina::event::{
     KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
 };
@@ -18,6 +18,7 @@ use crate::convert::convert;
 use crate::keymap::Wheel;
 use crate::model::{Late, Model, PaneId};
 use crate::pane::PaneState;
+use crate::probe;
 use crate::store::Image;
 use crate::text::{clean, line};
 
@@ -109,10 +110,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
         }))) => {
             // Only the probe asks for the mode, and its reply comes before DA1.
             if model.late != Late::None {
-                model.keeps_grapheme_mode = matches!(
-                    setting,
-                    DecModeSetting::Set | DecModeSetting::PermanentlySet
-                );
+                model.keeps_grapheme_mode = probe::is_set(setting);
             }
             Vec::new()
         }

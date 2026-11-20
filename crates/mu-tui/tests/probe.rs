@@ -1,6 +1,6 @@
 //! The framer of the probe input and what the answers give.
 
-use mu_tui::probe::{Answer, GRAPHEMES, Outcome, flush, frame};
+use mu_tui::probe::{Answer, GRAPHEMES, Outcome, flush, frame, is_set};
 use mu_tui::width::{Class, Rule};
 use termina::Event;
 use termina::escape::csi::{DecModeSetting, DecPrivateMode, DecPrivateModeCode};
@@ -222,4 +222,16 @@ fn extra_cursor_reply_keeps_the_default_profile() {
         (outcome.measured, outcome.profile.rule(Class::Zwj)),
         (false, Rule::Unicode)
     );
+}
+
+#[test]
+fn only_set_and_permanently_set_are_set() {
+    let settings = [
+        DecModeSetting::NotRecognized,
+        DecModeSetting::Set,
+        DecModeSetting::Reset,
+        DecModeSetting::PermanentlySet,
+        DecModeSetting::PermanentlyReset,
+    ];
+    assert_eq!(settings.map(is_set), [false, true, false, true, false]);
 }

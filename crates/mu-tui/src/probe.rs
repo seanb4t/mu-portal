@@ -288,12 +288,18 @@ impl Outcome {
     /// not give it as set before. With no reply in time, the probe cannot know, and the mode
     /// goes off.
     #[must_use]
-    pub const fn resets_grapheme_mode(&self) -> bool {
-        !matches!(
-            self.grapheme_mode,
-            Some(DecModeSetting::Set | DecModeSetting::PermanentlySet)
-        )
+    pub fn resets_grapheme_mode(&self) -> bool {
+        !self.grapheme_mode.is_some_and(is_set)
     }
+}
+
+/// True if a DECRPM setting says that the mode is on, now or for good.
+#[must_use]
+pub const fn is_set(setting: DecModeSetting) -> bool {
+    matches!(
+        setting,
+        DecModeSetting::Set | DecModeSetting::PermanentlySet
+    )
 }
 
 /// The longest time that the probe waits for DA1.
