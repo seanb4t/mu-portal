@@ -74,8 +74,8 @@ pub(crate) enum Late {
 }
 
 impl Model {
-    /// A model with these worlds, in their order, the default keymap and the default layout.
-    /// The first world has the focus.
+    /// A model with these worlds, the default keymap and the default layout. The worlds are in
+    /// order by game and then by character, and the first world in that order has the focus.
     #[must_use]
     pub fn new(worlds: impl IntoIterator<Item = String>) -> Self {
         let mut model = Self {
@@ -100,7 +100,7 @@ impl Model {
     }
 
     /// A model with the worlds of a list of worlds. A failed list gives no worlds and a notice
-    /// with its error.
+    /// with its error. The events of each world add the world later.
     #[must_use]
     pub fn from_listing(listed: Result<Vec<ProtoWorld>, ClientError>) -> Self {
         match listed {
