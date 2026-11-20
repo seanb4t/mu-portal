@@ -62,7 +62,7 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
         terminal.backend_mut(),
         grapheme_mode.load(Ordering::Relaxed),
     );
-    result.and(left)
+    screen::finish(result, left)
 }
 
 /// The notice when the probe gives no character widths.

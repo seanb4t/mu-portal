@@ -21,6 +21,7 @@ use termina::escape::csi::{
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 use termina::{Event, Parser};
 
+use crate::screen;
 use crate::width::Profile;
 
 /// One grapheme of each width class, in the order of the cursor position queries.
@@ -335,8 +336,8 @@ pub fn run(out: &mut impl Write, wait: Duration) -> io::Result<(Outcome, Vec<Eve
     timed.special_codes[SpecialCodeIndex::VTIME] = TICK_TENTHS;
     tcsetattr(fd, OptionalActions::Now, &timed)?;
     let read = write_and_read(fd, out, wait);
-    tcsetattr(fd, OptionalActions::Now, &raw)?;
-    let (answers, events) = read?;
+    let restored = tcsetattr(fd, OptionalActions::Now, &raw).map_err(io::Error::from);
+    let (answers, events) = screen::finish(read, restored)?;
     Ok((Outcome::learn(&answers), events))
 }
 

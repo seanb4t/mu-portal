@@ -56,6 +56,24 @@ pub fn leave(out: &mut impl Write, grapheme_mode: bool) -> io::Result<()> {
     out.flush()
 }
 
+/// The result of a step and the restore after it.
+///
+/// # Errors
+///
+/// The error of the step, with the error of the restore in its message if both failed. If only
+/// the restore failed, its error.
+pub fn finish<T>(result: io::Result<T>, restore: io::Result<()>) -> io::Result<T> {
+    match (result, restore) {
+        (Err(error), Err(restore)) => Err(io::Error::new(
+            error.kind(),
+            format!("{error} (the restore also failed: {restore})"),
+        )),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(_), Err(restore)) => Err(restore),
+        (Ok(value), Ok(())) => Ok(value),
+    }
+}
+
 /// Enters raw mode and the alternate screen and turns on mouse capture. Sets a panic hook that
 /// undoes each, and turns off mode 2027 if `grapheme_mode` holds true. On an error, the terminal
 /// leaves each mode that this turned on.
@@ -75,11 +93,13 @@ pub fn open(grapheme_mode: &Arc<AtomicBool>) -> io::Result<(Screen, EventReader)
     // The ratatui terminal reads the size, so it comes before the first mode.
     let mut screen = Terminal::new(TerminaBackend::new(platform))?;
     let out = screen.backend_mut();
-    if let Err(error) = enter(out) {
-        // The error of the write that failed is the one to report.
-        let _ = leave(out, false);
-        return Err(error);
-    }
+    let entered = enter(out);
+    let left = if entered.is_ok() {
+        Ok(())
+    } else {
+        leave(out, false)
+    };
+    finish(entered, left)?;
     Ok((screen, reader))
 }
 
