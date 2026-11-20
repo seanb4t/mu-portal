@@ -143,6 +143,45 @@ fn reply_after_da1_is_input() {
     assert_eq!(model.input(), "Gx");
 }
 
+/// The outcome of a probe that the deadline cut inside a reply, which holds `bytes` of it.
+fn cut_at(bytes: &[u8]) -> Outcome {
+    Outcome {
+        open: bytes.to_vec(),
+        ..Outcome::default()
+    }
+}
+
+#[test]
+fn cut_da1_ends_the_wait() {
+    let mut model = model();
+    probe(&mut model, &cut_at(b"\x1b[?62;2"));
+    type_text(&mut model, "2");
+    press(&mut model, KeyCode::Char('c'), Modifiers::NONE);
+    assert_eq!(model.input(), "");
+    feed(&mut model, b"\x1b_Gx\x1b\\");
+    assert_eq!(model.input(), "Gx");
+}
+
+#[test]
+fn cut_cursor_reply_is_not_typed() {
+    let mut model = model();
+    probe(&mut model, &cut_at(b"\x1b[12;"));
+    type_text(&mut model, "5");
+    press(&mut model, KeyCode::Char('R'), Modifiers::SHIFT);
+    assert_eq!(model.input(), "");
+}
+
+#[test]
+fn other_key_drops_a_cut_reply() {
+    let mut model = model();
+    probe(&mut model, &cut_at(b"\x1b[1"));
+    type_text(&mut model, "2");
+    assert_eq!(model.input(), "");
+    press(&mut model, KeyCode::Char('n'), Modifiers::CONTROL);
+    type_text(&mut model, "c");
+    assert_eq!((model.focused(), model.input()), (Some("beta/bryn"), "c"));
+}
+
 /// The notice that the probe adds when it gives no widths.
 const WIDTH_NOTICE: &str =
     "-- the terminal gave no character widths, so wide characters can be out of line";
