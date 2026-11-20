@@ -4,7 +4,9 @@ use std::cell::Cell;
 use std::io;
 use std::time::{Duration, Instant};
 
-use mu_tui::probe::{Answer, GRAPHEMES, Outcome, TICK, WAIT, flush, frame, is_set, read_answers};
+use mu_tui::probe::{
+    Answer, GRAPHEMES, Outcome, PENDING_MAX, TICK, WAIT, flush, frame, is_set, read_answers,
+};
 use mu_tui::width::{Class, Rule};
 use termina::Event;
 use termina::escape::csi::{DecModeSetting, DecPrivateMode, DecPrivateModeCode};
@@ -158,11 +160,21 @@ impl FakeClock {
 #[test]
 fn open_apc_does_not_hide_da1() {
     let clock = FakeClock::new();
-    let (answers, events) =
+    let (outcome, events) =
         read_answers(clock.read(b"\x1b_\x1b[?62c"), || clock.now(), WAIT).unwrap();
     assert_eq!(
-        (answers, events, clock.reads.get()),
-        (vec![Answer::Da1], vec![key('_', Modifiers::ALT)], 1)
+        (outcome.complete, events, clock.reads.get()),
+        (true, vec![key('_', Modifiers::ALT)], 1)
+    );
+}
+
+#[test]
+fn cut_reply_is_open_in_the_outcome() {
+    let clock = FakeClock::new();
+    let (outcome, events) = read_answers(clock.read(b"\x1b[12;"), || clock.now(), WAIT).unwrap();
+    assert_eq!(
+        (outcome.complete, outcome.open, events),
+        (false, b"\x1b[12;".to_vec(), vec![])
     );
 }
 
@@ -183,6 +195,28 @@ fn apc_end_split_across_reads() {
 fn split_reply_across_reads() {
     let framing = framed(&[b"\x1b[12", b";5R"]);
     assert_eq!(framing.answers, [Answer::Cursor { row: 12, col: 5 }]);
+}
+
+#[test]
+fn utf8_split_across_reads() {
+    let framing = framed(&[b"\xc3", b"\xa9"]);
+    assert_eq!(framing.events, [key('é', Modifiers::NONE)]);
+}
+
+#[test]
+fn ss3_split_across_reads() {
+    let framing = framed(&[b"\x1bO", b"P"]);
+    assert_eq!(framing.events, [Event::Key(KeyCode::Function(1).into())]);
+}
+
+#[test]
+fn long_apc_is_dropped() {
+    let long = [b"\x1b_".as_slice(), &[b'x'; PENDING_MAX]].concat();
+    let framing = framed(&[&long, b"\x1b[?62c"]);
+    assert_eq!(
+        (framing.answers, framing.events, framing.pending),
+        (vec![Answer::Da1], vec![], vec![])
+    );
 }
 
 #[test]
