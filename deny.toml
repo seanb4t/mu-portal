@@ -30,6 +30,21 @@ exceptions = [{ crate = "webpki-root-certs", allow = ["CDLA-Permissive-2.0"] }]
 
 [bans]
 multiple-versions = "warn"
+# Each entry skips the older copy of a crate that an upstream crate pins, so a
+# duplicate that is not listed here still warns. The reason names the crates
+# that pull the skipped copy.
+skip = [
+  { crate = "base64@0.22", reason = "buffa, connectrpc, termwiz and tonic use 0.22; mu-tui, reqwest, hyper-util, pem and serde-saphyr use 0.23" },
+  { crate = "foldhash@0.1", reason = "buffa and hashbrown 0.15 use 0.1; hashbrown 0.16 and 0.17 use 0.2" },
+  { crate = "getrandom@0.2", reason = "ring uses 0.2; rand 0.10 and uuid use 0.4" },
+  { crate = "getrandom@0.3", reason = "rand_core 0.9 (opentelemetry_sdk), tempfile and wezterm-blob-leases use 0.3; rand 0.10 and uuid use 0.4" },
+  { crate = "hashbrown@0.15", reason = "buffa uses 0.15; indexmap, lru, kasuari, ratatui-core and ratatui-widgets use 0.17" },
+  { crate = "hashbrown@0.16", reason = "governor uses 0.16; indexmap, lru, kasuari, ratatui-core and ratatui-widgets use 0.17" },
+  { crate = "r-efi@5", reason = "getrandom 0.3 uses 5; getrandom 0.4 uses 6" },
+  { crate = "rand_core@0.9", reason = "rand 0.9 and rand_chacha 0.9 (opentelemetry_sdk) use 0.9; rand 0.10, rand_xorshift, chacha20 and getrandom 0.4 use 0.10" },
+  { crate = "syn@2", reason = "buffa-codegen, connectrpc-codegen, prettyplease, prost-derive, strum_macros, thiserror-impl 1, tracing-attributes, zerocopy-derive and other macro crates use 2; clap_derive, serde_derive, thiserror-impl 2, tokio-macros and mu-cli use 3" },
+  { crate = "windows-sys@0.52", reason = "errno, ring, rustix, rustls-platform-verifier, winapi-util and tempfile use 0.52; mio, socket2, tokio, termina, console and others use 0.61" },
+]
 # ratatui-termina and mu-tui must use one copy of termina. Two copies give
 # two terminal handles, so a pull request that splits them fails here.
 deny = [{ crate = "termina", deny-multiple-versions = true }]
