@@ -532,3 +532,33 @@ fn image_ids_outside_24_bits_are_refused() {
         .collect();
     assert_eq!(ids, [None, Some(1), Some(0x00FF_FFFF), None]);
 }
+
+#[test]
+fn empty_line_renders_an_empty_row() {
+    let mut pane = pane_with(["a", "", "b"].map(str::to_owned));
+    assert_eq!(rows(&render(&mut pane, 20, 3)), ["a", "", "b"]);
+}
+
+#[test]
+fn grapheme_wider_than_the_pane_renders_as_one_replacement() {
+    let mut pane = pane_with(["x日y".to_owned()]);
+    assert_eq!(rows(&render(&mut pane, 1, 3)), ["x", "\u{FFFD}", "y"]);
+}
+
+#[test]
+fn empty_pane_after_trims_renders_an_empty_area() {
+    let mut pane = PaneState::default();
+    pane.trim(1);
+    pane.trim(0);
+    let buf = render(&mut pane, 20, 3);
+    assert_eq!(buf, Buffer::empty(buf.area));
+}
+
+#[test]
+fn trim_moves_the_anchor_to_the_oldest_live_line() {
+    let mut pane = pane_with(numbers(1..=10));
+    render(&mut pane, 20, 3);
+    pane.scroll_pages(-3);
+    pane.trim(5);
+    assert_eq!(pane.anchor().map(|at| at.line), Some(id_of(&pane, "6")));
+}

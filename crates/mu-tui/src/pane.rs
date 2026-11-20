@@ -135,6 +135,13 @@ impl PaneState {
         self.keep_live();
     }
 
+    /// Drops the `count` oldest lines, or every line if the pane holds fewer, as the store
+    /// does at its capacity.
+    pub fn trim(&mut self, count: usize) {
+        self.store.trim(count);
+        self.keep_live();
+    }
+
     /// Moves each position on a line that the store dropped to the oldest live line.
     fn keep_live(&mut self) {
         let first = self.store.first_id();

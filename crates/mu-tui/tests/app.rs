@@ -441,9 +441,26 @@ proptest! {
         on_event(&mut app, game("alpha/aria", &line));
         let drawn = rows(&mut app).first().cloned().unwrap_or_default();
         prop_assert!(!drawn.chars().any(char::is_control), "{:?}", drawn);
-        let want = convert(&line, &mut Style::default()).text;
-        prop_assert_eq!(drawn, want.trim_end());
     }
+}
+
+#[test]
+fn game_line_drops_escape_sequences() {
+    let drawn: Vec<String> = [
+        "a\x1b[31mb\x1b[0mc",
+        "a\x1b[2Jb",
+        "x\x1b]0;title\x07y",
+        "a\x07b",
+        "a\tb",
+    ]
+    .into_iter()
+    .map(|line| {
+        let mut app = app(&["alpha/aria"]);
+        on_event(&mut app, game("alpha/aria", line));
+        rows(&mut app).first().cloned().unwrap_or_default()
+    })
+    .collect();
+    assert_eq!(drawn, ["abc", "ab", "xy", "a\u{FFFD}b", "a b"]);
 }
 
 #[test]

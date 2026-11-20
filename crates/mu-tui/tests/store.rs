@@ -1,4 +1,4 @@
-//! The line store: its capacity and its trim.
+//! The line store: its capacity, its trim and its style table.
 
 use mu_tui::store::LineStore;
 use proptest::prelude::*;
@@ -48,10 +48,35 @@ proptest! {
         for n in 0..pushes {
             store.push(&n.to_string(), &[]);
         }
-        prop_assert!(store.len() <= capacity);
-        let newest = store.lines().next_back().map(|(_, line)| line.text.to_owned());
-        prop_assert_eq!(newest, Some((pushes - 1).to_string()));
+        let want: Vec<String> = (pushes.saturating_sub(capacity)..pushes)
+            .map(|n| n.to_string())
+            .collect();
+        prop_assert_eq!(texts(&store), want);
     }
+}
+
+#[test]
+fn lines_after_a_freed_chunk() {
+    let ends: Vec<(String, String, usize)> = [4097, 8192, 8193]
+        .into_iter()
+        .map(|pushes| {
+            let mut store = LineStore::new(4096);
+            for n in 1..=pushes {
+                store.push(&n.to_string(), &[]);
+            }
+            let kept = texts(&store);
+            (kept[0].clone(), kept[kept.len() - 1].clone(), kept.len())
+        })
+        .collect();
+    let want = |first: &str, last: &str| (first.to_owned(), last.to_owned(), 4096);
+    assert_eq!(
+        ends,
+        [
+            want("2", "4097"),
+            want("4097", "8192"),
+            want("4098", "8193")
+        ]
+    );
 }
 
 #[test]

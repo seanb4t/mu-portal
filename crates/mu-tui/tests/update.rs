@@ -45,10 +45,9 @@ fn ctrl_n_moves_the_focus_with_no_effect() {
 
 #[test]
 fn ctrl_p_moves_the_focus_back_with_no_effect() {
-    let mut model = model();
+    let mut model = Model::new(["alpha/aria", "beta/bryn", "gamma/gale"].map(str::to_owned));
     let effects = press(&mut model, KeyCode::Char('p'), Modifiers::CONTROL);
-    assert_eq!(effects, []);
-    assert_eq!(model.focused(), Some("beta/bryn"));
+    assert_eq!((effects, model.focused()), (vec![], Some("gamma/gale")));
 }
 
 #[test]
