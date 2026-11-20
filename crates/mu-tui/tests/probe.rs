@@ -5,7 +5,7 @@ use std::io;
 use std::time::{Duration, Instant};
 
 use mu_tui::probe::{
-    Answer, GRAPHEMES, Outcome, PENDING_MAX, TICK, WAIT, flush, frame, is_set, read_answers,
+    Answer, GRAPHEMES, Outcome, PENDING_MAX, Skip, TICK, WAIT, flush, frame, is_set, read_answers,
 };
 use mu_tui::width::{Class, Rule};
 use termina::Event;
@@ -31,13 +31,14 @@ struct Framing {
     answers: Vec<Answer>,
     events: Vec<Event>,
     pending: Vec<u8>,
+    skip: Skip,
 }
 
 /// Frames each of `reads` in turn, as the probe does.
 fn framed(reads: &[&[u8]]) -> Framing {
     let mut framing = Framing::default();
     for read in reads {
-        let step = frame(&mut framing.pending, read);
+        let step = frame(&mut framing.pending, &mut framing.skip, read);
         framing.answers.extend(step.answers);
         framing.events.extend(step.events);
     }
@@ -237,6 +238,16 @@ fn long_sequence_tail_is_dropped() {
     assert_eq!(
         (framing.answers, framing.events, framing.pending),
         (vec![Answer::Da1], vec![], vec![])
+    );
+}
+
+#[test]
+fn dropped_tail_keeps_the_esc_of_the_next_frame() {
+    let apc = [b"\x1b_".as_slice(), &[b'x'; PENDING_MAX]].concat();
+    let framing = framed(&[&apc, b"xx\x1b", b"[?62c"]);
+    assert_eq!(
+        (framing.answers, framing.events),
+        (vec![Answer::Da1], vec![])
     );
 }
 

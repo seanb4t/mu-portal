@@ -100,11 +100,27 @@ const ESC: u8 = 0x1b;
 /// The most bytes that [`frame`] holds for an open sequence.
 pub const PENDING_MAX: usize = 4096;
 
+/// What the framer drops at the start of the next read: the rest of a sequence that passed
+/// [`PENDING_MAX`] and was dropped.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Skip {
+    /// Nothing: the next read starts a frame.
+    #[default]
+    Nothing,
+    /// The rest of a CSI, up to its final byte or a byte that breaks it.
+    Csi,
+    /// The rest of an APC, up to its ESC `\`.
+    Apc,
+    /// The rest of an APC after an ESC at the end of the last read. A `\` ends it.
+    ApcEsc,
+}
+
 /// Adds `read` to `pending` and frames the bytes of `pending` that make whole frames. A frame is
 /// a complete CSI, an APC, a broken sequence, or a run of other bytes. A CSI or APC with no end,
 /// an ESC with at most one byte after it, and the first bytes of a UTF-8 character stay in
-/// `pending` for the next read. `pending` holds at most [`PENDING_MAX`] bytes: an open CSI or APC
-/// that passes the limit is dropped.
+/// `pending` for the next read. `pending` holds at most [`PENDING_MAX`] bytes. If an open CSI or
+/// APC grows past that limit, the framer drops its bytes, and `skip` makes it drop each byte of
+/// the later reads up to the end of that sequence.
 ///
 /// - A complete CSI goes alone to a Termina parser. An answer of the three kinds is an
 ///   [`Answer`]. Each other event is input.
@@ -112,7 +128,8 @@ pub const PENDING_MAX: usize = 4096;
 /// - An ESC inside an open CSI or APC, or a byte outside the bytes of a CSI, ends the sequence
 ///   as broken. The keys of its bytes are input, and a new frame starts after them.
 /// - Other bytes go to a Termina parser.
-pub fn frame(pending: &mut Vec<u8>, read: &[u8]) -> Framed {
+pub fn frame(pending: &mut Vec<u8>, skip: &mut Skip, read: &[u8]) -> Framed {
+    let read = &read[skipped(skip, read, pending)..];
     pending.extend_from_slice(read);
     let mut framed = Framed::default();
     let mut used = 0;
@@ -156,9 +173,51 @@ pub fn frame(pending: &mut Vec<u8>, read: &[u8]) -> Framed {
     }
     pending.drain(..used);
     if pending.len() > PENDING_MAX {
+        *skip = match (pending[1], pending.last()) {
+            (b'_', Some(&ESC)) => Skip::ApcEsc,
+            (b'_', _) => Skip::Apc,
+            _ => Skip::Csi,
+        };
         pending.clear();
     }
     framed
+}
+
+/// The count of bytes at the start of `read` that belong to the sequence that `skip` drops. Sets
+/// `skip` to what is left to drop after `read`. A byte that breaks the sequence is not one of
+/// them: a new frame starts at it, and the ESC that ended the sequence in the last read comes
+/// back to `pending`.
+fn skipped(skip: &mut Skip, read: &[u8], pending: &mut Vec<u8>) -> usize {
+    for (at, &byte) in read.iter().enumerate() {
+        match (*skip, byte) {
+            (Skip::Apc, ESC) => match read.get(at + 1) {
+                Some(b'\\') => {
+                    *skip = Skip::Nothing;
+                    return at + 2;
+                }
+                Some(_) => {
+                    *skip = Skip::Nothing;
+                    return at;
+                }
+                None => *skip = Skip::ApcEsc,
+            },
+            (Skip::Apc, _) | (Skip::Csi, 0x20..=0x3f) => {}
+            (Skip::ApcEsc, b'\\') | (Skip::Csi, 0x40..=0x7e) => {
+                *skip = Skip::Nothing;
+                return at + 1;
+            }
+            (Skip::ApcEsc, _) => {
+                *skip = Skip::Nothing;
+                pending.push(ESC);
+                return at;
+            }
+            (Skip::Csi | Skip::Nothing, _) => {
+                *skip = Skip::Nothing;
+                return at;
+            }
+        }
+    }
+    read.len()
 }
 
 /// The count of bytes at the end of `run` that need bytes of the next read: an ESC with one byte
@@ -401,6 +460,7 @@ pub fn read_answers(
 ) -> io::Result<(Outcome, Vec<Event>)> {
     let deadline = now() + wait;
     let mut pending = Vec::new();
+    let mut skip = Skip::Nothing;
     let mut answers = Vec::new();
     let mut events = Vec::new();
     let mut chunk = [0; 1024];
@@ -410,7 +470,7 @@ pub fn read_answers(
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
             Err(error) => return Err(error),
         };
-        let framed = frame(&mut pending, &chunk[..count]);
+        let framed = frame(&mut pending, &mut skip, &chunk[..count]);
         answers.extend(framed.answers);
         events.extend(framed.events);
     }
