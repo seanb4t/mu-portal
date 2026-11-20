@@ -26,7 +26,8 @@ use tracing_subscriber::registry::LookupSpan;
 
 use super::{Authorities, Export, Protocol, Signal, SignalKind};
 
-/// The longest wait for the export at the stop.
+/// The longest wait for the export at the stop. It must not exceed the shutdown timeout of the
+/// SDK, which is 5 seconds.
 pub const STOP_BOUND: Duration = Duration::from_secs(5);
 
 /// The longest wait for one export request.
