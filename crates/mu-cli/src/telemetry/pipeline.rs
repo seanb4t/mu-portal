@@ -285,7 +285,7 @@ impl Providers {
     /// start or panics writes a `WARN` line. A stop that is late, or fails at or after the bound,
     /// is late: one `WARN` line names the late signals, and a late stop that failed also writes
     /// its error. Then it sends the stop to the telemetry runtime, and joins its thread only if
-    /// no stop is late.
+    /// no stop still runs.
     pub fn shutdown(mut self, bound: Duration) {
         self.stop(bound);
     }
@@ -344,7 +344,7 @@ impl Providers {
         }
         if let Some(runtime) = self.runtime.take() {
             let _ = runtime.stop.send(());
-            if late.is_empty() && runtime.thread.join().is_err() {
+            if !any_running(&outcomes) && runtime.thread.join().is_err() {
                 tracing::warn!("the thread of the telemetry runtime panicked");
             }
         }
@@ -355,6 +355,13 @@ impl Drop for Providers {
     fn drop(&mut self) {
         self.stop(STOP_BOUND);
     }
+}
+
+/// Whether a helper thread of `outcomes` still runs its stop: a late stop with no result.
+fn any_running(outcomes: &[(SignalKind, Outcome)]) -> bool {
+    outcomes
+        .iter()
+        .any(|(_, outcome)| matches!(outcome, Outcome::Late(None)))
 }
 
 /// The body of the helper thread that runs `stop`. It sends one outcome when it runs: a stop that
@@ -690,6 +697,24 @@ mod tests {
                 Outcome::Late(Some("Operation failed: x".to_owned()))
             )]
         );
+    }
+
+    #[test]
+    fn stop_that_returned_late_is_not_running() {
+        let outcomes = [
+            (SignalKind::Traces, Outcome::Late(Some("x".to_owned()))),
+            (SignalKind::Metrics, Outcome::Done),
+        ];
+        assert!(!any_running(&outcomes));
+    }
+
+    #[test]
+    fn stop_with_no_result_is_running() {
+        let outcomes = [
+            (SignalKind::Traces, Outcome::Late(None)),
+            (SignalKind::Metrics, Outcome::Done),
+        ];
+        assert!(any_running(&outcomes));
     }
 
     #[test]
