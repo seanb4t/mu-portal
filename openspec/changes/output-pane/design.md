@@ -153,15 +153,21 @@ A press of the left button starts a selection at its line and byte. A drag moves
 
 Enforced by: unit tests of the copy text, and a pseudo-terminal scenario that reads the raw bytes that the client writes.
 
-### D8. The width probe runs before the first frame, and the test helper answers it
+### D8. The width probe runs before the first frame, reads the terminal itself, and the test helper answers it
 
-The probe follows the character-width decision, with one difference: it does not send XTVERSION, because Termina drops the reply (D1). It also asks for the size of a cell in pixels and sends a kitty graphics query, because the image path needs both. All queries go in one write, and DA1 ends them. The probe waits at most 500 milliseconds for the DA1 reply. With no reply, every class keeps the `unicode-width` value, and an image line shows its URL. A class that the terminal reports as 0 wide also keeps the `unicode-width` value, because `ForcedWidth` holds a `NonZeroU16`. After the probe ends, the event loop drops each terminal reply, so a late reply never reaches the input line.
+The probe follows the character-width decision, with three differences. It does not send XTVERSION, because Termina drops the reply (D1). It sends a kitty graphics query, because the image path needs to know whether the terminal draws kitty images. It takes the size of a cell in pixels from the pixel fields of the Termina window size, so it sends no cell size query.
 
-If the probe turned mode 2027 on, the client turns it off at exit. If the mode was already on, the client leaves it on. The client sets its own panic hook after `ratatui::try_init`. The hook writes the sequences that turn off mouse capture and, if the probe turned it on, mode 2027. Then it calls the hook that `try_init` installed, which leaves raw mode and the alternate screen.
+All queries go in one write, in this order: DECRQM 2027, the set of mode 2027, one grapheme of each width class with a cursor position query after it, the kitty graphics query, and DA1. The set comes before the graphemes, so the probe measures the widths with mode 2027 on. A terminal that does not know the mode ignores the set.
+
+Termina drops the reply to a cell size query and gives the kitty graphics reply (APC) as 10 key events. So the probe reads the replies itself, before the Termina event reader starts. It opens `/dev/tty`, polls it for at most 500 milliseconds, and parses the replies with the reply parser of the spike, with APC added. It gives every other byte to a `termina::Parser`, and `update` gets those events before the first frame. Thus a key that the user presses during the probe still arrives.
+
+With no DA1 reply in 500 milliseconds, every class keeps the `unicode-width` value, and an image line shows its URL. A class that the terminal reports as 0 wide also keeps the `unicode-width` value, because `ForcedWidth` holds a `NonZeroU16`. After the probe ends, `update` drops each reply that Termina gives as an event, so a late cursor position, mode or DA1 reply never reaches the input line. A late kitty graphics reply still arrives as keys. That happens only in a terminal that answers after the 500 milliseconds. The owner accepted this risk on 2026-11-19, and the gap goes to Termina as an issue.
+
+If DECRQM gave mode 2027 as reset, the client turns it off at exit. If the mode was set, or the terminal did not know it, the client writes no sequence for the mode at exit. The client sets the Termina panic hook in `run.rs` before the probe. The hook writes the sequences that turn off mouse capture and, if the probe turned it on, mode 2027. Then it leaves the alternate screen, and Termina restores raw mode and calls the previous hook.
 
 `ForcedWidth` is a ratatui cell option. The pane sets it on each cell of a risky class. After a cell wider than one, ratatui moves the cursor before the next cell, so the terminal and the buffer agree. The review of #30 found a row render that wrote past the buffer for a wide forced width. The pane wraps with the forced width, so no row is wider than the area. The scenario "A wide grapheme at the end of a row" tests that.
 
-The pseudo-terminal test helper answers the queries from its `vt100` screen. It answers DA1 at once and answers each cursor position query from the cursor of the screen. It answers DECRQM 2027 as known and off. The scenario "The modes at exit" uses this default. Other variants answer with a scripted width table, with DECRQM 2027 as set, with no answer, or with every answer after the first frame. Thus every existing client test starts at once, and the tests need no wait on a clock.
+The pseudo-terminal test helper answers the queries from its `vt100` screen. It answers DA1 at once and answers each cursor position query from the cursor of the screen. It answers DECRQM 2027 as known and reset. It does not answer the kitty graphics query, as `vt100` has no kitty graphics. The scenario "The modes at exit" uses this default. Other variants answer with a scripted width table, with DECRQM 2027 as set, with no answer, or with every answer after the first frame. Thus every existing client test starts at once, and the tests need no wait on a clock.
 
 Enforced by: unit tests of the reply parser and of the learned profile, with the replies in `spikes/char-width/results` copied into `mu-tui` as test data. Also the pseudo-terminal scenarios.
 
@@ -230,7 +236,7 @@ Each fact below comes from a spike or from memory, not from the current document
 | ratatui has the cell option `ForcedWidth`, and `TestBackend` keeps it | 4.1 |
 | `vte`, `anstyle-parse` and `ansi-to-tui` parse SGR as D4 needs | 5.1 |
 | The format of OSC 52 that Rex accepts | 8.1 |
-| The replies to DECRQM, the cell size query and the kitty graphics query | 9.1 |
+| The replies to DECRQM, DA1 and the kitty graphics query, and the pixel size of the Termina window | 9.1 |
 | `vt100` gives the cursor position and the colors of a cell | 9.1 |
 | The kitty unicode placeholder: U+10EEEE, the table of 297 diacritics, the virtual placement | 10.1 |
 | `ratatui-image` can render kitty placeholders into the buffer | 10.1 |
@@ -259,6 +265,13 @@ Each row is a fact that a task read in the current source or documentation. The 
 | `ansi-to-tui` gives ratatui text | Yes, `IntoText` turns bytes into a ratatui `Text`. It keeps no SGR state from one call to the next | ansi-to-tui 8.0.1, `src/lib.rs` (`IntoText`) and README |
 | Termina writes an OSC 52 copy | Yes. `Osc::SetSelection(Selection::CLIPBOARD, text)` formats as ESC `]52;c;` with the base64 of the text, then ESC `\` | termina 0.3.3, `src/escape/osc.rs` |
 | Rex applies an OSC 52 copy | Yes, with no setting. A pane in focus in Rex wrote ESC `]52;c;bXUtb3NjNTItY2hlY2s=` ESC `\`, and `pbpaste` gave `mu-osc52-check`. Rex applies a copy only from the pane in focus of its tab | A run in Rex on 2026-11-19, and the Rex feedback forum, report 1568057499733463181 |
+| The reply to DECRQM for a private mode | `CSI ? Ps ; Pm $ y`, where `Pm` is 0 for not recognized, 1 for set, 2 for reset, 3 for permanently set and 4 for permanently reset. Termina gives it as `Csi::Mode(ReportDecPrivateMode)` | xterm control sequences, DECRQM; termina 0.3.3, `src/parse.rs` |
+| The reply to DA1 | `CSI ? Ps c`. Termina gives it as `Csi::Device(DeviceAttributes)` | xterm control sequences, Primary DA; termina 0.3.3, `src/parse.rs` |
+| The reply to a cursor position query | `CSI row ; col R`, 1-based. Termina gives it as `Csi::Cursor(ActivePositionReport)` | termina 0.3.3, a parse of `ESC [3;7R` |
+| The kitty graphics query | `a=q` with an id `i`. The terminal answers `ESC _Gi=<id>;OK ESC \` or an error message in place of `OK`. Termina 0.3.3 gives the reply as 10 key events, Alt+_ first | kitty documentation, "Querying support and available transmission mediums"; a parse of `ESC _Gi=31;OK ESC \` by termina 0.3.3 |
+| The reply to a cell size query, `CSI 6 ; h ; w t` | Termina 0.3.3 drops it and gives no event | A parse of `ESC [6;20;10t` by termina 0.3.3 |
+| The pixel size of the window | `WindowSize` of Termina has `pixel_width` and `pixel_height`, each an `Option<u16>` that holds a value when the platform reports it | termina 0.3.3, `src/lib.rs` |
+| `vt100` gives the cursor and the cells | `Screen::cursor_position` gives the row and the column from 0. `Screen::cell` gives a cell with `fgcolor`, `bold` and `inverse` | vt100 0.18.1, `src/screen.rs` and `src/cell.rs` |
 
 ## Risks / Trade-offs
 
