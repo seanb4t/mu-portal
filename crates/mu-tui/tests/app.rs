@@ -728,6 +728,43 @@ fn page_keys_in_a_pane_of_no_rows() {
     );
 }
 
+/// A mouse report of the left button at the cell `column`, `row`.
+fn left(app: &mut Model, kind: MouseEventKind, column: u16, row: u16) -> Vec<Effect> {
+    let mouse = MouseEvent {
+        kind,
+        column,
+        row,
+        modifiers: Modifiers::NONE,
+    };
+    update(app, Msg::Terminal(TermEvent::Mouse(mouse)))
+}
+
+/// The cells of the pane in reverse, with no cell of the top row or the input line.
+fn reversed_cells(app: &mut Model) -> usize {
+    let buffer = draw(app);
+    (1..23)
+        .flat_map(|y| (0..80).map(move |x| (x, y)))
+        .filter(|&at| buffer[at].modifier.contains(Modifier::REVERSED))
+        .count()
+}
+
+#[test]
+fn click_clears_selection() {
+    let mut app = app(&["alpha/aria"]);
+    on_event(&mut app, game("alpha/aria", "You say, \"hello\""));
+    draw(&mut app);
+    left(&mut app, MouseEventKind::Down(MouseButton::Left), 10, 1);
+    left(&mut app, MouseEventKind::Drag(MouseButton::Left), 14, 1);
+    let copied = left(&mut app, MouseEventKind::Up(MouseButton::Left), 14, 1);
+    assert_eq!(
+        (copied, reversed_cells(&mut app)),
+        (vec![Effect::ClipboardWrite("hello".to_owned())], 5)
+    );
+    left(&mut app, MouseEventKind::Down(MouseButton::Left), 3, 1);
+    let clicked = left(&mut app, MouseEventKind::Up(MouseButton::Left), 3, 1);
+    assert_eq!((clicked, reversed_cells(&mut app)), (vec![], 0));
+}
+
 #[derive(Clone, Debug)]
 enum Step {
     Next,

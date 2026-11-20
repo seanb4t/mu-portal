@@ -267,3 +267,49 @@ async fn line_in_two_reads() {
         .collect();
     assert_eq!(shown, ["hello"], "{}", client.contents());
 }
+
+/// The bytes of an SGR mouse report of the left button at the cell `col`, `row`, counted from
+/// 0: a press, a drag or a release.
+fn mouse(kind: &str, col: usize, row: usize) -> Vec<u8> {
+    let (button, end) = match kind {
+        "press" => (0, 'M'),
+        "drag" => (32, 'M'),
+        _ => (0, 'm'),
+    };
+    format!("\x1b[<{button};{};{}{end}", col + 1, row + 1).into_bytes()
+}
+
+#[tokio::test]
+async fn copy_by_drag() {
+    let (_session, mut client) = attached().await;
+    let said = "You say, \"hello\"";
+    client.send(b"hello\r");
+    client
+        .wait_rows("the answer", |rows| {
+            rows.iter().any(|row| row.trim_end() == said)
+        })
+        .await;
+    let row = client
+        .rows()
+        .iter()
+        .position(|row| row.trim_end() == said)
+        .unwrap();
+    let h = said.find('h').unwrap();
+    let o = h + 4;
+    client.send(&mouse("press", h, row));
+    client.send(&mouse("drag", o, row));
+    client.send(&mouse("release", o, row));
+    client
+        .wait_output("the OSC 52 copy", b"\x1b]52;c;aGVsbG8=\x1b\\")
+        .await;
+    let want: Vec<bool> = (0..80).map(|col| (h..=o).contains(&col)).collect();
+    let row = u16::try_from(row).unwrap();
+    client
+        .wait_screen("the reversed cells", |screen| {
+            (0..80)
+                .map(|col| screen.cell(row, col).is_some_and(vt100::Cell::inverse))
+                .collect::<Vec<_>>()
+                == want
+        })
+        .await;
+}

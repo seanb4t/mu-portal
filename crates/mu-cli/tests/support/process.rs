@@ -488,6 +488,8 @@ impl Session {
 /// `mu client` in a pseudo-terminal of 80 by 24, with its screen read by `vt100`.
 pub struct PtyClient {
     screen: Arc<watch::Sender<vt100::Parser>>,
+    /// Every byte that the client wrote, in order.
+    output: Arc<watch::Sender<Vec<u8>>>,
     writer: Box<dyn std::io::Write + Send>,
     killer: Box<dyn portable_pty::ChildKiller + Send + Sync>,
     exit: Option<tokio::sync::oneshot::Receiver<portable_pty::ExitStatus>>,
@@ -536,16 +538,20 @@ impl PtyClient {
             ))
             .0,
         );
+        let output = Arc::new(watch::channel(Vec::new()).0);
         let mut reader = pair.master.try_clone_reader().unwrap();
         let sender = Arc::clone(&screen);
+        let bytes = Arc::clone(&output);
         std::thread::spawn(move || {
             let mut buffer = [0_u8; 4096];
             while let Ok(n @ 1..) = reader.read(&mut buffer) {
+                bytes.send_modify(|all| all.extend_from_slice(&buffer[..n]));
                 sender.send_modify(|parser| parser.process(&buffer[..n]));
             }
         });
         Self {
             screen,
+            output,
             writer: pair.master.take_writer().unwrap(),
             killer,
             exit: Some(exit),
@@ -574,6 +580,38 @@ impl PtyClient {
                 (cell.fgcolor(), cell.bold())
             })
             .collect()
+    }
+
+    /// Waits until the bytes that the client wrote hold `needle`. A failure prints the screen.
+    pub async fn wait_output(&self, what: &str, needle: &[u8]) {
+        let mut receiver = self.output.subscribe();
+        let note = ScreenNote {
+            what,
+            screen: &self.screen,
+        };
+        wait_until(BOUND, note, async {
+            receiver
+                .wait_for(|all| all.windows(needle.len()).any(|window| window == needle))
+                .await
+                .is_ok()
+        })
+        .await;
+    }
+
+    /// Waits until the screen passes `check`. A failure prints the screen.
+    pub async fn wait_screen(&self, what: &str, check: impl Fn(&vt100::Screen) -> bool) {
+        let mut receiver = self.screen.subscribe();
+        let note = ScreenNote {
+            what,
+            screen: &self.screen,
+        };
+        wait_until(BOUND, note, async {
+            receiver
+                .wait_for(|parser| check(parser.screen()))
+                .await
+                .is_ok()
+        })
+        .await;
     }
 
     /// The text of the screen now.

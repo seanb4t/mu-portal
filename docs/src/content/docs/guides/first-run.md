@@ -63,6 +63,8 @@ Type `hello` and press Enter. The screen shows `> hello`, and then the answer of
 
 Each step of the mouse wheel scrolls the lines by 3 rows. When the lines do not fit, a scroll bar shows in the last column. If you scroll back, new lines do not move the rows on the screen. If you scroll forward to the newest line, the pane follows new lines again. Each world keeps its own scroll position when the focus moves.
 
+To copy text, drag over it with the left mouse button. The client shows the selection in reverse. When you release the button, the client sends the text to the clipboard of the terminal with an OSC 52 sequence. A click with no drag clears the selection. Rex takes the copy with no setting, but only from the pane in focus.
+
 The client reads the mouse, so a plain drag does not make a selection of the terminal. In Rex, hold Shift while you drag to select text with the terminal.
 
 A world out of focus that gets a line shows `*` after its id. The mark goes when that world gets the focus.

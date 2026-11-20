@@ -106,9 +106,9 @@ Load the `rust-best-practices` skill before this group.
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 8.1 Read the current documentation of OSC 52 for Rex, and of the OSC 52 command of the chosen backend that D7 names. Enable the `osc52` feature of crossterm for a choice of crossterm. Add the rows to the table "Checked facts". Make sure that `cargo deny check` passes.
-- [ ] 8.2 Turn a press, a drag and a release of the left button into a selection, and the release into `Effect::ClipboardWrite`. `run.rs` writes it with the OSC 52 command of the backend. Add `click_clears_selection` to `crates/mu-tui/tests/app.rs` for "A click clears", and `copy_by_drag` to `crates/mu-cli/tests/client.rs` for "Copy by drag". `copy_by_drag` reads the raw bytes that the client writes. Make sure that both tests pass.
-- [ ] 8.3 Add the OSC 52 setting of Rex to `docs/src/content/docs/guides/first-run.md`. Make sure that `mise run docs:check` passes.
+- [x] 8.1 Read the current documentation of OSC 52 for Rex, and of the OSC 52 command of the chosen backend that D7 names. Enable the `osc52` feature of crossterm for a choice of crossterm. Add the rows to the table "Checked facts". Make sure that `cargo deny check` passes.
+- [x] 8.2 Turn a press, a drag and a release of the left button into a selection, and the release into `Effect::ClipboardWrite`. `run.rs` writes it with the OSC 52 command of the backend. Add `click_clears_selection` to `crates/mu-tui/tests/app.rs` for "A click clears", and `copy_by_drag` to `crates/mu-cli/tests/client.rs` for "Copy by drag". `copy_by_drag` reads the raw bytes that the client writes. Make sure that both tests pass.
+- [x] 8.3 Add the OSC 52 setting of Rex to `docs/src/content/docs/guides/first-run.md`. Make sure that `mise run docs:check` passes.
 
 ## 9. The width probe
 

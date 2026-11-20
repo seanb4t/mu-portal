@@ -56,6 +56,8 @@ pub struct PaneState {
     anchor: Option<Position>,
     /// The two ends of the selection, in the order of the drag.
     selection: Option<(Position, Position)>,
+    /// The cell of the press of a drag that has not ended.
+    pressed: Option<Position>,
     unfinished: Option<Converted>,
     drawn: Vec<DrawnRow>,
     geometry: Option<Geometry>,
@@ -75,6 +77,7 @@ impl PaneState {
             store: LineStore::new(capacity),
             anchor: None,
             selection: None,
+            pressed: None,
             unfinished: None,
             drawn: Vec::new(),
             geometry: None,
@@ -93,9 +96,9 @@ impl PaneState {
     }
 
     /// Removes the unfinished line, then adds a line at the bottom. `spans` are pairs of a byte
-    /// offset and a style, in order. If
-    /// the store drops its oldest line, an anchor or a selection end on that line moves to the
-    /// start of the oldest live line, and a selection with both ends on dropped lines goes.
+    /// offset and a style, in order. If the store drops its oldest line, an anchor, a press or a
+    /// selection end on that line moves to the start of the oldest live line, and a selection
+    /// with both ends on dropped lines goes.
     pub fn push_styled(&mut self, text: &str, spans: &[(usize, Style)]) {
         self.unfinished = None;
         self.store.push(text, spans);
@@ -111,6 +114,7 @@ impl PaneState {
             }
         };
         self.anchor = self.anchor.map(keep);
+        self.pressed = self.pressed.map(keep);
         self.selection = match self.selection {
             Some((from, to)) if from.line < first && to.line < first => None,
             Some((from, to)) => Some((keep(from), keep(to))),
@@ -146,6 +150,53 @@ impl PaneState {
         self.selection = Some((from, to));
     }
 
+    /// Starts a drag at `position`, the cell under the press, with an empty selection there.
+    pub fn press(&mut self, position: Position) {
+        self.pressed = Some(position);
+        self.selection = Some((position, position));
+    }
+
+    /// Moves the end of the drag to `position`, the cell under the pointer. The selection holds
+    /// the graphemes of both cells and every grapheme between them. A drag with no press does
+    /// nothing.
+    pub fn drag(&mut self, position: Position) {
+        let Some(pressed) = self.pressed else {
+            return;
+        };
+        self.selection = Some(if position >= pressed {
+            (pressed, self.after(position))
+        } else {
+            (self.after(pressed), position)
+        });
+    }
+
+    /// Ends the drag. Gives the copy text of a selection that is not empty. A press with no drag
+    /// clears the selection.
+    pub fn release(&mut self) -> Option<String> {
+        self.pressed = None;
+        match self.selection {
+            Some((from, to)) if from != to => self.copy_text(),
+            _ => {
+                self.selection = None;
+                None
+            }
+        }
+    }
+
+    /// The position after the grapheme at `position`, or `position` at the end of its line.
+    fn after(&self, position: Position) -> Position {
+        let len = self
+            .store
+            .line(position.line)
+            .and_then(|line| line.text.get(position.byte..))
+            .and_then(|rest| rest.graphemes(true).next())
+            .map_or(0, str::len);
+        Position {
+            byte: position.byte + len,
+            ..position
+        }
+    }
+
     /// The selected text of each line, with one LF between lines and no style.
     #[must_use]
     pub fn copy_text(&self) -> Option<String> {
@@ -164,9 +215,10 @@ impl PaneState {
         Some(copy)
     }
 
-    /// Removes the selection.
+    /// Removes the selection and ends a drag.
     pub fn clear_selection(&mut self) {
         self.selection = None;
+        self.pressed = None;
     }
 
     /// Returns to the bottom, so the pane follows new lines again.

@@ -11,6 +11,7 @@ use termina::event::{
 
 use crate::convert::convert;
 use crate::model::{Model, PaneId};
+use crate::pane::PaneState;
 use crate::text::{clean, line};
 
 /// One input of the model.
@@ -60,6 +61,8 @@ pub enum Effect {
     },
     /// Leave the client.
     Quit,
+    /// Write `text` to the clipboard of the terminal.
+    ClipboardWrite(String),
 }
 
 /// The result of an [`Effect::Send`].
@@ -108,8 +111,8 @@ fn on_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
     }
 }
 
-/// The wheel scrolls the pane in focus, and a press of the left button starts a selection at
-/// the position under the pointer.
+/// The wheel scrolls the pane in focus. A drag of the left button selects in the pane in focus,
+/// and its release copies the selection. A press on no position clears the selection.
 fn on_mouse(model: &mut Model, mouse: MouseEvent) -> Vec<Effect> {
     match mouse.kind {
         MouseEventKind::ScrollUp => act(model, Action::ScrollRows(-WHEEL_ROWS)),
@@ -117,12 +120,27 @@ fn on_mouse(model: &mut Model, mouse: MouseEvent) -> Vec<Effect> {
         MouseEventKind::Down(MouseButton::Left) => {
             if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
                 match state.position(mouse.column, mouse.row) {
-                    Some(position) => state.select(position, position),
+                    Some(position) => state.press(position),
                     None => state.clear_selection(),
                 }
             }
             Vec::new()
         }
+        MouseEventKind::Drag(MouseButton::Left) => {
+            if let Some(state) = model.panes.get_mut(&model.focused_pane())
+                && let Some(position) = state.position(mouse.column, mouse.row)
+            {
+                state.drag(position);
+            }
+            Vec::new()
+        }
+        MouseEventKind::Up(MouseButton::Left) => model
+            .panes
+            .get_mut(&model.focused_pane())
+            .and_then(PaneState::release)
+            .map(Effect::ClipboardWrite)
+            .into_iter()
+            .collect(),
         _ => Vec::new(),
     }
 }

@@ -7,6 +7,7 @@ use mu_client::PortalClient;
 use ratatui::Terminal;
 use ratatui::backend::TerminaBackend;
 use termina::escape::csi::{Csi, DecPrivateMode, DecPrivateModeCode, Mode};
+use termina::escape::osc::{Osc, Selection};
 use termina::{EventReader, EventStream, PlatformTerminal, Terminal as _};
 use tokio::sync::mpsc;
 
@@ -96,6 +97,11 @@ async fn event_loop(
         for effect in update(model, msg) {
             match effect {
                 Effect::Quit => return Ok(()),
+                Effect::ClipboardWrite(text) => {
+                    let out = terminal.backend_mut();
+                    write!(out, "{}", Osc::SetSelection(Selection::CLIPBOARD, &text))?;
+                    out.flush()?;
+                }
                 Effect::Send { world, text } => {
                     let client = client.clone();
                     let replies = replies.clone();

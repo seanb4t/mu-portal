@@ -149,7 +149,7 @@ Enforced by: unit tests of `update` for each action, and the pseudo-terminal sce
 
 ### D7. A drag selects, and the release copies through OSC 52
 
-A press of the left button starts a selection at its line and byte. A drag moves its end, and a release ends it and returns an `Effect::ClipboardWrite`. `run.rs` writes the copy text with the OSC 52 command of the chosen backend: crossterm `CopyToClipboard` with its `osc52` feature, or the OSC 52 command of Termina. Thus the client needs no base64 crate of its own. A press with no drag clears the selection. The copy text joins the selected text of each line with LF. An image line gives its URL.
+A press of the left button starts a selection at its line and byte. A drag moves its end, and a release ends it and returns an `Effect::ClipboardWrite`. `run.rs` writes the copy text with `Osc::SetSelection(Selection::CLIPBOARD, text)` of Termina, the chosen backend. Thus the client needs no base64 crate of its own. A press with no drag clears the selection. The copy text joins the selected text of each line with LF. An image line gives its URL.
 
 Enforced by: unit tests of the copy text, and a pseudo-terminal scenario that reads the raw bytes that the client writes.
 
@@ -257,6 +257,8 @@ Each row is a fact that a task read in the current source or documentation. The 
 | `vte` splits text into chars, controls and sequences | Yes. `Parser::advance` takes a byte slice and calls `print` for a char, `execute` for a C0 or C1 control, and `csi_dispatch`, `osc_dispatch` or `esc_dispatch` for a sequence. In ground state, a C0 or C1 char, such as BEL or U+009B, goes to `execute`, and DEL goes to `print`. A new `Parser` starts in its ground state. The license is Apache-2.0 OR MIT | vte 0.15.0, `src/lib.rs` |
 | `anstyle-parse` has the same parser | Yes, a fork of the `vte` state machine whose `advance` takes one byte | anstyle-parse 1.0.0, `src/lib.rs` |
 | `ansi-to-tui` gives ratatui text | Yes, `IntoText` turns bytes into a ratatui `Text`. It keeps no SGR state from one call to the next | ansi-to-tui 8.0.1, `src/lib.rs` (`IntoText`) and README |
+| Termina writes an OSC 52 copy | Yes. `Osc::SetSelection(Selection::CLIPBOARD, text)` formats as ESC `]52;c;` with the base64 of the text, then ESC `\` | termina 0.3.3, `src/escape/osc.rs` |
+| Rex applies an OSC 52 copy | Yes, with no setting. A pane in focus in Rex wrote ESC `]52;c;bXUtb3NjNTItY2hlY2s=` ESC `\`, and `pbpaste` gave `mu-osc52-check`. Rex applies a copy only from the pane in focus of its tab | A run in Rex on 2026-11-19, and the Rex feedback forum, report 1568057499733463181 |
 
 ## Risks / Trade-offs
 
