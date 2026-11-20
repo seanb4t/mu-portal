@@ -111,8 +111,9 @@ enum Outcome {
     CannotStart(String),
     /// The helper thread ended without a result.
     Panicked,
-    /// The bound passed first, or the provider reported an error at or after the bound.
-    Late,
+    /// The bound passed first, with no error, or the provider reported this error at or after
+    /// the bound.
+    Late(Option<String>),
 }
 
 /// The current-thread tokio runtime of the gRPC exporters, on its own thread.
@@ -280,9 +281,11 @@ impl Providers {
     }
 
     /// Flushes and stops the two providers at the same time, each on its own helper thread, and
-    /// waits at most `bound` for the stops that start. A stop that fails, cannot start, panics or
-    /// is late writes a `WARN` line, and the line of a late stop names its signals. Then it sends
-    /// the stop to the telemetry runtime, and joins its thread only if no stop is late.
+    /// waits at most `bound` for the stops that start. A stop that fails before the bound, cannot
+    /// start or panics writes a `WARN` line. A stop that is late, or fails at or after the bound,
+    /// is late: one `WARN` line names the late signals, and a late stop that failed also writes
+    /// its error. Then it sends the stop to the telemetry runtime, and joins its thread only if
+    /// no stop is late.
     pub fn shutdown(mut self, bound: Duration) {
         self.stop(bound);
     }
@@ -313,7 +316,12 @@ impl Providers {
                     tracing::warn!(signal, %error, "the stop of the export cannot start");
                 }
                 Outcome::Panicked => tracing::warn!(signal, "the stop of the export panicked"),
-                Outcome::Late => late.push(signal),
+                Outcome::Late(error) => {
+                    late.push(signal);
+                    if let Some(error) = error {
+                        tracing::warn!(signal, %error, "the late stop of the export failed");
+                    }
+                }
             }
         }
         if !late.is_empty() {
@@ -361,7 +369,7 @@ fn helper(
     move || {
         let outcome = match panic::catch_unwind(AssertUnwindSafe(stop)) {
             Ok(Ok(())) => Outcome::Done,
-            Ok(Err(_)) if Instant::now() >= deadline => Outcome::Late,
+            Ok(Err(error)) if Instant::now() >= deadline => Outcome::Late(Some(error.to_string())),
             Ok(Err(error)) => Outcome::Failed(error.to_string()),
             Err(_) => Outcome::Panicked,
         };
@@ -394,7 +402,11 @@ fn stop_all(stops: Vec<(SignalKind, Stop)>, bound: Duration) -> Vec<(SignalKind,
                 outcomes.push((signal, outcome));
             }
             Err(RecvTimeoutError::Timeout) => {
-                outcomes.extend(pending.drain(..).map(|signal| (signal, Outcome::Late)));
+                outcomes.extend(
+                    pending
+                        .drain(..)
+                        .map(|signal| (signal, Outcome::Late(None))),
+                );
             }
             Err(RecvTimeoutError::Disconnected) => {
                 outcomes.extend(pending.drain(..).map(|signal| (signal, Outcome::Panicked)));
@@ -663,17 +675,20 @@ mod tests {
             Duration::ZERO,
         );
         drop(open);
-        assert_eq!(outcomes, vec![(SignalKind::Metrics, Outcome::Late)]);
+        assert_eq!(outcomes, vec![(SignalKind::Metrics, Outcome::Late(None))]);
     }
 
     #[test]
-    fn failure_after_the_bound_is_late() {
+    fn failure_after_the_bound_is_late_with_its_text() {
         let (done, finished) = mpsc::channel();
         let stop = stop(Err(OTelSdkError::InternalFailure("x".into())));
         helper(SignalKind::Traces, stop, Instant::now(), done)();
         assert_eq!(
             finished.try_iter().collect::<Vec<_>>(),
-            vec![(SignalKind::Traces, Outcome::Late)]
+            vec![(
+                SignalKind::Traces,
+                Outcome::Late(Some("Operation failed: x".to_owned()))
+            )]
         );
     }
 
