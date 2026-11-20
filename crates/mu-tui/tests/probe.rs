@@ -1,4 +1,4 @@
-//! The framer of the probe input and what the answers give.
+//! The framer of the probe input, the read loop of the probe, and what the answers give.
 
 use std::cell::Cell;
 use std::io;
@@ -118,7 +118,7 @@ fn question_csi_before_a_reply() {
     );
 }
 
-/// A clock that only the reads move, and the reads that it moved so far.
+/// A clock that only the reads of [`FakeClock::read`] move. `reads` is their count.
 struct FakeClock {
     start: Instant,
     elapsed: Cell<Duration>,
@@ -182,7 +182,12 @@ fn cut_reply_is_open_in_the_outcome() {
 fn silent_terminal_keeps_the_bound() {
     let clock = FakeClock::new();
     read_answers(clock.read(b""), || clock.now(), WAIT).unwrap();
-    assert!(clock.elapsed.get() <= WAIT, "{:?}", clock.elapsed.get());
+    assert_eq!(
+        (clock.elapsed.get() <= WAIT, clock.reads.get()),
+        (true, 4),
+        "{:?}",
+        clock.elapsed.get()
+    );
 }
 
 #[test]

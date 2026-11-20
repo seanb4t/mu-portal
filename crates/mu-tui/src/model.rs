@@ -123,9 +123,9 @@ impl Model {
         self.keeps_grapheme_mode
     }
 
-    /// Drops the keys of a kitty graphics reply until a DA1 reply comes, and rebuilds a reply that
-    /// the probe cut from `open` and the keys after it. The update of the probe result calls this
-    /// when the probe stopped before DA1, so the rest of its replies come as terminal events.
+    /// Waits for the late replies of the probe until a DA1 reply comes. It drops the keys of a
+    /// kitty graphics reply, and it rebuilds the reply that `open` starts from the keys after it.
+    /// `open` is empty, or it starts with ESC.
     pub(crate) fn await_late_replies(&mut self, open: Vec<u8>) {
         self.late = if open.is_empty() {
             Late::Waiting

@@ -1,4 +1,4 @@
-//! `update` for keys, mouse presses, client events and terminal replies.
+//! `update` for keys, mouse presses, client events, the probe result and late terminal replies.
 
 use mu_client::ClientEvent;
 use mu_proto::{Event, EventKind, Source};
@@ -143,7 +143,7 @@ fn reply_after_da1_is_input() {
     assert_eq!(model.input(), "Gx");
 }
 
-/// The outcome of a probe that the deadline cut inside a reply, which holds `bytes` of it.
+/// An outcome with no DA1 that holds `bytes` of a cut reply.
 fn cut_at(bytes: &[u8]) -> Outcome {
     Outcome {
         open: bytes.to_vec(),
@@ -200,12 +200,12 @@ fn notice_rows(model: &mut Model) -> usize {
         .count()
 }
 
-/// The outcome of a probe that measured nothing and did not see DA1.
+/// An outcome with no DA1 and no measured width. It holds no bytes of a cut reply.
 fn incomplete() -> Outcome {
     Outcome::default()
 }
 
-/// The outcome of a probe that saw DA1 and measured every grapheme.
+/// An outcome with DA1 and every width measured.
 fn complete() -> Outcome {
     Outcome {
         complete: true,

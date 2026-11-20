@@ -65,7 +65,7 @@ async fn event_loop(
     let mut events = Box::pin(client.events());
     let (replies, mut reply) = mpsc::unbounded_channel();
     loop {
-        // No frame comes while an early message waits, so the first frame has the probe result.
+        // No frame is drawn while an early message waits.
         let msg = if let Some(msg) = early.pop_front() {
             msg
         } else {

@@ -5,9 +5,10 @@
 //! whether the terminal draws kitty images, and ends with DA1. Every terminal answers DA1, so
 //! its answer ends the answers.
 //!
-//! The probe reads the answers itself, before the Termina event reader starts. It cuts the input
-//! into frames by the rules of ECMA-48 and gives each complete CSI to a Termina parser alone.
-//! Termina gives the kitty graphics answer as keys, so the probe decodes that one itself.
+//! The probe reads the answers itself, before the Termina event reader starts. The event reader
+//! gives the kitty graphics answer as keys, and its parser loses an answer that follows a stray
+//! ESC. The probe cuts the input into frames by the rules of ECMA-48 and gives each complete CSI
+//! to a Termina parser alone. It decodes the kitty graphics answer itself.
 
 use std::fs::File;
 use std::io::{self, IsTerminal, Write};
@@ -41,7 +42,7 @@ pub const GRAPHEMES: &[&str] = &[
     "\u{200B}",
 ];
 
-/// The key of the id in the kitty graphics query and its reply.
+/// The key of the id in the kitty graphics query and its answer.
 const GRAPHICS_ID: &str = "i=31";
 
 /// The kitty graphics query: one RGB pixel, sent directly, with the query action.
@@ -215,7 +216,7 @@ fn scan(buf: &[u8]) -> Scan {
 }
 
 /// The events that a Termina parser gives for one complete CSI, with no more input to come.
-/// [`frame`] decodes each CSI with this function, and so does the update of a late reply.
+/// [`frame`] decodes each CSI with this function, and so does the update of a late answer.
 #[must_use]
 pub fn decode_csi(bytes: &[u8]) -> Vec<Event> {
     plain(bytes)
@@ -249,8 +250,8 @@ fn plain(bytes: &[u8]) -> Vec<Event> {
     std::iter::from_fn(|| parser.pop()).collect()
 }
 
-/// The keys of an unfinished sequence. ESC and the byte after it give that key with Alt. Each
-/// other byte gives its own key.
+/// The keys of an unfinished sequence. ESC and the byte after it give that key with Alt. A
+/// Termina parser gives the keys of the other bytes.
 fn broken(bytes: &[u8]) -> Vec<Event> {
     match bytes {
         [ESC, next, rest @ ..] => {
@@ -279,13 +280,13 @@ pub struct Outcome {
     pub grapheme_mode: Option<DecModeSetting>,
     /// True if the terminal draws kitty images.
     pub graphics: bool,
-    /// True if DA1 answered, so every reply came.
+    /// True if DA1 answered, so every answer came.
     pub complete: bool,
-    /// True if the cursor replies gave the width of each grapheme of [`GRAPHEMES`]. If false,
+    /// True if the cursor answers gave the width of each grapheme of [`GRAPHEMES`]. If false,
     /// every class keeps the `unicode-width` value.
     pub measured: bool,
-    /// The bytes of a reply that the deadline cut, when DA1 did not come: an open CSI, or a lone
-    /// ESC. The rest of the reply comes as keys.
+    /// The bytes of an answer that the deadline cut, when DA1 did not come: an open CSI, or a lone
+    /// ESC. The rest of the answer comes as keys.
     pub open: Vec<u8>,
 }
 
@@ -319,7 +320,7 @@ impl Outcome {
     }
 
     /// True if the client turns mode 2027 off at exit: the probe set it, and the terminal did
-    /// not give it as set before. With no reply in time, the probe cannot know, and the mode
+    /// not give it as set before. With no answer in time, the probe cannot know, and the mode
     /// goes off.
     #[must_use]
     pub fn resets_grapheme_mode(&self) -> bool {
