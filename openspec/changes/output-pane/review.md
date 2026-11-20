@@ -1,9 +1,9 @@
 ---
 verdict: approve
 phase: implementation
-reviewed_at: 2026-11-20T04:50:19+00:00
-head: 2e1c509073f1adfcbae21c47781f7b7fc03bd3bc
-round: 10
+reviewed_at: 2026-11-20T04:55:15+00:00
+head: 58e44e50e829bd7f5d6263221e024ffe138dd8e1
+round: 11
 next_id: 95
 lenses:
   spec-lint: not-applicable
@@ -62,6 +62,7 @@ None.
 | 8 | implementation | follow-up | b3c4b591cffba229bb747c298bb1004aaccf8a6a | 504cf63a9cc562d28c9a396896ca15987d375e3e56b99bc600d2620894c93bcb | approve | 0 | 0 | 0 | 1 | 0 |  |
 | 9 | implementation | follow-up | cd59fe6cbe5c799e761ac3c0c4a6030f4a50e0d1 | 1aa4a87e2e77b0f4a3bec1dcff688f986fc2f01395ac9530f0b7186ebbac9f10 | approve-with-notes | 1 | 0 | 0 | 0 | 0 |  |
 | 10 | implementation | follow-up | 2e1c509073f1adfcbae21c47781f7b7fc03bd3bc | 1aa4a87e2e77b0f4a3bec1dcff688f986fc2f01395ac9530f0b7186ebbac9f10 | approve | 0 | 0 | 0 | 1 | 0 |  |
+| 11 | implementation | follow-up | 58e44e50e829bd7f5d6263221e024ffe138dd8e1 | 1aa4a87e2e77b0f4a3bec1dcff688f986fc2f01395ac9530f0b7186ebbac9f10 | approve | 0 | 0 | 0 | 0 | 0 |  |
 
 ## Judge
 
@@ -221,11 +222,8 @@ None.
 
 ## Lens notes
 
-- verify: R-94: the Reset now pushes the kept notices again only when the pane in focus is not the notices pane. A world pane is never PaneId::NOTICES, because PaneId::NOTICES is PaneId(0) and next_pane starts at 1, so the guard cannot skip a world pane.
-- verify: R-94: with no world, the notices pane is not cleared by the Reset and keeps its notices, so each notice shows once. With a world in focus, the Reset clears the world pane and the notices come back once there.
-- verify: The test notice_with_no_world_shows_once_after_a_reset renders Model::new([]) on a 20 by 4 TestBackend after a Reset and counts the rows that read -- note. Before the fix, the pane would hold two such rows, both on the screen, so the test fails on the old code.
-- verify: The doc comment of Model::notice (model.rs 186-187) matches the new behaviour: the line comes back in the pane of the world in focus after a Reset.
-- verify: The hunks of openspec/changes/output-pane/review.md in diff-hunks.txt were not read, because this agent never reads review.md.
+- verify: prior.json holds no row with the disposition fixed. Its rows are resolved, duplicate, deferred or refuted, so fixes is empty and no fix_hunks range exists to read.
+- verify: diff-files.txt and diff-hunks.txt since 2e1c509 name only openspec/changes/output-pane/review.md. The agent may not read review.md, and the diff touches no code, test, spec, design or tasks line, so no line inside the bound can hold a regression.
 
 ## Ledger
 
@@ -381,7 +379,7 @@ None.
 | docs/src/content/docs/architecture/terminal-client.mdx | 0e8f734774a78b6bacbb5cdcd9d34a0bd46e5fde |
 | docs/src/content/docs/decisions/character-width.md | 8e6b847a8d7ed734a22348e689aceba5652047fe |
 | docs/src/content/docs/decisions/output-pane.md | 03a0cbb0c577797a56e62f206da10e9af39198e8 |
-| docs/src/content/docs/decisions/terminal-client-architecture.md | 4887a78c9fe8c63fd74dbee9155b7536ebee07aa |
+| docs/src/content/docs/decisions/terminal-client-architecture.md | 1bb0b21f17b047425116f0374161fc8e6b91e8aa |
 | docs/src/content/docs/guides/first-run.md | 1d7c40e14152f113c50ab9cf1034450c8861eee9 |
 | openspec/changes/output-pane/.openspec.yaml | 56d16f001e73f64dfad7c20b1dc221e8c7dcba66 |
 | openspec/changes/output-pane/design.md | eee82112d87f098aecd5b34fe45862011fda1478 |
