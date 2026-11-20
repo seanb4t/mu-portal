@@ -7,7 +7,6 @@
 use std::collections::{HashMap, VecDeque};
 
 use ratatui::style::Style;
-use unicode_width::UnicodeWidthStr;
 
 /// The number of lines in one chunk.
 pub const CHUNK_LINES: usize = 4096;
@@ -89,7 +88,6 @@ impl Image {
 struct Record {
     text_end: usize,
     span_end: usize,
-    width: u32,
     image: Option<Image>,
 }
 
@@ -107,8 +105,6 @@ pub struct Line<'a> {
     pub text: &'a str,
     /// The style spans, in the order of their start.
     pub spans: &'a [Span],
-    /// The display width of the text.
-    pub width: u32,
     /// The image of an image line, whose text is the URL of the image.
     pub image: Option<Image>,
 }
@@ -226,7 +222,6 @@ impl LineStore {
                 style: self.intern(style),
             })
             .collect();
-        let width = u32::try_from(text.width()).unwrap_or(u32::MAX);
         if self
             .chunks
             .back()
@@ -243,7 +238,6 @@ impl LineStore {
             chunk.records.push(Record {
                 text_end: chunk.text.len(),
                 span_end: chunk.spans.len(),
-                width,
                 image,
             });
         }
@@ -288,7 +282,6 @@ impl LineStore {
         Some(Line {
             text: chunk.text.get(text_start..record.text_end)?,
             spans: chunk.spans.get(span_start..record.span_end)?,
-            width: record.width,
             image: record.image,
         })
     }

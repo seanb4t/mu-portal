@@ -467,6 +467,12 @@ fn cell_width(profile: &Profile, grapheme: &str, width: u16) -> usize {
     }
 }
 
+/// The span that holds `byte`: the last span of `spans` that starts at or before it. `spans` are
+/// in the order of their start, and `start` gives the start of a span.
+fn span_at<T>(spans: &[T], byte: usize, start: impl Fn(&T) -> usize) -> Option<&T> {
+    spans[..spans.partition_point(|span| start(span) <= byte)].last()
+}
+
 /// True if `position` is inside `selection`, from its first end up to its last end.
 fn selected(selection: Option<(Position, Position)>, position: Position) -> bool {
     selection.is_some_and(|(a, b)| {
@@ -534,11 +540,7 @@ impl OutputPane {
         };
         let style_at = |offset: usize| {
             let byte = row.start + offset;
-            let style = text
-                .spans
-                .iter()
-                .take_while(|span| span.start <= byte)
-                .last()
+            let style = span_at(text.spans, byte, |span| span.start)
                 .map_or_else(Style::default, |span| state.store.style(span.style));
             if selected(state.selection, Position { line, byte }) {
                 style.add_modifier(Modifier::REVERSED)
@@ -648,11 +650,7 @@ impl StatefulWidget for OutputPane {
         if let Some(unfinished) = state.unfinished.as_ref().filter(|_| unfinished_row == 1) {
             let y = area.y + full.height;
             let style_at = |offset: usize| {
-                unfinished
-                    .spans
-                    .iter()
-                    .take_while(|(start, _)| *start <= offset)
-                    .last()
+                span_at(&unfinished.spans, offset, |(start, _)| *start)
                     .map_or_else(Style::default, |(_, style)| *style)
             };
             draw_text(
