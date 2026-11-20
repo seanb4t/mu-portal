@@ -17,6 +17,7 @@ mu-client = { path = "../mu-client" }
 mu-proto = { path = "../mu-proto" }
 ratatui = { workspace = true }
 ratatui-textarea = { workspace = true }
+rustix = { workspace = true, features = ["termios"] }
 termina = { workspace = true }
 tokio = { workspace = true }
 unicode-segmentation = { workspace = true }

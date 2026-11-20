@@ -2,6 +2,7 @@
 //! [`update`](crate::update) changes.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use ratatui::style::Style;
 use ratatui_textarea::{CursorMove, TextArea};
@@ -9,6 +10,7 @@ use ratatui_textarea::{CursorMove, TextArea};
 use crate::keymap::Keymap;
 use crate::layout::Node;
 use crate::pane::PaneState;
+use crate::width::Profile;
 
 /// The id of an output pane. Each world has one pane, and one more pane holds the lines of no
 /// world.
@@ -41,6 +43,8 @@ pub struct Model {
     /// An index into `worlds`. None if and only if there is no world.
     pub(crate) focus: Option<usize>,
     pub(crate) panes: HashMap<PaneId, PaneState>,
+    /// The widths of the graphemes on the terminal, which every pane shares.
+    pub(crate) profile: Arc<Profile>,
     next_pane: u32,
     pub(crate) input: TextArea<'static>,
     pub(crate) lost: bool,
@@ -57,6 +61,7 @@ impl Model {
             worlds: Vec::new(),
             focus: None,
             panes: HashMap::from([(PaneId::NOTICES, PaneState::default())]),
+            profile: Arc::default(),
             next_pane: 1,
             input: input_line(String::new()),
             lost: false,
@@ -100,7 +105,8 @@ impl Model {
             Err(index) => {
                 let pane = PaneId(self.next_pane);
                 self.next_pane += 1;
-                self.panes.insert(pane, PaneState::default());
+                self.panes
+                    .insert(pane, PaneState::with_profile(Arc::clone(&self.profile)));
                 self.worlds.insert(
                     index,
                     World {
@@ -120,6 +126,14 @@ impl Model {
         }
     }
 
+    /// Wraps and draws every pane with the widths of `profile`.
+    pub fn set_profile(&mut self, profile: Profile) {
+        self.profile = Arc::new(profile);
+        for pane in self.panes.values_mut() {
+            pane.set_profile(Arc::clone(&self.profile));
+        }
+    }
+
     /// The state of the pane `id`.
     #[must_use]
     pub fn pane(&self, id: PaneId) -> Option<&PaneState> {
@@ -136,7 +150,10 @@ impl Model {
 
     /// Adds `line` at the bottom of `pane`.
     pub(crate) fn push(&mut self, pane: PaneId, line: &str) {
-        self.panes.entry(pane).or_default().push(line);
+        self.panes
+            .entry(pane)
+            .or_insert_with(|| PaneState::with_profile(Arc::clone(&self.profile)))
+            .push(line);
     }
 
     /// Puts `text` in the input line, with the cursor at its end.

@@ -1,5 +1,7 @@
 //! [`update`]: the only function that changes the [`Model`]. It does no I/O.
 
+use std::sync::Arc;
+
 use mu_client::ClientEvent;
 use mu_proto::{EventKind, Source};
 use ratatui::style::Style;
@@ -227,7 +229,10 @@ fn on_client(model: &mut Model, item: ClientEvent) {
             let unseen = model.focus != Some(index);
             let world = &mut model.worlds[index];
             world.unseen |= unseen;
-            let pane = model.panes.entry(world.pane).or_default();
+            let pane = model
+                .panes
+                .entry(world.pane)
+                .or_insert_with(|| PaneState::with_profile(Arc::clone(&model.profile)));
             let prompt = event.kind.as_known() == Some(EventKind::EVENT_KIND_PROMPT);
             match event.source.as_known() {
                 Some(Source::SOURCE_PLAYER | Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => {

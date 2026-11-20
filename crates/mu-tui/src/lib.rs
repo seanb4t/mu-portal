@@ -9,11 +9,13 @@ mod keymap;
 mod layout;
 mod model;
 mod pane;
+pub mod probe;
 mod run;
 pub mod store;
 mod text;
 mod update;
 mod view;
+pub mod width;
 pub mod wrap;
 
 pub use keymap::{Chord, Keymap};

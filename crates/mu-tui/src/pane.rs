@@ -5,15 +5,18 @@
 //! no anchor is at the bottom and follows new lines. Each render stores the map from the screen
 //! rows to the lines, so a mouse position turns into a line and a byte.
 
-use ratatui::buffer::Buffer;
+use std::num::NonZeroU16;
+use std::sync::Arc;
+
+use ratatui::buffer::{Buffer, CellDiffOption};
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget};
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
 
 use crate::convert::Converted;
 use crate::store::{CAPACITY, LineId, LineStore};
+use crate::width::{Class, Profile};
 use crate::wrap::{Row, wrap};
 
 /// A place in the text of a pane: a line and a byte in that line.
@@ -59,6 +62,8 @@ pub struct PaneState {
     /// The cell of the press of a drag that has not ended.
     pressed: Option<Position>,
     unfinished: Option<Converted>,
+    /// The widths of the graphemes on the terminal.
+    profile: Arc<Profile>,
     drawn: Vec<DrawnRow>,
     geometry: Option<Geometry>,
 }
@@ -79,6 +84,7 @@ impl PaneState {
             selection: None,
             pressed: None,
             unfinished: None,
+            profile: Arc::default(),
             drawn: Vec::new(),
             geometry: None,
         }
@@ -124,7 +130,23 @@ impl PaneState {
 
     /// Removes every line, the unfinished line, the selection and the scroll position.
     pub fn clear(&mut self) {
+        let profile = Arc::clone(&self.profile);
         *self = Self::new(self.store.capacity());
+        self.profile = profile;
+    }
+
+    /// An empty pane that wraps and draws with the widths of `profile`.
+    #[must_use]
+    pub fn with_profile(profile: Arc<Profile>) -> Self {
+        Self {
+            profile,
+            ..Self::default()
+        }
+    }
+
+    /// Wraps and draws with the widths of `profile`.
+    pub fn set_profile(&mut self, profile: Arc<Profile>) {
+        self.profile = profile;
     }
 
     /// Shows `text` with its styles as the unfinished line after the newest line, or no
@@ -230,7 +252,7 @@ impl PaneState {
     fn rows_of(&self, line: LineId, width: u16) -> Vec<Row> {
         let mut rows = Vec::new();
         if let Some(text) = self.store.line(line) {
-            wrap(text.text, width, &mut rows);
+            wrap(text.text, width, &self.profile, &mut rows);
         }
         rows
     }
@@ -350,7 +372,7 @@ impl PaneState {
         let column = usize::from(x - geometry.x);
         let mut cells = 0;
         for (at, grapheme) in text.get(row.start..row.end)?.grapheme_indices(true) {
-            let width = cell_width(grapheme, geometry.width);
+            let width = cell_width(&self.profile, grapheme, geometry.width);
             if column < cells + width {
                 return Some(Position {
                     line,
@@ -375,8 +397,8 @@ fn row_index(rows: &[Row], byte: usize) -> usize {
 
 /// The cells that `grapheme` takes in a row `width` cells wide: one for a grapheme wider than
 /// the row, which shows as U+FFFD.
-fn cell_width(grapheme: &str, width: u16) -> usize {
-    match grapheme.width() {
+fn cell_width(profile: &Profile, grapheme: &str, width: u16) -> usize {
+    match profile.width(grapheme) {
         cells if cells > usize::from(width) => 1,
         cells => cells,
     }
@@ -457,36 +479,43 @@ impl OutputPane {
                 style
             }
         };
-        draw_text(row_text, style_at, at, width, buf);
+        draw_text(row_text, style_at, at, width, &state.profile, buf);
     }
 }
 
-/// Draws the graphemes of `text` from `at`, in at most `width` cells. `style_at` gives the style
-/// of the grapheme at a byte offset of `text`. A grapheme wider than `width` shows as U+FFFD,
-/// and the cells after the first cell of a wide grapheme are reset.
+/// Draws the graphemes of `text` from `at`, in at most `width` cells, with the widths of
+/// `profile`. `style_at` gives the style of the grapheme at a byte offset of `text`. A grapheme
+/// wider than `width` shows as U+FFFD. A grapheme of a risky class gets its width as a forced
+/// width, and the cells after the first cell of a wide grapheme are reset.
 fn draw_text(
     text: &str,
     style_at: impl Fn(usize) -> Style,
     at: (u16, u16),
     width: u16,
+    profile: &Profile,
     buf: &mut Buffer,
 ) {
     let (x, y) = at;
     let mut cells = 0;
     for (offset, grapheme) in text.grapheme_indices(true) {
-        let grapheme_cells = cell_width(grapheme, width);
+        let grapheme_cells = cell_width(profile, grapheme, width);
         if cells + grapheme_cells > usize::from(width) {
             break;
         }
-        let symbol = if grapheme.width() > usize::from(width) {
-            "\u{fffd}"
+        let (symbol, forced) = if profile.width(grapheme) > usize::from(width) {
+            ("\u{fffd}", None)
+        } else if Class::of(grapheme).risky() {
+            let forced = u16::try_from(grapheme_cells).ok().and_then(NonZeroU16::new);
+            (grapheme, forced)
         } else {
-            grapheme
+            (grapheme, None)
         };
         let cell_x = x + u16::try_from(cells).unwrap_or(u16::MAX);
-        buf[(cell_x, y)]
-            .set_symbol(symbol)
-            .set_style(style_at(offset));
+        let cell = &mut buf[(cell_x, y)];
+        cell.set_symbol(symbol).set_style(style_at(offset));
+        if let Some(forced) = forced {
+            cell.set_diff_option(CellDiffOption::ForcedWidth(forced));
+        }
         for extra in 1..grapheme_cells {
             buf[(cell_x + u16::try_from(extra).unwrap_or(u16::MAX), y)].reset();
         }
@@ -529,7 +558,14 @@ impl StatefulWidget for OutputPane {
                     .last()
                     .map_or_else(Style::default, |(_, style)| *style)
             };
-            draw_text(&unfinished.text, style_at, (area.x, y), area.width, buf);
+            draw_text(
+                &unfinished.text,
+                style_at,
+                (area.x, y),
+                area.width,
+                &state.profile,
+                buf,
+            );
             state.drawn.push(DrawnRow {
                 y,
                 drawn: Drawn::Unfinished,

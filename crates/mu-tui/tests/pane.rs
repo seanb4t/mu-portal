@@ -1,8 +1,12 @@
 //! The scenarios of the output-pane capability on the pane widget, drawn into a `Buffer`.
 
+use std::num::NonZeroU16;
+use std::sync::Arc;
+
 use mu_tui::store::LineId;
+use mu_tui::width::Profile;
 use mu_tui::{OutputPane, PaneState, Position};
-use ratatui::buffer::Buffer;
+use ratatui::buffer::{Buffer, CellDiffOption};
 use ratatui::layout::Rect;
 use ratatui::widgets::StatefulWidget;
 use unicode_width::UnicodeWidthStr;
@@ -265,6 +269,37 @@ fn wide_grapheme_at_the_end_of_a_row() {
     let buf = render(&mut pane, 5, 3);
     assert_eq!(rows(&buf)[..2], ["abcd", "日本"]);
     assert_eq!(buf[(4, 0)].symbol(), " ");
+}
+
+const FAMILY: &str = "👨\u{200D}👩\u{200D}👧";
+
+#[test]
+fn cells_take_the_learned_width() {
+    let mut pane = PaneState::with_profile(Arc::new(Profile::learn(&[(FAMILY, 8)])));
+    pane.push(&format!("{FAMILY}x"));
+    let buf = render(&mut pane, 20, 3);
+    let family = &buf[(0, 0)];
+    assert_eq!(
+        (family.diff_option, buf[(8, 0)].symbol()),
+        (
+            CellDiffOption::ForcedWidth(NonZeroU16::new(8).unwrap()),
+            "x"
+        )
+    );
+}
+
+#[test]
+fn cells_take_the_default_width() {
+    let mut pane = pane_with([format!("{FAMILY}x")]);
+    let buf = render(&mut pane, 20, 3);
+    let family = &buf[(0, 0)];
+    assert_eq!(
+        (family.diff_option, buf[(2, 0)].symbol()),
+        (
+            CellDiffOption::ForcedWidth(NonZeroU16::new(2).unwrap()),
+            "x"
+        )
+    );
 }
 
 #[test]

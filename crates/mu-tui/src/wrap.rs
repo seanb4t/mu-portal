@@ -7,7 +7,8 @@
 //! row, and a width of 0 gives no rows.
 
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
+
+use crate::width::Profile;
 
 /// One row of a wrapped line: the bytes `start..end` of the line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,8 +72,9 @@ impl Wrapper<'_> {
     }
 }
 
-/// Writes the rows of `text` at `width` cells to `rows`, in place of what `rows` held.
-pub fn wrap(text: &str, width: u16, rows: &mut Vec<Row>) {
+/// Writes the rows of `text` at `width` cells to `rows`, in place of what `rows` held, with the
+/// widths of `profile`.
+pub fn wrap(text: &str, width: u16, profile: &Profile, rows: &mut Vec<Row>) {
     rows.clear();
     if width == 0 {
         return;
@@ -96,7 +98,7 @@ pub fn wrap(text: &str, width: u16, rows: &mut Vec<Row>) {
         if grapheme == " " {
             wrapper.space(at, grapheme.len());
         } else {
-            wrapper.grapheme(at, grapheme.len(), grapheme.width());
+            wrapper.grapheme(at, grapheme.len(), profile.width(grapheme));
         }
     }
     if wrapper.row_start < text.len() || wrapper.rows.is_empty() {

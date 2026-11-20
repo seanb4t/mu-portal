@@ -1940,6 +1940,7 @@ dependencies = [
  "proptest",
  "ratatui",
  "ratatui-textarea",
+ "rustix",
  "termina",
  "tokio",
  "unicode-segmentation",
