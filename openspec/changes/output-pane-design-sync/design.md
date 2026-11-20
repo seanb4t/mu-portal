@@ -65,7 +65,8 @@ The probe cuts its input into frames by the rules of ECMA-48:
 - An APC is ESC `_`, then a body, then ESC `\`.
 - An ESC inside an open CSI or APC ends that sequence as broken, and a new frame starts at that ESC. The one exception is the ESC of ESC `\`, which ends an APC.
 - A byte outside 0x20 to 0x3F before the final byte also ends a CSI as broken.
-- An ESC, or an open sequence, at the end of a read waits for the next read.
+- An ESC, or an open sequence, at the end of a read waits for the next read. So do an ESC with one more byte, and the first bytes of a UTF-8 character. Termina then gets an SS3 key such as F1 (ESC `O` `P`), or a character such as `é`, in one piece.
+- The bytes that wait hold at most 4 KiB (`probe::PENDING_MAX`). The probe drops an open sequence that grows past this limit.
 
 Each frame then goes to one place:
 
@@ -76,7 +77,14 @@ Each frame then goes to one place:
 | A broken sequence | The probe makes the keys itself. ESC and the byte after it give that key with Alt, for example Alt+`[`. Each other byte gives its own key. |
 | Other bytes | A `termina::Parser`, for keys, text and paste. |
 
-At the end of the probe, an open sequence can still wait for more input. Its bytes then go to the early input as the keys of a broken sequence. Today the probe loses them.
+At the end of the probe, a sequence can still be open. If the outcome is complete, its bytes go to the early input as the keys of a broken sequence, because no reply comes after DA1. If the outcome is not complete, the deadline can cut a reply in two. Then an open CSI, or a lone ESC, goes into `Outcome::open`, and `update` rebuilds the reply:
+
+- On `Msg::Probe`, `update` holds the open bytes in its late state.
+- Each next key that is a CSI byte as text adds its byte. A CSI byte as text is a character from 0x20 to 0x7E, with no modifier but Shift. After a lone ESC, the next key must be `[`. A `_` there starts the late graphics reply.
+- At a final byte, `update` gives the bytes to the same decoder that the framer uses, and handles the event as a late reply. A late DA1 ends the wait, and a late DECRPM sets the flag of mode 2027.
+- If another key comes, or the bytes pass 4 KiB, `update` drops the held bytes. It then handles the key as usual.
+
+So the input line never gets a cut reply, and a cut DA1 still ends the wait. The cost: a key that the user types at the deadline can be lost, up to the first letter. An open APC at the end still goes to the early input as keys, and the late graphics path drops them, as it does today.
 
 `probe::run` returns the outcome and the early events, so `run.rs` makes no parser of its own. The hand CSI decoder goes away. The public type of a probe reply is renamed `probe::Answer`, so the crate has no second `Reply` beside `update::Reply` (QUAL-22). The framer is a public function, so `tests/probe.rs` drives it.
 
@@ -86,8 +94,10 @@ Alternatives:
 
 - Give every byte to Termina. Termina 0.3.3 loses a reply after a stray ESC `[` (see the checked facts).
 - Keep the hand parser and only fix its framing. That keeps a CSI decoder that Termina already has, against the rule to reuse open source first.
+- Drop the open bytes at the end of the probe, as the old code did. The rest of the reply then arrives as typed keys.
+- Send the open bytes to the early input as keys. Then the whole reply lands in the input line.
 
-Enforced by: the tests of `tests/probe.rs` that D10 names, and the pseudo-terminal scenarios of `terminal-client`.
+Enforced by: the tests of `tests/probe.rs` and `tests/update.rs` that D10 names, and the pseudo-terminal scenarios of `terminal-client`.
 
 ### D4. The read error wins over the restore error
 
@@ -148,6 +158,8 @@ The decision page `character-width.md` gets these facts, and D2 to D4. The page 
 | The probe waits at most 500 milliseconds | `silent_terminal_keeps_the_bound` |
 | A stray ESC or an open sequence does not hide a reply | the framer tests of D10 |
 | The read error is not lost | the four tests of D4 |
+| A cut reply reaches no input line | the update tests of D10 |
+| The bytes that wait hold at most 4 KiB | `long_apc_is_dropped` |
 | No test waits on a clock | review. The probe tests use the fake clock. |
 | Each scenario keeps its test | the full test run, and the implementation review |
 
@@ -165,6 +177,18 @@ All tests of the probe stay in `crates/mu-tui/tests/probe.rs`. The 14 tests ther
 | `apc_end_split_across_reads` | A graphics reply cut between its ESC and its `\` still turns graphics on. |
 | `split_reply_across_reads` | A cursor reply cut in the middle gives one reply. |
 | `silent_terminal_keeps_the_bound` | D2 |
+| `utf8_split_across_reads` | `é` cut between its two bytes gives one `é`. |
+| `ss3_split_across_reads` | ESC `O`, then `P` in the next read, gives F1. |
+| `long_apc_is_dropped` | An APC with no end that passes 4 KiB is dropped, and DA1 after it still gives its answer. |
+| `cut_reply_is_open_in_the_outcome` | A read loop that reaches the deadline inside a cursor reply, with no DA1, gives the reply's bytes in `Outcome::open` and no early event. |
+
+New tests in `crates/mu-tui/tests/update.rs`:
+
+| Test | What it proves |
+|---|---|
+| `cut_da1_ends_the_wait` | An outcome with `ESC [ ? 62 ; 2` open, then the keys `2` and `c`, ends the wait, and the input line stays empty. |
+| `cut_cursor_reply_is_not_typed` | An outcome with `ESC [ 12 ;` open, then the keys `5` and `R`, leaves the input line empty. |
+| `other_key_drops_a_cut_reply` | An outcome with `ESC [ 1` open, then a key that is no CSI byte, drops the held bytes, and the key acts as usual. |
 
 ### Facts about third-party tools
 
@@ -189,5 +213,6 @@ Checked by task 2.1, in `src/parse.rs` of `termina` at the same version (`Parser
 
 - [A legacy key such as Shift+F3 can send `CSI 1;2R`. Termina gives it as a cursor report.] → During the probe, it adds a cursor reply. Then the cursor replies outnumber the graphemes, so every class keeps the `unicode-width` value, and the notice shows. The hand parser does the same today.
 - [The probe can stop up to one tick before the deadline.] → A reply in that tick is a late reply. `update` handles it as one.
+- [A key that the user types at the deadline can be lost.] → Only while the late state holds a cut reply, and only up to the first letter. A typed reply is worse: Enter sends it to the world.
 - [The probe owns a small framer.] → It holds only the framing rules of ECMA-48. Termina still decodes each CSI.
 - [The change touches `run.rs`, and #121 also touches it (QUAL-16).] → Task 6.1 checks the state of #121. If #121 merged first, the branch rebases on `main` before its pull request.

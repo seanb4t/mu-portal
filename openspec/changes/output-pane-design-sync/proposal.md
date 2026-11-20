@@ -13,6 +13,8 @@ The change is tracked by issue #112.
 - The probe frames its input itself, by the rules of ECMA-48, and gives each complete CSI to `termina::Parser` to decode (R-93). It decodes only the kitty graphics reply (APC) itself. The hand CSI decoder goes away, and the reply type becomes `probe::Answer` (QUAL-22).
 - The probe reads past an Alt+`[` that the user presses during the probe (QUAL-3).
 - An APC with no end no longer stalls the probe (SEC-6, the stall part).
+- `update` rebuilds a reply that the deadline cuts in two as a late reply, so no reply is typed.
+- A UTF-8 character or an SS3 key that two reads split still decodes in one piece. The bytes that wait hold at most 4 KiB.
 - An error and the restore after it can both fail, in the probe, in the event loop and in `screen::open`. Then the result keeps the first error, with the restore error in its message (QUAL-12).
 - `Caps` stops repeating the probe outcome. It drops the cell size, which nothing in `src` reads (QUAL-21).
 - The pseudo-terminal helper has one wait on the screen, and `wait_rows` uses it (R-74).
