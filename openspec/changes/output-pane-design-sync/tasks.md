@@ -47,6 +47,13 @@ The change has no spec delta, so no task names a spec scenario. Each task names 
 - [x] 7.5 Write the split keys, the cap and the rebuild of a cut reply into `character-width.md`. Then run `mise run docs:check`, `mise run check`, `mise run test`, `mise run deny` and `openspec validate output-pane-design-sync --strict`. Make sure that each one passes.
 - [x] 7.6 Write `lone_esc_then_bracket_continues_a_cut_reply` and `cut_reply_past_the_cap_is_dropped` in `crates/mu-tui/tests/update.rs` (D10). If one passes at once, make sure that it fails when the branch it covers is removed. Make sure that `cargo nextest run -p mu-tui --locked` passes.
 
+## 8. Fixes of the second suite review
+
+- [ ] 8.1 Write `long_sequence_tail_is_dropped` in `crates/mu-tui/tests/probe.rs`, and `early_keys_come_before_a_cut_reply` and `graphics_reply_cut_at_its_end` in `crates/mu-tui/tests/update.rs` (D10). Make sure that each one fails or does not build at the start of the task.
+- [ ] 8.2 Make the framer drop the rest of a sequence that passed `probe::PENDING_MAX`, up to its end (D3). Make sure that `long_sequence_tail_is_dropped` and the other probe tests pass.
+- [ ] 8.3 Add `Msg::CutReply(Vec<u8>)`. In `run.rs`, take `Outcome::open` out of the outcome and queue it after the early input events, only if it is not empty. Move the hold of the bytes from `Msg::Probe` to `Msg::CutReply`, and move the tests of D10 that send a cut reply to it. Make Escape in the late graphics path wait for the `\` of the reply (D3). Make sure that `cargo nextest run -p mu-tui --locked` passes.
+- [ ] 8.4 Write the changed rules into `character-width.md`. Then run `mise run docs:check`, `mise run check`, `mise run test`, `mise run deny` and `openspec validate output-pane-design-sync --strict`. Make sure that each one passes.
+
 ## Workflow follow-up
 
 - Run the implementation review with `/sb:openspec-review output-pane-design-sync implementation`.

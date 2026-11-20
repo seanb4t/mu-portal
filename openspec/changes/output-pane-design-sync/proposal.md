@@ -14,6 +14,7 @@ The change is tracked by issue #112.
 - The probe reads past an Alt+`[` that the user presses during the probe (QUAL-3).
 - An APC with no end no longer stalls the probe (SEC-6, the stall part).
 - `update` rebuilds a reply that the deadline cuts in two as a late reply, so no reply is typed.
+- The example `image-pane` keeps its session error when the restore also fails.
 - A UTF-8 character or an SS3 key that two reads split still decodes in one piece. The bytes that wait hold at most 4 KiB.
 - An error and the restore after it can both fail, in the probe, in the event loop and in `screen::open`. Then the result keeps the first error, with the restore error in its message (QUAL-12).
 - `Caps` stops repeating the probe outcome. It drops the cell size, which nothing in `src` reads (QUAL-21).
