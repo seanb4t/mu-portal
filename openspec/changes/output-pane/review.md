@@ -1,9 +1,9 @@
 ---
-verdict: approve-with-notes
+verdict: approve
 phase: implementation
-reviewed_at: 2026-11-20T03:31:26+00:00
-head: a791882b38af41f3e77b40bf42c73008d32b396e
-round: 7
+reviewed_at: 2026-11-20T03:33:47+00:00
+head: b3c4b591cffba229bb747c298bb1004aaccf8a6a
+round: 8
 next_id: 94
 lenses:
   spec-lint: not-applicable
@@ -20,7 +20,6 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-12 | verify | should-fix | in-change | ver-fix-R-12: REGRESSED: the fix fed875c6c887be1f7ab75c4558da2034a0b191aa of R-12 did not hold. The spec follows new lines whenever the newest line is on the screen, but D3 follows only a pane with no anchor. A pane scrolled back by one row still shows the newest line, and nothing says the anchor clears there or after PageDown reaches the bottom.; ver-1: The new anchor clear in render runs when all_fit(state, full) holds. At an area 0 columns wide, rows_of gives no rows for any line, so all_fit is true for every store and the render drops the anchor. A pane that shrinks to 0 columns and back loses its scroll position and jumps to the bottom, although no row of the newest line was on the screen. | crates/mu-tui/src/pane.rs:649 — "if bottom \|\| Self::all_fit(state, full) {" | ver-fix-R-12: fix it again; ver-1: Clear the anchor through all_fit only when full.width > 0, and add a test that renders at 0 columns between two renders of a scrolled pane and checks that the anchor stays. | regression |  | wrong-behaviour |
 
 ## Repeats
 
@@ -60,10 +59,11 @@ None.
 | 5 | implementation | full | 2586c67517d5ac968032115f411914ffdd1157ff | 452e9d833907f00e8ab0d846fa90b1a42bfc7cf98ff6bd495d1cf34ada2f204c | approve-with-notes | 26 | 0 | 0 | 0 | 0 |  |
 | 6 | implementation | follow-up | 78d4d37b8d17c126435001926b2e379aadaf6268 | 2b491780e6c49a3253d354def358fd699fb9cd3edeb8e52b8ce98da2692941ff | approve-with-notes | 0 | 0 | 1 | 17 | 0 |  |
 | 7 | implementation | follow-up | a791882b38af41f3e77b40bf42c73008d32b396e | 504cf63a9cc562d28c9a396896ca15987d375e3e56b99bc600d2620894c93bcb | approve-with-notes | 0 | 0 | 1 | 0 | 0 |  |
+| 8 | implementation | follow-up | b3c4b591cffba229bb747c298bb1004aaccf8a6a | 504cf63a9cc562d28c9a396896ca15987d375e3e56b99bc600d2620894c93bcb | approve | 0 | 0 | 0 | 1 | 0 |  |
 
 ## Judge
 
-judge: 2 questions, 0.000 USD
+judge: 0 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -219,8 +219,11 @@ None.
 
 ## Lens notes
 
-- verify: R-12: the spec now defines the bottom as the last row of the newest line on the screen, D3 says a scroll back by one row keeps the anchor and PageDown to the end clears it, scroll_rows clears the anchor through bottom_shows, and render clears it when a resize brings the bottom onto the screen, measured beside the bar.
-- verify: The image-pane hunks of the fix commit move the terminal leave out of session, so it runs after an error of the probe or the image size. They hold no defect of the R-12 claim.
+- verify: R-12: the fix adds the guard full.width > 0 to the anchor clear in render (pane.rs 641). Before it, a render at width 0 cleared the anchor: top_row gives None at width 0, and all_fit counts 0 rows for every line at width 0, so it returned true. Now a 0-column render keeps the anchor, which matches the spec rule that an area 0 columns wide shows no row, so the newest line is not on the screen.
+- verify: R-12: the anchor still clears where the spec needs it. scroll_rows sets it to None when bottom_shows holds (pane.rs 397), so PageDown to the end clears it. render clears it when the newest row shows beside the bar or every row fits at the full width (pane.rs 646-651).
+- verify: R-12: I checked the edge cases next to the guard. At width 1, beside_bar has width 0, so bottom is false and the anchor stays unless every row fits at width 1. That is the same as before the fix. At height 0, bottom_shows and all_fit both return false for a non-empty store, so the anchor stays.
+- verify: R-12: the test render_at_zero_width_keeps_the_scroll_position (tests/pane.rs 575-582) sets an anchor with scroll_rows(-2) at 20x3 and renders at width 0. It then asserts that the anchor is unchanged. With the old condition the anchor would be None and the assertion would fail, so the test detects the defect.
+- verify: The review.md ranges of diff-hunks.txt were not read, because the agent rules forbid a read of review.md. They are review output, not code of the change.
 
 ## Ledger
 
@@ -237,7 +240,7 @@ None.
 | R-9 | 1 | 2 | should-fix | in-change | drift | ["artifact",["design.md","D4. SGR to styles at the arrival of a line, with a parser from a crate"],"A control character that remains becomes U+FFFD, and a tab becomes a space."] | resolved | resolved in round 2 from fixed 2eee1a80af222ddce34c96e88dd0880f86a59658 |  |  | D4 restates the control-character rule of `clean` for game text, so the game path and the player and system path get two copies of one rule. |
 | R-10 | 1 | 2 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D5. An unfinished line is state of the pane, not a line of the store"],"A selection cannot start in the unfinished line."] | resolved | resolved in round 2 from fixed 2eee1a80af222ddce34c96e88dd0880f86a59658 |  |  | D5 says a selection cannot start in the unfinished line, and no task creates the check or its test. That row is not in the store, so a press on it has no line id to map to. |
 | R-11 | 1 | 2 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-tui/src/app.rs",151] | resolved | resolved in round 2 from fixed 2eee1a80af222ddce34c96e88dd0880f86a59658 |  |  | Today a Reset clears the lines of every world. No requirement or task says that a Reset also clears the unfinished line, the anchor, the selection and the SGR state of each world, so a stale prompt or color can survive a server restart. |
-| R-12 | 1 | 7 | should-fix | in-change | wrong-behaviour | ["artifact",["specs/output-pane/spec.md","Requirement: The pane follows new lines at the bottom"],"If the newest line is on the screen, a new line SHALL scroll the pane, so the newest line stays on the last row."] | fixed | 026c9b15307f9d9918d01eae7f9149d0e5da51e8 |  |  | The spec follows new lines whenever the newest line is on the screen, but D3 follows only a pane with no anchor. A pane scrolled back by one row still shows the newest line, and nothing says the anchor clears there or after PageDown reaches the bottom. |
+| R-12 | 1 | 8 | should-fix | in-change | wrong-behaviour | ["artifact",["specs/output-pane/spec.md","Requirement: The pane follows new lines at the bottom"],"If the newest line is on the screen, a new line SHALL scroll the pane, so the newest line stays on the last row."] | resolved | resolved in round 8 from fixed 026c9b15307f9d9918d01eae7f9149d0e5da51e8 |  |  | The spec follows new lines whenever the newest line is on the screen, but D3 follows only a pane with no anchor. A pane scrolled back by one row still shows the newest line, and nothing says the anchor clears there or after PageDown reaches the bottom. |
 | R-13 | 1 | 2 | should-fix | in-change | wrong-behaviour | ["artifact",["specs/terminal-client/spec.md","Requirement: Keys and the mouse scroll the pane"],"PageUp SHALL scroll the pane back by its height less one row, and PageDown SHALL scroll it forward by the same amount."] | resolved | resolved in round 2 from fixed 2eee1a80af222ddce34c96e88dd0880f86a59658 |  | severity? blocker 0.80 | PageUp scrolls by the height less one row. A pane of 1 row scrolls by 0, and a 2-row terminal gives the pane 0 rows, where a u16 subtraction underflows. No rule bounds the step. |
 | R-14 | 1 | 3 | should-fix | in-change | unmet-requirement | ["artifact",["tasks.md","3. The line store"],"Add a property test for any line and any width from 1 to 300."] | resolved | resolved in round 3 from fixed 43d8406742f6886ae58ba7d5b4bf6a37744e3054 |  |  | inv-14: The wrap property covers widths 1 to 300, but a pane of 1 column that shows the scroll bar leaves a text width of 0, and a terminal can shrink to 0 columns. No test passes width 0, where a wrap that places at least one grapheme per row can loop or panic.; inv-4: The wrap invariant has no rule for a grapheme wider than the area. At width 1 a CJK grapheme, or at width 5 a family emoji with a learned width of 8, fits no row, so no wrap keeps every byte with no row wider than the width. |
 | R-15 | 1 | 4 | should-fix | in-change | false-test | ["artifact",["specs/output-pane/spec.md","Requirement: The scroll bar shows the position"],"If all rows fit, the pane SHALL show no scroll bar."] | resolved | resolved in round 4 from fixed c0afe377089ad45535ac113aea9fa7aa0696cebc |  |  | The scroll bar scenarios use 3 lines and 100 lines in 10 rows. No test passes rows equal to the height, nor the case where the bar column makes the rows wrap past the height, so the bar can flip on and off with each render. |
@@ -345,7 +348,7 @@ None.
 | crates/mu-tui/src/layout.rs | 1c0527ed55f420181f4466e059076ab9a82d5b91 |
 | crates/mu-tui/src/lib.rs | d3aca2f8da9fa91dd9ba3b291e0a2cb5269e4137 |
 | crates/mu-tui/src/model.rs | 75987f22e576a1240b6906d28f2e076a97f16884 |
-| crates/mu-tui/src/pane.rs | 477a7b3c688886ad7e0c6679b71cadfa1abb3b7d |
+| crates/mu-tui/src/pane.rs | 041a8a5a3bfaa26fe9466989f044c2060ad6a316 |
 | crates/mu-tui/src/probe.rs | 3aaa1f8481267d17de6114d854d5d23bd4418568 |
 | crates/mu-tui/src/run.rs | b522ef46def93ebe2f6b157c847a71178f319e92 |
 | crates/mu-tui/src/screen.rs | 4133fac26a75eb3239ee6a8bf62657a992cbc26e |
@@ -363,7 +366,7 @@ None.
 | crates/mu-tui/tests/data/transcript-lines.txt | 34083fad979786f7212be1ee0e50fbead6ac828c |
 | crates/mu-tui/tests/keymap.rs | 8b37a9a9242c1a949e505772cccceed422b96260 |
 | crates/mu-tui/tests/kitty.rs | e39a2f5666d10bd0cf9b327341d49cfd2a613f0d |
-| crates/mu-tui/tests/pane.rs | e1f86b41b2bf09f8d5644eb4850fccd583b06932 |
+| crates/mu-tui/tests/pane.rs | 8fbef7aebf5faf8dc846117c9aecb445a55b0319 |
 | crates/mu-tui/tests/probe.rs | f8f22f2e1f0e707fcf0d10263808b3a30bd43d64 |
 | crates/mu-tui/tests/screen.rs | 14f8e8ca1998447c4c9da91a2b6b783c3dd9a2e0 |
 | crates/mu-tui/tests/snapshots/app__first_view_snapshot.snap | 4f61093601e1a81c3933bc090c0442d1357a46e4 |
