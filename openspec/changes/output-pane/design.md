@@ -179,6 +179,15 @@ The pixels go to the terminal once, as an effect. `Effect::TransmitImage` writes
 
 Before code depends on this design, task 10.1 checks `ratatui-image` under the rule of reuse. The check: can it render kitty unicode placeholders into the ratatui buffer as a line of fixed rows? If it can, the pane uses it. Otherwise the pane writes the placeholders itself, from the spike as an example only. Task 10.2 follows the result of 10.1.
 
+The check of `ratatui-image` 11.1.0 found that it can draw the placeholders, but the pane does not use it, for four reasons:
+
+1. Its kitty widget writes the transmission of the pixels into the symbol of the first cell, on the first render. Here the transmission is an effect, and the render has no side effect.
+2. `Kitty::new` takes the decoded image. An image line here holds an id, a size and a URL, not pixels.
+3. It writes the row and column marks only in the first cell of each row, and the terminal infers the other cells from the cell to the left. The scenario "Placeholder cells" needs the marks in each cell.
+4. It brings `rustix` 0.38 beside the `rustix` 1 of the workspace, a sixel encoder and `rand`.
+
+So the pane writes the placeholders itself. The 297 diacritics come from the file `rowcolumn-diacritics.txt` of the kitty documentation. `kitty_image`, which also has the table, has the license LGPL-3.0, and `deny.toml` does not allow it.
+
 The URL row goes through `clean`, because #13 will take the URL from the game. In this change, no event of the server holds an image. The tests give the pane an image line. A development example shows one in a real terminal, for the visual check that the spike did not do. The command is `cargo run -p mu-tui --example image-pane -- <file.png>`.
 
 Enforced by: the scenarios of `output-pane` on `TestBackend`, and the visual check in task 10.5.
@@ -272,6 +281,11 @@ Each row is a fact that a task read in the current source or documentation. The 
 | The reply to a cell size query, `CSI 6 ; h ; w t` | Termina 0.3.3 drops it and gives no event | A parse of `ESC [6;20;10t` by termina 0.3.3 |
 | The pixel size of the window | `WindowSize` of Termina has `pixel_width` and `pixel_height`, each an `Option<u16>` that holds a value when the platform reports it | termina 0.3.3, `src/lib.rs` |
 | `vt100` gives the cursor and the cells | `Screen::cursor_position` gives the row and the column from 0. `Screen::cell` gives a cell with `fgcolor`, `bold` and `inverse` | vt100 0.18.1, `src/screen.rs` and `src/cell.rs` |
+| The kitty unicode placeholder | U+10EEEE. The foreground color holds the image id, 24 bits in true color. A third diacritic holds the most significant byte of a larger id. A cell with no diacritic takes its row from the cell to the left, and its column plus one | kitty documentation, "Unicode placeholders" |
+| The table of diacritics | `rowcolumn-diacritics.txt` lists 297 diacritics, from U+0305 for 0 to U+1D244 for 296 | The file, read on 2026-11-19 |
+| The virtual placement | Transmit the image with `q=2`, and place it with `a=p,U=1,i=<id>,c=<columns>,r=<rows>`. `a=T` can transmit and place in one command | kitty documentation, "Unicode placeholders" |
+| `ratatui-image` draws kitty placeholders into the buffer | Yes, but it transmits from the render, and it marks only the first cell of each row (D9) | ratatui-image 11.1.0, `src/protocol/kitty.rs` |
+| `kitty-graphics-protocol` builds a transmit command with `U=1` | Yes, with `CommandBuilder`. It has no diacritic table. MIT, with `base64` and `thiserror` | kitty-graphics-protocol 0.1.3, `src/command.rs` |
 
 ## Risks / Trade-offs
 

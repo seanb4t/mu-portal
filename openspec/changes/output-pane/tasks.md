@@ -124,7 +124,7 @@ Load the `rust-best-practices` skill before this group.
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 10.1 Read the current documentation of the kitty graphics protocol for unicode placeholders, the table of 297 diacritics and the virtual placement. Read the documentation of `ratatui-image`, and decide with the check of D9 whether the pane uses it. Add the rows to the table "Checked facts", and the result to D9. Make sure that each difference from the sources is an edit of the design.
+- [x] 10.1 Read the current documentation of the kitty graphics protocol for unicode placeholders, the table of 297 diacritics and the virtual placement. Read the documentation of `ratatui-image`, and decide with the check of D9 whether the pane uses it. Add the rows to the table "Checked facts", and the result to D9. Make sure that each difference from the sources is an edit of the design.
 - [ ] 10.2 Start this task after task 10.1. If 10.1 chose `ratatui-image`, add it to `[workspace.dependencies]` and to the `mu-tui` row of `ALLOWED_CRATES`, and draw the placeholder cells with it. Otherwise, write the placeholder cells in the pane. Add the image line to the store, the size limits of 1 to 297 rows and columns, the clip at the right edge, and the URL fallback through `clean`. Add these tests to `crates/mu-tui/tests/pane.rs`:
   - `image_rows_do_not_wrap`, for "An image at two widths"
   - `image_placeholder_cells`, for "Placeholder cells"
