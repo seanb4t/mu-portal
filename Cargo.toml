@@ -40,6 +40,7 @@ futures = "0.3.34"
 governor = { version = "0.10.4", default-features = false, features = ["std"] }
 hex = "0.4.3"
 http = "1.5.0"
+insta = "1.49.0"
 miniz_oxide = "0.9.1"
 opentelemetry = { version = "0.33.1", default-features = false, features = ["internal-logs", "metrics", "trace"] }
 opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["grpc-tonic", "http-proto", "internal-logs", "metrics", "reqwest-blocking-client", "tls-ring", "trace"] }

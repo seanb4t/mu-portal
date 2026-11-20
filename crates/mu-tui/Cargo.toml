@@ -21,4 +21,5 @@ termina = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
+insta = { workspace = true }
 proptest = { workspace = true }

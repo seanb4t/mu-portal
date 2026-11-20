@@ -96,6 +96,7 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
         "mu-tui",
         &[
             "futures",
+            "insta",
             "proptest",
             "ratatui",
             "ratatui-textarea",

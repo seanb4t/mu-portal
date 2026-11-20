@@ -109,6 +109,15 @@ fn first_view() {
 }
 
 #[test]
+fn first_view_snapshot() {
+    let mut app = two_worlds();
+    type_text(&mut app, "look");
+    let mut terminal = Terminal::new(TestBackend::new(40, 6)).unwrap();
+    terminal.draw(|frame| view(&mut app, frame)).unwrap();
+    insta::assert_snapshot!(terminal.backend());
+}
+
+#[test]
 fn world_order() {
     let mut app = app(&["alpha-2/cy", "alpha/bea", "alpha/aria"]);
     assert_eq!(top(&mut app), "[alpha/aria] alpha/bea alpha-2/cy");

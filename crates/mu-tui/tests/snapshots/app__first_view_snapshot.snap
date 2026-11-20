@@ -1,0 +1,10 @@
+---
+source: crates/mu-tui/tests/app.rs
+expression: terminal.backend()
+---
+"[alpha/aria] beta/bryn*                 "
+"Welcome, aria.                          "
+"                                        "
+"                                        "
+"                                        "
+"look                                    "
