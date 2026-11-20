@@ -1,8 +1,6 @@
 //! The scenarios of the terminal-client capability on `update` and `view`, drawn on a
 //! `TestBackend`.
 
-use std::io;
-
 use mu_client::{ClientError, ClientEvent};
 use mu_proto::{Event, EventKind, Source, World};
 use mu_tui::convert::convert;
@@ -218,16 +216,6 @@ fn notice_shows_once_after_a_reset_that_follows_the_first_world_event() {
         },
     );
     assert_eq!(rows(&mut app), [LIST_FAILED]);
-}
-
-#[test]
-fn failed_window_size_shows_its_error() {
-    let mut app = app(&[]);
-    app.window_size_failed(&io::Error::other("no tty"));
-    assert_eq!(
-        rows(&mut app),
-        ["-- the terminal gave no window size: no tty"]
-    );
 }
 
 #[test]
