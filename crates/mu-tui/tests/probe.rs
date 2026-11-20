@@ -1,69 +1,171 @@
-//! The parser of the probe replies and what the replies give.
+//! The framer of the probe input and what the answers give.
 
-use mu_tui::probe::{GRAPHEMES, Outcome, Reply, parse};
+use mu_tui::probe::{Answer, GRAPHEMES, Outcome, flush, frame};
 use mu_tui::width::{Class, Rule};
+use termina::Event;
+use termina::escape::csi::{DecModeSetting, DecPrivateMode, DecPrivateModeCode};
+use termina::event::{KeyCode, KeyEvent, Modifiers};
+
+const GRAPHEME_MODE: DecPrivateMode = DecPrivateMode::Code(DecPrivateModeCode::GraphemeClustering);
+
+fn mode(setting: DecModeSetting) -> Answer {
+    Answer::Mode {
+        mode: GRAPHEME_MODE,
+        setting,
+    }
+}
+
+fn key(c: char, modifiers: Modifiers) -> Event {
+    Event::Key(KeyEvent::new(KeyCode::Char(c), modifiers))
+}
+
+/// What the framer gave for `reads`, and the bytes that it still holds.
+#[derive(Default)]
+struct Framing {
+    answers: Vec<Answer>,
+    events: Vec<Event>,
+    pending: Vec<u8>,
+}
+
+/// Frames each of `reads` in turn, as the probe does.
+fn framed(reads: &[&[u8]]) -> Framing {
+    let mut framing = Framing::default();
+    for read in reads {
+        let step = frame(&mut framing.pending, read);
+        framing.answers.extend(step.answers);
+        framing.events.extend(step.events);
+    }
+    framing
+}
 
 #[test]
 fn replies_parse() {
-    let parsed = parse(b"\x1b[?2027;2$y\x1b[1;3R\x1b_Gi=31;OK\x1b\\\x1b[?62;22c");
+    let framing = framed(&[b"\x1b[?2027;2$y\x1b[1;3R\x1b_Gi=31;OK\x1b\\\x1b[?62;22c"]);
     assert_eq!(
-        parsed.replies,
+        framing.answers,
         [
-            Reply::Mode {
-                mode: 2027,
-                value: 2
-            },
-            Reply::Cursor { row: 1, col: 3 },
-            Reply::Graphics(true),
-            Reply::Da1,
+            mode(DecModeSetting::Reset),
+            Answer::Cursor { row: 1, col: 3 },
+            Answer::Graphics(true),
+            Answer::Da1,
         ]
     );
 }
 
 #[test]
+fn replies_come_from_termina() {
+    let each = [
+        (b"\x1b[12;5R".as_slice(), Answer::Cursor { row: 12, col: 5 }),
+        (b"\x1b[?2027;2$y", mode(DecModeSetting::Reset)),
+        (b"\x1b[?62;22c", Answer::Da1),
+    ];
+    let results = each.map(|(reply, _)| framed(&[reply]));
+    assert_eq!(
+        results.map(|framing| (framing.answers, framing.events.len())),
+        each.map(|(_, answer)| (vec![answer], 0))
+    );
+}
+
+#[test]
 fn graphics_error_is_no_graphics() {
-    let parsed = parse(b"\x1b_Gi=31;ENOTSUPPORTED:no\x1b\\");
-    assert_eq!(parsed.replies, [Reply::Graphics(false)]);
+    let framing = framed(&[b"\x1b_Gi=31;ENOTSUPPORTED:no\x1b\\"]);
+    assert_eq!(framing.answers, [Answer::Graphics(false)]);
 }
 
 #[test]
-fn graphics_reply_of_another_id_is_other_input() {
-    let input = b"\x1b_Gi=7;OK\x1b\\";
-    let parsed = parse(input);
-    assert_eq!(parsed.other, input);
+fn graphics_reply_of_another_id_is_dropped() {
+    let framing = framed(&[b"\x1b_Gi=7;OK\x1b\\"]);
+    assert_eq!((framing.answers, framing.events), (vec![], vec![]));
 }
 
 #[test]
-fn keys_between_replies_are_other_input() {
-    let parsed = parse(b"a\x1b[1;2Rb\x1b[Ac");
-    assert_eq!(parsed.other, b"ab\x1b[Ac");
+fn keys_during_the_probe_are_early_events() {
+    let framing = framed(&[b"a\x1b[1;2Rb\x1b[Ac"]);
+    assert_eq!(
+        framing.events,
+        [
+            key('a', Modifiers::NONE),
+            key('b', Modifiers::NONE),
+            Event::Key(KeyCode::Up.into()),
+            key('c', Modifiers::NONE),
+        ]
+    );
+}
+
+#[test]
+fn alt_bracket_before_a_reply() {
+    let framing = framed(&[b"\x1b[\x1b[12;5R"]);
+    assert_eq!(
+        (framing.events, framing.answers),
+        (
+            vec![key('[', Modifiers::ALT)],
+            vec![Answer::Cursor { row: 12, col: 5 }]
+        )
+    );
+}
+
+#[test]
+fn question_csi_before_a_reply() {
+    let framing = framed(&[b"\x1b[?\x1b[12;5R\x1b[?62c"]);
+    assert_eq!(
+        framing.answers,
+        [Answer::Cursor { row: 12, col: 5 }, Answer::Da1]
+    );
+}
+
+#[test]
+fn open_apc_does_not_hide_da1() {
+    let framing = framed(&[b"\x1b_\x1b[?62c"]);
+    assert_eq!(
+        (framing.answers, framing.events),
+        (vec![Answer::Da1], vec![key('_', Modifiers::ALT)])
+    );
+}
+
+#[test]
+fn apc_end_split_across_reads() {
+    let framing = framed(&[b"\x1b_Gi=31;OK\x1b", b"\\"]);
+    assert_eq!(framing.answers, [Answer::Graphics(true)]);
+}
+
+#[test]
+fn split_reply_across_reads() {
+    let framing = framed(&[b"\x1b[12", b";5R"]);
+    assert_eq!(framing.answers, [Answer::Cursor { row: 12, col: 5 }]);
 }
 
 #[test]
 fn incomplete_reply_stays() {
-    let input = b"x\x1b[1;";
-    let parsed = parse(input);
-    assert_eq!(parsed.used, 1);
+    let framing = framed(&[b"x\x1b[1;"]);
+    assert_eq!(framing.pending, b"\x1b[1;");
 }
 
 #[test]
 fn incomplete_graphics_reply_stays() {
-    let parsed = parse(b"\x1b_Gi=31;O");
-    assert_eq!(parsed.used, 0);
+    let framing = framed(&[b"\x1b_Gi=31;O"]);
+    assert_eq!(framing.pending, b"\x1b_Gi=31;O");
+}
+
+#[test]
+fn open_sequence_at_the_end_becomes_keys() {
+    assert_eq!(
+        flush(b"\x1b[1"),
+        [key('[', Modifiers::ALT), key('1', Modifiers::NONE)]
+    );
 }
 
 /// The replies of a terminal that gives each probe grapheme the width that `width` returns, with no DA1 if
 /// `complete` is false.
-fn replies(width: impl Fn(&str) -> u16, complete: bool) -> Vec<Reply> {
-    let mut replies: Vec<Reply> = GRAPHEMES
+fn replies(width: impl Fn(&str) -> u16, complete: bool) -> Vec<Answer> {
+    let mut replies: Vec<Answer> = GRAPHEMES
         .iter()
-        .map(|g| Reply::Cursor {
+        .map(|g| Answer::Cursor {
             row: 1,
             col: width(g) + 1,
         })
         .collect();
     if complete {
-        replies.push(Reply::Da1);
+        replies.push(Answer::Da1);
     }
     replies
 }
@@ -86,25 +188,13 @@ fn replies_with_no_da1_keep_the_default_profile() {
 
 #[test]
 fn mode_reset_means_the_probe_turned_it_on() {
-    let outcome = Outcome::learn(&[
-        Reply::Mode {
-            mode: 2027,
-            value: 2,
-        },
-        Reply::Da1,
-    ]);
+    let outcome = Outcome::learn(&[mode(DecModeSetting::Reset), Answer::Da1]);
     assert!(outcome.resets_grapheme_mode());
 }
 
 #[test]
 fn mode_set_means_the_probe_left_it() {
-    let outcome = Outcome::learn(&[
-        Reply::Mode {
-            mode: 2027,
-            value: 1,
-        },
-        Reply::Da1,
-    ]);
+    let outcome = Outcome::learn(&[mode(DecModeSetting::Set), Answer::Da1]);
     assert!(!outcome.resets_grapheme_mode());
 }
 
@@ -115,10 +205,7 @@ fn no_mode_reply_means_the_mode_goes_off() {
 
 #[test]
 fn permanently_set_mode_stays() {
-    let outcome = Outcome::learn(&[Reply::Mode {
-        mode: 2027,
-        value: 3,
-    }]);
+    let outcome = Outcome::learn(&[mode(DecModeSetting::PermanentlySet)]);
     assert!(!outcome.resets_grapheme_mode());
 }
 
@@ -130,7 +217,7 @@ fn cursor_reply_for_each_grapheme_measures_the_widths() {
 #[test]
 fn extra_cursor_reply_keeps_the_default_profile() {
     let mut extra = replies(eight_wide_zwj, true);
-    extra.insert(0, Reply::Cursor { row: 1, col: 3 });
+    extra.insert(0, Answer::Cursor { row: 1, col: 3 });
     let outcome = Outcome::learn(&extra);
     assert_eq!(
         (outcome.measured, outcome.profile.rule(Class::Zwj)),
