@@ -7,8 +7,8 @@ use mu_proto::{EventKind, WorldState};
 
 use mu_fake_server::{Listening, Script, ScriptedGame};
 use support::process::{
-    BOUND, PtyClient, PtyOn, Reaper, Relay, SERVING, ServerBuilder, Session, TWO_WORLDS, mu_on_pty,
-    private_tempdir,
+    Answers, BOUND, PtyClient, PtyOn, Reaper, Relay, SERVING, ServerBuilder, Session, TWO_WORLDS,
+    mu_on_pty, private_tempdir,
 };
 use support::{ConfigDir, mode, stderr};
 
@@ -208,11 +208,90 @@ async fn ctrl_c_quits_client_only() {
 /// A server with the configured world `alpha/aria` on `game`, and a client on it. The game
 /// listens and the configuration stays until the last part drops.
 async fn on_game(game: &ScriptedGame) -> (Session, PtyClient, (Listening, ConfigDir)) {
+    on_game_with(game, "", Answers::Default).await
+}
+
+/// [`on_game`], with `more` in the character file and `answers` to the probe of the client.
+async fn on_game_with(
+    game: &ScriptedGame,
+    more: &str,
+    answers: Answers,
+) -> (Session, PtyClient, (Listening, ConfigDir)) {
     let listening = game.listen().await.unwrap();
-    let conf = ConfigDir::tcp_world(listening.addr().port(), "autoconnect = true\n");
+    let character = format!("autoconnect = true\n{more}");
+    let conf = ConfigDir::tcp_world(listening.addr().port(), &character);
     let session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
-    let client = PtyClient::start(session.server.socket(), session.server.dir().path());
+    let client = PtyClient::start_with(
+        session.server.socket(),
+        session.server.dir().path(),
+        answers,
+    );
     (session, client, (listening, conf))
+}
+
+/// The character setting of a game that sends UTF-8.
+const UTF8: &str = "charset = \"utf-8\"\n";
+
+/// The family emoji `👨‍👩‍👧`, a grapheme of the ZWJ class.
+const FAMILY: &str = "👨\u{200D}👩\u{200D}👧";
+
+/// Waits until the row that starts with the man of [`FAMILY`] has `x` at the 0-based column
+/// `col`.
+async fn x_at(client: &PtyClient, col: u16) {
+    let has = |screen: &vt100::Screen, row, col, text: &str| {
+        screen
+            .cell(row, col)
+            .is_some_and(|cell| cell.contents().starts_with(text))
+    };
+    client
+        .wait_screen(&format!("x at column {}", col + 1), |screen| {
+            (0..24).any(|row| has(screen, row, 0, "👨") && has(screen, row, col, "x"))
+        })
+        .await;
+}
+
+fn family_game() -> ScriptedGame {
+    ScriptedGame::new(
+        Script::new()
+            .send(format!("{FAMILY}x\r\n").as_bytes())
+            .silent(),
+    )
+}
+
+#[tokio::test]
+async fn probe_adds_code_point_widths() {
+    let game = family_game();
+    let (_session, client, _held) = on_game_with(&game, UTF8, Answers::ZwjWidth(8)).await;
+    x_at(&client, 8).await;
+}
+
+#[tokio::test]
+async fn probe_with_no_answer() {
+    let game = family_game();
+    let (_session, client, _held) = on_game_with(&game, UTF8, Answers::None).await;
+    client
+        .wait_top("the world", |top| top.contains("alpha/aria"))
+        .await;
+    x_at(&client, 2).await;
+}
+
+#[tokio::test]
+async fn late_answer() {
+    let session = Session::with_worlds(TWO_WORLDS).await;
+    let mut client = PtyClient::start_with(
+        session.server.socket(),
+        session.server.dir().path(),
+        Answers::Late,
+    );
+    client.wait_greeting().await;
+    // The late answers went out before the frame of the greeting, so the client reads them
+    // before this key.
+    client.send(b"z");
+    client
+        .wait_rows("only z on the input line", |rows| {
+            rows.last().is_some_and(|row| row.trim() == "z")
+        })
+        .await;
 }
 
 #[tokio::test]

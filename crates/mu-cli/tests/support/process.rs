@@ -485,12 +485,143 @@ impl Session {
     }
 }
 
+/// How the pseudo-terminal answers the startup probe of the client. No answer covers the kitty
+/// graphics query, because `vt100` has no kitty graphics.
+#[derive(Clone, Copy, Debug)]
+pub enum Answers {
+    /// DA1 at once, each cursor position from the screen, and mode 2027 as known and reset.
+    Default,
+    /// The default answers, with mode 2027 as set.
+    GraphemeModeSet,
+    /// The default answers, with this width for each grapheme that holds a ZWJ.
+    ZwjWidth(u16),
+    /// No answer to any query.
+    None,
+    /// The default answers, after the first frame.
+    Late,
+}
+
+/// The queries of the probe that the pseudo-terminal answers.
+const QUERIES: [&[u8]; 3] = [b"\x1b[6n", b"\x1b[c", b"\x1b[?2027$p"];
+
+/// Answers the queries in the bytes of the client, from the `vt100` screen at each query.
+struct Answerer {
+    answers: Answers,
+    /// Bytes that can start a query, held until the next read.
+    pending: Vec<u8>,
+    /// The late answers, held until the first frame.
+    held: Vec<u8>,
+    /// True after DA1, the last query of the probe, which erases its row before DA1.
+    probed: bool,
+}
+
+impl Answerer {
+    const fn new(answers: Answers) -> Self {
+        Self {
+            answers,
+            pending: Vec::new(),
+            held: Vec::new(),
+            probed: false,
+        }
+    }
+
+    /// Gives `bytes` to `parser`, and returns the answers to write now.
+    fn feed(&mut self, bytes: &[u8], parser: &mut vt100::Parser) -> Vec<u8> {
+        self.pending.extend_from_slice(bytes);
+        let mut out = Vec::new();
+        loop {
+            let found = QUERIES
+                .iter()
+                .filter_map(|query| {
+                    let at = self
+                        .pending
+                        .windows(query.len())
+                        .position(|window| window == *query)?;
+                    Some((at, *query))
+                })
+                .min_by_key(|(at, _)| *at);
+            let Some((at, query)) = found else {
+                break;
+            };
+            self.probed |= query == b"\x1b[c";
+            let end = at + query.len();
+            parser.process(&self.pending[..end]);
+            let answer = self.answer(query, &self.pending[..at], parser.screen());
+            self.pending.drain(..end);
+            out.extend(answer);
+        }
+        // An escape near the end can start a query that the next read completes.
+        let keep = self
+            .pending
+            .iter()
+            .rposition(|&byte| byte == 0x1b)
+            .filter(|&at| {
+                let tail = &self.pending[at..];
+                QUERIES.iter().any(|query| query.starts_with(tail))
+            })
+            .unwrap_or(self.pending.len());
+        parser.process(&self.pending[..keep]);
+        self.pending.drain(..keep);
+        if let Answers::Late = self.answers {
+            self.held.append(&mut out);
+            let drawn = self.probed
+                && parser
+                    .screen()
+                    .rows(0, 80)
+                    .next()
+                    .is_some_and(|top| !top.trim().is_empty());
+            if drawn {
+                out = std::mem::take(&mut self.held);
+            }
+        }
+        out
+    }
+
+    /// The answer to `query`. `before` holds the bytes before the query, for the grapheme of a
+    /// cursor position query.
+    fn answer(&self, query: &[u8], before: &[u8], screen: &vt100::Screen) -> Vec<u8> {
+        if let Answers::None = self.answers {
+            return Vec::new();
+        }
+        match query {
+            b"\x1b[6n" => {
+                let (row, col) = screen.cursor_position();
+                let col = match self.answers {
+                    Answers::ZwjWidth(width) if grapheme(before).contains('\u{200D}') => width,
+                    _ => col,
+                };
+                format!("\x1b[{};{}R", row + 1, col + 1).into_bytes()
+            }
+            b"\x1b[c" => b"\x1b[?62;22c".to_vec(),
+            _ => {
+                let value = if let Answers::GraphemeModeSet = self.answers {
+                    1
+                } else {
+                    2
+                };
+                format!("\x1b[?2027;{value}$y").into_bytes()
+            }
+        }
+    }
+}
+
+/// The grapheme that the probe wrote before a cursor position query: the text after the last
+/// erase of the line.
+fn grapheme(before: &[u8]) -> String {
+    let erase = b"\x1b[2K";
+    let start = before
+        .windows(erase.len())
+        .rposition(|window| window == erase)
+        .map_or(0, |at| at + erase.len());
+    String::from_utf8_lossy(&before[start..]).into_owned()
+}
+
 /// `mu client` in a pseudo-terminal of 80 by 24, with its screen read by `vt100`.
 pub struct PtyClient {
     screen: Arc<watch::Sender<vt100::Parser>>,
     /// Every byte that the client wrote, in order.
     output: Arc<watch::Sender<Vec<u8>>>,
-    writer: Box<dyn std::io::Write + Send>,
+    writer: Arc<Mutex<Box<dyn std::io::Write + Send>>>,
     killer: Box<dyn portable_pty::ChildKiller + Send + Sync>,
     exit: Option<tokio::sync::oneshot::Receiver<portable_pty::ExitStatus>>,
     // The pseudo-terminal must stay open while the client runs.
@@ -498,8 +629,14 @@ pub struct PtyClient {
 }
 
 impl PtyClient {
-    /// Starts `mu client` with `--socket <socket>` in `cwd`, with [`super::test_env`].
+    /// Starts `mu client` with `--socket <socket>` in `cwd`, with [`super::test_env`] and the
+    /// default answers to the probe.
     pub fn start(socket: &Path, cwd: &Path) -> Self {
+        Self::start_with(socket, cwd, Answers::Default)
+    }
+
+    /// Starts `mu client` as [`Self::start`] does, with `answers` to the probe.
+    pub fn start_with(socket: &Path, cwd: &Path, answers: Answers) -> Self {
         use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
         let pair = native_pty_system()
@@ -540,19 +677,30 @@ impl PtyClient {
         );
         let output = Arc::new(watch::channel(Vec::new()).0);
         let mut reader = pair.master.try_clone_reader().unwrap();
+        let writer = Arc::new(Mutex::new(pair.master.take_writer().unwrap()));
         let sender = Arc::clone(&screen);
         let bytes = Arc::clone(&output);
+        let answer_to = Arc::clone(&writer);
         std::thread::spawn(move || {
+            let mut answerer = Answerer::new(answers);
             let mut buffer = [0_u8; 4096];
             while let Ok(n @ 1..) = reader.read(&mut buffer) {
                 bytes.send_modify(|all| all.extend_from_slice(&buffer[..n]));
-                sender.send_modify(|parser| parser.process(&buffer[..n]));
+                // The answers go out before a wait on the screen wakes.
+                sender.send_modify(|parser| {
+                    let answer = answerer.feed(&buffer[..n], parser);
+                    if !answer.is_empty() {
+                        let mut out = answer_to.lock().unwrap();
+                        out.write_all(&answer).unwrap();
+                        out.flush().unwrap();
+                    }
+                });
             }
         });
         Self {
             screen,
             output,
-            writer: pair.master.take_writer().unwrap(),
+            writer,
             killer,
             exit: Some(exit),
             _master: pair.master,
@@ -651,8 +799,9 @@ impl PtyClient {
 
     /// Types `bytes` into the terminal.
     pub fn send(&mut self, bytes: &[u8]) {
-        self.writer.write_all(bytes).unwrap();
-        self.writer.flush().unwrap();
+        let mut writer = self.writer.lock().unwrap();
+        writer.write_all(bytes).unwrap();
+        writer.flush().unwrap();
     }
 
     /// Waits up to `bound` for the exit of the client. None means that it still runs.
