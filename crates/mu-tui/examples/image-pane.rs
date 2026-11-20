@@ -45,11 +45,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let grapheme_mode = Arc::new(AtomicBool::new(true));
     let (mut terminal, reader) = screen::open(&grapheme_mode)?;
     let result = session(&mut terminal, &reader, &grapheme_mode, &path, &png, size);
-    screen::leave(
+    let left = screen::leave(
         terminal.backend_mut(),
         grapheme_mode.load(Ordering::Relaxed),
-    )?;
-    result
+    );
+    Ok(screen::finish(result, left)?)
 }
 
 /// Probes the terminal, shows the pane with the image until the user leaves, and deletes the
@@ -62,14 +62,14 @@ fn session(
     path: &str,
     png: &[u8],
     (width, height): (u32, u32),
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> io::Result<()> {
     let cell = screen::cell(terminal)?;
     let (outcome, _early) = probe::run(terminal.backend_mut(), probe::WAIT)?;
     grapheme_mode.store(outcome.resets_grapheme_mode(), Ordering::Relaxed);
     let graphics = outcome.graphics;
     let size = cell.unwrap_or(CELL);
     let image = Image::new(ID, cells(height, size.height), cells(width, size.width))
-        .ok_or("the image id is out of range")?;
+        .ok_or_else(|| io::Error::other("the image id is out of range"))?;
 
     let mut pane = PaneState::with_caps(Caps::from(&outcome).into());
     for n in 1..=200 {
@@ -88,10 +88,11 @@ fn session(
     let deleted = if graphics { delete(terminal) } else { Ok(()) };
     match (shown, deleted) {
         (Ok(()), Ok(())) => Ok(()),
-        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error.into()),
-        (Err(shown), Err(deleted)) => {
-            Err(format!("{shown}; the delete of the image also failed: {deleted}").into())
-        }
+        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+        (Err(shown), Err(deleted)) => Err(io::Error::new(
+            shown.kind(),
+            format!("{shown} (the delete of the image also failed: {deleted})"),
+        )),
     }
 }
 
