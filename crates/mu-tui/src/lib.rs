@@ -13,6 +13,7 @@ mod model;
 mod pane;
 pub mod probe;
 mod run;
+pub mod screen;
 pub mod store;
 mod text;
 mod update;

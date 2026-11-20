@@ -9,7 +9,7 @@ use std::num::NonZeroU16;
 use std::sync::Arc;
 
 use ratatui::buffer::{Buffer, CellDiffOption};
-use ratatui::layout::Rect;
+use ratatui::layout::{Rect, Size};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget};
 use unicode_segmentation::UnicodeSegmentation;
@@ -61,6 +61,8 @@ pub struct Caps {
     pub profile: Profile,
     /// True if the terminal draws kitty images.
     pub graphics: bool,
+    /// The size of one cell in pixels, if the terminal gives it.
+    pub cell: Option<Size>,
 }
 
 /// The kitty unicode placeholder.

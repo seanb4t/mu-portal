@@ -279,6 +279,7 @@ fn cells_take_the_learned_width() {
     let mut pane = PaneState::with_caps(Arc::new(Caps {
         profile: Profile::learn(&[(FAMILY, 8)]),
         graphics: false,
+        cell: None,
     }));
     pane.push(&format!("{FAMILY}x"));
     let buf = render(&mut pane, 20, 3);
@@ -297,6 +298,7 @@ fn learned_width_of_a_class_that_is_not_risky_is_forced() {
     let mut pane = PaneState::with_caps(Arc::new(Caps {
         profile: Profile::learn(&[("①", 2)]),
         graphics: false,
+        cell: None,
     }));
     pane.push("①x");
     let buf = render(&mut pane, 20, 3);
@@ -387,6 +389,7 @@ fn image_pane(graphics: bool) -> PaneState {
     PaneState::with_caps(Arc::new(Caps {
         profile: Profile::default(),
         graphics,
+        cell: None,
     }))
 }
 

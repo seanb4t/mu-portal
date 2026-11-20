@@ -155,7 +155,7 @@ Enforced by: unit tests of the copy text, and a pseudo-terminal scenario that re
 
 ### D8. The width probe runs before the first frame, reads the terminal itself, and the test helper answers it
 
-The probe follows the character-width decision, with three differences. It does not send XTVERSION, because Termina drops the reply (D1). It sends a kitty graphics query, because the image path needs to know whether the terminal draws kitty images. It takes the size of a cell in pixels from the pixel fields of the Termina window size, so it sends no cell size query.
+The probe follows the character-width decision, with three differences. It does not send XTVERSION, because Termina drops the reply (D1). It sends a kitty graphics query, because the image path needs to know whether the terminal draws kitty images. It sends no cell size query. Before the probe, the client takes the size of a cell in pixels from the pixel fields of the window size, with `screen::cell`, and keeps it in `Caps` beside the profile and the graphics flag. The `screen` module holds the open and the leave of the terminal, and the example `image-pane` uses the same module.
 
 All queries go in one write, in this order: DECRQM 2027, the set of mode 2027, one grapheme of each width class with a cursor position query after it, the kitty graphics query, and DA1. The set comes before the graphemes, so the probe measures the widths with mode 2027 on. A terminal that does not know the mode ignores the set.
 

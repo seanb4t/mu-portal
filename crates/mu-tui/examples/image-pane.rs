@@ -7,21 +7,22 @@
 //! terminal with no kitty graphics shows the path of the file in place of the image.
 
 use std::io::{self, Write};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{env, fs};
 
+use mu_tui::screen::{self, Screen};
 use mu_tui::store::Image;
 use mu_tui::{Caps, OutputPane, PaneState, kitty, probe};
-use ratatui::Terminal;
-use ratatui::backend::TerminaBackend;
-use termina::escape::csi::{Csi, DecPrivateMode, DecPrivateModeCode, Mode};
+use ratatui::layout::Size;
 use termina::event::{KeyCode, KeyEventKind, Modifiers};
-use termina::{Event, EventReader, PlatformTerminal, Terminal as _, WindowSize};
+use termina::{Event, EventReader};
 
 /// The id of the one image.
 const ID: u32 = 1;
 
 /// The cell size in pixels when the terminal does not report its pixel size.
-const CELL: (u32, u32) = (10, 20);
+const CELL: Size = Size::new(10, 20);
 
 /// The width and the height in pixels from the IHDR chunk of a PNG file.
 fn png_size(png: &[u8]) -> Option<(u32, u32)> {
@@ -33,28 +34,8 @@ fn png_size(png: &[u8]) -> Option<(u32, u32)> {
     Some((number(16)?, number(20)?))
 }
 
-/// The pixels of one cell, from the window size.
-fn cell_size(size: &WindowSize) -> (u32, u32) {
-    match (size.pixel_width, size.pixel_height) {
-        (Some(width), Some(height)) if size.cols > 0 && size.rows > 0 && width > 0 => (
-            u32::from(width) / u32::from(size.cols),
-            u32::from(height) / u32::from(size.rows),
-        ),
-        _ => CELL,
-    }
-}
-
-fn cells(pixels: u32, cell: u32) -> u16 {
-    u16::try_from(pixels.div_ceil(cell.max(1))).unwrap_or(u16::MAX)
-}
-
-fn private_mode(code: DecPrivateModeCode, on: bool) -> Csi {
-    let mode = DecPrivateMode::Code(code);
-    Csi::Mode(if on {
-        Mode::SetDecPrivateMode(mode)
-    } else {
-        Mode::ResetDecPrivateMode(mode)
-    })
+fn cells(pixels: u32, cell: u16) -> u16 {
+    u16::try_from(pixels.div_ceil(u32::from(cell.max(1)))).unwrap_or(u16::MAX)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -62,32 +43,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let png = fs::read(&path)?;
     let (width, height) = png_size(&png).ok_or("not a PNG file")?;
 
-    let mut platform = PlatformTerminal::new()?;
-    platform.enter_raw_mode()?;
-    platform.set_panic_hook(|out| {
-        // The panic hook has no caller to report a failed write to.
-        let _ = write!(
-            out,
-            "{}",
-            private_mode(DecPrivateModeCode::ClearAndEnableAlternateScreen, false)
-        );
-    });
-    write!(
-        platform,
-        "{}",
-        private_mode(DecPrivateModeCode::ClearAndEnableAlternateScreen, true)
-    )?;
-    platform.flush()?;
-    let (cell_width, cell_height) = cell_size(&platform.get_dimensions()?);
-    let (outcome, _input) = probe::run(&mut platform, probe::WAIT)?;
+    let grapheme_mode = Arc::new(AtomicBool::new(true));
+    let (mut terminal, reader) = screen::open(&grapheme_mode)?;
+    let cell = screen::cell(&mut terminal);
+    let (outcome, _input) = probe::run(terminal.backend_mut(), probe::WAIT)?;
+    grapheme_mode.store(outcome.resets_grapheme_mode(), Ordering::Relaxed);
     let graphics = outcome.graphics;
-    let image = Image::new(ID, cells(height, cell_height), cells(width, cell_width))
+    let size = cell.unwrap_or(CELL);
+    let image = Image::new(ID, cells(height, size.height), cells(width, size.width))
         .ok_or("the image id is out of range")?;
 
     let mut pane = PaneState::with_caps(
         Caps {
             profile: outcome.profile,
             graphics,
+            cell,
         }
         .into(),
     );
@@ -99,32 +69,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         pane.push(&format!("line {n} after the image"));
     }
     if graphics {
-        platform.write_all(&kitty::transmit(image, &png))?;
-        platform.flush()?;
+        let out = terminal.backend_mut();
+        out.write_all(&kitty::transmit(image, &png))?;
+        out.flush()?;
     }
 
-    let reader = platform.event_reader();
-    let mut terminal = Terminal::new(TerminaBackend::new(platform))?;
     let result = show(&mut terminal, &reader, &mut pane);
     let out = terminal.backend_mut();
     if graphics {
         write!(out, "\x1b_Ga=d,d=I,i={ID},q=2\x1b\\")?;
     }
-    write!(
-        out,
-        "{}{}",
-        private_mode(DecPrivateModeCode::ClearAndEnableAlternateScreen, false),
-        private_mode(DecPrivateModeCode::ShowCursor, true),
-    )?;
-    out.flush()?;
+    screen::leave(out, grapheme_mode.load(Ordering::Relaxed))?;
     Ok(result?)
 }
 
-fn show(
-    terminal: &mut Terminal<TerminaBackend<PlatformTerminal>>,
-    reader: &EventReader,
-    pane: &mut PaneState,
-) -> io::Result<()> {
+fn show(terminal: &mut Screen, reader: &EventReader, pane: &mut PaneState) -> io::Result<()> {
     loop {
         terminal.draw(|frame| frame.render_stateful_widget(OutputPane, frame.area(), pane))?;
         match reader.read(|_| true)? {
