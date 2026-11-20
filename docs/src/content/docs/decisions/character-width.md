@@ -17,6 +17,12 @@ The probe runs once, on the alternate screen, before the first frame:
 
 The client reads the replies itself, before its event reader starts, and waits at most 500 milliseconds for DA1. The event reader drops some replies and gives the kitty graphics reply as key presses, so the replies must not reach it. A key that the user presses during the probe still reaches the client.
 
+The probe frames its input. It cuts the bytes it reads into frames by the rules of ECMA-48. A CSI (control sequence introducer) starts with the escape byte and `[`. It holds parameter bytes and ends with one final byte. An APC (application program command) starts with the escape byte and `_`. It ends with the escape byte and `\`.
+
+Termina decodes each CSI. The probe gives each complete CSI to a Termina parser alone. The cursor, mode and DA1 replies come out of the parser as events. The probe decodes the kitty graphics reply itself, because Termina gives an APC as key presses.
+
+An escape byte ends an open sequence. So does a byte that cannot be part of a CSI. The probe then turns the bytes of the broken sequence into key presses for the client, and a new frame starts. A stray Alt+`[` or an open APC cannot hide a reply that follows it. A sequence that is still open when the probe stops also becomes key presses.
+
 If the terminal does not answer in that time, the client uses the `unicode-width` value for every class. When the client exits, it turns off mode 2027, unless the terminal gave the mode as on before the probe. A reply that comes after the wait still counts, if it comes before the client exits.
 
 The command `cargo run -p char-width -- list` in `spikes/` prints the class of each grapheme.
