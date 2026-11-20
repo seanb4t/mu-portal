@@ -36,7 +36,7 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
     });
     let probed = probe::run(terminal.backend_mut(), probe::WAIT);
     let result = match probed {
-        Ok((outcome, input)) => {
+        Ok((outcome, early)) => {
             grapheme_mode.store(outcome.resets_grapheme_mode(), Ordering::Relaxed);
             model.set_caps(Caps {
                 profile: outcome.profile,
@@ -49,9 +49,6 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
             if !outcome.measured {
                 model.notice(WIDTH_NOTICE);
             }
-            let mut parser = termina::Parser::default();
-            parser.parse(&input, false);
-            let early = std::iter::from_fn(|| parser.pop()).collect();
             let result = event_loop(&mut terminal, reader, early, &mut model, &client).await;
             if model.keeps_grapheme_mode() {
                 grapheme_mode.store(false, Ordering::Relaxed);

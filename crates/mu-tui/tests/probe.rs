@@ -59,11 +59,10 @@ fn replies_come_from_termina() {
         (b"\x1b[?2027;2$y", mode(DecModeSetting::Reset)),
         (b"\x1b[?62;22c", Answer::Da1),
     ];
-    let results = each.map(|(reply, _)| framed(&[reply]));
-    assert_eq!(
-        results.map(|framing| (framing.answers, framing.events.len())),
-        each.map(|(_, answer)| (vec![answer], 0))
-    );
+    for (reply, answer) in each {
+        let framing = framed(&[reply]);
+        assert_eq!((framing.answers, framing.events), (vec![answer], vec![]));
+    }
 }
 
 #[test]

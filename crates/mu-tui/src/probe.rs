@@ -1,12 +1,13 @@
-//! The startup probe: the queries, the parser of the replies, and what the replies give.
+//! The startup probe: the queries, the framer of the input, and what the answers give.
 //!
 //! The probe writes every query in one write. It asks for the state of mode 2027, sets the
 //! mode, writes one grapheme of each width class with a cursor position query after each, asks
 //! whether the terminal draws kitty images, and ends with DA1. Every terminal answers DA1, so
-//! its reply ends the replies.
+//! its answer ends the answers.
 //!
-//! The probe reads the replies itself, before the Termina event reader starts, because Termina
-//! drops some replies and gives the kitty graphics reply as keys.
+//! The probe reads the answers itself, before the Termina event reader starts. It cuts the input
+//! into frames by the rules of ECMA-48 and gives each complete CSI to a Termina parser alone.
+//! Termina gives the kitty graphics answer as keys, so the probe decodes that one itself.
 
 use std::fs::File;
 use std::io::{self, IsTerminal, Write};
@@ -14,6 +15,11 @@ use std::os::fd::{AsFd, BorrowedFd};
 use std::time::{Duration, Instant};
 
 use rustix::termios::{OptionalActions, SpecialCodeIndex, tcgetattr, tcsetattr};
+use termina::escape::csi::{
+    Csi, Cursor, DecModeSetting, DecPrivateMode, DecPrivateModeCode, Device, Mode,
+};
+use termina::event::{KeyCode, KeyEvent, Modifiers};
+use termina::{Event, Parser};
 
 use crate::width::Profile;
 
@@ -58,9 +64,9 @@ pub fn queries() -> Vec<u8> {
     out.into_bytes()
 }
 
-/// One reply of the terminal.
+/// One answer of the terminal.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Reply {
+pub enum Answer {
     /// A cursor position report, from 1.
     Cursor {
         /// The row.
@@ -68,106 +74,178 @@ pub enum Reply {
         /// The column.
         col: u16,
     },
-    /// DECRPM: the state of a DEC private mode. 0 is not recognized, 1 set, 2 reset, 3
-    /// permanently set and 4 permanently reset.
+    /// DECRPM: the state of a DEC private mode.
     Mode {
         /// The mode.
-        mode: u16,
+        mode: DecPrivateMode,
         /// The state.
-        value: u16,
+        setting: DecModeSetting,
     },
-    /// The reply to the kitty graphics query: true for `OK`.
+    /// The answer to the kitty graphics query: true for `OK`.
     Graphics(bool),
-    /// Primary device attributes, the last reply.
+    /// Primary device attributes, the last answer.
     Da1,
 }
 
-/// The replies at the start of a buffer, and the bytes that are not replies.
+/// What the framer took from the bytes that it got.
 #[derive(Debug, Default, PartialEq, Eq)]
-pub struct Parsed {
-    /// The replies, in order.
-    pub replies: Vec<Reply>,
-    /// Each byte that is not part of a reply, in order: keys, a paste or other input.
-    pub other: Vec<u8>,
-    /// The bytes that the parse used. An incomplete sequence at the end stays.
-    pub used: usize,
+pub struct Framed {
+    /// The answers, in order.
+    pub answers: Vec<Answer>,
+    /// The input that is not an answer, in order: keys, text and other events.
+    pub events: Vec<Event>,
 }
 
-/// Parses the replies in `buf`. A sequence that is not a reply goes to [`Parsed::other`]
-/// whole. An incomplete sequence at the end stays in the buffer.
-#[must_use]
-pub fn parse(buf: &[u8]) -> Parsed {
-    let mut parsed = Parsed::default();
+const ESC: u8 = 0x1b;
+
+/// Adds `read` to `pending` and frames the bytes of `pending` that make whole frames. A frame is
+/// a complete CSI, an APC, a broken sequence, or a run of other bytes. The bytes of an open
+/// sequence, or an ESC at the end, stay in `pending` for the next read.
+///
+/// - A complete CSI goes alone to a Termina parser. An answer of the three kinds is an
+///   [`Answer`]. Each other event is input.
+/// - An APC is the graphics answer, or it is dropped.
+/// - An ESC inside an open CSI or APC, or a byte outside the bytes of a CSI, ends the sequence
+///   as broken. The keys of its bytes are input, and a new frame starts after them.
+/// - Other bytes go to a Termina parser.
+pub fn frame(pending: &mut Vec<u8>, read: &[u8]) -> Framed {
+    pending.extend_from_slice(read);
+    let mut framed = Framed::default();
+    let mut used = 0;
     let mut at = 0;
-    while at < buf.len() {
-        if buf[at] != 0x1b {
-            parsed.other.push(buf[at]);
+    while at < pending.len() {
+        let next = pending.get(at + 1);
+        if pending[at] != ESC || !matches!(next, None | Some(b'[' | b'_')) {
             at += 1;
             continue;
         }
-        let (reply, len) = match buf.get(at + 1) {
-            None => break,
-            Some(b'[') => {
-                let Some(end) = buf[at + 2..].iter().position(|b| (0x40..=0x7e).contains(b)) else {
-                    break;
-                };
-                let end = at + 2 + end;
-                let params = std::str::from_utf8(&buf[at + 2..end]).unwrap_or("");
-                (csi(params, buf[end]), end + 1 - at)
+        framed.events.extend(plain(&pending[used..at]));
+        used = at;
+        if next.is_none() {
+            break;
+        }
+        let rest = &pending[at..];
+        let len = match scan(rest) {
+            Scan::Open => break,
+            Scan::Csi(len) => {
+                csi(&rest[..len], &mut framed);
+                len
             }
-            Some(b'_') => {
-                let Some(end) = buf[at + 2..].windows(2).position(|pair| pair == b"\x1b\\") else {
-                    break;
-                };
-                let body = String::from_utf8_lossy(&buf[at + 2..at + 2 + end]);
-                (graphics(&body), end + 4)
+            Scan::Apc(len) => {
+                framed
+                    .answers
+                    .extend(graphics(&String::from_utf8_lossy(&rest[2..len - 2])));
+                len
             }
-            Some(_) => (None, 1),
+            Scan::Broken(len) => {
+                framed.events.extend(broken(&rest[..len]));
+                len
+            }
         };
-        match reply {
-            Some(reply) => parsed.replies.push(reply),
-            None => parsed.other.extend_from_slice(&buf[at..at + len]),
-        }
         at += len;
+        used = at;
     }
-    parsed.used = at;
-    parsed
+    if used < at {
+        framed.events.extend(plain(&pending[used..at]));
+        used = at;
+    }
+    pending.drain(..used);
+    framed
 }
 
-fn csi(params: &str, end: u8) -> Option<Reply> {
-    let numbers =
-        |text: &str| -> Option<Vec<u16>> { text.split(';').map(|n| n.parse().ok()).collect() };
-    match end {
-        b'R' => match numbers(params)?[..] {
-            [row, col] => Some(Reply::Cursor { row, col }),
-            _ => None,
-        },
-        b'y' => {
-            let inner = params.strip_prefix('?')?.strip_suffix('$')?;
-            match numbers(inner)?[..] {
-                [mode, value] => Some(Reply::Mode { mode, value }),
-                _ => None,
-            }
+/// The keys of the bytes that the framer still holds at the end of the probe, as the keys of a
+/// broken sequence.
+#[must_use]
+pub fn flush(pending: &[u8]) -> Vec<Event> {
+    broken(pending)
+}
+
+/// How a sequence that starts with ESC `[` or ESC `_` ends.
+enum Scan {
+    /// It has no end yet.
+    Open,
+    /// A complete CSI of this many bytes.
+    Csi(usize),
+    /// A complete APC of this many bytes.
+    Apc(usize),
+    /// A sequence of this many bytes that another byte ended before its end.
+    Broken(usize),
+}
+
+fn scan(buf: &[u8]) -> Scan {
+    let apc = buf[1] == b'_';
+    for (at, &byte) in buf.iter().enumerate().skip(2) {
+        match byte {
+            ESC if apc && buf.get(at + 1) == Some(&b'\\') => return Scan::Apc(at + 2),
+            ESC if apc && at + 1 == buf.len() => return Scan::Open,
+            ESC => return Scan::Broken(at),
+            _ if apc => {}
+            0x40..=0x7e => return Scan::Csi(at + 1),
+            0x20..=0x3f => {}
+            _ => return Scan::Broken(at),
         }
-        b'c' if params.starts_with('?') => Some(Reply::Da1),
-        _ => None,
+    }
+    Scan::Open
+}
+
+/// Gives one complete CSI to a Termina parser and sorts its events.
+fn csi(bytes: &[u8], framed: &mut Framed) {
+    let mut parser = Parser::default();
+    parser.parse(bytes, false);
+    while let Some(event) = parser.pop() {
+        match event {
+            Event::Csi(Csi::Cursor(Cursor::ActivePositionReport { line, col })) => {
+                framed.answers.push(Answer::Cursor {
+                    row: line.get(),
+                    col: col.get(),
+                });
+            }
+            Event::Csi(Csi::Mode(Mode::ReportDecPrivateMode { mode, setting })) => {
+                framed.answers.push(Answer::Mode { mode, setting });
+            }
+            Event::Csi(Csi::Device(Device::DeviceAttributes(()))) => {
+                framed.answers.push(Answer::Da1);
+            }
+            other => framed.events.push(other),
+        }
     }
 }
 
-fn graphics(body: &str) -> Option<Reply> {
+/// The events of bytes that are not a sequence of the framer, from a Termina parser.
+fn plain(bytes: &[u8]) -> Vec<Event> {
+    let mut parser = Parser::default();
+    parser.parse(bytes, false);
+    std::iter::from_fn(|| parser.pop()).collect()
+}
+
+/// The keys of an unfinished sequence. ESC and the byte after it give that key with Alt. Each
+/// other byte gives its own key.
+fn broken(bytes: &[u8]) -> Vec<Event> {
+    match bytes {
+        [ESC, next, rest @ ..] => {
+            let alt = KeyEvent::new(KeyCode::Char(char::from(*next)), Modifiers::ALT);
+            std::iter::once(Event::Key(alt))
+                .chain(plain(rest))
+                .collect()
+        }
+        _ => plain(bytes),
+    }
+}
+
+fn graphics(body: &str) -> Option<Answer> {
     let (keys, message) = body.strip_prefix('G')?.split_once(';')?;
     keys.split(',')
         .any(|key| key == GRAPHICS_ID)
-        .then(|| Reply::Graphics(message == "OK"))
+        .then(|| Answer::Graphics(message == "OK"))
 }
 
-/// What the replies of the probe give.
+/// What the answers of the probe give.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Outcome {
     /// The width rule of each class.
     pub profile: Profile,
     /// The state of mode 2027 before the probe set it, if the terminal answered.
-    pub grapheme_mode: Option<u16>,
+    pub grapheme_mode: Option<DecModeSetting>,
     /// True if the terminal draws kitty images.
     pub graphics: bool,
     /// True if DA1 answered, so every reply came.
@@ -178,24 +256,24 @@ pub struct Outcome {
 }
 
 impl Outcome {
-    /// Learns from the replies in order. The cursor position after each grapheme of
-    /// [`GRAPHEMES`] gives its width. Before DA1, the replies are not complete. With no DA1, or
-    /// with a count of cursor replies that differs from the count of graphemes, every class keeps
+    /// Learns from the answers in order. The cursor position after each grapheme of
+    /// [`GRAPHEMES`] gives its width. Before DA1, the answers are not complete. With no DA1, or
+    /// with a count of cursor answers that differs from the count of graphemes, every class keeps
     /// the `unicode-width` value.
     #[must_use]
-    pub fn learn(replies: &[Reply]) -> Self {
+    pub fn learn(answers: &[Answer]) -> Self {
         let mut outcome = Self::default();
         let mut cursors = Vec::new();
-        for reply in replies {
-            match *reply {
-                Reply::Cursor { col, .. } => cursors.push(col.saturating_sub(1)),
-                Reply::Mode {
-                    mode: GRAPHEME_MODE,
-                    value,
-                } => outcome.grapheme_mode = Some(value),
-                Reply::Mode { .. } => {}
-                Reply::Graphics(ok) => outcome.graphics = ok,
-                Reply::Da1 => outcome.complete = true,
+        for answer in answers {
+            match *answer {
+                Answer::Cursor { col, .. } => cursors.push(col.saturating_sub(1)),
+                Answer::Mode {
+                    mode: DecPrivateMode::Code(DecPrivateModeCode::GraphemeClustering),
+                    setting,
+                } => outcome.grapheme_mode = Some(setting),
+                Answer::Mode { .. } => {}
+                Answer::Graphics(ok) => outcome.graphics = ok,
+                Answer::Da1 => outcome.complete = true,
             }
         }
         outcome.measured = outcome.complete && cursors.len() == GRAPHEMES.len();
@@ -211,21 +289,24 @@ impl Outcome {
     /// goes off.
     #[must_use]
     pub const fn resets_grapheme_mode(&self) -> bool {
-        !matches!(self.grapheme_mode, Some(1 | 3))
+        !matches!(
+            self.grapheme_mode,
+            Some(DecModeSetting::Set | DecModeSetting::PermanentlySet)
+        )
     }
 }
 
 /// The longest time that the probe waits for DA1.
 pub const WAIT: Duration = Duration::from_millis(500);
 
-/// Writes the queries to `out` and reads the replies from the terminal until DA1 or `wait`.
-/// Returns what the replies give, and every byte that is not a reply, for the Termina parser.
-/// The terminal must be in raw mode.
+/// Writes the queries to `out` and reads the answers from the terminal until DA1 or `wait`.
+/// Returns what the answers give, and the input that is not an answer, as events. The terminal
+/// must be in raw mode.
 ///
 /// # Errors
 ///
 /// An I/O error of the terminal.
-pub fn run(out: &mut impl Write, wait: Duration) -> io::Result<(Outcome, Vec<u8>)> {
+pub fn run(out: &mut impl Write, wait: Duration) -> io::Result<(Outcome, Vec<Event>)> {
     // Termina reads from stdin if it is a terminal, and from `/dev/tty` if it is not.
     let tty = if io::stdin().is_terminal() {
         None
@@ -242,34 +323,32 @@ pub fn run(out: &mut impl Write, wait: Duration) -> io::Result<(Outcome, Vec<u8>
     tcsetattr(fd, OptionalActions::Now, &timed)?;
     let read = write_and_read(fd, out, wait);
     tcsetattr(fd, OptionalActions::Now, &raw)?;
-    let (replies, other) = read?;
-    Ok((Outcome::learn(&replies), other))
+    let (answers, events) = read?;
+    Ok((Outcome::learn(&answers), events))
 }
 
 fn write_and_read(
     fd: BorrowedFd<'_>,
     out: &mut impl Write,
     wait: Duration,
-) -> io::Result<(Vec<Reply>, Vec<u8>)> {
+) -> io::Result<(Vec<Answer>, Vec<Event>)> {
     out.write_all(&queries())?;
     out.flush()?;
     let deadline = Instant::now() + wait;
     let mut pending = Vec::new();
-    let mut replies = Vec::new();
-    let mut other = Vec::new();
+    let mut answers = Vec::new();
+    let mut events = Vec::new();
     let mut chunk = [0; 1024];
-    while !replies.contains(&Reply::Da1) && Instant::now() < deadline {
+    while !answers.contains(&Answer::Da1) && Instant::now() < deadline {
         let count = match rustix::io::read(fd, &mut chunk) {
             Ok(count) => count,
             Err(rustix::io::Errno::INTR) => continue,
             Err(error) => return Err(error.into()),
         };
-        pending.extend_from_slice(&chunk[..count]);
-        let parsed = parse(&pending);
-        replies.extend(parsed.replies);
-        other.extend(parsed.other);
-        pending.drain(..parsed.used);
+        let framed = frame(&mut pending, &chunk[..count]);
+        answers.extend(framed.answers);
+        events.extend(framed.events);
     }
-    other.extend(pending);
-    Ok((replies, other))
+    events.extend(flush(&pending));
+    Ok((answers, events))
 }
