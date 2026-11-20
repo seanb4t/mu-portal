@@ -392,3 +392,61 @@ async fn copy_by_drag() {
         })
         .await;
 }
+
+/// The sequences that turn off mouse capture: SGR reports, drag, and press and release.
+const MOUSE_OFF: [&[u8]; 3] = [b"\x1b[?1006l", b"\x1b[?1002l", b"\x1b[?1000l"];
+
+/// Starts a client with `answers`, presses Ctrl+C, and returns every byte that the client wrote
+/// after the greeting, up to the exit from the alternate screen, which comes after the modes.
+async fn output_at_exit(answers: Answers) -> Vec<u8> {
+    let session = Session::with_worlds(TWO_WORLDS).await;
+    let mut client = PtyClient::start_with(
+        session.server.socket(),
+        session.server.dir().path(),
+        answers,
+    );
+    client.wait_greeting().await;
+    let started = client.output().len();
+    client.send(b"\x03");
+    assert!(
+        client
+            .exit_within(BOUND)
+            .await
+            .expect("the client exits")
+            .success()
+    );
+    client
+        .wait_output("the exit from the alternate screen", b"\x1b[?1049l")
+        .await;
+    client.output().split_off(started)
+}
+
+fn holds(output: &[u8], needle: &[u8]) -> bool {
+    output.windows(needle.len()).any(|window| window == needle)
+}
+
+#[tokio::test]
+async fn modes_at_exit() {
+    let output = output_at_exit(Answers::Default).await;
+    let off: Vec<bool> = MOUSE_OFF
+        .iter()
+        .chain([&&b"\x1b[?2027l"[..]])
+        .map(|sequence| holds(&output, sequence))
+        .collect();
+    assert_eq!(off, [true; 4], "{}", output.escape_ascii());
+}
+
+#[tokio::test]
+async fn mode_2027_already_on() {
+    let output = output_at_exit(Answers::GraphemeModeSet).await;
+    let mouse_off: Vec<bool> = MOUSE_OFF
+        .iter()
+        .map(|sequence| holds(&output, sequence))
+        .collect();
+    assert_eq!(
+        (mouse_off, holds(&output, b"\x1b[?2027l")),
+        (vec![true; 3], false),
+        "{}",
+        output.escape_ascii()
+    );
+}

@@ -730,6 +730,11 @@ impl PtyClient {
             .collect()
     }
 
+    /// Every byte that the client wrote so far.
+    pub fn output(&self) -> Vec<u8> {
+        self.output.borrow().clone()
+    }
+
     /// Waits until the bytes that the client wrote hold `needle`. A failure prints the screen.
     pub async fn wait_output(&self, what: &str, needle: &[u8]) {
         let mut receiver = self.output.subscribe();

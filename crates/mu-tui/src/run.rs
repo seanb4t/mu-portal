@@ -66,8 +66,19 @@ fn private_mode(code: DecPrivateModeCode, on: bool) -> Csi {
     })
 }
 
-/// Turns off mode 2027 if `grapheme_mode`, then leaves the alternate screen and shows the cursor.
+/// The modes of mouse capture: press and release, drag, and the SGR format of the reports.
+const MOUSE: [DecPrivateModeCode; 3] = [
+    DecPrivateModeCode::MouseTracking,
+    DecPrivateModeCode::ButtonEventMouse,
+    DecPrivateModeCode::SGRMouse,
+];
+
+/// Turns off mouse capture, and mode 2027 if `grapheme_mode`, then leaves the alternate screen
+/// and shows the cursor.
 fn leave(out: &mut impl Write, grapheme_mode: bool) -> io::Result<()> {
+    for mode in MOUSE.into_iter().rev() {
+        write!(out, "{}", private_mode(mode, false))?;
+    }
     if grapheme_mode {
         write!(
             out,
@@ -84,8 +95,8 @@ fn leave(out: &mut impl Write, grapheme_mode: bool) -> io::Result<()> {
     out.flush()
 }
 
-/// Enters raw mode and the alternate screen, and sets a panic hook that leaves both, and turns
-/// off mode 2027 if `grapheme_mode` holds true.
+/// Enters raw mode and the alternate screen and turns on mouse capture. Sets a panic hook that
+/// undoes each, and turns off mode 2027 if `grapheme_mode` holds true.
 fn open(grapheme_mode: &Arc<AtomicBool>) -> io::Result<(Screen, EventReader)> {
     let mut platform = PlatformTerminal::new()?;
     platform.enter_raw_mode()?;
@@ -99,6 +110,9 @@ fn open(grapheme_mode: &Arc<AtomicBool>) -> io::Result<(Screen, EventReader)> {
         "{}",
         private_mode(DecPrivateModeCode::ClearAndEnableAlternateScreen, true)
     )?;
+    for mode in MOUSE {
+        write!(platform, "{}", private_mode(mode, true))?;
+    }
     platform.flush()?;
     let reader = platform.event_reader();
     Ok((Terminal::new(TerminaBackend::new(platform))?, reader))
