@@ -111,7 +111,7 @@ enum Outcome {
     CannotStart(String),
     /// The helper thread ended without a result.
     Panicked,
-    /// The bound passed first.
+    /// The bound passed first, or the provider reported an error at or after the bound.
     Late,
 }
 
@@ -350,16 +350,18 @@ impl Drop for Providers {
 }
 
 /// The body of the helper thread that runs `stop`. It sends one outcome when it runs: a stop that
-/// panics gives [`Outcome::Panicked`]. A body that never runs, because its thread cannot start,
-/// sends nothing.
+/// panics gives [`Outcome::Panicked`], and a stop that fails at or after `deadline` gives
+/// [`Outcome::Late`]. A body that never runs, because its thread cannot start, sends nothing.
 fn helper(
     signal: SignalKind,
     stop: Stop,
+    deadline: Instant,
     done: mpsc::Sender<(SignalKind, Outcome)>,
 ) -> impl FnOnce() + Send + 'static {
     move || {
         let outcome = match panic::catch_unwind(AssertUnwindSafe(stop)) {
             Ok(Ok(())) => Outcome::Done,
+            Ok(Err(_)) if Instant::now() >= deadline => Outcome::Late,
             Ok(Err(error)) => Outcome::Failed(error.to_string()),
             Err(_) => Outcome::Panicked,
         };
@@ -376,7 +378,7 @@ fn stop_all(stops: Vec<(SignalKind, Stop)>, bound: Duration) -> Vec<(SignalKind,
     for (signal, stop) in stops {
         let spawned = thread::Builder::new()
             .name(format!("mu-telemetry-stop-{}", signal.name()))
-            .spawn(helper(signal, stop, done.clone()));
+            .spawn(helper(signal, stop, deadline, done.clone()));
         match spawned {
             Ok(_) => pending.push(signal),
             Err(error) => outcomes.push((signal, Outcome::CannotStart(error.to_string()))),
@@ -613,7 +615,7 @@ mod tests {
     fn helper_that_panics_is_panicked() {
         let (done, finished) = mpsc::channel();
         let stop: Stop = Box::new(|| panic!("a stop that panics"));
-        helper(SignalKind::Traces, stop, done)();
+        helper(SignalKind::Traces, stop, Instant::now() + LONG, done)();
         assert_eq!(
             finished.try_iter().collect::<Vec<_>>(),
             vec![(SignalKind::Traces, Outcome::Panicked)]
@@ -623,7 +625,12 @@ mod tests {
     #[test]
     fn helper_sends_one_outcome() {
         let (done, finished) = mpsc::channel();
-        helper(SignalKind::Metrics, Box::new(|| Ok(())), done)();
+        helper(
+            SignalKind::Metrics,
+            Box::new(|| Ok(())),
+            Instant::now() + LONG,
+            done,
+        )();
         assert_eq!(
             finished.try_iter().collect::<Vec<_>>(),
             vec![(SignalKind::Metrics, Outcome::Done)]
@@ -633,7 +640,12 @@ mod tests {
     #[test]
     fn helper_that_never_runs_sends_nothing() {
         let (done, finished) = mpsc::channel();
-        drop(helper(SignalKind::Metrics, Box::new(|| Ok(())), done));
+        drop(helper(
+            SignalKind::Metrics,
+            Box::new(|| Ok(())),
+            Instant::now() + LONG,
+            done,
+        ));
         assert_eq!(finished.try_recv(), Err(mpsc::TryRecvError::Disconnected));
     }
 
@@ -652,6 +664,17 @@ mod tests {
         );
         drop(open);
         assert_eq!(outcomes, vec![(SignalKind::Metrics, Outcome::Late)]);
+    }
+
+    #[test]
+    fn failure_after_the_bound_is_late() {
+        let (done, finished) = mpsc::channel();
+        let stop = stop(Err(OTelSdkError::InternalFailure("x".into())));
+        helper(SignalKind::Traces, stop, Instant::now(), done)();
+        assert_eq!(
+            finished.try_iter().collect::<Vec<_>>(),
+            vec![(SignalKind::Traces, Outcome::Late)]
+        );
     }
 
     #[test]
