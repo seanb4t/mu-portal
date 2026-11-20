@@ -90,7 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         .into(),
     );
-    for n in 1..=40 {
+    for n in 1..=200 {
         pane.push(&format!("line {n} before the image"));
     }
     pane.push_image(&path, image);

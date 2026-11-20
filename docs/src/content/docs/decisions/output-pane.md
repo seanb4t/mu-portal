@@ -31,7 +31,7 @@ Mouse capture is on, so the pane does its own selection. The terminal selection 
 
 ## Not tested
 
-- A visual check of the image, of a copy by drag and of a live resize in Ghostty and Rex. The spike measured the frames in code, and no person looked at them.
+- A visual check in a terminal other than Rex. The spike measured the frames in code. Then the owner looked at the client in Rex. The image of the example `image-pane` showed, and it scrolled with the text. A copy by drag pasted the right text into another program. A live resize of the client with 3000 lines rewrapped the lines and kept the scroll position.
 - Linux. All measurements come from one Apple M4 Max with a release build.
 - Output from a game. The spike made its lines with a generator of MUD-like text.
 - A wrap of all lines on more than one thread. The spike measured one thread only.

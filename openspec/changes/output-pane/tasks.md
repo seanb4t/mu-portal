@@ -138,7 +138,7 @@ Load the `rust-best-practices` skill before this group.
   Make sure that the eight tests pass, and that `image_rows_capped_at_297` fails while the pane takes the row count of the image with no limit.
 - [x] 10.3 Add `Effect::TransmitImage`, and write the kitty graphics command with a virtual placement in `run.rs`. Add a unit test of the bytes of the command for a small image. Make sure that the test passes.
 - [x] 10.4 Add the example `crates/mu-tui/examples/image-pane.rs`. It shows the pane with lines and one image from a PNG file. Make sure that `cargo build -p mu-tui --examples --locked` passes.
-- [ ] 10.5 Ask the owner to check in Rex: the image of the example, a copy by drag into another program, and a live resize of the client with a long scrollback. Record the result in the Not tested parts of `decisions/output-pane.md` and `decisions/terminal-client-architecture.md`. Make sure that `mise run docs:check` passes.
+- [x] 10.5 Ask the owner to check in Rex: the image of the example, a copy by drag into another program, and a live resize of the client with a long scrollback. Record the result in the Not tested parts of `decisions/output-pane.md` and `decisions/terminal-client-architecture.md`. Make sure that `mise run docs:check` passes.
 
 ## 11. Integration
 

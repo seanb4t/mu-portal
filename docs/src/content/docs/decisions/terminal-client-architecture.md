@@ -39,6 +39,7 @@ One `update` at the top keeps the keymap in one place, and later the Lua scripts
 - The comparison ran in Rex on macOS only. It tests how each library parses bytes, and that does not depend on the terminal.
 - The paste of check 2 was the bracketed paste bytes that `rex send` wrote. The paste action of the Rex app did not reach the pane.
 - `ratatui-termina` needs termina 0.3, and termina 0.4 is out. No check covered termina 0.4.
+- The client on Termina ran in Rex only. There, the owner checked the copy by drag, the live resize and the kitty image by hand. No other terminal ran the client.
 
 ## Source
 
