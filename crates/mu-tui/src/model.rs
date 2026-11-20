@@ -61,7 +61,7 @@ pub struct Model {
 
 /// The wait for the probe replies that came after the probe stopped reading. Termina gives the
 /// kitty graphics reply as keys: Alt+`_`, the keys of its text, then Alt+`\`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Late {
     /// Every reply came, or the probe did not stop early.
     #[default]
@@ -70,6 +70,10 @@ pub(crate) enum Late {
     Waiting,
     /// A graphics reply started with Alt+`_`, and `keys` of its text came.
     Graphics { keys: usize },
+    /// The probe stopped inside a CSI reply, or after the ESC of one. The held bytes start with
+    /// ESC, and the keys of the rest of the reply add to them until the final byte. At most
+    /// [`PENDING_MAX`](crate::probe::PENDING_MAX) bytes.
+    Csi(Vec<u8>),
 }
 
 impl Model {
@@ -119,10 +123,15 @@ impl Model {
         self.keeps_grapheme_mode
     }
 
-    /// Drops the keys of a kitty graphics reply until a DA1 reply comes. The update of the probe
-    /// result calls this when the probe stopped before DA1, so the rest of its replies come as terminal events.
-    pub(crate) fn await_late_replies(&mut self) {
-        self.late = Late::Waiting;
+    /// Drops the keys of a kitty graphics reply until a DA1 reply comes, and rebuilds a reply that
+    /// the probe cut from `open` and the keys after it. The update of the probe result calls this
+    /// when the probe stopped before DA1, so the rest of its replies come as terminal events.
+    pub(crate) fn await_late_replies(&mut self, open: Vec<u8>) {
+        self.late = if open.is_empty() {
+            Late::Waiting
+        } else {
+            Late::Csi(open)
+        };
     }
 
     /// The id of the world in focus.

@@ -140,7 +140,7 @@ const WIDTH_NOTICE: &str =
 fn on_probe(model: &mut Model, outcome: &Outcome) {
     model.set_caps(Caps::from(outcome));
     if !outcome.complete {
-        model.await_late_replies();
+        model.await_late_replies(outcome.open.clone());
     }
     if !outcome.measured {
         model.notice(WIDTH_NOTICE);
@@ -149,6 +149,14 @@ fn on_probe(model: &mut Model, outcome: &Outcome) {
 
 /// The most keys of a late graphics reply. A reply that is longer ends here.
 const GRAPHICS_KEYS: usize = 256;
+
+/// The character of a key that is text: no modifier but Shift.
+fn text(key: KeyEvent) -> Option<char> {
+    match key.code {
+        KeyCode::Char(c) if (key.modifiers - Modifiers::SHIFT).is_empty() => Some(c),
+        _ => None,
+    }
+}
 
 fn on_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
     if key.kind == KeyEventKind::Release {
@@ -168,10 +176,11 @@ fn on_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
                 model.late = Late::Waiting;
                 return Vec::new();
             }
-            let text = matches!(key.code, KeyCode::Char(_))
-                && (key.modifiers - Modifiers::SHIFT).is_empty();
             // A graphics reply starts with `G`. Any other key after Alt+`_` is the user's.
-            if text && (keys > 0 || key.code == KeyCode::Char('G')) && keys < GRAPHICS_KEYS {
+            if text(key).is_some()
+                && (keys > 0 || key.code == KeyCode::Char('G'))
+                && keys < GRAPHICS_KEYS
+            {
                 model.late = Late::Graphics { keys: keys + 1 };
                 return Vec::new();
             }
@@ -181,8 +190,44 @@ fn on_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
             effects.extend(on_input_key(model, key));
             return effects;
         }
+        Late::Csi(_) => return on_cut_reply_key(model, key),
     }
     on_input_key(model, key)
+}
+
+/// A key while the model holds the bytes of a reply that the probe cut. A key that is a CSI byte
+/// as text adds its byte. At the final byte, the bytes go to the decoder of the probe, and each
+/// event is handled as a terminal event. After a lone ESC, `[` continues the CSI, and `_` starts
+/// a graphics reply. Any other key, or a byte past [`probe::PENDING_MAX`], drops the held bytes,
+/// and the key acts as it does while the model waits for late replies.
+fn on_cut_reply_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
+    let Late::Csi(mut bytes) = std::mem::take(&mut model.late) else {
+        return Vec::new();
+    };
+    let byte = text(key)
+        .and_then(|c| u8::try_from(c).ok())
+        .filter(|b| (0x20..=0x7e).contains(b));
+    match byte {
+        Some(b'_') if bytes.len() == 1 => {
+            model.late = Late::Graphics { keys: 0 };
+            return Vec::new();
+        }
+        Some(byte) if bytes.len() < probe::PENDING_MAX && (bytes.len() > 1 || byte == b'[') => {
+            bytes.push(byte);
+            if bytes.len() > 2 && (0x40..=0x7e).contains(&byte) {
+                model.late = Late::Waiting;
+                return probe::decode_csi(&bytes)
+                    .into_iter()
+                    .flat_map(|event| update(model, Msg::Terminal(event)))
+                    .collect();
+            }
+            model.late = Late::Csi(bytes);
+            return Vec::new();
+        }
+        _ => {}
+    }
+    model.late = Late::Waiting;
+    on_key(model, key)
 }
 
 fn on_input_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
