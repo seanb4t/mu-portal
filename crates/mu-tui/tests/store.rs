@@ -1,7 +1,8 @@
 //! The line store: its capacity, its trim and its style table.
 
-use mu_tui::store::LineStore;
+use mu_tui::store::{LineId, LineStore};
 use proptest::prelude::*;
+use ratatui::style::{Color, Style};
 
 fn texts(store: &LineStore) -> Vec<String> {
     store
@@ -28,11 +29,7 @@ fn empty_pane_trims() {
     store.trim(0);
     assert_eq!(
         (store.first_id(), store.end_id(), texts(&store)),
-        (
-            store.end_id(),
-            mu_tui::store::LineId(0),
-            Vec::<String>::new()
-        )
+        (store.end_id(), LineId(0), Vec::<String>::new())
     );
 }
 
@@ -81,7 +78,6 @@ fn lines_after_a_freed_chunk() {
 
 #[test]
 fn style_past_the_table_limit_is_the_default() {
-    use ratatui::style::{Color, Style};
     let style = |n: u32| {
         let [_, _, high, low] = n.to_be_bytes();
         Style::new().fg(Color::Rgb(1, high, low))
@@ -98,40 +94,28 @@ fn style_past_the_table_limit_is_the_default() {
     );
 }
 
-fn span_starts(store: &LineStore, id: mu_tui::store::LineId) -> Vec<usize> {
+fn spans_of(store: &LineStore, id: LineId) -> Vec<(usize, Style)> {
     store
         .line(id)
         .unwrap()
         .spans
         .iter()
-        .map(|span| span.start)
+        .map(|span| (span.start, store.style(span.style)))
         .collect()
 }
 
 #[test]
 fn spans_out_of_order_are_stored_in_order() {
-    use ratatui::style::{Color, Style};
+    let (red, blue) = (Style::new().fg(Color::Red), Style::new().fg(Color::Blue));
     let mut store = LineStore::new(10);
-    let id = store.push(
-        "ab",
-        &[
-            (1, Style::new().fg(Color::Red)),
-            (0, Style::new().fg(Color::Blue)),
-        ],
-    );
-    assert_eq!(span_starts(&store, id), [0, 1]);
+    let id = store.push("ab", &[(1, red), (0, blue)]);
+    assert_eq!(spans_of(&store, id), [(0, blue), (1, red)]);
 }
 
 #[test]
 fn spans_out_of_order_are_stored_in_order_after_a_control_character() {
-    use ratatui::style::{Color, Style};
+    let (red, blue) = (Style::new().fg(Color::Red), Style::new().fg(Color::Blue));
     let mut store = LineStore::new(10);
-    let id = store.push(
-        "a\u{1}b",
-        &[
-            (2, Style::new().fg(Color::Red)),
-            (0, Style::new().fg(Color::Blue)),
-        ],
-    );
-    assert_eq!(span_starts(&store, id), [0, 4]);
+    let id = store.push("a\u{1}b", &[(2, red), (0, blue)]);
+    assert_eq!(spans_of(&store, id), [(0, blue), (4, red)]);
 }

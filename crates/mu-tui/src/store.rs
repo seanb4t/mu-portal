@@ -207,7 +207,7 @@ impl LineStore {
 
     /// Adds a line at the end, and drops the oldest line if the store is then over its
     /// capacity. `spans` are pairs of a byte offset and a style. The store keeps them in the order
-    /// of their offset, and keeps each control character of `text` as U+FFFD.
+    /// of their offset, and keeps `text` as [`crate::text::clean`] gives it.
     pub fn push(&mut self, text: &str, spans: &[(usize, Style)]) -> LineId {
         self.push_line(text, spans, None)
     }

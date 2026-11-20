@@ -24,9 +24,10 @@ pub(crate) fn printable(c: char) -> char {
     }
 }
 
-/// `text` as [`clean`] gives it, and `spans` in the order of their start, with each byte offset
-/// moved to the same char in that text. An offset inside a char moves to the start of the next
-/// char. Spans with the same start keep their order.
+/// `text` as [`clean`] gives it, and `spans` in the order of their start. Spans with the same
+/// start keep their order. If `text` has a char that [`clean`] replaces, each byte offset moves
+/// to the same char in the new text, and an offset inside a char moves to the start of the next
+/// char. Otherwise the offsets stay as they are.
 pub(crate) fn clean_styled<'a>(
     text: &'a str,
     spans: &'a [(usize, Style)],
