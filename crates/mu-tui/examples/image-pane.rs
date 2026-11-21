@@ -86,14 +86,7 @@ fn session(
     }
     let shown = show(terminal, reader, &mut pane);
     let deleted = if graphics { delete(terminal) } else { Ok(()) };
-    match (shown, deleted) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
-        (Err(shown), Err(deleted)) => Err(io::Error::new(
-            shown.kind(),
-            format!("{shown} (the delete of the image also failed: {deleted})"),
-        )),
-    }
+    screen::finish(shown, deleted)
 }
 
 fn delete(terminal: &mut Screen) -> io::Result<()> {
