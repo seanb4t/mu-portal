@@ -795,16 +795,8 @@ impl PtyClient {
 
     /// Waits until the rows pass `check`. A failure prints the screen.
     pub async fn wait_rows(&self, what: &str, check: impl Fn(&[String]) -> bool) {
-        let mut receiver = self.screen.subscribe();
-        let note = ScreenNote {
-            what,
-            screen: &self.screen,
-        };
-        wait_until(BOUND, note, async {
-            receiver
-                .wait_for(|parser| check(&parser.screen().rows(0, 80).collect::<Vec<_>>()))
-                .await
-                .is_ok()
+        self.wait_screen(what, |screen| {
+            check(&screen.rows(0, 80).collect::<Vec<_>>())
         })
         .await;
     }

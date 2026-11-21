@@ -13,6 +13,8 @@ The terminal client uses the Elm architecture (TEA) at the top level, on the Ter
 - Every input becomes a `Msg`: a terminal event, an event of the server, a reply to a call or a reply to a terminal query.
 - A keymap is a table from a key with its modifiers to an `Action`. The client builds the default table in code.
 - One `update` function changes the model and returns a list of effects. It does no I/O. The event loop performs each effect: a call of `mu-client`, a write to the terminal, or the end of the loop.
+- Only `update` changes the model, with one exception. `view` records what each pane drew, and it returns a scrolled pane to the bottom when the newest row shows.
+- The result of the startup probe is a `Msg` too. The event loop sends it before the first input event, and it draws no frame until `update` has handled it. So the first frame already has the widths and the graphics flag that the probe learned.
 - One `view` function walks the layout tree and renders each widget. Each widget is a ratatui `StatefulWidget`, and its state knows nothing of the app.
 - The layout is a tree of data with three node kinds: a split, tabs and a leaf.
 
