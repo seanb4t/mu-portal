@@ -223,6 +223,26 @@ fn graphics_reply_cut_at_its_end() {
     assert_eq!(model.input(), "");
 }
 
+#[test]
+fn lone_esc_then_underscore_starts_a_graphics_reply() {
+    let mut model = model();
+    cut_at(&mut model, b"\x1b");
+    type_text(&mut model, "_Gi=31;OK");
+    press(&mut model, KeyCode::Char('\\'), Modifiers::ALT);
+    type_text(&mut model, "hi");
+    assert_eq!(model.input(), "hi");
+}
+
+#[test]
+fn escape_after_alt_underscore_keeps_the_next_key() {
+    let mut model = model();
+    probe(&mut model, &incomplete());
+    press(&mut model, KeyCode::Char('_'), Modifiers::ALT);
+    press(&mut model, KeyCode::Escape, Modifiers::NONE);
+    type_text(&mut model, "x");
+    assert_eq!(model.input(), "x");
+}
+
 /// The notice that `Msg::Probe` adds when the outcome has no widths.
 const WIDTH_NOTICE: &str =
     "-- the terminal gave no character widths, so wide characters can be out of line";

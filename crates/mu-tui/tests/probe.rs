@@ -207,6 +207,10 @@ fn split_reply_across_reads() {
 fn utf8_split_across_reads() {
     let framing = framed(&[b"\xc3", b"\xa9"]);
     assert_eq!(framing.events, [key('é', Modifiers::NONE)]);
+    let framing = framed(&[b"\xe2\x82", b"\xac"]);
+    assert_eq!(framing.events, [key('€', Modifiers::NONE)]);
+    let framing = framed(&[b"\xf0\x9f\x98", b"\x80"]);
+    assert_eq!(framing.events, [key('😀', Modifiers::NONE)]);
 }
 
 #[test]
@@ -223,6 +227,23 @@ fn long_apc_is_dropped() {
         (framing.answers, framing.events, framing.pending),
         (vec![Answer::Da1], vec![], vec![])
     );
+}
+
+#[test]
+fn apc_of_the_cap_is_kept() {
+    let apc = [b"\x1b_".as_slice(), &[b'x'; PENDING_MAX - 2]].concat();
+    let framing = framed(&[&apc]);
+    assert_eq!(
+        (framing.pending.len(), framing.skip),
+        (PENDING_MAX, Skip::Nothing)
+    );
+}
+
+#[test]
+fn apc_one_byte_past_the_cap_is_dropped() {
+    let apc = [b"\x1b_".as_slice(), &[b'x'; PENDING_MAX - 1]].concat();
+    let framing = framed(&[&apc]);
+    assert_eq!((framing.pending, framing.skip), (vec![], Skip::Apc));
 }
 
 #[test]
