@@ -225,7 +225,7 @@ Each item under "Not tested" of the decision:
 |---|---|
 | Ghostty without herdr | Non-goal. Only Rex is driven live. Task 7.3 opens a Parked issue. |
 | A paste of non-ASCII text in Terminal.app with a UTF-8 clipboard | Non-goal. Task 7.3 opens a Parked issue. |
-| The two patches | Tasks 3.1 to 3.3 write them and a third, and task 3.5 offers them upstream. |
+| The two patches | Tasks 3.1 to 3.3 write them and a third. The workflow follow-up of the tasks offers them upstream after the merge. |
 | The input method box on a row after a wide emoji | The pseudo-terminal scenario "The cursor on a wrapped row after a wide grapheme" checks the cell. Task 7.2 checks the box live in Rex. |
 | tmux, Linux and Windows | tmux and Windows are non-goals. The pseudo-terminal tests run on Linux in CI. |
 | A paste larger than 4096 bytes, and a terminal that cuts a long paste | Task 5.3 tests a paste of 64 KiB in `update`. A cut paste is a non-goal, because Termina holds an unfinished paste until its end marker. |

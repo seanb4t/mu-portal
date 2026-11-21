@@ -48,7 +48,6 @@ Each patch is one commit on its own branch of the fork, with its own unit tests,
 - [x] 3.2 Add patch 2 of D1 on the branch `grapheme-width`, from the branch `grapheme-cursor`. Add tests where a width function gives 8 for a family emoji: the cursor position, the wrap at width 10 and the drawn cells each use 8. Add a test that the default function gives the widths of 0.9.4. Add a test that the render sets `CellDiffOption::ForcedWidth` to 8 for that emoji. Add a test with `WrapMode::WordOrGlyph` and a word wider than the area, where the split uses the function. Add a test of an area of 5 columns with the emoji of width 8: the render draws no cell outside the area. Add a row for that case to the table "Checked facts". Make sure that `cargo test` passes in the fork, and that each test of a width function fails on the tag of 0.9.4.
 - [x] 3.3 Add patch 3 of D1 on the branch `wrapped-rows`, from the tag of 0.9.4. Add tests of the count for an empty text, a text of one row, a line wider than the width, and width 0. Add a test that the count uses the width function of patch 2 after the merge of task 3.4. Make sure that `cargo test` passes in the fork.
 - [x] 3.4 Merge the three branches into the branch `mu`. Add the `[patch.crates-io]` entry of D1 to the root `Cargo.toml`, with the full commit id of `mu`. Allow the git URL in `deny.toml` with the form of task 1.3. Add the Renovate manager that task 1.2 chose. Add `textarea_comes_from_the_fork` to `crates/mu-cli/tests/repo_config.rs`. Make sure that `cargo deny check` and `cargo nextest run --workspace --locked` pass. Make sure that `textarea_comes_from_the_fork` fails with the patch entry removed.
-- [ ] 3.5 With the owner's yes, open one pull request to `ratatui/ratatui-textarea` for each of the three branches. Link issue 38 upstream from the pull request of patch 3. Make sure that each pull request is open, and that its link is in the PR body of this change.
 
 ## 4. The editor widget
 
@@ -144,11 +143,12 @@ Load the `rust-best-practices` skill before this group.
 
 - [x] 7.1 Update `docs/src/content/docs/decisions/input-editor.md`. Add the three patches with the links of their upstream pull requests, and the fork and its pin. Add the kitty flag that the client pushes, and the items under "Not tested" that this change tested. Add the keys of the editor, with the line that Shift+Enter sends each line in Terminal.app. Add a line on `reset` after a SIGKILL. Align the timings of its table with `spikes/input-editor/results/bench.tsv`. Make sure that `mise run docs:check` passes.
 - [ ] 7.2 Run `mu client` in a Rex block through the `rex` CLI, on a server with a fake world. Type a pose of two paragraphs with Shift+Enter, paste the sample pose, and send each one. Press Alt+Enter and Ctrl+Enter on a text of two lines, and record whether each one sends each line. Check by eye that an input method opens its box at the cursor on a row after `👨‍👩‍👧`. Make sure that the game answers each pose as one line, and that the PR body records the result of each step.
-- [ ] 7.3 Open one Parked issue for Ghostty without herdr. Open one for a paste of non-ASCII text in Terminal.app with a UTF-8 clipboard. Make sure that both issues are in the GitHub Project with the status Parked.
-- [ ] 7.4 Run the checks of the whole workspace. Make sure that `mise run check` passes.
+- [x] 7.3 Open one Parked issue for Ghostty without herdr. Open one for a paste of non-ASCII text in Terminal.app with a UTF-8 clipboard. Make sure that both issues are in the GitHub Project with the status Parked.
+- [x] 7.4 Run the checks of the whole workspace. Make sure that `mise run check` passes.
 
 ## Workflow follow-up
 
+- After this change merges, and with the owner's yes, open one pull request to `ratatui/ratatui-textarea` for each of the three branches. The owner chose on 2026-11-21 to wait for the merge. Link issue 38 upstream from the pull request of patch 3, and add each link to the input-editor decision page.
 - Run `/sb:openspec-review pose-editor implementation` before group 7, and treat a verdict of changes-requested as a blocker.
 - Run `/sb:suite-review` on the branch before the pull request.
 - Archive the change after the merge, with an implementation review whose verdict is not changes-requested.
