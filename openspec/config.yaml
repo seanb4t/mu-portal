@@ -44,6 +44,8 @@ rules:
   proposal:
     - Name the GitHub issue that tracks the change
     - State what is not in the change
+    - List every choice that the owner will notice in use - each key, default, limit, refusal and untested item
+    - Name each place where the change differs from the convention of the field
   specs:
     - Write each scenario so that a test on the built binary or on another observable output can decide it
   design:
