@@ -178,7 +178,7 @@ Enforced by: the scenario "The line break of a world", and the scenarios of "Alt
 
 ### D13. A send of each line
 
-`SubmitLines` splits the text of the editor at each LF and clears the editor. The model keeps the lines in a queue. `update` returns `Effect::Send` for the first line. On the reply of a line, `update` returns the effect for the next one. So the lines reach the game in order, and `update` still does no I/O.
+`SubmitLines` splits the text of the editor at each LF and clears the editor. The model keeps the lines in a queue, with the id of the world that had the focus at the key. `update` returns `Effect::Send` for the first line, to that world. On the reply of a line, `update` returns the effect for the next one. That line goes to the world of the queue, and not to the world in focus. A plain send takes the world from the focus, and its reply names no world. So without the id, a Ctrl+N between two lines sends the rest of a script to another character. So the lines reach the game in order, and `update` still does no I/O.
 
 On a refusal, `update` empties the queue. It puts the refused line and the later lines back with `set_input`, before any text that the player typed since. It shows the reason as each refused send does today.
 

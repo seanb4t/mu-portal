@@ -89,13 +89,19 @@ The client SHALL turn on mouse capture and bracketed paste at the start. When it
 ## ADDED Requirements
 
 ### Requirement: Alt+Enter sends each line as a command
-If the user presses Alt+Enter, the client SHALL send each line of the editor to the world in focus as its own text. It SHALL send the lines in order and clear the editor. An empty line SHALL go as an empty text. If the terminal reports the Ctrl modifier with Enter, Ctrl+Enter SHALL do the same. The client SHALL send a line only after the server answered the line before it.
+If the user presses Alt+Enter, the client SHALL send each line of the editor to the world in focus as its own text. It SHALL send the lines in order and clear the editor. An empty line SHALL go as an empty text. If the terminal reports the Ctrl modifier with Enter, Ctrl+Enter SHALL do the same. The client SHALL send a line only after the server answered the line before it. Each line SHALL go to the world that had the focus at the Alt+Enter. A later move of the focus SHALL NOT change that world.
 
 #### Scenario: Each line is a command
 - **GIVEN** the world in focus is the fake world `alpha/aria`
 - **WHEN** the user types `one`, Ctrl+J and `two`, and the client gets the key event of Alt+Enter or of Ctrl+Enter
 - **THEN** the screen shows `You say, "one"` and then `You say, "two"`
 - **AND** the editor is empty and takes one row
+
+#### Scenario: The focus moves between two lines
+- **GIVEN** the worlds `alpha/aria` and `beta/bryn`, the focus on `alpha/aria`, and the editor with the lines `one` and `two`
+- **WHEN** the user presses Alt+Enter, and presses Ctrl+N before the server answers `one`
+- **THEN** the server gets `one` and `two` for `alpha/aria`
+- **AND** the server gets no line for `beta/bryn`
 
 ### Requirement: A refused line stops a send of each line
 If the server refuses a line of a send of each line, the client SHALL send no later line. It SHALL put the refused line and each later line back in the editor. It SHALL show the reason as a line with the prefix `-- `.

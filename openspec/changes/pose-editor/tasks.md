@@ -116,8 +116,9 @@ Load the `rust-best-practices` skill before this group.
 
 - [ ] 5.6 Add the action `SubmitLines` and the queue of D13, with the entries of Alt+Enter and Ctrl+Enter. Add these tests to `crates/mu-tui/tests/app.rs`, for the requirement "Alt+Enter sends each line as a command":
   - `each_line_is_a_command`, for "Each line is a command", once for each of the two keys, with an empty line among the lines
+  - `focus_moves_between_two_lines`, for "The focus moves between two lines"
   - `refused_line_stops_the_rest`, for "A line that the server refuses", of the requirement "A refused line stops a send of each line"
-  Add `alt_enter_sends_each_line` to `crates/mu-cli/tests/client.rs`, for the screen of "Each line is a command" on a fake world. Make sure that the three tests pass, and that `each_line_is_a_command` fails with the entry of Alt+Enter removed.
+  Add `alt_enter_sends_each_line` to `crates/mu-cli/tests/client.rs`, for the screen of "Each line is a command" on a fake world. Make sure that the four tests pass, and that `each_line_is_a_command` fails with the entry of Alt+Enter removed.
 - [ ] 5.7 Keep the `line_break` of each world in the model, from `ListWorlds`. Add the action `JoinLines` of D12, with the entry of Alt+R. Add these tests to `crates/mu-tui/tests/app.rs`, for the requirement "Alt+R joins the lines in place":
   - `lines_become_one_line`, for "The lines become one line"
   - `join_with_no_line_break`, for "A world with no line break"
