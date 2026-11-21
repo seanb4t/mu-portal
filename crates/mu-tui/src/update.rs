@@ -231,7 +231,7 @@ fn not_a_graphics_reply(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
 fn on_cut_reply_key(model: &mut Model, mut bytes: Vec<u8>, key: KeyEvent) -> Vec<Effect> {
     let byte = text(key)
         .and_then(|c| u8::try_from(c).ok())
-        .filter(|b| (0x20..=0x7e).contains(b));
+        .filter(|&b| probe::is_csi_body(b) || probe::is_csi_final(b));
     match byte {
         Some(b'_') if bytes.len() == 1 => {
             model.late = Late::Graphics { keys: 0 };
@@ -239,7 +239,7 @@ fn on_cut_reply_key(model: &mut Model, mut bytes: Vec<u8>, key: KeyEvent) -> Vec
         }
         Some(byte) if bytes.len() < probe::PENDING_MAX && (bytes.len() > 1 || byte == b'[') => {
             bytes.push(byte);
-            if bytes.len() > 2 && (0x40..=0x7e).contains(&byte) {
+            if bytes.len() > 2 && probe::is_csi_final(byte) {
                 model.late = Late::Waiting;
                 return probe::decode_csi(&bytes)
                     .into_iter()

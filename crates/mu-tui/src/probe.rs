@@ -98,6 +98,18 @@ pub struct Framed {
 
 const ESC: u8 = 0x1b;
 
+/// Whether `b` is a final byte of a CSI, 0x40 to 0x7E.
+#[must_use]
+pub const fn is_csi_final(b: u8) -> bool {
+    matches!(b, 0x40..=0x7e)
+}
+
+/// Whether `b` is a parameter or intermediate byte of a CSI, 0x20 to 0x3F.
+#[must_use]
+pub const fn is_csi_body(b: u8) -> bool {
+    matches!(b, 0x20..=0x3f)
+}
+
 /// The most bytes that [`frame`] holds for an open sequence.
 pub const PENDING_MAX: usize = 4096;
 
@@ -202,8 +214,13 @@ fn skipped(skip: &mut Skip, read: &[u8], pending: &mut Vec<u8>) -> usize {
                 }
                 None => *skip = Skip::ApcEsc,
             },
-            (Skip::Apc, _) | (Skip::Csi, 0x20..=0x3f) => {}
-            (Skip::ApcEsc, b'\\') | (Skip::Csi, 0x40..=0x7e) => {
+            (Skip::Apc, _) => {}
+            (Skip::Csi, _) if is_csi_body(byte) => {}
+            (Skip::ApcEsc, b'\\') => {
+                *skip = Skip::Nothing;
+                return at + 1;
+            }
+            (Skip::Csi, _) if is_csi_final(byte) => {
                 *skip = Skip::Nothing;
                 return at + 1;
             }
@@ -267,8 +284,8 @@ fn scan(buf: &[u8]) -> Scan {
             ESC if apc && at + 1 == buf.len() => return Scan::Open,
             ESC => return Scan::Broken(at),
             _ if apc => {}
-            0x40..=0x7e => return Scan::Csi(at + 1),
-            0x20..=0x3f => {}
+            b if is_csi_final(b) => return Scan::Csi(at + 1),
+            b if is_csi_body(b) => {}
             _ => return Scan::Broken(at),
         }
     }
