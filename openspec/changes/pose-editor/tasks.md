@@ -90,9 +90,10 @@ Load the `rust-best-practices` skill before this group.
 - [ ] 5.2 Add the actions `Newline`, `Undo`, `Redo`, `DeleteToLineStart` and `Ignore`, and the entries of D5 to the default keymap. Add a unit test of `update` for each entry that checks the text of the editor and the list of effects. Add these tests to `crates/mu-tui/tests/editor.rs`:
   - `each_key_inserts_a_line_break`, for "Each key of a line break"
   - `ctrl_u_deletes_to_the_start_of_the_line`, for "Ctrl+U deletes to the start of the line"
+  - `ctrl_u_at_the_start_of_a_line`, for "Ctrl+U at the start of a line"
   - `undo_and_redo`, for "Undo and redo"
   - `ctrl_r_changes_nothing`, for "Ctrl+R changes nothing"
-  Add `ctrl_m_sends` to `crates/mu-tui/tests/app.rs`, for "Ctrl+M sends". Make sure that the five tests pass. Make sure that `each_key_inserts_a_line_break` fails for Shift+Enter with its keymap entry removed, and that `ctrl_r_changes_nothing` fails with the entry of Ctrl+R removed.
+  Add `ctrl_m_sends` to `crates/mu-tui/tests/app.rs`, for "Ctrl+M sends". Make sure that the six tests pass. Make sure that `each_key_inserts_a_line_break` fails for Shift+Enter with its keymap entry removed, and that `ctrl_r_changes_nothing` fails with the entry of Ctrl+R removed.
 - [ ] 5.3 Add the clean of D6 as `clean_paste` in `crates/mu-tui/src/text.rs`. Add the handling of `Event::Paste` in `update`. Write the sample pose of the spike once with `cargo run -p input-editor -- sample 4096` in `spikes/`, and commit it as `crates/mu-tui/tests/data/pose-4096.txt`. Add these tests to `crates/mu-tui/tests/editor.rs`:
   - `paste_of_several_lines`, for "A paste of several lines"
   - `undo_of_a_paste`, for "Undo of a paste", with `pose-4096.txt`

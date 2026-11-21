@@ -1,10 +1,10 @@
 ---
-verdict: approve
+verdict: approve-with-notes
 phase: plan
-reviewed_at: 2026-11-21T14:15:08+00:00
-head: 0d2d0ae46fce081185cf6d5c84f2c1cbbd2f969d
-round: 2
-next_id: 49
+reviewed_at: 2026-11-21T14:50:07+00:00
+head: 2f16248711c31afd08727fadd04a3da042d1bbb6
+round: 3
+next_id: 56
 lenses:
   spec-lint: ok
   approach: ok
@@ -20,16 +20,24 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-43 | test-coverage | should-fix | in-change | delta scenario 'A terminal of 17 rows' has no matrix row | review > absent-row — "A terminal of 17 rows" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-44 | test-coverage | should-fix | in-change | delta scenario 'A terminal of 3 rows' has no matrix row | review > absent-row — "A terminal of 3 rows" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-45 | test-coverage | should-fix | in-change | delta scenario 'A terminal of 1 row' has no matrix row | review > absent-row — "A terminal of 1 row" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-46 | test-coverage | should-fix | in-change | delta scenario 'Up into an emoji with joiners' has no matrix row | review > absent-row — "Up into an emoji with joiners" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-47 | test-coverage | should-fix | in-change | delta scenario 'A paste with a selection' has no matrix row | review > absent-row — "A paste with a selection" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-48 | test-coverage | should-fix | in-change | delta scenario 'The cursor after a full row' has no matrix row | review > absent-row — "The cursor after a full row" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-50 | test-coverage | should-fix | in-change | delta scenario 'Ctrl+U deletes to the start of the line' has no matrix row | review > absent-row — "Ctrl+U deletes to the start of the line" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-51 | test-coverage | should-fix | in-change | delta scenario 'Undo and redo' has no matrix row | review > absent-row — "Undo and redo" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-52 | test-coverage | should-fix | in-change | delta scenario 'Ctrl+R changes nothing' has no matrix row | review > absent-row — "Ctrl+R changes nothing" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-53 | test-coverage | should-fix | in-change | delta scenario 'Ctrl+M sends' has no matrix row | review > absent-row — "Ctrl+M sends" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-54 | test-coverage | should-fix | in-change | delta scenario 'A built-in type that extends another' has no matrix row | review > absent-row — "A built-in type that extends another" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-55 | test-coverage | should-fix | in-change | delta scenario 'A built-in type extends only a built-in type' has no matrix row | review > absent-row — "A built-in type extends only a built-in type" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-49 | verify | should-fix | in-change | Ctrl+U calls delete_line_by_head, which at column 0 deletes the line break before the cursor. So Ctrl+U at the start of a second line joins it to the line above, where the requirement deletes only from the start of the line to the cursor. | design.md > D5. Keys of the editor are entries of the keymap — "`DeleteToLineStart` calls `delete_line_by_head`." | Make DeleteToLineStart do nothing at column 0, and add that case to the scenario of Ctrl+U. Or state in D5 and the requirement that Ctrl+U at column 0 removes the line break before the cursor. |  |  | wrong-behaviour |
 
 ## Repeats
 
-None.
+| id | lens | severity | claim | evidence |
+|---|---|---|---|---|
+| R-43 | test-coverage | should-fix | delta scenario 'A terminal of 17 rows' has no matrix row | review > absent-row — "A terminal of 17 rows" |
+| R-44 | test-coverage | should-fix | delta scenario 'A terminal of 3 rows' has no matrix row | review > absent-row — "A terminal of 3 rows" |
+| R-45 | test-coverage | should-fix | delta scenario 'A terminal of 1 row' has no matrix row | review > absent-row — "A terminal of 1 row" |
+| R-46 | test-coverage | should-fix | delta scenario 'Up into an emoji with joiners' has no matrix row | review > absent-row — "Up into an emoji with joiners" |
+| R-47 | test-coverage | should-fix | delta scenario 'A paste with a selection' has no matrix row | review > absent-row — "A paste with a selection" |
+| R-48 | test-coverage | should-fix | delta scenario 'The cursor after a full row' has no matrix row | review > absent-row — "The cursor after a full row" |
 
 ## Out of bound
 
@@ -45,10 +53,11 @@ None.
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | 1 | plan | full | 292abde7d72d251f79350d74e99dea4d0bf91e52 | abe97c09035f1efefc04ccc353d6fb5c4ccab4352eef0572c8d6db6a785b88f3 | changes-requested | 42 | 0 | 0 | 0 | 0 |  |
 | 2 | plan | follow-up | 0d2d0ae46fce081185cf6d5c84f2c1cbbd2f969d | 4f9e0c4bcafc5313cee510560979e27f731d6d9f119103fa599edae2ac4ed7c6 | approve-with-notes | 6 | 0 | 0 | 42 | 0 |  |
+| 3 | plan | follow-up | 2f16248711c31afd08727fadd04a3da042d1bbb6 | 3e62f93313c15dfff40c156abbf3da989267371482afc1a787f5c65e4689afe1 | approve-with-notes | 7 | 6 | 0 | 0 | 0 |  |
 
 ## Judge
 
-judge: 0 questions, 0.000 USD
+judge: 2 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -135,10 +144,11 @@ None.
 
 ## Lens notes
 
-- verify: crates/mu-core/tests/portal.rs line 97, in the helper refused_line_break, compares with Err(PortalError::LineBreak) as a unit variant. D9 gives the error a field, so that helper needs an edit, although task 2.3 says send_with_lf_is_refused passes with no edit. The test itself can stay unchanged once the helper matches the variant with any field.
-- verify: ConfigDir::tcp_world in crates/mu-cli/tests/support/mod.rs line 122 writes extends = "tinymux", so the world of on_game in client.rs gets line_break = "%r" after this change. A lower layer cannot unset an inherited line_break, because check_line_break refuses an empty value. So line_break_that_the_world_refuses of task 4.5 needs a game file that extends no built-in type. The test fails at once on the existing helper, so this is not a false test.
-- verify: ratatui-textarea 0.9.4 has WrapMode::WordOrGlyph (src/wrap.rs line 20). wrap_word_chunks falls back to split_range_by_grapheme_width only for a chunk wider than the width, which matches the R-1 fix and the two texts of editor_and_pane_wrap_alike.
-- verify: The default keymap (crates/mu-tui/src/keymap.rs lines 114 to 121) has no entry for Left, so Shift+Left reaches TextArea::input and selects. This is required by the scenario 'A paste with a selection' of the R-27 fix.
+- verify: prior.json has no fixed entry, so fixes is empty.
+- verify: Checked at head against ratatui-textarea 0.9.4: Ctrl+J maps to delete_line_by_head, Ctrl+U to undo, Ctrl+R to redo, Ctrl+M to a new line, no Ctrl+Z entry, and insert_str calls delete_selection first. The changed facts of D5, D6 and Checked facts hold.
+- verify: The resolver follows extends through the built-in layers in Index::types_of, so D11 needs no resolver change, as it says. ConfigDir::tcp_world extends tinymux, as task 4.5 says.
+- verify: Each test that task 2.2 names in crates/mu-cli/tests/world_config.rs exists at head.
+- verify: With only flag 1, termina 0.3.3 parses Ctrl+Shift+Z as Char('z') with CONTROL and SHIFT. D5 does not name the chord of the Redo entry; the implementer must bind that form.
 
 ## Ledger
 
@@ -186,9 +196,16 @@ None.
 | R-40 | 1 | 2 | suggestion | deviates-design |  | ["artifact",["design.md","D8. The kitty keyboard protocol"],"It sets a second `AtomicBool`, so `screen::leave` and the panic hook write `CSI <u` to pop it."] | resolved | resolved in round 2 from fixed 0d2d0ae46fce081185cf6d5c84f2c1cbbd2f969d |  |  | screen::open and screen::leave already take one flag for mode 2027. D8 adds a second AtomicBool beside it, so each restore path gets one more argument and one more clone for each mode that a later change sets. The parameter is the set of modes to undo at exit. |
 | R-41 | 1 | 2 | suggestion | in-change |  | ["artifact",["design.md","D6. Bracketed paste"],"It drops each other C0 control character except tab, and DEL and each C1 control character."] | resolved | resolved in round 2 from fixed 0d2d0ae46fce081185cf6d5c84f2c1cbbd2f969d |  |  | fit-6: text.rs already decides which characters are control characters, with char::is_control, for the text on the screen. D6 lists the same set again for the paste clean and does not say where the clean lives. The parameter is what a control character becomes (U+FFFD or nothing) and whether tab and LF stay.; inv-7: The clean of a paste is a rule over every string: its output holds no control character other than tab and LF, and a second clean changes nothing. The planned tests use two fixed strings. |
 | R-42 | 1 | 2 | suggestion | in-change |  | ["artifact",["specs/world-sessions/spec.md","Requirement: A command reaches only its world"],"If the world has a `line_break`, the server SHALL replace each LF of the text with it."] | resolved | resolved in round 2 from fixed 0d2d0ae46fce081185cf6d5c84f2c1cbbd2f969d |  |  | The join is a rule over every text with no CR: the game gets exactly one line with no CR and no LF, whatever the count and place of LF. The planned tests use fixed texts. |
-| R-43 | 2 | 2 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A terminal of 17 rows"] | refuted | tasks.md names a test for each scenario: terminal_of_17_rows, terminal_of_3_rows and terminal_of_1_row in task 4.3, up_into_an_emoji_with_joiners in 4.4, paste_over_a_selection in 5.3, cursor_at_a_full_row in 5.5. The matrix is carried from round 1, and a follow-up round does not rebuild it. |  |  | delta scenario 'A terminal of 17 rows' has no matrix row |
-| R-44 | 2 | 2 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A terminal of 3 rows"] | refuted | tasks.md names a test for each scenario: terminal_of_17_rows, terminal_of_3_rows and terminal_of_1_row in task 4.3, up_into_an_emoji_with_joiners in 4.4, paste_over_a_selection in 5.3, cursor_at_a_full_row in 5.5. The matrix is carried from round 1, and a follow-up round does not rebuild it. |  |  | delta scenario 'A terminal of 3 rows' has no matrix row |
-| R-45 | 2 | 2 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A terminal of 1 row"] | refuted | tasks.md names a test for each scenario: terminal_of_17_rows, terminal_of_3_rows and terminal_of_1_row in task 4.3, up_into_an_emoji_with_joiners in 4.4, paste_over_a_selection in 5.3, cursor_at_a_full_row in 5.5. The matrix is carried from round 1, and a follow-up round does not rebuild it. |  |  | delta scenario 'A terminal of 1 row' has no matrix row |
-| R-46 | 2 | 2 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Up into an emoji with joiners"] | refuted | tasks.md names a test for each scenario: terminal_of_17_rows, terminal_of_3_rows and terminal_of_1_row in task 4.3, up_into_an_emoji_with_joiners in 4.4, paste_over_a_selection in 5.3, cursor_at_a_full_row in 5.5. The matrix is carried from round 1, and a follow-up round does not rebuild it. |  |  | delta scenario 'Up into an emoji with joiners' has no matrix row |
-| R-47 | 2 | 2 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A paste with a selection"] | refuted | tasks.md names a test for each scenario: terminal_of_17_rows, terminal_of_3_rows and terminal_of_1_row in task 4.3, up_into_an_emoji_with_joiners in 4.4, paste_over_a_selection in 5.3, cursor_at_a_full_row in 5.5. The matrix is carried from round 1, and a follow-up round does not rebuild it. |  |  | delta scenario 'A paste with a selection' has no matrix row |
-| R-48 | 2 | 2 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The cursor after a full row"] | refuted | tasks.md names a test for each scenario: terminal_of_17_rows, terminal_of_3_rows and terminal_of_1_row in task 4.3, up_into_an_emoji_with_joiners in 4.4, paste_over_a_selection in 5.3, cursor_at_a_full_row in 5.5. The matrix is carried from round 1, and a follow-up round does not rebuild it. |  |  | delta scenario 'The cursor after a full row' has no matrix row |
+| R-43 | 2 | 3 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A terminal of 17 rows"] | refuted | tasks.md names a test for each scenario: terminal_of_17_rows, terminal_of_3_rows and terminal_of_1_row in task 4.3, up_into_an_emoji_with_joiners in 4.4, paste_over_a_selection in 5.3, cursor_at_a_full_row in 5.5. The matrix is carried from round 1, and a follow-up round does not rebuild it. |  |  | delta scenario 'A terminal of 17 rows' has no matrix row |
+| R-44 | 2 | 3 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A terminal of 3 rows"] | refuted | tasks.md names a test for each scenario: terminal_of_17_rows, terminal_of_3_rows and terminal_of_1_row in task 4.3, up_into_an_emoji_with_joiners in 4.4, paste_over_a_selection in 5.3, cursor_at_a_full_row in 5.5. The matrix is carried from round 1, and a follow-up round does not rebuild it. |  |  | delta scenario 'A terminal of 3 rows' has no matrix row |
+| R-45 | 2 | 3 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A terminal of 1 row"] | refuted | tasks.md names a test for each scenario: terminal_of_17_rows, terminal_of_3_rows and terminal_of_1_row in task 4.3, up_into_an_emoji_with_joiners in 4.4, paste_over_a_selection in 5.3, cursor_at_a_full_row in 5.5. The matrix is carried from round 1, and a follow-up round does not rebuild it. |  |  | delta scenario 'A terminal of 1 row' has no matrix row |
+| R-46 | 2 | 3 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Up into an emoji with joiners"] | refuted | tasks.md names a test for each scenario: terminal_of_17_rows, terminal_of_3_rows and terminal_of_1_row in task 4.3, up_into_an_emoji_with_joiners in 4.4, paste_over_a_selection in 5.3, cursor_at_a_full_row in 5.5. The matrix is carried from round 1, and a follow-up round does not rebuild it. |  |  | delta scenario 'Up into an emoji with joiners' has no matrix row |
+| R-47 | 2 | 3 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A paste with a selection"] | refuted | tasks.md names a test for each scenario: terminal_of_17_rows, terminal_of_3_rows and terminal_of_1_row in task 4.3, up_into_an_emoji_with_joiners in 4.4, paste_over_a_selection in 5.3, cursor_at_a_full_row in 5.5. The matrix is carried from round 1, and a follow-up round does not rebuild it. |  |  | delta scenario 'A paste with a selection' has no matrix row |
+| R-48 | 2 | 3 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The cursor after a full row"] | refuted | tasks.md names a test for each scenario: terminal_of_17_rows, terminal_of_3_rows and terminal_of_1_row in task 4.3, up_into_an_emoji_with_joiners in 4.4, paste_over_a_selection in 5.3, cursor_at_a_full_row in 5.5. The matrix is carried from round 1, and a follow-up round does not rebuild it. |  |  | delta scenario 'The cursor after a full row' has no matrix row |
+| R-49 | 3 | 3 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D5. Keys of the editor are entries of the keymap"],"`DeleteToLineStart` calls `delete_line_by_head`."] |  |  |  |  | Ctrl+U calls delete_line_by_head, which at column 0 deletes the line break before the cursor. So Ctrl+U at the start of a second line joins it to the line above, where the requirement deletes only from the start of the line to the cursor. |
+| R-50 | 3 | 3 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Ctrl+U deletes to the start of the line"] |  |  |  |  | delta scenario 'Ctrl+U deletes to the start of the line' has no matrix row |
+| R-51 | 3 | 3 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Undo and redo"] |  |  |  |  | delta scenario 'Undo and redo' has no matrix row |
+| R-52 | 3 | 3 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Ctrl+R changes nothing"] |  |  |  |  | delta scenario 'Ctrl+R changes nothing' has no matrix row |
+| R-53 | 3 | 3 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Ctrl+M sends"] |  |  |  |  | delta scenario 'Ctrl+M sends' has no matrix row |
+| R-54 | 3 | 3 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A built-in type that extends another"] |  |  |  |  | delta scenario 'A built-in type that extends another' has no matrix row |
+| R-55 | 3 | 3 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A built-in type extends only a built-in type"] |  |  |  |  | delta scenario 'A built-in type extends only a built-in type' has no matrix row |

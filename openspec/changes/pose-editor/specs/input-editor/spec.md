@@ -104,11 +104,15 @@ Alt+Enter and Ctrl+J SHALL insert a line break at the cursor. If the terminal re
 - **THEN** the editor holds `a`, a line break and `b`, on 2 rows
 
 ### Requirement: The editing keys follow readline
-Ctrl+U SHALL delete the text from the start of the line to the cursor. Ctrl+Z SHALL undo the last edit. If the terminal reports the Shift modifier, Ctrl+Shift+Z SHALL bring back the edit that the last undo removed. Ctrl+R SHALL NOT change the editor.
+Ctrl+U SHALL delete the text from the start of the line to the cursor. At the start of a line, Ctrl+U SHALL NOT change the editor. Ctrl+Z SHALL undo the last edit. If the terminal reports the Shift modifier, Ctrl+Shift+Z SHALL bring back the edit that the last undo removed. Ctrl+R SHALL NOT change the editor.
 
 #### Scenario: Ctrl+U deletes to the start of the line
 - **WHEN** the user types `one two`, presses Left 3 times and presses Ctrl+U
 - **THEN** the editor holds `two`
+
+#### Scenario: Ctrl+U at the start of a line
+- **WHEN** the user types `one`, Ctrl+J and `two`, presses Home and presses Ctrl+U
+- **THEN** the editor still holds the 2 lines `one` and `two`
 
 #### Scenario: Undo and redo
 - **GIVEN** the terminal sent a bracketed paste of `one` to an empty editor

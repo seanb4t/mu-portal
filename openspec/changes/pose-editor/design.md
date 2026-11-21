@@ -98,10 +98,10 @@ Each one needs its own entry. Without one, Shift+Enter and Alt+Enter fall back t
 
 The editing keys follow readline, the convention of shells and of TinyFugue. The library differs from readline in four keys, and the entries above change them:
 
-- Ctrl+U is the undo of the library. In readline it deletes to the start of the line. `DeleteToLineStart` calls `delete_line_by_head`.
+- Ctrl+U is the undo of the library. In readline it deletes to the start of the line. `DeleteToLineStart` calls `delete_line_by_head`. At column 0 it calls nothing, because `delete_line_by_head` there deletes the line break before the cursor.
 - Ctrl+R is the redo of the library. In readline it searches the history. `Ignore` does nothing, so #101 can give the key to that search.
 - Ctrl+M is a line break in the library. In readline it is Enter. A terminal with the kitty keyboard flag reports Ctrl+M as a key of its own.
-- The library has no Ctrl+Z. It is the undo of most editors. Ctrl+Shift+Z is their redo. A terminal that does not report Shift sends Ctrl+Shift+Z as Ctrl+Z, so it has no key for redo.
+- The library has no Ctrl+Z. It is the undo of most editors. Ctrl+Shift+Z is their redo. Its entry is the chord of the lowercase `z` with Ctrl and Shift, as Termina reports the key with the kitty keyboard flag. A terminal that does not report Shift sends Ctrl+Shift+Z as Ctrl+Z, so it has no key for redo.
 
 These keys of the library already match readline and stay: Ctrl+A, Ctrl+E, Ctrl+K, Ctrl+W, Ctrl+D, Ctrl+H, Ctrl+B, Ctrl+F, Alt+B, Alt+F, Alt+D and Ctrl+Y. Ctrl+N and Ctrl+P stay the next and the previous world. In readline they move in the history, and #101 decides them with the input history.
 
