@@ -34,10 +34,10 @@ See proposal.md for the motivation. The facts below shape the approach.
 
 The fork is `seanb4t/ratatui-textarea` on GitHub. The branch `mu` starts at the tag of 0.9.4. The root `Cargo.toml` names it in `[patch.crates-io]` with a `git` URL and a full commit id in `rev`. `deny.toml` allows that one git URL in `[sources]`.
 
-Each patch is one commit on its own branch, so each one can go upstream as its own pull request:
+Each patch is one commit on its own branch, so each one can go upstream as its own pull request. The branch `grapheme-width` of patch 2 starts at the branch `grapheme-cursor` of patch 1. Both patches change the same mapping from a column to the data. Its pull request names the pull request of patch 1 as its base. The branch `wrapped-rows` of patch 3 starts at the tag. The branch `mu` merges them, with one more commit that gives the width function to the count of patch 3.
 
-1. The cursor stops only at a grapheme boundary. `CursorMove::Forward` and `Back`, `delete_char` and `delete_next_char` step over the grapheme boundaries of `unicode-segmentation`. Each move that maps a column to the data stops at a boundary too. Those moves are Up, Down, Top, Bottom, the paragraph moves, `Jump`, and the mapping from a screen column in `char_offset_for_screen_col`. The data cursor stays a char index, so the rest of the API does not change.
-2. One width function. `TextArea::set_grapheme_width` takes a function from a grapheme to its width in cells. The default is the width that ratatui draws, so the behavior of upstream does not change. The cursor position, the wrap of the library and the render all call it. The wrap of the library is its own `src/wrap.rs`. It includes `split_range_by_grapheme_width`, the split inside a long word of `WrapMode::WordOrGlyph`. With a function set, the render gives each grapheme the width of the function as a forced width, with `CellDiffOption::ForcedWidth` of ratatui. So a grapheme takes exactly the cells that the function gives. The output pane forces a width with the same option of ratatui, so the fork copies no rule of the pane.
+1. The cursor stops only at a grapheme boundary. `CursorMove::Forward` and `Back`, `delete_char` and `delete_next_char` step over the grapheme boundaries of `unicode-segmentation`. Each move that maps a column to the data stops at a boundary too. Those moves are Up, Down, Top, Bottom, the paragraph moves, `Jump`, and the mapping from a screen column in `char_offset_for_screen_col`. The patch does it in one place: after each move, `move_cursor_with_shift` moves the cursor to a grapheme boundary. The data cursor stays a char index, so the rest of the API does not change.
+2. One width function. `TextArea::set_grapheme_width` takes a function from a grapheme to its width in cells. The default is the width that ratatui draws, so the behavior of upstream does not change. The cursor position, the wrap of the library and the render all call it. The wrap of the library is its own `src/wrap.rs`. It includes `split_range_by_grapheme_width`, the split inside a long word of `WrapMode::WordOrGlyph`. With a function set, the render gives each grapheme the width of the function as a forced width, with `CellDiffOption::ForcedWidth` of ratatui. So a grapheme takes exactly the cells that the function gives. The output pane forces a width with the same option of ratatui, so the fork copies no rule of the pane. With a function set, the render also draws a grapheme whole where the library puts its first char in the span of the cursor. The expansion of a tab into spaces still counts the widths of ratatui.
 3. The count of the wrapped rows for a width, as issue 38 upstream asks. The client needs it to size the editor. The count uses the width function.
 
 The client has its own wrap for the output pane, in `crates/mu-tui/src/wrap.rs`. The editor keeps the wrap of the library. The cursor moves, the scroll and the row count of the library all depend on that wrap. A patch that takes a wrap function from the client is larger, and upstream has no use for it. Both wraps use the same widths, break at a space, and break inside a word only where the word is wider than the row. They differ in two cases:
@@ -253,7 +253,6 @@ Each item under "Not tested" of the decision:
 | Fact | Task |
 |---|---|
 | A terminal with the kitty keyboard flag sends Alt+Enter as `CSI 13;3u` and Ctrl+Enter as `CSI 13;5u` | 7.2, in Rex |
-| The library draws no cell outside its area for a grapheme wider than the area | 3.2 |
 | `screen_cursor` gives the column one past the area after a row that the text fills exactly | 5.5 |
 
 ### Checked facts
@@ -269,6 +268,7 @@ Each item under "Not tested" of the decision:
 | `TextArea` has `screen_cursor`, `scroll_offset`, `insert_str` and `delete_selection`, which `insert_str` calls first | `ratatui-textarea` 0.9.4, `src/textarea.rs` |
 | Termina writes `Keyboard::PopFlags(n)` as `CSI <nu` | `termina` 0.3.3, `src/escape/csi.rs` |
 | The output pane forces the width of a cell with `CellDiffOption::ForcedWidth` | `crates/mu-tui/src/pane.rs`, `draw_text` |
+| With a width function, the fork draws no cell outside its area for a grapheme wider than the area. It leaves the row of that grapheme empty | The test `grapheme_wider_than_the_area_draws_no_cell_outside_it` of the fork |
 | `char::is_control` is the test of a control character in `clean` | `crates/mu-tui/src/text.rs` |
 | The widths of the library come from `char_width` in `util.rs`, `display_width_to` in `wrap.rs` and `drawn_graphemes` in `widget.rs` | `ratatui-textarea` 0.9.4 |
 | The latest release is 0.9.4, and upstream has no commit after it | crates.io and the commit list of `ratatui/ratatui-textarea`, read on 2026-11-20 |
