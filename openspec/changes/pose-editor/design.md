@@ -104,7 +104,7 @@ Enforced by: unit tests of `update` for each entry, and the pseudo-terminal scen
 
 The clean is `clean_paste` in `crates/mu-tui/src/text.rs`, beside `clean`. Both use `char::is_control` as the one test of a control character. That test covers C0, DEL and C1.
 
-Before the insert, `update` calls `cancel_selection`. `insert_str` deletes a selection as an edit of its own, so one undo then leaves the selected text deleted. Shift with an arrow key selects in the library, and no key of this change uses the selection.
+Shift with an arrow key selects in the library. A paste replaces a selection, as an editor does. `insert_str` deletes the selection as an edit of its own and then inserts the text. So the first undo removes the text of the paste, and a second undo restores the text of the selection. Typing over a selection undoes in the same two steps. One edit for both needs a new edit kind in the history of the library, and this change does not add it.
 
 A paste with no editor in focus goes nowhere. In this change the pose editor always has the focus.
 
@@ -219,7 +219,7 @@ Each item under "Not tested" of the decision:
 | Termina has `Keyboard::QueryFlags`, `PushFlags` and `PopFlags` | `termina` 0.3.3, `src/escape/csi.rs` |
 | Termina reads the byte LF as Ctrl+J and CR as Enter | `termina` 0.3.3, `parse_event` in `src/parse.rs` |
 | `TextArea::input` maps Ctrl+J to `delete_line_by_head` | `ratatui-textarea` 0.9.4, `src/textarea.rs` |
-| `TextArea` has `screen_cursor`, `scroll_offset`, `insert_str` and `cancel_selection` | `ratatui-textarea` 0.9.4, `src/textarea.rs` |
+| `TextArea` has `screen_cursor`, `scroll_offset`, `insert_str` and `delete_selection`, which `insert_str` calls first | `ratatui-textarea` 0.9.4, `src/textarea.rs` |
 | Termina writes `Keyboard::PopFlags(n)` as `CSI <nu` | `termina` 0.3.3, `src/escape/csi.rs` |
 | The output pane forces the width of a cell with `CellDiffOption::ForcedWidth` | `crates/mu-tui/src/pane.rs`, `draw_text` |
 | `char::is_control` is the test of a control character in `clean` | `crates/mu-tui/src/text.rs` |

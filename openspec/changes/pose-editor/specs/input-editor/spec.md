@@ -104,7 +104,7 @@ Alt+Enter and Ctrl+J SHALL insert a line break at the cursor. If the terminal re
 - **THEN** the editor holds `a`, a line break and `b`, on 2 rows
 
 ### Requirement: A paste is one edit
-A bracketed paste SHALL insert its text at the cursor as one edit. Each CR LF and each lone CR of the paste SHALL become LF. The editor SHALL drop each other control character of the paste, apart from the tab. One undo SHALL remove the whole paste. A paste SHALL NOT delete a selection.
+A bracketed paste SHALL insert its text at the cursor as one edit. Each CR LF and each lone CR of the paste SHALL become LF. The editor SHALL drop each other control character of the paste, apart from the tab. One undo SHALL remove the whole text of the paste. A paste SHALL replace a selection. A second undo SHALL then restore the text of the selection.
 
 #### Scenario: A paste of several lines
 - **GIVEN** the editor holds `x`
@@ -124,9 +124,10 @@ A bracketed paste SHALL insert its text at the cursor as one edit. Each CR LF an
 
 #### Scenario: A paste with a selection
 - **GIVEN** the editor holds `xy`, and the user selected `y` with Shift+Left
-- **WHEN** the terminal sends a bracketed paste of `z`, and the user presses Ctrl+Z once
-- **THEN** before the Ctrl+Z, the editor holds `xzy`
-- **AND** after the Ctrl+Z, the editor holds `xy`
+- **WHEN** the terminal sends a bracketed paste of `z`, and the user presses Ctrl+Z two times
+- **THEN** before the first Ctrl+Z, the editor holds `xz`
+- **AND** after the first Ctrl+Z, the editor holds `x`
+- **AND** after the second Ctrl+Z, the editor holds `xy`
 
 ### Requirement: The terminal cursor is at the insertion point
 After each frame, the client SHALL show the terminal cursor at the cell of the insertion point of the editor. An input method opens its box at that cell. If the text fills the last row of the editor exactly, the cursor SHALL be at the last column of that row.

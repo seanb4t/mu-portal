@@ -27,8 +27,8 @@ Load the `rust-best-practices` skill before this group.
   - `carriage_return_to_a_world_that_joins`, for "A carriage return to a world that joins"
   - `hook_sees_the_joined_line`, for "A hook sees the joined line"
   - `joined_text_is_one_line`, a property test with the `proptest` of the repository, as in `crates/mu-core/src/framer.rs`. For each text with no CR and each valid `line_break`, the game gets one line with no CR and no LF.
-  Make sure that the four tests pass, and that `line_break_that_the_world_joins` fails while the session refuses each LF. This task changes the requirement "A command reaches only its world". Make sure that these tests of its other scenarios still pass:
-  - In `crates/mu-core/tests/portal.rs`: `send_with_lf_is_refused`, for "A line break in the text", with no edit, because its world has no `line_break`
+  Make sure that the four tests pass, and that `line_break_that_the_world_joins` fails while the session refuses each LF. The helper `refused_line_break` of `crates/mu-core/tests/portal.rs` compares with `PortalError::LineBreak`. Edit it for the new field of the error. This task changes the requirement "A command reaches only its world". Make sure that these tests of its other scenarios still pass:
+  - In `crates/mu-core/tests/portal.rs`: `send_with_lf_is_refused`, for "A line break in the text", with no other edit, because its world has no `line_break`
   - In the same file: `send_with_cr_is_refused`, `two_characters_on_one_game`, `send_to_unknown_world`, `send_to_disconnected_world` and `send_to_connecting_world`
   - In the same file: `failed_write_records_disconnect`, for "A write that fails", and `empty_send_reaches_game`, for "An empty line" on a world with no `line_break`
   - In `crates/mu-core/tests/connection.rs`: `send_to_reconnecting_world`, for "A world that waits to reconnect"
@@ -78,7 +78,7 @@ Load the `rust-best-practices` skill before this group.
   Make sure that the five tests pass, and that each one fails with the patch entry of task 3.4 removed.
 - [ ] 4.5 Make `Model::input` return the lines of the editor joined with LF, as D3 says. Make `Model::set_input` split its text at each LF into the lines of the editor, so a refused text goes back as its lines. Add these tests:
   - `pose_of_two_lines`, in `crates/mu-cli/tests/client.rs`, for "A pose of two lines"
-  - `line_break_that_the_world_refuses`, in `crates/mu-cli/tests/client.rs` on a scripted game, for "A line break that the world refuses"
+  - `line_break_that_the_world_refuses`, in `crates/mu-cli/tests/client.rs` on a scripted game, for "A line break that the world refuses". Its game file extends no built-in type, because `ConfigDir::tcp_world` extends `tinymux`, which sets a `line_break`.
   Make sure that both tests pass, and that `enter_sends_to_world_in_focus`, `empty_enter_sends_empty_line`, `enter_with_no_world` and `refused_line_keeps_input` still pass.
 
 ## 5. Keys, paste and the terminal cursor
@@ -87,7 +87,7 @@ Load the `rust-best-practices` skill before this group.
 
 - [ ] 5.1 Read the current documentation of the kitty keyboard protocol. Find the bytes of Shift+Enter, Alt+Enter and Ctrl+J with only the flag that disambiguates escape codes. Add a row to the table "Checked facts". Make sure that D5 and D8 match the documentation, or change them and the `terminal-client` delta to match it.
 - [ ] 5.2 Add `Action::Newline` and `Action::Undo`, and the entries of D5 to the default keymap. Add a unit test of `update` for each entry that checks the text of the editor and the list of effects. Add `each_key_inserts_a_line_break` to `crates/mu-tui/tests/editor.rs`, for "Each key of a line break". Make sure that the tests pass, and that `each_key_inserts_a_line_break` fails for Shift+Enter with its keymap entry removed.
-- [ ] 5.3 Add the clean of D6 as `clean_paste` in `crates/mu-tui/src/text.rs`. Add the handling of `Event::Paste` in `update`, with `cancel_selection` before the insert. Write the sample pose of the spike once with `cargo run -p input-editor -- sample 4096` in `spikes/`, and commit it as `crates/mu-tui/tests/data/pose-4096.txt`. Add these tests to `crates/mu-tui/tests/editor.rs`:
+- [ ] 5.3 Add the clean of D6 as `clean_paste` in `crates/mu-tui/src/text.rs`. Add the handling of `Event::Paste` in `update`. Write the sample pose of the spike once with `cargo run -p input-editor -- sample 4096` in `spikes/`, and commit it as `crates/mu-tui/tests/data/pose-4096.txt`. Add these tests to `crates/mu-tui/tests/editor.rs`:
   - `paste_of_several_lines`, for "A paste of several lines"
   - `undo_of_a_paste`, for "Undo of a paste", with `pose-4096.txt`
   - `control_characters_in_a_paste`, for the text of the editor in "Control characters in a paste"
