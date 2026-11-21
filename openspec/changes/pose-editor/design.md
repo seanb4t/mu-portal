@@ -88,15 +88,28 @@ The default keymap gets these entries:
 | Shift+Enter | `Newline` |
 | Alt+Enter | `Newline` |
 | Ctrl+J | `Newline` |
+| Ctrl+U | `DeleteToLineStart` |
 | Ctrl+Z | `Undo` |
+| Ctrl+Shift+Z | `Redo` |
+| Ctrl+R | `Ignore` |
+| Ctrl+M | `Submit` |
 
 Each one needs its own entry. Without one, Shift+Enter and Alt+Enter fall back to the entry of Enter and send the text. Without one, Ctrl+J reaches `TextArea::input` and deletes to the start of the line.
+
+The editing keys follow readline, the convention of shells and of TinyFugue. The library differs from readline in four keys, and the entries above change them:
+
+- Ctrl+U is the undo of the library. In readline it deletes to the start of the line. `DeleteToLineStart` calls `delete_line_by_head`.
+- Ctrl+R is the redo of the library. In readline it searches the history. `Ignore` does nothing, so #101 can give the key to that search.
+- Ctrl+M is a line break in the library. In readline it is Enter. A terminal with the kitty keyboard flag reports Ctrl+M as a key of its own.
+- The library has no Ctrl+Z. It is the undo of most editors. Ctrl+Shift+Z is their redo. A terminal that does not report Shift sends Ctrl+Shift+Z as Ctrl+Z, so it has no key for redo.
+
+These keys of the library already match readline and stay: Ctrl+A, Ctrl+E, Ctrl+K, Ctrl+W, Ctrl+D, Ctrl+H, Ctrl+B, Ctrl+F, Alt+B, Alt+F, Alt+D and Ctrl+Y. Ctrl+N and Ctrl+P stay the next and the previous world. In readline they move in the history, and #101 decides them with the input history.
 
 Termina reads the byte LF as Ctrl+J and the byte CR as Enter. ESC CR is Enter with Alt. With the kitty keyboard flag, Shift+Enter is `CSI 13;2u`. Without the flag, most terminals send Shift+Enter as CR, so it sends the text. The spike found that Terminal.app sends it as ESC CR, so it inserts a line break there.
 
 Every other key goes to `TextArea::input` as today, with the editing keys of the library.
 
-Enforced by: unit tests of `update` for each entry, and the pseudo-terminal scenario of Shift+Enter with the kitty flag.
+Enforced by: unit tests of `update` for each entry, the scenarios of "The editing keys follow readline", and the pseudo-terminal scenario of Shift+Enter with the kitty flag.
 
 ### D6. Bracketed paste
 
@@ -151,6 +164,16 @@ The join is in the session and not in the client, so each client and each handle
 
 Enforced by: the scenarios of `world-config` and `world-sessions`, the constructor of `LineBreak`, and a property test of the join. `crates/mu-core/tests/portal.rs` already holds `send_with_lf_is_refused`, on a world with no `line_break`. It covers "A line break in the text" and stays as it is. `crates/mu-cli/tests/worlds.rs` holds a test of the same name on a fake world, which now joins. Task 2.4 removes that copy, and `fake_world_gets_a_joined_line` takes its place.
 
+### D11. Built-in types extend built-in types
+
+`Quirks` reads `extends` in a built-in type, and `parse_quirks` puts it in the `extends` of the layer. The resolver already follows the chain of a user type, so it follows this chain with no change. The files `types/pennmush.toml` and `types/rhostmush.toml` hold only `extends = "tinymux"`. So both types get the character set, the login template, the keepalive and the line break of `tinymux`.
+
+PennMUSH and RhostMUSH come from the same family of servers as TinyMUX. Task 2.1 reads the documentation of each one for the four quirks. Where a game differs, its type file sets that one field. No task connects to a live game of either kind.
+
+Alternative: copy the fields of `tinymux` into two files. Rejected, because a later change of `tinymux` then misses the copies.
+
+Enforced by: the scenarios "A built-in type that extends another" and "A built-in type extends only a built-in type".
+
 ### D10. Tests
 
 | Scenarios | Where |
@@ -192,6 +215,7 @@ Each item under "Not tested" of the decision:
 | A paste is one edit and holds no ESC | Unit tests of the clean and the pseudo-terminal scenario |
 | The client restores each mode it sets | The pseudo-terminal scenarios at exit, and review of the panic path, which no test can reach |
 | `update` does no I/O | Review, as the architecture decision says |
+| An `extends` of a built-in type names a built-in type, with no loop | The test `built_in_type_extends_only_a_built_in_type` |
 | A world joins only with its own `line_break` | The scenarios of `world-sessions`, and the property test `joined_text_is_one_line` |
 | A `line_break` of a `ResolvedWorld` is in its range | The constructor of `LineBreak` |
 | The cursor of the editor is at a grapheme boundary | The tests of patch 1 in the fork, and the scenarios of "The cursor moves by grapheme" |
@@ -206,6 +230,8 @@ Each item under "Not tested" of the decision:
 | The syntax of `allow-git` in `deny.toml` | 1.3 |
 | The kitty keyboard protocol reports Shift+Enter as `CSI 13;2u` with flag 1 only | 5.1 |
 | TinyMUX and AresMUSH read `%r` as a line break in a command, and Evennia reads `|/` | 2.1 |
+| PennMUSH and RhostMUSH match TinyMUX in the login line, the `IDLE` keepalive, the character set and `%r` | 2.1 |
+| A terminal with the kitty keyboard flag reports Ctrl+M and Ctrl+Shift+Z as keys of their own | 5.1 |
 | `Frame::set_cursor_position` shows the cursor after the frame | 4.1 |
 | The library draws no cell outside its area for a grapheme wider than the area | 3.2 |
 | `screen_cursor` gives the column one past the area after a row that the text fills exactly | 5.5 |
@@ -218,6 +244,7 @@ Each item under "Not tested" of the decision:
 | Termina parses `CSI ?<flags>u` as `Csi::Keyboard(Keyboard::ReportFlags)`, and reads only the first byte as the flags | `termina` 0.3.3, `src/parse.rs` |
 | Termina has `Keyboard::QueryFlags`, `PushFlags` and `PopFlags` | `termina` 0.3.3, `src/escape/csi.rs` |
 | Termina reads the byte LF as Ctrl+J and CR as Enter | `termina` 0.3.3, `parse_event` in `src/parse.rs` |
+| `TextArea::input` maps Ctrl+U to `undo`, Ctrl+R to `redo` and Ctrl+M to a line break, and has no entry for Ctrl+Z | `ratatui-textarea` 0.9.4, `src/textarea.rs` |
 | `TextArea::input` maps Ctrl+J to `delete_line_by_head` | `ratatui-textarea` 0.9.4, `src/textarea.rs` |
 | `TextArea` has `screen_cursor`, `scroll_offset`, `insert_str` and `delete_selection`, which `insert_str` calls first | `ratatui-textarea` 0.9.4, `src/textarea.rs` |
 | Termina writes `Keyboard::PopFlags(n)` as `CSI <nu` | `termina` 0.3.3, `src/escape/csi.rs` |
@@ -234,6 +261,7 @@ Each item under "Not tested" of the decision:
 - [The fork falls behind upstream fixes] → The same test fails on each bump, so each upstream release gets a rebase.
 - [A crash with SIGKILL leaves the kitty flag and bracketed paste on] → The panic hook covers a panic. After a SIGKILL, the user runs `reset`. The decision page says so.
 - [A player line shows `%r` in the output pane] → It is what the game got. A display of the line break can come with #101.
+- [The documentation of PennMUSH or RhostMUSH misses a quirk that differs from TinyMUX] → The owner overrides the field in the game file. The first evening on such a game finds it.
 - [A game reads `%r` in some commands only] → Task 2.1 checks the docs of each game. A game that extends no built-in type has no `line_break`, so its worlds refuse a text of several lines.
 
 ## Migration Plan

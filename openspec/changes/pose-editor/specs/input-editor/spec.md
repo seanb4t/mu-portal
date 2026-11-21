@@ -103,6 +103,24 @@ Alt+Enter and Ctrl+J SHALL insert a line break at the cursor. If the terminal re
 - **WHEN** the user types `a`, the client gets the key event of one of Shift+Enter, Alt+Enter and Ctrl+J, and the user types `b`
 - **THEN** the editor holds `a`, a line break and `b`, on 2 rows
 
+### Requirement: The editing keys follow readline
+Ctrl+U SHALL delete the text from the start of the line to the cursor. Ctrl+Z SHALL undo the last edit. If the terminal reports the Shift modifier, Ctrl+Shift+Z SHALL bring back the edit that the last undo removed. Ctrl+R SHALL NOT change the editor.
+
+#### Scenario: Ctrl+U deletes to the start of the line
+- **WHEN** the user types `one two`, presses Left 3 times and presses Ctrl+U
+- **THEN** the editor holds `two`
+
+#### Scenario: Undo and redo
+- **GIVEN** the terminal sent a bracketed paste of `one` to an empty editor
+- **WHEN** the user presses Ctrl+Z, and the client then gets the key event of Ctrl+Shift+Z
+- **THEN** after the Ctrl+Z, the editor is empty
+- **AND** after the Ctrl+Shift+Z, the editor holds `one`
+
+#### Scenario: Ctrl+R changes nothing
+- **GIVEN** the terminal sent a bracketed paste of `one` to an empty editor, and the user pressed Ctrl+Z
+- **WHEN** the user presses Ctrl+R
+- **THEN** the editor is empty
+
 ### Requirement: A paste is one edit
 A bracketed paste SHALL insert its text at the cursor as one edit. Each CR LF and each lone CR of the paste SHALL become LF. The editor SHALL drop each other control character of the paste, apart from the tab. One undo SHALL remove the whole text of the paste. A paste SHALL replace a selection. A second undo SHALL then restore the text of the selection.
 

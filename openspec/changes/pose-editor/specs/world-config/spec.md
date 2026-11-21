@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Built-in types set only quirks
-The binary SHALL hold the built-in types `tinymux`, `aresmush` and `evennia`. A built-in type SHALL set only quirk fields: `charset`, `line_break`, `login.template`, `keepalive.command` and `keepalive.seconds`. The built-in type `tinymux` SHALL set `charset = "iso-8859-1"`. The types `tinymux` and `aresmush` SHALL set `line_break = "%r"`, and `evennia` SHALL set `line_break = "|/"`. A name of a character set SHALL match with no regard to case. A user type SHALL NOT have the name of a built-in type.
+The binary SHALL hold the built-in types `tinymux`, `pennmush`, `rhostmush`, `aresmush` and `evennia`. A built-in type SHALL set only quirk fields: `charset`, `line_break`, `login.template`, `keepalive.command` and `keepalive.seconds`. A built-in type can also name another built-in type with `extends`, and it then gets each quirk that it does not set. The types `pennmush` and `rhostmush` SHALL extend `tinymux`. The built-in type `tinymux` SHALL set `charset = "iso-8859-1"`. The types `tinymux` and `aresmush` SHALL set `line_break = "%r"`, and `evennia` SHALL set `line_break = "|/"`. A name of a character set SHALL match with no regard to case. A user type SHALL NOT have the name of a built-in type.
 
 #### Scenario: Each built-in type reads as quirks
 - **WHEN** a test reads each built-in type with the schema of the quirk fields, which refuses every other field
@@ -24,6 +24,15 @@ The binary SHALL hold the built-in types `tinymux`, `aresmush` and `evennia`. A 
 - **GIVEN** the games `alpha`, `beta` and `gamma` extend `tinymux`, `aresmush` and `evennia`
 - **WHEN** the user runs `mu world show` for a character of each game with `--config <dir>`
 - **THEN** stdout shows `line_break = "%r"` for `alpha` and `beta`, and `line_break = "|/"` for `gamma`
+
+#### Scenario: A built-in type that extends another
+- **GIVEN** the games `alpha` and `beta` extend `pennmush` and `rhostmush`
+- **WHEN** the user runs `mu world show` for a character of each game with `--config <dir>`
+- **THEN** for each game, stdout shows `charset = "iso-8859-1"` and `line_break = "%r"`
+
+#### Scenario: A built-in type extends only a built-in type
+- **WHEN** a test reads each built-in type
+- **THEN** each `extends` names another built-in type, and no chain of types returns to its start
 
 #### Scenario: A game overrides the line break of its type
 - **GIVEN** the game `alpha` extends `tinymux` and sets `line_break = "%R"`

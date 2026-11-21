@@ -24,7 +24,7 @@ The client SHALL use the alternate screen. The top row SHALL list the worlds in 
 - **THEN** the top row shows `no worlds`
 
 ### Requirement: Enter sends the input to the world in focus
-If the user presses Enter, the client SHALL send the whole text of the editor to the world in focus and clear the editor. A line break of the text SHALL go to the server as LF. An empty editor SHALL send an empty line. If the server refuses the text, the client SHALL keep the text in the editor. It SHALL show the reason as a line with the prefix `-- `.
+If the user presses Enter, the client SHALL send the whole text of the editor to the world in focus and clear the editor. Ctrl+M SHALL do the same as Enter. A line break of the text SHALL go to the server as LF. An empty editor SHALL send an empty line. If the server refuses the text, the client SHALL keep the text in the editor. It SHALL show the reason as a line with the prefix `-- `.
 
 #### Scenario: A line goes to the world in focus
 - **GIVEN** the world in focus is `beta/bryn`
@@ -48,6 +48,12 @@ If the user presses Enter, the client SHALL send the whole text of the editor to
 - **WHEN** the user types `hi` and presses Enter
 - **THEN** the screen shows a line that starts with `-- ` and contains `not connected`
 - **AND** the input line still holds `hi`
+
+#### Scenario: Ctrl+M sends
+- **GIVEN** the world in focus is `beta/bryn`
+- **WHEN** the user types `hi`, and the client gets the key event of Ctrl+M
+- **THEN** the server records a player event `hi` for `beta/bryn`
+- **AND** the editor is empty
 
 #### Scenario: A pose of two lines
 - **GIVEN** the world in focus is the fake world `alpha/aria`

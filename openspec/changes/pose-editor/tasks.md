@@ -12,12 +12,13 @@ The scenarios of `input-editor` get their tests in `crates/mu-tui/tests/editor.r
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 2.1 Read the current documentation of TinyMUX, AresMUSH and Evennia. Find the text that each game reads as a line break inside one command. Add a row for each game to the table "Checked facts". Make sure that each built-in value of D9 matches the documentation, or that the design and the `world-config` delta change to match it.
-- [ ] 2.2 Add `line_break` to the layers, `Quirks`, the resolver, `ResolvedWorld` and `mu world show`. Add `check_line_break` and the type `LineBreak` of D9, and call the check from `check_layer`. Set the field in the three built-in types. This task covers the new field of the requirements "Built-in types set only quirks", "Each field is known" and "Each value is in its range". Add these tests to `crates/mu-cli/tests/world_config.rs`:
+- [ ] 2.1 Read the current documentation of TinyMUX, AresMUSH and Evennia. Find the text that each game reads as a line break inside one command. Read the current documentation of PennMUSH and RhostMUSH for the login line, the `IDLE` keepalive, the character set and the line break. Add a row for each game to the table "Checked facts". If PennMUSH or RhostMUSH differs from TinyMUX in a quirk, set that field in its type file of task 2.2. Make sure that each built-in value of D9 matches the documentation, or that the design and the `world-config` delta change to match it.
+- [ ] 2.2 Add `line_break` to the layers, `Quirks`, the resolver, `ResolvedWorld` and `mu world show`. Add `check_line_break` and the type `LineBreak` of D9, and call the check from `check_layer`. Set the field in the built-in types `tinymux`, `aresmush` and `evennia`. Add the built-in types `pennmush` and `rhostmush` of D11, and read `extends` in a built-in type. This task covers the new field of the requirements "Built-in types set only quirks", "Each field is known" and "Each value is in its range". Add these tests to `crates/mu-cli/tests/world_config.rs`:
   - `line_break_of_each_built_in_type`, for "The line break of each built-in type"
   - `game_overrides_the_line_break_of_its_type`, for "A game overrides the line break of its type"
   - `edges_of_the_line_break`, for "The edges of the line break", with each value of the scenario
-  Add `line_break_outside_its_range` to `crates/mu-core/tests/world_config.rs`: `LineBreak::new` refuses an empty text and a text with LF, and takes `%r`. In the same file, add `rest.line_break = None` to `built_in_types_hold_only_quirks`. Make sure that the four new tests pass. Make sure that these tests still pass, each for the scenario of its name:
+  - `built_in_type_that_extends_another`, for "A built-in type that extends another"
+  Add `line_break_outside_its_range` to `crates/mu-core/tests/world_config.rs`: `LineBreak::new` refuses an empty text and a text with LF, and takes `%r`. Add `built_in_type_extends_only_a_built_in_type` to the same file, for "A built-in type extends only a built-in type". In `built_in_types_hold_only_quirks`, add `rest.line_break = None` and the two new names. A type with `extends` can set no field, so keep its last assertion for a type with no `extends`. Make sure that the six new tests pass. Make sure that these tests still pass, each for the scenario of its name:
   - In `crates/mu-core/tests/world_config.rs`: `built_in_types_hold_only_quirks` and `quirks_refuse_other_fields`, for "Each built-in type reads as quirks"
   - In `crates/mu-cli/tests/world_config.rs`, for "Built-in types set only quirks": `global_preference_is_not_hidden_by_a_type` and `user_type_with_a_built_in_name`
   - In the same file, for "Each field is known": `unknown_field`, `port_out_of_range`, `template_with_no_password`, `charset_case`, `charset_the_engine_cannot_read` and `unknown_mode`
@@ -36,7 +37,7 @@ Load the `rust-best-practices` skill before this group.
 - [ ] 2.4 Give the fake world of `mu server --fake-world` the line break `%r`, through `LineBreak::new`. Add `fake_world_gets_a_joined_line` to `crates/mu-cli/tests/worlds.rs`, for "The fake world gets a joined line". In that file, remove `send_with_lf_is_refused`, because the fake world now joins. Keep `send_with_cr_is_refused` there. Make sure that the new test passes. Make sure that these tests of the requirement "The fake world stands in for a game" still pass:
   - In `crates/mu-cli/tests/worlds.rs`: `fake_world_answers`, `fake_world_flag_is_hidden`, for "The flag is hidden", `missing_password_variable` and `fake_world_does_not_reconnect`
   - In `crates/mu-fake-server/src/memory.rs`: `fake_game_answers_mark_in_order`, for "The fake world answers a mark in order"
-- [ ] 2.5 Add `line_break` to `docs/src/content/docs/guides/configuration.md`, with the value of each built-in type and the refusal of a world with none. Make sure that `mise run docs:check` passes.
+- [ ] 2.5 Add `line_break` to `docs/src/content/docs/guides/configuration.md`, with the value of each built-in type and the refusal of a world with none. Add `pennmush` and `rhostmush` to the list of the built-in types there, with a line that no live game checked them. Make sure that `mise run docs:check` passes.
 
 ## 3. The fork of ratatui-textarea
 
@@ -85,8 +86,13 @@ Load the `rust-best-practices` skill before this group.
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 5.1 Read the current documentation of the kitty keyboard protocol. Find the bytes of Shift+Enter, Alt+Enter and Ctrl+J with only the flag that disambiguates escape codes. Add a row to the table "Checked facts". Make sure that D5 and D8 match the documentation, or change them and the `terminal-client` delta to match it.
-- [ ] 5.2 Add `Action::Newline` and `Action::Undo`, and the entries of D5 to the default keymap. Add a unit test of `update` for each entry that checks the text of the editor and the list of effects. Add `each_key_inserts_a_line_break` to `crates/mu-tui/tests/editor.rs`, for "Each key of a line break". Make sure that the tests pass, and that `each_key_inserts_a_line_break` fails for Shift+Enter with its keymap entry removed.
+- [ ] 5.1 Read the current documentation of the kitty keyboard protocol. Find the bytes of Shift+Enter, Alt+Enter, Ctrl+J, Ctrl+M and Ctrl+Shift+Z with only the flag that disambiguates escape codes. Add a row to the table "Checked facts". Make sure that D5 and D8 match the documentation, or change them and the `terminal-client` delta to match it.
+- [ ] 5.2 Add the actions `Newline`, `Undo`, `Redo`, `DeleteToLineStart` and `Ignore`, and the entries of D5 to the default keymap. Add a unit test of `update` for each entry that checks the text of the editor and the list of effects. Add these tests to `crates/mu-tui/tests/editor.rs`:
+  - `each_key_inserts_a_line_break`, for "Each key of a line break"
+  - `ctrl_u_deletes_to_the_start_of_the_line`, for "Ctrl+U deletes to the start of the line"
+  - `undo_and_redo`, for "Undo and redo"
+  - `ctrl_r_changes_nothing`, for "Ctrl+R changes nothing"
+  Add `ctrl_m_sends` to `crates/mu-tui/tests/app.rs`, for "Ctrl+M sends". Make sure that the five tests pass. Make sure that `each_key_inserts_a_line_break` fails for Shift+Enter with its keymap entry removed, and that `ctrl_r_changes_nothing` fails with the entry of Ctrl+R removed.
 - [ ] 5.3 Add the clean of D6 as `clean_paste` in `crates/mu-tui/src/text.rs`. Add the handling of `Event::Paste` in `update`. Write the sample pose of the spike once with `cargo run -p input-editor -- sample 4096` in `spikes/`, and commit it as `crates/mu-tui/tests/data/pose-4096.txt`. Add these tests to `crates/mu-tui/tests/editor.rs`:
   - `paste_of_several_lines`, for "A paste of several lines"
   - `undo_of_a_paste`, for "Undo of a paste", with `pose-4096.txt`
