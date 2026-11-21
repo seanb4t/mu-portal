@@ -17,7 +17,7 @@ use crate::script::{Handler, Hook};
 use crate::secret::{Secret, SecretSource};
 use crate::session::{self, Reply, Request, Router, SessionParts, WorldState, WorldStatus};
 use crate::transport::Transport;
-use crate::world::ResolvedWorld;
+use crate::world::{LineBreak, ResolvedWorld};
 
 /// One world with the source of its password, its transport and its scripts.
 pub struct WorldSetup {
@@ -113,6 +113,8 @@ pub struct Portal {
     handled: Option<watch::Receiver<Seq>>,
     /// The worlds that connect at the start, in the order of the ids.
     at_start: Arc<Vec<WorldId>>,
+    /// The line break of each world that has one.
+    line_breaks: Arc<BTreeMap<WorldId, LineBreak>>,
 }
 
 impl Portal {
@@ -134,6 +136,10 @@ impl Portal {
             .map(|setup| setup.world.id.clone())
             .collect();
         at_start.sort();
+        let line_breaks = worlds
+            .iter()
+            .filter_map(|setup| Some((setup.world.id.clone(), setup.world.line_break.clone()?)))
+            .collect();
         for setup in worlds {
             let (sender, requests) = mpsc::unbounded_channel();
             let (state, state_receiver) = watch::channel(WorldStatus::of(WorldState::Disconnected));
@@ -152,6 +158,7 @@ impl Portal {
                 framer: setup.framer,
                 login_moment: setup.login_moment,
                 keepalive: setup.world.keepalive,
+                line_break: setup.world.line_break,
                 reconnect: setup.world.reconnect,
                 hooks: setup.hooks,
                 handlers: setup.handlers,
@@ -188,7 +195,14 @@ impl Portal {
             stopped,
             handled,
             at_start: Arc::new(at_start),
+            line_breaks: Arc::new(line_breaks),
         }
+    }
+
+    /// The line break of `world`, or none for a world that has none or does not exist.
+    #[must_use]
+    pub fn line_break(&self, world: &WorldId) -> Option<&LineBreak> {
+        self.line_breaks.get(world)
     }
 
     /// The journal of the server.

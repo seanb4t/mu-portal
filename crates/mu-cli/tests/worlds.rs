@@ -42,6 +42,13 @@ async fn fake_world_answers() {
     assert!(answer.seq > welcome.seq);
 }
 
+#[tokio::test]
+async fn fake_world_gets_a_joined_line() {
+    let mut session = Session::with_worlds(&["alpha/aria"]).await;
+    session.client.send("alpha/aria", "one\ntwo").await.unwrap();
+    session.line("alpha/aria", "You say, \"one%rtwo\"").await;
+}
+
 #[test]
 fn fake_world_flag_is_hidden() {
     let output = mu(&["server", "--help"]);
@@ -159,11 +166,6 @@ async fn line_break_is_refused(text: &str) {
         ["mark", "You say, \"mark\""],
         "the game got only the mark"
     );
-}
-
-#[tokio::test]
-async fn send_with_lf_is_refused() {
-    line_break_is_refused("one\ntwo").await;
 }
 
 #[tokio::test]
@@ -414,4 +416,31 @@ async fn list_worlds_shows_reconnecting() {
     );
     let next = worlds[0].next_attempt_ms.unwrap();
     assert!(next > called, "{next} is not after {called}");
+}
+
+#[tokio::test]
+async fn list_worlds_shows_the_line_break() {
+    // A type with no `extends` sets no line break.
+    let conf = ConfigDir::tcp_world(4201, "")
+        .file("types/plain.toml", "")
+        .file(
+            "games/alpha.toml",
+            "extends = \"plain\"\nhost = \"127.0.0.1\"\nport = 4201\n",
+        );
+    let session = Session::start(
+        ServerBuilder::new()
+            .arg("--config")
+            .arg(conf.path())
+            .fake_worlds(&["beta/bryn"]),
+    )
+    .await;
+    let worlds = session.client.list_worlds().await.unwrap();
+    let line_breaks: Vec<(&str, Option<&str>)> = worlds
+        .iter()
+        .map(|world| (world.id.as_str(), world.line_break.as_deref()))
+        .collect();
+    assert_eq!(
+        line_breaks,
+        [("alpha/aria", None), ("beta/bryn", Some("%r"))]
+    );
 }

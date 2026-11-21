@@ -4,16 +4,16 @@ The scenarios of `input-editor` get their tests in `crates/mu-tui/tests/editor.r
 
 ## 1. Sources
 
-- [ ] 1.1 Read each review thread and review comment of pull request #50. Make sure that the design names each defect that the threads found, or names why it does not apply to this change.
-- [ ] 1.2 Read the current documentation of the Renovate cargo manager for a git dependency in `[patch.crates-io]`. If it does not read one, plan the custom regex manager of D2 for task 3.4. Add a row to the table "Checked facts". Make sure that D2 states which of the two ways the change uses.
-- [ ] 1.3 Read the current documentation of cargo-deny for `allow-git` in `[sources]`. Add a row to the table "Checked facts". Make sure that the form that task 3.4 writes matches the documentation.
+- [x] 1.1 Read each review thread and review comment of pull request #50. Make sure that the design names each defect that the threads found, or names why it does not apply to this change.
+- [x] 1.2 Read the current documentation of the Renovate cargo manager for a git dependency in `[patch.crates-io]`. If it does not read one, plan the custom regex manager of D2 for task 3.4. Add a row to the table "Checked facts". Make sure that D2 states which of the two ways the change uses.
+- [x] 1.3 Read the current documentation of cargo-deny for `allow-git` in `[sources]`. Add a row to the table "Checked facts". Make sure that the form that task 3.4 writes matches the documentation.
 
 ## 2. The line break of a world
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 2.1 Read the current documentation of TinyMUX, AresMUSH and Evennia. Find the text that each game reads as a line break inside one command. Read the current documentation of PennMUSH and RhostMUSH for the login line, the `IDLE` keepalive, the character set and the line break. Add a row for each game to the table "Checked facts". If PennMUSH or RhostMUSH differs from TinyMUX in a quirk, set that field in its type file of task 2.2. Make sure that each built-in value of D9 matches the documentation, or that the design and the `world-config` delta change to match it.
-- [ ] 2.2 Add `line_break` to the layers, `Quirks`, the resolver, `ResolvedWorld` and `mu world show`. Add `check_line_break` and the type `LineBreak` of D9, and call the check from `check_layer`. Set the field in the built-in types `tinymux`, `aresmush` and `evennia`. Add the built-in types `pennmush` and `rhostmush` of D11, and read `extends` in a built-in type. This task covers the new field of the requirements "Built-in types set only quirks", "Each field is known" and "Each value is in its range". Add these tests to `crates/mu-cli/tests/world_config.rs`:
+- [x] 2.1 Read the current documentation of TinyMUX, AresMUSH and Evennia. Find the text that each game reads as a line break inside one command. Read the current documentation of PennMUSH and RhostMUSH for the login line, the `IDLE` keepalive, the character set and the line break. Add a row for each game to the table "Checked facts". If PennMUSH or RhostMUSH differs from TinyMUX in a quirk, set that field in its type file of task 2.2. Make sure that each built-in value of D9 matches the documentation, or that the design and the `world-config` delta change to match it.
+- [x] 2.2 Add `line_break` to the layers, `Quirks`, the resolver, `ResolvedWorld` and `mu world show`. Add `check_line_break` and the type `LineBreak` of D9, and call the check from `check_layer`. Set the field in the built-in types `tinymux`, `aresmush` and `evennia`. Add the built-in types `pennmush` and `rhostmush` of D11, and read `extends` in a built-in type. This task covers the new field of the requirements "Built-in types set only quirks", "Each field is known" and "Each value is in its range". Add these tests to `crates/mu-cli/tests/world_config.rs`:
   - `line_break_of_each_built_in_type`, for "The line break of each built-in type"
   - `game_overrides_the_line_break_of_its_type`, for "A game overrides the line break of its type"
   - `edges_of_the_line_break`, for "The edges of the line break", with each value of the scenario
@@ -23,7 +23,7 @@ Load the `rust-best-practices` skill before this group.
   - In `crates/mu-cli/tests/world_config.rs`, for "Built-in types set only quirks": `global_preference_is_not_hidden_by_a_type` and `user_type_with_a_built_in_name`
   - In the same file, for "Each field is known": `unknown_field`, `port_out_of_range`, `template_with_no_password`, `charset_case`, `charset_the_engine_cannot_read` and `unknown_mode`
   - In the same file, for "Each value is in its range": `edges_of_each_range`, `edges_of_the_attempts` and `line_break_in_a_line_field`
-- [ ] 2.3 Change the handling of `Command::Send` in `Session` to the order of D9, with the new message of `PortalError::LineBreak`. Add these tests to `crates/mu-core/tests/portal.rs` and `crates/mu-core/tests/scripts.rs`:
+- [x] 2.3 Change the handling of `Command::Send` in `Session` to the order of D9, with the new message of `PortalError::LineBreak`. Add these tests to `crates/mu-core/tests/portal.rs` and `crates/mu-core/tests/scripts.rs`:
   - `line_break_that_the_world_joins`, for "A line break that the world joins"
   - `carriage_return_to_a_world_that_joins`, for "A carriage return to a world that joins"
   - `hook_sees_the_joined_line`, for "A hook sees the joined line"
@@ -34,11 +34,11 @@ Load the `rust-best-practices` skill before this group.
   - In the same file: `failed_write_records_disconnect`, for "A write that fails", and `empty_send_reaches_game`, for "An empty line" on a world with no `line_break`
   - In `crates/mu-core/tests/connection.rs`: `send_to_reconnecting_world`, for "A world that waits to reconnect"
   - In `crates/mu-core/tests/scripts.rs`: `hook_line_break_is_dropped`
-- [ ] 2.4 Give the fake world of `mu server --fake-world` the line break `%r`, through `LineBreak::new`. Add `fake_world_gets_a_joined_line` to `crates/mu-cli/tests/worlds.rs`, for "The fake world gets a joined line". In that file, remove `send_with_lf_is_refused`, because the fake world now joins. Keep `send_with_cr_is_refused` there. Make sure that the new test passes. Make sure that these tests of the requirement "The fake world stands in for a game" still pass:
+- [x] 2.4 Give the fake world of `mu server --fake-world` the line break `%r`, through `LineBreak::new`. Add `fake_world_gets_a_joined_line` to `crates/mu-cli/tests/worlds.rs`, for "The fake world gets a joined line". In that file, remove `send_with_lf_is_refused`, because the fake world now joins. Keep `send_with_cr_is_refused` there. Make sure that the new test passes. Make sure that these tests of the requirement "The fake world stands in for a game" still pass:
   - In `crates/mu-cli/tests/worlds.rs`: `fake_world_answers`, `fake_world_flag_is_hidden`, for "The flag is hidden", `missing_password_variable` and `fake_world_does_not_reconnect`
   - In `crates/mu-fake-server/src/memory.rs`: `fake_game_answers_mark_in_order`, for "The fake world answers a mark in order"
-- [ ] 2.5 Add `line_break` to `docs/src/content/docs/guides/configuration.md`, with the value of each built-in type and the refusal of a world with none. Add `pennmush` and `rhostmush` to the list of the built-in types there, with a line that no live game checked them. Make sure that `mise run docs:check` passes.
-- [ ] 2.6 Add `optional string line_break = 4` to the message `World` in `crates/mu-proto`, as D12 says, and fill it in `ListWorlds`. Add `list_worlds_shows_the_line_break` to `crates/mu-cli/tests/worlds.rs`, for "The line break of a world". Make sure that it passes, and that `list_worlds_shows_reconnecting` still passes, for "A world that waits to reconnect".
+- [x] 2.5 Add `line_break` to `docs/src/content/docs/guides/configuration.md`, with the value of each built-in type and the refusal of a world with none. Add `pennmush` and `rhostmush` to the list of the built-in types there, with a line that no live game checked them. Make sure that `mise run docs:check` passes.
+- [x] 2.6 Add `optional string line_break = 4` to the message `World` in `crates/mu-proto`, as D12 says, and fill it in `ListWorlds`. Add `list_worlds_shows_the_line_break` to `crates/mu-cli/tests/worlds.rs`, for "The line break of a world". Make sure that it passes, and that `list_worlds_shows_reconnecting` still passes, for "A world that waits to reconnect".
 
 ## 3. The fork of ratatui-textarea
 
@@ -54,7 +54,7 @@ Each patch is one commit on its own branch of the fork, with its own unit tests,
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 4.1 Read the current documentation of ratatui for `Frame::set_cursor_position` and `StatefulWidget`. Add the rows to the table "Checked facts". Make sure that each difference from the sources is an edit of the design.
+- [x] 4.1 Read the current documentation of ratatui for `Frame::set_cursor_position` and `StatefulWidget`. Add the rows to the table "Checked facts". Make sure that each difference from the sources is an edit of the design.
 - [ ] 4.2 Add `EditorId`, `EditorState` and the `Editor` widget of D3. Replace `Leaf::Input` with `Leaf::Editor(EditorId)`, and give the caps of the probe to each editor in `Model::set_caps`. Set the width function of patch 2 from the caps, and the wrap mode to `WrapMode::WordOrGlyph`, as D3 says. Add these tests to `crates/mu-tui/tests/editor.rs`:
   - `editor_uses_the_probed_widths`, for the cell of `x` in "A terminal that adds code point widths"
   - `editor_uses_unicode_width`, for "A terminal that does not answer"
@@ -87,7 +87,7 @@ Load the `rust-best-practices` skill before this group.
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 5.1 Read the current documentation of the kitty keyboard protocol. Find the bytes of Shift+Enter, Alt+Enter, Ctrl+Enter, Ctrl+J, Ctrl+M and Ctrl+Shift+Z with only the flag that disambiguates escape codes. Add a row to the table "Checked facts". Make sure that D5 and D8 match the documentation, or change them and the `terminal-client` delta to match it.
+- [x] 5.1 Read the current documentation of the kitty keyboard protocol. Find the bytes of Shift+Enter, Alt+Enter, Ctrl+Enter, Ctrl+J, Ctrl+M and Ctrl+Shift+Z with only the flag that disambiguates escape codes. Add a row to the table "Checked facts". Make sure that D5 and D8 match the documentation, or change them and the `terminal-client` delta to match it.
 - [ ] 5.2 Add the actions `Newline`, `Undo`, `Redo`, `DeleteToLineStart` and `Ignore`, and the entries of D5 to the default keymap. Add a unit test of `update` for each entry that checks the text of the editor and the list of effects. Add these tests to `crates/mu-tui/tests/editor.rs`:
   - `each_key_inserts_a_line_break`, for "Each key of a line break"
   - `ctrl_u_deletes_to_the_start_of_the_line`, for "Ctrl+U deletes to the start of the line"
@@ -138,8 +138,8 @@ Load the `rust-best-practices` skill before this group.
 
 ## 7. Docs and live checks
 
-- [ ] 7.1 Update `docs/src/content/docs/decisions/input-editor.md`. Add the three patches with the links of their upstream pull requests, and the fork and its pin. Add the kitty flag that the client pushes, and the items under "Not tested" that this change tested. Add the keys of the editor, with the line that Shift+Enter sends each line in Terminal.app. Add a line on `reset` after a SIGKILL. Make sure that `mise run docs:check` passes.
-- [ ] 7.2 Run `mu client` in a Rex block through the `rex` CLI, on a server with a fake world. Type a pose of two paragraphs with Shift+Enter, paste the sample pose, and send each one. Check by eye that an input method opens its box at the cursor on a row after `👨‍👩‍👧`. Make sure that the game answers each pose as one line, and that the PR body records the result of each step.
+- [ ] 7.1 Update `docs/src/content/docs/decisions/input-editor.md`. Add the three patches with the links of their upstream pull requests, and the fork and its pin. Add the kitty flag that the client pushes, and the items under "Not tested" that this change tested. Add the keys of the editor, with the line that Shift+Enter sends each line in Terminal.app. Add a line on `reset` after a SIGKILL. Align the timings of its table with `spikes/input-editor/results/bench.tsv`. Make sure that `mise run docs:check` passes.
+- [ ] 7.2 Run `mu client` in a Rex block through the `rex` CLI, on a server with a fake world. Type a pose of two paragraphs with Shift+Enter, paste the sample pose, and send each one. Press Alt+Enter and Ctrl+Enter on a text of two lines, and record whether each one sends each line. Check by eye that an input method opens its box at the cursor on a row after `👨‍👩‍👧`. Make sure that the game answers each pose as one line, and that the PR body records the result of each step.
 - [ ] 7.3 Open one Parked issue for Ghostty without herdr. Open one for a paste of non-ASCII text in Terminal.app with a UTF-8 clipboard. Make sure that both issues are in the GitHub Project with the status Parked.
 - [ ] 7.4 Run the checks of the whole workspace. Make sure that `mise run check` passes.
 

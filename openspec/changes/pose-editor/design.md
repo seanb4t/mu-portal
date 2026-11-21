@@ -53,7 +53,7 @@ Enforced by: the unit tests of each patch in the fork, which upstream runs too. 
 
 ### D2. Renovate sees the fork
 
-Renovate's cargo manager can read git dependencies through the `git-refs` datasource. Whether it reads an entry of `[patch.crates-io]` is not checked. Task 1.2 checks it. If Renovate does not read it, a custom regex manager reads the `rev`. The RhostMUSH commit of the telnet spike uses the same kind of manager in `renovate.json`.
+Renovate's cargo manager reads a git dependency through the `git-refs` datasource, but it does not read `[patch.crates-io]`. Task 1.2 found that in its source. So the change uses a custom regex manager in `renovate.json`. It reads the `rev` of the patch entry as the digest of the branch `mu` of the fork. The regex manager edits only `Cargo.toml`. On its pull request, CI fails with `--locked` until the owner runs `cargo update -p ratatui-textarea` on the branch. The RhostMUSH commit of the telnet spike uses the same kind of manager in `renovate.json`.
 
 Enforced by: the Renovate dependency dashboard, issue #26, which lists the fork after the change merges. Review checks the dashboard once.
 
@@ -190,9 +190,9 @@ Enforced by: the scenarios of "Alt+Enter sends each line as a command" and of "A
 
 ### D11. Built-in types extend built-in types
 
-`Quirks` reads `extends` in a built-in type, and `parse_quirks` puts it in the `extends` of the layer. The resolver already follows the chain of a user type, so it follows this chain with no change. The files `types/pennmush.toml` and `types/rhostmush.toml` hold only `extends = "tinymux"`. So both types get the character set, the login template, the keepalive and the line break of `tinymux`.
+`Quirks` reads `extends` in a built-in type, and `parse_quirks` puts it in the `extends` of the layer. The resolver already follows the chain of a user type, so it follows this chain with no change. The file `types/pennmush.toml` holds only `extends = "tinymux"`. So the type gets the character set, the login template, the keepalive and the line break of `tinymux`. The file `types/rhostmush.toml` also sets `keepalive.command = "idle"`, the form that the help of RhostMUSH gives.
 
-PennMUSH and RhostMUSH come from the same family of servers as TinyMUX. Task 2.1 reads the documentation of each one for the four quirks. Where a game differs, its type file sets that one field. No task connects to a live game of either kind.
+PennMUSH and RhostMUSH come from the same family of servers as TinyMUX. Task 2.1 read the help files and the source of each one for the four quirks. PennMUSH matches TinyMUX in all four. RhostMUSH differs in two. Its keepalive is the command `idle`. Without a toggle of the player, it removes each character outside ASCII. `iso-8859-1` holds ASCII and fits the toggle `ACCENTS`, so the type keeps it. A player with the toggle `UTF8` sets `charset = "utf-8"` in the game file. No task connects to a live game of either kind.
 
 Alternative: copy the fields of `tinymux` into two files. Rejected, because a later change of `tinymux` then misses the copies.
 
@@ -215,7 +215,7 @@ The pseudo-terminal tests run on Linux in CI and on macOS on the owner's machine
 
 The change builds on the input-editor spike: the decision page `docs/src/content/docs/decisions/input-editor.md`, and pull request #50.
 
-- Task 1.1 reads each review thread of pull request #50.
+- Task 1.1 read each review thread of pull request #50. It has no thread and one bot summary. The summary found one thing: the timings in the table of the decision page differ a little from `spikes/input-editor/results/bench.tsv`. No decision of this change depends on a timing. Task 7.1 aligns the table.
 - The new code is written under the tests of this change. The spike code in `spikes/input-editor/src/editor.rs` is an example only.
 - The sample pose of 4096 bytes in 51 lines is evidence of the spike. Task 5.3 writes it once with `spikes/input-editor`, and commits it as `crates/mu-tui/tests/data/pose-4096.txt`.
 
@@ -252,13 +252,7 @@ Each item under "Not tested" of the decision:
 
 | Fact | Task |
 |---|---|
-| Renovate reads a git dependency in `[patch.crates-io]` | 1.2 |
-| The syntax of `allow-git` in `deny.toml` | 1.3 |
-| The kitty keyboard protocol reports Shift+Enter as `CSI 13;2u` with flag 1 only | 5.1 |
-| TinyMUX and AresMUSH read `%r` as a line break in a command, and Evennia reads `|/` | 2.1 |
-| PennMUSH and RhostMUSH match TinyMUX in the login line, the `IDLE` keepalive, the character set and `%r` | 2.1 |
-| A terminal with the kitty keyboard flag reports Ctrl+M, Ctrl+Shift+Z and Ctrl+Enter as keys of their own | 5.1 |
-| `Frame::set_cursor_position` shows the cursor after the frame | 4.1 |
+| A terminal with the kitty keyboard flag sends Alt+Enter as `CSI 13;3u` and Ctrl+Enter as `CSI 13;5u` | 7.2, in Rex |
 | The library draws no cell outside its area for a grapheme wider than the area | 3.2 |
 | `screen_cursor` gives the column one past the area after a row that the text fills exactly | 5.5 |
 
@@ -279,6 +273,21 @@ Each item under "Not tested" of the decision:
 | The widths of the library come from `char_width` in `util.rs`, `display_width_to` in `wrap.rs` and `drawn_graphemes` in `widget.rs` | `ratatui-textarea` 0.9.4 |
 | The latest release is 0.9.4, and upstream has no commit after it | crates.io and the commit list of `ratatui/ratatui-textarea`, read on 2026-11-20 |
 | The cargo manager of Renovate supports the datasources `crate`, `git-refs`, `git-tags`, `github-tags` and `gitlab-tags` | docs.renovatebot.com, modules/manager/cargo |
+| TinyMUX, PennMUSH and RhostMUSH turn `%r` into a line break | The topic SUBSTITUTIONS of `help.txt` of TinyMUX and of RhostMUSH and of `penntop.hlp` of PennMUSH, and the evaluator source of each, read on 2026-11-21 |
+| AresMUSH turns `%r` into a line break in a pose | `plugins/utils/help/en/formatting.md` of aresmush/aresmush |
+| Evennia turns `\|/` into a line break in text from a player | `docs/source/Concepts/Colors.md` and `evennia/utils/ansi.py` of evennia/evennia |
+| The login line is `connect <name> <password>` on each of the five servers | The connect help or the connect screen of each repository |
+| PennMUSH has the command `IDLE`, in capitals, and its default character set is Latin-1 | `penncmd.hlp`, `penntop.hlp` and `src/bsd.c` of pennmush/pennmush |
+| RhostMUSH has the command `idle`, and removes each character outside ASCII for a player with no toggle | The topics IDLE and UNICODE SUPPORT of `help.txt` of RhostMUSH/trunk |
+| The cargo manager of Renovate reads no `[patch]` table | `lib/modules/manager/cargo/schema.ts` of renovatebot/renovate, read on 2026-11-21 |
+| A regex manager with the datasource `git-refs` takes the branch as `currentValue` and the commit as `currentDigest` | docs.renovatebot.com, modules/datasource/git-refs and modules/manager/regex |
+| cargo-deny allows one git source with `allow-git` in `[sources]`. The URL must match with no regard to a `.git` at its end | the cargo-deny book, checks/sources/cfg |
+| `Frame::set_cursor_position` shows the cursor at the position after the frame, and a frame that does not call it hides the cursor | docs.rs/ratatui, `Frame` |
+| `StatefulWidget` has `type State` and `render(self, area, buf, state)`, and `Frame::render_stateful_widget` calls it | docs.rs/ratatui, `StatefulWidget` |
+| The kitty keyboard query is `CSI ?u`, the push is `CSI >1u`, and `CSI <u` pops one entry, as `CSI <1u` does | sw.kovidgoyal.net/kitty/keyboard-protocol |
+| With flag 1, a terminal sends Ctrl or Alt with a letter as `CSI <code>;<modifiers>u`: Ctrl+J, Ctrl+M, Ctrl+U, Ctrl+Z, Ctrl+Shift+Z and Alt+R | sw.kovidgoyal.net/kitty/keyboard-protocol |
+| The page states the bytes of plain Enter with flag 1, and not those of Enter with a modifier. With the flag, the spike got Shift+Enter as a key of its own in Rex and in Ghostty | sw.kovidgoyal.net/kitty/keyboard-protocol, and the input-editor decision page |
+| A terminal keeps one stack of keyboard flags for the main screen and one for the alternate screen | sw.kovidgoyal.net/kitty/keyboard-protocol |
 
 ## Risks / Trade-offs
 

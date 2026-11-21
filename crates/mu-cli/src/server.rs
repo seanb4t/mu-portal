@@ -6,8 +6,8 @@ use std::sync::Arc;
 use clap::Args;
 use mu_core::connection::Quiet;
 use mu_core::{
-    EnvSecretStore, Reconnect, ResolvedWorld, SecretRef, SecretSource, SecretStore, TcpTransport,
-    TelnetFramer, TelnetSettings, WorldId, WorldSetup, load_password,
+    EnvSecretStore, LineBreak, Reconnect, ResolvedWorld, SecretRef, SecretSource, SecretStore,
+    TcpTransport, TelnetFramer, TelnetSettings, WorldId, WorldSetup, load_password,
 };
 use mu_fake_server::FakeTransport;
 use tracing_subscriber::util::SubscriberInitExt as _;
@@ -161,6 +161,7 @@ fn serve_worlds(args: &ServerArgs) -> ExitCode {
         let world = ResolvedWorld {
             autoconnect: true,
             reconnect: Reconnect::Off,
+            line_break: LineBreak::new("%r").ok(),
             ..ResolvedWorld::with_default_login(fake.id.clone(), fake.secret.clone())
         };
         worlds.push(WorldSetup::new(world, Some(password), Arc::new(transport)));

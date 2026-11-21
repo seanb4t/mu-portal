@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use mu_core::{
-    ByteStream, Command, Event, EventKind, Handler, MemoryJournal, Portal, PortalError, Reconnect,
-    ResolvedWorld, Secret, Seq, Transport, WorldId, WorldSetup, WorldState,
+    ByteStream, Command, Event, EventKind, Handler, LineBreak, MemoryJournal, Portal, PortalError,
+    Reconnect, ResolvedWorld, Secret, Seq, Transport, WorldId, WorldSetup, WorldState,
 };
 use mu_fake_server::{FakeGame, FakeTransport};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -36,10 +36,27 @@ pub fn world(text: &str, password: &str) -> (WorldSetup, FakeGame) {
 }
 
 pub fn world_on(text: &str, password: &str, transport: FakeTransport) -> (WorldSetup, FakeGame) {
+    resolved_on(text, password, transport, None)
+}
+
+/// A world as [`world`] gives it, with the line break `line_break`.
+pub fn world_joining(text: &str, password: &str, line_break: &str) -> (WorldSetup, FakeGame) {
+    let transport = FakeTransport::new(id(text).character(), password);
+    let line_break = LineBreak::new(line_break).unwrap();
+    resolved_on(text, password, transport, Some(line_break))
+}
+
+fn resolved_on(
+    text: &str,
+    password: &str,
+    transport: FakeTransport,
+    line_break: Option<LineBreak>,
+) -> (WorldSetup, FakeGame) {
     let game = transport.game();
     let resolved = ResolvedWorld {
         autoconnect: true,
         reconnect: Reconnect::Off,
+        line_break,
         ..ResolvedWorld::with_default_login(id(text), "env:PW".parse().unwrap())
     };
     let setup = WorldSetup::new(

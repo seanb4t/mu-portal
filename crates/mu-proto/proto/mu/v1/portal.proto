@@ -95,6 +95,9 @@ message World {
   // In the state WORLD_STATE_RECONNECTING, the time of the next attempt, in milliseconds since
   // the Unix epoch.
   optional int64 next_attempt_ms = 3;
+  // The text that the game reads as a line break inside one command. A world with none takes
+  // only a text of one line.
+  optional string line_break = 4;
 }
 
 message SendRequest {

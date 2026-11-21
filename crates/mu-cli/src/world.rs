@@ -109,6 +109,7 @@ fn value_of(world: &ResolvedWorld, path: &str) -> Option<toml::Value> {
         "charset" => world.charset.name().to_ascii_lowercase().into(),
         "columns" => i64::from(world.columns).into(),
         "rows" => i64::from(world.rows).into(),
+        "line_break" => world.line_break.as_ref()?.as_str().into(),
         "login.template" => login?.template().into(),
         "login.name" => login?.name().into(),
         "login.secret" => login?.secret().to_string().into(),
@@ -141,7 +142,7 @@ fn render_entry(array: &str, entry: &Entry) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use mu_core::{Keepalive, Login};
+    use mu_core::{Keepalive, LineBreak, Login};
 
     use super::*;
 
@@ -157,6 +158,7 @@ mod tests {
                 .unwrap(),
             ),
             keepalive: Some(Keepalive::new("idle", 60).unwrap()),
+            line_break: Some(LineBreak::new("%r").unwrap()),
             ..ResolvedWorld::new("alpha/aria".parse().unwrap())
         };
         for path in FIELD_PATHS {

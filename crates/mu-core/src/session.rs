@@ -17,7 +17,7 @@ use tracing::{Instrument as _, Span};
 
 use crate::command::{Command, Envelope, Origin};
 use crate::connection::{Cause, LoginMoment};
-use crate::error::PortalError;
+use crate::error::{LineBreakError, PortalError};
 use crate::event::{Event, EventKind, NewEvent, Seq, Source};
 use crate::framer::{Framer, Inbound, NewFramer, has_line_break};
 use crate::id::WorldId;
@@ -25,7 +25,7 @@ use crate::journal::Journal;
 use crate::script::{DEPTH_LIMIT, Handler, Hook, RATE_PER_SECOND, run_hooks};
 use crate::secret::{MASK, Secret, SecretSource};
 use crate::transport::{ByteStream, Transport};
-use crate::world::{Keepalive, Login, Reconnect};
+use crate::world::{Keepalive, LineBreak, Login, Reconnect};
 
 /// The state of a world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -239,6 +239,9 @@ pub(crate) struct SessionParts {
     pub(crate) login_moment: Arc<dyn LoginMoment>,
     /// The keepalive, or none for a world with no keepalive.
     pub(crate) keepalive: Option<Keepalive>,
+    /// The text that takes the place of each LF of a sent text, or none for a world that
+    /// refuses such a text.
+    pub(crate) line_break: Option<LineBreak>,
     /// Whether and when the world connects again after a drop.
     pub(crate) reconnect: Reconnect,
     pub(crate) hooks: Vec<Arc<dyn Hook>>,
@@ -1000,9 +1003,8 @@ impl Session {
         }
         match command {
             Command::Send { text, .. } => {
-                if has_line_break(&text) {
-                    return Err(PortalError::LineBreak);
-                }
+                let text =
+                    joined(text, self.parts.line_break.as_ref()).map_err(PortalError::LineBreak)?;
                 if !self.conn.is_connected() {
                     return Err(PortalError::NotConnected(self.world().clone()));
                 }
@@ -1048,9 +1050,24 @@ impl Session {
     }
 }
 
+/// The text of a `Send` as one line: each LF becomes `line_break`.
+fn joined(text: String, line_break: Option<&LineBreak>) -> Result<String, LineBreakError> {
+    if text.contains('\r') {
+        return Err(LineBreakError::CarriageReturn);
+    }
+    if !text.contains('\n') {
+        return Ok(text);
+    }
+    line_break
+        .map(|line_break| text.replace('\n', line_break.as_str()))
+        .ok_or(LineBreakError::NotJoined)
+}
+
 #[cfg(test)]
 mod tests {
     use tokio::sync::oneshot::error::TryRecvError;
+
+    use proptest::prelude::*;
 
     use super::*;
 
@@ -1082,5 +1099,14 @@ mod tests {
         assert!(matches!(answers[2].try_recv(), Ok(Ok(None))));
         // With no frame left, an answer changes nothing.
         frames.answer_first();
+    }
+
+    proptest! {
+        #[test]
+        fn joined_text_is_one_line(text in "[^\r]*", line_break in "[^\\p{Cc}]{1,16}") {
+            let line_break = LineBreak::new(line_break).unwrap();
+            let line = joined(text, Some(&line_break)).unwrap();
+            prop_assert!(!line.contains(['\r', '\n']), "{line:?}");
+        }
     }
 }

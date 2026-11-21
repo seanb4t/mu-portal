@@ -458,6 +458,33 @@ fn line_break_in_a_line_field() {
 }
 
 #[test]
+fn edges_of_the_line_break() {
+    let long = "x".repeat(16);
+    let accented = "é".repeat(16);
+    for value in ["%r", long.as_str(), accented.as_str()] {
+        let text = game(&[], &format!("line_break = \"{value}\"\n"));
+        let config = Config::base().file("games/alpha.toml", &text);
+        assert_eq!(config.list().status.code(), Some(0), "{value}");
+    }
+    let too_long = "x".repeat(17);
+    let too_accented = "é".repeat(17);
+    for value in [
+        "",
+        too_long.as_str(),
+        too_accented.as_str(),
+        "%\\t",
+        "%\\n",
+        "%\\r",
+        "%\\u0085",
+        "%\\u007F",
+    ] {
+        let text = game(&[], &format!("line_break = \"{value}\"\n"));
+        let config = Config::base().file("games/alpha.toml", &text);
+        fails_naming(&config.list(), &["games/alpha.toml", "line_break"]);
+    }
+}
+
+#[test]
 fn edges_of_the_attempts() {
     for value in [0, 10_000] {
         let config =
@@ -636,6 +663,48 @@ fn table_merges_field_by_field() {
     has_line(login, "template = \"co {login} {password}\"");
     has_line(login, "name = \"Aria\"");
     has_line(login, "secret = \"env:ARIA_PW\"");
+}
+
+// The line break of a type.
+
+/// The base directory with the game `game` on the type `type_`, and its character `character`.
+fn with_game(config: Config, game_name: &str, type_: &str, character: &str) -> Config {
+    config
+        .file(
+            &format!("games/{game_name}.toml"),
+            &game(&["extends"], &format!("extends = \"{type_}\"\n")),
+        )
+        .file(&format!("characters/{game_name}/{character}.toml"), "")
+}
+
+#[test]
+fn line_break_of_each_built_in_type() {
+    let config = with_game(Config::base(), "beta", "aresmush", "bryn");
+    let config = with_game(config, "gamma", "evennia", "gil");
+    for (id, line) in [
+        ("alpha/aria", "line_break = \"%r\""),
+        ("beta/bryn", "line_break = \"%r\""),
+        ("gamma/gil", "line_break = \"|/\""),
+    ] {
+        has_line(&succeeds(&config.show(id)), line);
+    }
+}
+
+#[test]
+fn game_overrides_the_line_break_of_its_type() {
+    let config = Config::base().file("games/alpha.toml", &game(&[], "line_break = \"%R\"\n"));
+    has_line(&succeeds(&config.show("alpha/aria")), "line_break = \"%R\"");
+}
+
+#[test]
+fn built_in_type_that_extends_another() {
+    let config = with_game(Config::base(), "beta", "pennmush", "bryn");
+    let config = with_game(config, "gamma", "rhostmush", "gil");
+    for id in ["beta/bryn", "gamma/gil"] {
+        let text = succeeds(&config.show(id));
+        has_line(&text, "charset = \"iso-8859-1\"");
+        has_line(&text, "line_break = \"%r\"");
+    }
 }
 
 // extends.

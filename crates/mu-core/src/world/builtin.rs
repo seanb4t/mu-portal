@@ -1,4 +1,5 @@
-//! The built-in types, which ship inside the binary and set only quirks.
+//! The built-in types, which ship inside the binary. Each one sets only quirks, and can extend
+//! another built-in type.
 
 use super::check::check_layer;
 use super::error::ConfigError;
@@ -9,6 +10,8 @@ use super::parse::{LAYER_HIDDEN, parse};
 pub const BUILT_IN_TYPES: &[(&str, &str)] = &[
     ("aresmush", include_str!("types/aresmush.toml")),
     ("evennia", include_str!("types/evennia.toml")),
+    ("pennmush", include_str!("types/pennmush.toml")),
+    ("rhostmush", include_str!("types/rhostmush.toml")),
     ("tinymux", include_str!("types/tinymux.toml")),
 ];
 
@@ -22,12 +25,13 @@ pub const BUILT_IN_TYPES: &[(&str, &str)] = &[
 pub fn parse_quirks(name: &str, text: &str) -> Result<Layer, ConfigError> {
     let origin = LayerOrigin::BuiltIn(name.to_owned());
     let quirks: Quirks = parse(&origin, text, LAYER_HIDDEN)?;
+    let (extends, fields) = quirks.split();
     let layer = Layer {
         key: LayerKey::Type(name.to_owned()),
         origin,
         trust: Trust::Owner,
-        extends: None,
-        fields: quirks.into(),
+        extends,
+        fields,
     };
     check_layer(&layer)?;
     Ok(layer)

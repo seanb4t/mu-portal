@@ -1,6 +1,6 @@
 //! The checks of one layer: its values, then its trust. Each layer passes them before the merge.
-//! [`Login::new`](super::Login::new) and [`Keepalive::new`](super::Keepalive::new) run the same
-//! checks of their values.
+//! [`Login::new`](super::Login::new), [`Keepalive::new`](super::Keepalive::new) and
+//! [`LineBreak::new`](super::LineBreak::new) run the same checks of their values.
 
 use std::collections::BTreeSet;
 
@@ -21,6 +21,9 @@ const MAX_WAIT: u32 = 86_400;
 
 /// The highest value of `reconnect.attempts`.
 const MAX_ATTEMPTS: u32 = 10_000;
+
+/// The highest count of characters of `line_break`.
+const MAX_LINE_BREAK_CHARS: usize = 16;
 
 /// Checks the values of `layer`, then its trust.
 pub(crate) fn check_layer(layer: &Layer) -> Result<(), ConfigError> {
@@ -92,6 +95,24 @@ pub(crate) fn check_keepalive(
     Ok(())
 }
 
+/// Checks the text of a line break: 1 to 16 characters, and no control character.
+pub(crate) fn check_line_break(line_break: &str) -> Result<(), FieldError> {
+    let count = line_break.chars().count();
+    if !(1..=MAX_LINE_BREAK_CHARS).contains(&count) {
+        return Err(FieldError::new(
+            "line_break",
+            "must hold from 1 to 16 characters",
+        ));
+    }
+    if line_break.chars().any(char::is_control) {
+        return Err(FieldError::new(
+            "line_break",
+            "must hold no control character",
+        ));
+    }
+    Ok(())
+}
+
 /// Checks the ranges of the fields of a reconnect.
 pub(crate) fn check_reconnect(
     initial: Option<u32>,
@@ -152,6 +173,9 @@ fn check_fields(fields: &LayerFields) -> Result<(), FieldError> {
         && Charset::from_name(name).is_none()
     {
         return fail("charset", "must be UTF-8 or ISO-8859-1");
+    }
+    if let Some(line_break) = &fields.line_break {
+        check_line_break(line_break)?;
     }
     if let Some(login) = &fields.login {
         check_login(login.name.as_deref(), login.template.as_deref())?;
