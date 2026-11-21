@@ -1005,6 +1005,40 @@ fn reply_of_another_send_does_not_move_the_queue() {
 }
 
 #[test]
+fn reply_of_an_equal_send_does_not_move_the_queue() {
+    let mut app = two_worlds();
+    type_text(&mut app, "one");
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [send("alpha/aria", "one")]
+    );
+    type_lines(&mut app, &["one", "two"]);
+    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
+    // The first reply is the one of the plain send, which has the same world and text.
+    assert_eq!(sent(&mut app, "alpha/aria", "one"), []);
+    assert_eq!(
+        sent(&mut app, "alpha/aria", "one"),
+        [send("alpha/aria", "two")]
+    );
+}
+
+#[test]
+fn hint_of_a_send_that_waits_does_not_come_back_after_a_reset() {
+    let mut app = two_worlds();
+    type_lines(&mut app, &["one", "two"]);
+    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    assert!(has_notice(&mut app, "not done yet"));
+    on_event(
+        &mut app,
+        ClientEvent::Reset {
+            instance_id: "i".to_owned(),
+        },
+    );
+    assert!(!has_notice(&mut app, "not done yet"));
+}
+
+#[test]
 fn send_waits_for_the_lines_of_a_send_of_each_line() {
     for second in [key(KeyCode::Enter), alt_enter()] {
         let mut app = two_worlds();

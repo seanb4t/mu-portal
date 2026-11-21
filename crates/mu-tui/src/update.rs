@@ -407,7 +407,7 @@ fn world_to_send_to(model: &mut Model) -> Option<String> {
 /// each line wait, it is a notice and no world, so the lines stay in order and none is lost.
 fn world_for_a_send(model: &mut Model) -> Option<String> {
     if model.queue.is_some() {
-        model.notice("a send of each line is not done yet, so the text stays in the editor");
+        model.hint("a send of each line is not done yet, so the text stays in the editor");
         return None;
     }
     world_to_send_to(model)
@@ -417,6 +417,7 @@ fn submit(model: &mut Model) -> Option<Effect> {
     let world = world_for_a_send(model)?;
     let text = model.input();
     model.set_input("");
+    model.plain_sends.push((world.clone(), text.clone()));
     Some(Effect::Send { world, text })
 }
 
@@ -443,7 +444,7 @@ fn join_lines(model: &mut Model) {
         .focused_world()
         .and_then(|world| world.line_break.clone());
     let Some(line_break) = line_break else {
-        model.notice("the world in focus sets no line break, so the lines stay as they are");
+        model.hint("the world in focus sets no line break, so the lines stay as they are");
         return;
     };
     let text = model.input();
@@ -521,9 +522,25 @@ fn on_client(model: &mut Model, item: ClientEvent) {
 }
 
 fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
+    // The reply of a plain send is not a reply of the queue, also with the same world and text.
+    let (world, text) = match &reply {
+        Reply::Sent { world, text } | Reply::Refused { world, text, .. } => (world, text),
+    };
+    let plain = model
+        .plain_sends
+        .iter()
+        .position(|(each_world, each_text)| each_world == world && each_text == text);
+    if let Some(index) = plain {
+        model.plain_sends.remove(index);
+    }
     let (world, text, reason) = match reply {
         Reply::Sent { world, text } => {
-            return next_line(model, &world, &text).into_iter().collect();
+            let next = if plain.is_some() {
+                None
+            } else {
+                next_line(model, &world, &text)
+            };
+            return next.into_iter().collect();
         }
         Reply::Refused {
             world,
@@ -542,7 +559,7 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
     // back to the editor, before the text that the player typed since.
     let queue = model
         .queue
-        .take_if(|queue| queue.world == world && queue.sent == text);
+        .take_if(|queue| plain.is_none() && queue.world == world && queue.sent == text);
     match queue {
         Some(queue) => {
             let mut lines = vec![text];

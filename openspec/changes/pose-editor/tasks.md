@@ -119,7 +119,8 @@ Load the `rust-best-practices` skill before this group.
   - `focus_moves_between_two_lines`, for "The focus moves between two lines"
   - `send_waits_for_the_lines_of_a_send_of_each_line`, for "A send while lines wait", of the requirement "A send waits for a send of each line"
   - `refused_last_line_goes_before_the_typed_text`, for "The last line is refused"
-  - `reply_of_another_send_does_not_move_the_queue`, a unit test of the queue
+  - `reply_of_another_send_does_not_move_the_queue` and `reply_of_an_equal_send_does_not_move_the_queue`, unit tests of the queue
+  - `hint_of_a_send_that_waits_does_not_come_back_after_a_reset`, a unit test of the notice
   - `refused_line_stops_the_rest`, for "A line that the server refuses", of the requirement "A refused line stops a send of each line"
   Add `alt_enter_sends_each_line` to `crates/mu-cli/tests/client.rs`, for the screen of "Each line is a command" on a fake world. Make sure that the four tests pass, and that `each_line_is_a_command` fails with the entry of Alt+Enter removed.
 - [x] 5.7 Keep the `line_break` of each world in the model, from `ListWorlds`. Add the action `JoinLines` of D12, with the entry of Alt+R. Add these tests to `crates/mu-tui/tests/app.rs`, for the requirement "Alt+R joins the lines in place":

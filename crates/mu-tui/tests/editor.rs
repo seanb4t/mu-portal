@@ -399,9 +399,9 @@ proptest! {
     }
 }
 
-/// A key that moves the cursor or deletes.
-fn move_or_delete() -> impl Strategy<Value = KeyCode> {
-    prop::sample::select(vec![
+/// A key that moves the cursor, deletes or undoes.
+fn move_or_edit() -> impl Strategy<Value = (KeyCode, Modifiers)> {
+    let plain = [
         KeyCode::Left,
         KeyCode::Right,
         KeyCode::Up,
@@ -410,34 +410,54 @@ fn move_or_delete() -> impl Strategy<Value = KeyCode> {
         KeyCode::End,
         KeyCode::Backspace,
         KeyCode::Delete,
-    ])
+    ];
+    let with_ctrl = [
+        // The moves and the deletes by word.
+        KeyCode::Left,
+        KeyCode::Right,
+        KeyCode::Char('w'),
+        // Delete to the end and to the start of the line.
+        KeyCode::Char('k'),
+        KeyCode::Char('u'),
+        // Undo.
+        KeyCode::Char('z'),
+    ];
+    let keys: Vec<(KeyCode, Modifiers)> = plain
+        .into_iter()
+        .map(|code| (code, Modifiers::NONE))
+        .chain(with_ctrl.into_iter().map(|code| (code, Modifiers::CONTROL)))
+        .chain([(KeyCode::Char('z'), Modifiers::CONTROL | Modifiers::SHIFT)])
+        .collect();
+    prop::sample::select(keys)
 }
 
 proptest! {
-    /// After each sequence of moves and deletes, a typed `z` lands between two graphemes. A `z`
-    /// inside a grapheme leaves a part of it, such as an emoji with a joiner and no next emoji.
+    /// After each sequence of moves, deletes, undos and redos, a typed `z` lands between two
+    /// graphemes. A `z` inside a grapheme leaves a part of it, such as an emoji with a joiner
+    /// and no next emoji.
     #[test]
     fn cursor_stays_at_a_grapheme_boundary(
         lines in prop::collection::vec(
             prop::collection::vec(
-                prop::sample::select(vec!["a", FAMILY, "🇺🇸", "e\u{301}", "👍🏽"]),
+                prop::sample::select(vec!["a", " ", FAMILY, "🇺🇸", "e\u{301}", "👍🏽"]),
                 0..6,
             ),
             1..4,
         ),
-        keys in prop::collection::vec(move_or_delete(), 0..40),
+        keys in prop::collection::vec(move_or_edit(), 0..40),
     ) {
         let mut app = app();
         let lines: Vec<String> = lines.iter().map(|line| line.concat()).collect();
-        let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
-        type_lines(&mut app, &lines);
+        // A paste is one edit of whole graphemes. Typed text is one edit for each code point,
+        // so an undo of it leaves a part of a grapheme with the cursor at its end.
+        paste(&mut app, &lines.join("\n"));
         screen(&mut app, 80, 24);
-        for code in keys {
-            key(&mut app, code);
+        for (code, modifiers) in keys {
+            prop_assert_eq!(press(&mut app, code, modifiers), []);
         }
         type_text(&mut app, "z");
         let text = app.input();
-        let whole = ["a", FAMILY, "🇺🇸", "e\u{301}", "👍🏽", "z", "\n"];
+        let whole = ["a", " ", FAMILY, "🇺🇸", "e\u{301}", "👍🏽", "z", "\n"];
         for grapheme in unicode_segmentation::UnicodeSegmentation::graphemes(text.as_str(), true) {
             prop_assert!(whole.contains(&grapheme), "{grapheme:?} in {text:?}");
         }

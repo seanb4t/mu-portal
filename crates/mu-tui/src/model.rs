@@ -65,6 +65,8 @@ pub struct Model {
     pub(crate) editors: HashMap<EditorId, EditorState>,
     /// The lines of a send of each line that waits for the server.
     pub(crate) queue: Option<LineQueue>,
+    /// The world and the text of each plain send that the server did not answer yet.
+    pub(crate) plain_sends: Vec<(String, String)>,
     pub(crate) lost: bool,
     pub(crate) keymap: Keymap,
     pub(crate) layout: Node,
@@ -106,6 +108,7 @@ impl Model {
             panes: HashMap::from([(PaneId::NOTICES, PaneState::default())]),
             editors: HashMap::from([(EditorId::POSE, EditorState::with_caps(Arc::clone(&caps)))]),
             queue: None,
+            plain_sends: Vec::new(),
             caps,
             next_pane: 1,
             lost: false,
@@ -276,6 +279,13 @@ impl Model {
         let line = format!("-- {text}");
         self.push(self.focused_pane(), &line);
         self.notices.push(line);
+    }
+
+    /// Adds the line `-- <text>` at the bottom of the pane in focus, for a key that did nothing.
+    /// Unlike [`Self::notice`], the line does not come back after a Reset, because it is about
+    /// one moment.
+    pub(crate) fn hint(&mut self, text: &str) {
+        self.push(self.focused_pane(), &format!("-- {text}"));
     }
 
     /// Adds `line` at the bottom of `pane`.
