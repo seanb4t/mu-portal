@@ -103,8 +103,18 @@ If the user presses Alt+Enter, the client SHALL send each line of the editor to 
 - **THEN** the server gets `one` and `two` for `alpha/aria`
 - **AND** the server gets no line for `beta/bryn`
 
+### Requirement: A send waits for a send of each line
+While a line of a send of each line waits for its answer, Enter, Alt+Enter and Ctrl+Enter SHALL send nothing. The client SHALL then keep the text in the editor and show a line with the prefix `-- `.
+
+#### Scenario: A send while lines wait
+- **GIVEN** the user pressed Alt+Enter on the lines `one` and `two`, and the server did not answer `one` yet
+- **WHEN** the user types `next` and presses Enter or Alt+Enter
+- **THEN** the client sends nothing, and the editor still holds `next`
+- **AND** the screen shows a line that starts with `-- ` and contains `not done yet`
+- **AND** after the server answers `one`, the client sends `two`
+
 ### Requirement: A refused line stops a send of each line
-If the server refuses a line of a send of each line, the client SHALL send no later line. It SHALL put the refused line and each later line back in the editor. It SHALL show the reason as a line with the prefix `-- `.
+If the server refuses a line of a send of each line, the client SHALL send no later line. It SHALL put the refused line and each later line back in the editor, before the text that the user typed since. It SHALL show the reason as a line with the prefix `-- `.
 
 #### Scenario: A line that the server refuses
 - **GIVEN** the editor holds the lines `one`, `two` and `three`, and a test server that accepts `one` and refuses `two`
@@ -112,6 +122,11 @@ If the server refuses a line of a send of each line, the client SHALL send no la
 - **THEN** the server gets `one` and `two`, and it does not get `three`
 - **AND** the screen shows a line that starts with `-- `
 - **AND** the editor holds the lines `two` and `three`
+
+#### Scenario: The last line is refused
+- **GIVEN** the user pressed Alt+Enter on the lines `one` and `two`, and the server accepted `one`
+- **WHEN** the user types `later`, and the server refuses `two`
+- **THEN** the editor holds the lines `two` and `later`
 
 ### Requirement: Alt+R joins the lines in place
 If the user presses Alt+R, the client SHALL replace each line break of the editor with the `line_break` of the world in focus. It SHALL send nothing. If that world has no `line_break`, or no world is in focus, the client SHALL NOT change the editor. It SHALL then show a line with the prefix `-- ` that contains `line break`.

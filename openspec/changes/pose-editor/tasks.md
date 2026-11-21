@@ -77,7 +77,8 @@ Load the `rust-best-practices` skill before this group.
   - `right_over_a_combining_accent`, for "Right over a combining accent"
   - `delete_before_a_skin_tone`, for "Delete before a skin tone"
   - `up_into_an_emoji_with_joiners`, for "Up into an emoji with joiners"
-  Make sure that the five tests pass, and that each one fails with the patch entry of task 3.4 removed.
+  - `cursor_stays_at_a_grapheme_boundary`, a property test over each sequence of moves and deletes
+  Make sure that the six tests pass, and that each of the first five fails with the patch entry of task 3.4 removed.
 - [x] 4.5 Make `Model::input` return the lines of the editor joined with LF, as D3 says. Make `Model::set_input` split its text at each LF into the lines of the editor, so a refused text goes back as its lines. Add these tests:
   - `pose_of_two_lines`, in `crates/mu-cli/tests/client.rs`, for "A pose of two lines"
   - `line_break_that_the_world_refuses`, in `crates/mu-cli/tests/client.rs` on a scripted game, for "A line break that the world refuses". Its game file extends no built-in type, because `ConfigDir::tcp_world` extends `tinymux`, which sets a `line_break`.
@@ -117,6 +118,9 @@ Load the `rust-best-practices` skill before this group.
 - [x] 5.6 Add the action `SubmitLines` and the queue of D13, with the entries of Alt+Enter and Ctrl+Enter. Add these tests to `crates/mu-tui/tests/app.rs`, for the requirement "Alt+Enter sends each line as a command":
   - `each_line_is_a_command`, for "Each line is a command", once for each of the two keys, with an empty line among the lines
   - `focus_moves_between_two_lines`, for "The focus moves between two lines"
+  - `send_waits_for_the_lines_of_a_send_of_each_line`, for "A send while lines wait", of the requirement "A send waits for a send of each line"
+  - `refused_last_line_goes_before_the_typed_text`, for "The last line is refused"
+  - `reply_of_another_send_does_not_move_the_queue`, a unit test of the queue
   - `refused_line_stops_the_rest`, for "A line that the server refuses", of the requirement "A refused line stops a send of each line"
   Add `alt_enter_sends_each_line` to `crates/mu-cli/tests/client.rs`, for the screen of "Each line is a command" on a fake world. Make sure that the four tests pass, and that `each_line_is_a_command` fails with the entry of Alt+Enter removed.
 - [x] 5.7 Keep the `line_break` of each world in the model, from `ListWorlds`. Add the action `JoinLines` of D12, with the entry of Alt+R. Add these tests to `crates/mu-tui/tests/app.rs`, for the requirement "Alt+R joins the lines in place":
@@ -138,7 +142,7 @@ Load the `rust-best-practices` skill before this group.
 
 ## 7. Docs and live checks
 
-- [ ] 7.1 Update `docs/src/content/docs/decisions/input-editor.md`. Add the three patches with the links of their upstream pull requests, and the fork and its pin. Add the kitty flag that the client pushes, and the items under "Not tested" that this change tested. Add the keys of the editor, with the line that Shift+Enter sends each line in Terminal.app. Add a line on `reset` after a SIGKILL. Align the timings of its table with `spikes/input-editor/results/bench.tsv`. Make sure that `mise run docs:check` passes.
+- [x] 7.1 Update `docs/src/content/docs/decisions/input-editor.md`. Add the three patches with the links of their upstream pull requests, and the fork and its pin. Add the kitty flag that the client pushes, and the items under "Not tested" that this change tested. Add the keys of the editor, with the line that Shift+Enter sends each line in Terminal.app. Add a line on `reset` after a SIGKILL. Align the timings of its table with `spikes/input-editor/results/bench.tsv`. Make sure that `mise run docs:check` passes.
 - [ ] 7.2 Run `mu client` in a Rex block through the `rex` CLI, on a server with a fake world. Type a pose of two paragraphs with Shift+Enter, paste the sample pose, and send each one. Press Alt+Enter and Ctrl+Enter on a text of two lines, and record whether each one sends each line. Check by eye that an input method opens its box at the cursor on a row after `👨‍👩‍👧`. Make sure that the game answers each pose as one line, and that the PR body records the result of each step.
 - [ ] 7.3 Open one Parked issue for Ghostty without herdr. Open one for a paste of non-ASCII text in Terminal.app with a UTF-8 clipboard. Make sure that both issues are in the GitHub Project with the status Parked.
 - [ ] 7.4 Run the checks of the whole workspace. Make sure that `mise run check` passes.

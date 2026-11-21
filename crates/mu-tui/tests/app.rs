@@ -13,6 +13,10 @@ use ratatui::style::{Color, Modifier, Style};
 use termina::Event as TermEvent;
 use termina::event::{KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
+use support::{type_lines, type_text};
+
+mod support;
+
 fn app(worlds: &[&str]) -> Model {
     Model::new(worlds.iter().map(|world| (*world).to_owned()))
 }
@@ -121,12 +125,6 @@ fn on_event(app: &mut Model, item: ClientEvent) {
 
 fn on_reply(app: &mut Model, reply: Reply) {
     assert_eq!(update(app, Msg::Reply(reply)), []);
-}
-
-fn type_text(app: &mut Model, text: &str) {
-    for c in text.chars() {
-        assert_eq!(press(app, key(KeyCode::Char(c))), []);
-    }
 }
 
 /// Two worlds, each with its greeting.
@@ -889,16 +887,6 @@ fn send(world: &str, text: &str) -> Effect {
     }
 }
 
-/// Types each line, with Ctrl+J between each two.
-fn type_lines(app: &mut Model, lines: &[&str]) {
-    for (index, line) in lines.iter().enumerate() {
-        if index > 0 {
-            assert_eq!(press(app, ctrl('j')), []);
-        }
-        type_text(app, line);
-    }
-}
-
 fn refused(world: &str, text: &str) -> Reply {
     Reply::Refused {
         world: world.to_owned(),
@@ -916,6 +904,26 @@ fn ctrl_m_sends() {
     assert_eq!(app.input(), "");
 }
 
+/// The reply that the server took `text` in `world`, and the effects of it.
+fn sent(app: &mut Model, world: &str, text: &str) -> Vec<Effect> {
+    let reply = Reply::Sent {
+        world: world.to_owned(),
+        text: text.to_owned(),
+    };
+    update(app, Msg::Reply(reply))
+}
+
+fn alt_enter() -> KeyEvent {
+    KeyEvent::new(KeyCode::Enter, Modifiers::ALT)
+}
+
+/// True if a row of the screen is a notice that holds `text`.
+fn has_notice(app: &mut Model, text: &str) -> bool {
+    screen(app)
+        .iter()
+        .any(|row| row.starts_with("-- ") && row.contains(text))
+}
+
 #[test]
 fn each_line_is_a_command() {
     for modifiers in [Modifiers::ALT, Modifiers::CONTROL] {
@@ -924,10 +932,15 @@ fn each_line_is_a_command() {
         let enter = KeyEvent::new(KeyCode::Enter, modifiers);
         assert_eq!(press(&mut app, enter), [send("alpha/aria", "one")]);
         assert_eq!(app.input(), "");
-        let sent = |app: &mut Model| update(app, Msg::Reply(Reply::Sent));
-        assert_eq!(sent(&mut app), [send("alpha/aria", "")]);
-        assert_eq!(sent(&mut app), [send("alpha/aria", "two")]);
-        assert_eq!(sent(&mut app), []);
+        assert_eq!(
+            sent(&mut app, "alpha/aria", "one"),
+            [send("alpha/aria", "")]
+        );
+        assert_eq!(
+            sent(&mut app, "alpha/aria", ""),
+            [send("alpha/aria", "two")]
+        );
+        assert_eq!(sent(&mut app, "alpha/aria", "two"), []);
     }
 }
 
@@ -935,11 +948,10 @@ fn each_line_is_a_command() {
 fn focus_moves_between_two_lines() {
     let mut app = two_worlds();
     type_lines(&mut app, &["one", "two"]);
-    let enter = KeyEvent::new(KeyCode::Enter, Modifiers::ALT);
-    assert_eq!(press(&mut app, enter), [send("alpha/aria", "one")]);
+    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
     press(&mut app, ctrl('n'));
     assert_eq!(
-        update(&mut app, Msg::Reply(Reply::Sent)),
+        sent(&mut app, "alpha/aria", "one"),
         [send("alpha/aria", "two")]
     );
 }
@@ -948,21 +960,71 @@ fn focus_moves_between_two_lines() {
 fn refused_line_stops_the_rest() {
     let mut app = two_worlds();
     type_lines(&mut app, &["one", "two", "three"]);
-    let enter = KeyEvent::new(KeyCode::Enter, Modifiers::ALT);
-    assert_eq!(press(&mut app, enter), [send("alpha/aria", "one")]);
+    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
     assert_eq!(
-        update(&mut app, Msg::Reply(Reply::Sent)),
+        sent(&mut app, "alpha/aria", "one"),
         [send("alpha/aria", "two")]
     );
     on_reply(&mut app, refused("alpha/aria", "two"));
     assert_eq!(app.input(), "two\nthree");
-    assert_eq!(update(&mut app, Msg::Reply(Reply::Sent)), []);
-    let screen = screen(&mut app);
-    assert!(
-        screen.iter().any(|row| row.starts_with("-- ")),
-        "{screen:?}"
+    assert_eq!(sent(&mut app, "alpha/aria", "two"), []);
+    assert!(has_notice(&mut app, "not connected"));
+    assert_eq!(screen(&mut app)[22..], ["two", "three"]);
+}
+
+#[test]
+fn refused_last_line_goes_before_the_typed_text() {
+    let mut app = two_worlds();
+    type_lines(&mut app, &["one", "two"]);
+    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
+    assert_eq!(
+        sent(&mut app, "alpha/aria", "one"),
+        [send("alpha/aria", "two")]
     );
-    assert_eq!(screen[22..], ["two", "three"]);
+    type_text(&mut app, "later");
+    on_reply(&mut app, refused("alpha/aria", "two"));
+    assert_eq!(app.input(), "two\nlater");
+}
+
+#[test]
+fn reply_of_another_send_does_not_move_the_queue() {
+    let mut app = two_worlds();
+    type_text(&mut app, "before");
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [send("alpha/aria", "before")]
+    );
+    type_lines(&mut app, &["one", "two"]);
+    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
+    // The reply of the plain send comes while `one` waits.
+    assert_eq!(sent(&mut app, "alpha/aria", "before"), []);
+    assert_eq!(
+        sent(&mut app, "alpha/aria", "one"),
+        [send("alpha/aria", "two")]
+    );
+}
+
+#[test]
+fn send_waits_for_the_lines_of_a_send_of_each_line() {
+    for second in [key(KeyCode::Enter), alt_enter()] {
+        let mut app = two_worlds();
+        type_lines(&mut app, &["one", "two"]);
+        assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
+        type_text(&mut app, "next");
+        assert_eq!(press(&mut app, second), []);
+        assert_eq!(app.input(), "next");
+        assert!(has_notice(&mut app, "not done yet"));
+        // The first send still gives its second line, and then a send works again.
+        assert_eq!(
+            sent(&mut app, "alpha/aria", "one"),
+            [send("alpha/aria", "two")]
+        );
+        assert_eq!(sent(&mut app, "alpha/aria", "two"), []);
+        assert_eq!(
+            press(&mut app, key(KeyCode::Enter)),
+            [send("alpha/aria", "next")]
+        );
+    }
 }
 
 /// A model from a list of worlds: `alpha/aria` with the line break `%r`, and `beta/bryn` with

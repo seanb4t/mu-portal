@@ -43,7 +43,7 @@ pub(crate) struct LineQueue {
     pub(crate) world: String,
     /// The line that the server did not answer yet.
     pub(crate) sent: String,
-    /// The lines after it, in order.
+    /// The lines after it, in order. The queue stays until the server answers its last line.
     pub(crate) rest: VecDeque<String>,
 }
 
@@ -104,7 +104,7 @@ impl Model {
             worlds: Vec::new(),
             focus: None,
             panes: HashMap::from([(PaneId::NOTICES, PaneState::default())]),
-            editors: HashMap::from([(EditorId::POSE, EditorState::with_caps(&caps))]),
+            editors: HashMap::from([(EditorId::POSE, EditorState::with_caps(Arc::clone(&caps)))]),
             queue: None,
             caps,
             next_pane: 1,
@@ -169,12 +169,15 @@ impl Model {
         self.late = Late::Csi(bytes);
     }
 
+    /// The world in focus.
+    pub(crate) fn focused_world(&self) -> Option<&World> {
+        self.focus.and_then(|index| self.worlds.get(index))
+    }
+
     /// The id of the world in focus.
     #[must_use]
     pub fn focused(&self) -> Option<&str> {
-        self.focus
-            .and_then(|index| self.worlds.get(index))
-            .map(|world| world.id.as_str())
+        self.focused_world().map(|world| world.id.as_str())
     }
 
     /// The ids of the worlds, in their order.
@@ -201,7 +204,7 @@ impl Model {
         let caps = &self.caps;
         self.editors
             .entry(EditorId::POSE)
-            .or_insert_with(|| EditorState::with_caps(caps))
+            .or_insert_with(|| EditorState::with_caps(Arc::clone(caps)))
     }
 
     /// The index of `id`, which this adds in its order, with a new pane, if it is new. A new
@@ -250,7 +253,7 @@ impl Model {
             pane.set_caps(Arc::clone(&self.caps));
         }
         for editor in self.editors.values_mut() {
-            editor.set_caps(&self.caps);
+            editor.set_caps(Arc::clone(&self.caps));
         }
     }
 
@@ -263,8 +266,7 @@ impl Model {
     /// The pane of the world in focus, or the pane of notices.
     #[must_use]
     pub fn focused_pane(&self) -> PaneId {
-        self.focus
-            .and_then(|index| self.worlds.get(index))
+        self.focused_world()
             .map_or(PaneId::NOTICES, |world| world.pane)
     }
 
@@ -287,7 +289,6 @@ impl Model {
     /// Puts `text` in the pose editor, one line for each part between two LF, with the cursor at
     /// its end.
     pub(crate) fn set_input(&mut self, text: &str) {
-        let caps = Arc::clone(&self.caps);
-        self.pose().set_text(text, &caps);
+        self.pose().set_text(text);
     }
 }

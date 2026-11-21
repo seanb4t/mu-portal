@@ -59,7 +59,7 @@ Enforced by: the Renovate dependency dashboard, issue #26, which lists the fork 
 
 ### D3. The editor widget and its state
 
-`EditorState` holds the `TextArea`, the width profile as `Arc<Caps>`, and the last area that it drew. `Editor` is a ratatui `StatefulWidget`. The model holds `editors: HashMap<EditorId, EditorState>`, and `EditorId::POSE` is the one editor of this change. `Leaf::Input` becomes `Leaf::Editor(EditorId)`. `Model::set_caps` gives the new caps to each editor as it does to each pane.
+`EditorState` holds the `TextArea`, the caps of the terminal as `Arc<Caps>`, and the last area that it drew. `Editor` is a ratatui `StatefulWidget`. The model holds `editors: HashMap<EditorId, EditorState>`, and `EditorId::POSE` is the one editor of this change. `Leaf::Input` becomes `Leaf::Editor(EditorId)`. `Model::set_caps` gives the new caps to each editor as it does to each pane.
 
 The pose editor has the focus for keys. A focus between editors comes with the second editor of #101.
 
@@ -73,7 +73,7 @@ Enforced by: unit tests of `update` and `TestBackend` tests of the widget, and r
 
 A child of `Node::Split` has a `Constraint` today. It gets a `Size` instead: `Size::Fixed(Constraint)` or `Size::Editor { id, max_rows }`. Before it splits an area, `view` turns `Size::Editor` into `Constraint::Length(rows)`. `rows` is the count of wrapped rows of the text at the width of the area, from patch 3. It is at most `max_rows`, and at most half the rows of the area that the split divides, rounded down. In each case it is at least 1. The default layout uses `Size::Editor { id: EditorId::POSE, max_rows: 8 }` for the bottom child. Its split divides the whole terminal.
 
-The limit of 8 rows keeps most of a terminal of 24 rows for the output. The limit is a field of the node, and the half comes from the area of the split. So #101 can put an editor in a pane with another limit, with no new shape of `Size`.
+The limit of 8 rows keeps most of a terminal of 24 rows for the output. The limit is a field of the node, and the half comes from the area of the split. So #101 can put an editor in a pane with another limit. The rows of a text give a height. So in a split of columns, `Size::Editor` takes the width that the other children leave, and #101 decides the width of an editor there.
 
 Alternative: the editor sets a height in the model during `update`. Rejected, because `update` does not know the width of the area, and the height depends on the wrap.
 
@@ -182,7 +182,7 @@ Enforced by: the scenario "The line break of a world", and the scenarios of "Alt
 
 The reply of a send names no line. So the queue also keeps the line that waits for its reply. A refusal of that line in the world of the queue stops the queue. On a refusal, `update` empties the queue. It puts the refused line and the later lines back with `set_input`, before any text that the player typed since. It shows the reason as each refused send does today.
 
-A plain Enter while the queue holds lines sends at once, and its place among the lines of the queue is not fixed. That case is rare, and an order rule for it can come with the client commands of #101.
+While the queue waits, Enter, Alt+Enter and Ctrl+Enter send nothing. The text stays in the editor, and a notice says why. So no line of another send goes between two lines of the queue, and a second send of each line does not replace the queue. `Reply::Sent` names its world and its text. Only the reply of the line that the queue waits for moves the queue. The reply of a send from before the queue does not. The queue stays until the server answers its last line, so a refusal of that line also keeps the text that the player typed since.
 
 Alternative: one API call with a list of lines. Rejected, because each line is an ordinary `Send`, and a hook and the journal see each one as a line of the player.
 
@@ -253,7 +253,6 @@ Each item under "Not tested" of the decision:
 | Fact | Task |
 |---|---|
 | A terminal with the kitty keyboard flag sends Alt+Enter as `CSI 13;3u` and Ctrl+Enter as `CSI 13;5u` | 7.2, in Rex |
-| `screen_cursor` gives the column one past the area after a row that the text fills exactly | 5.5 |
 
 ### Checked facts
 
@@ -269,6 +268,7 @@ Each item under "Not tested" of the decision:
 | Termina writes `Keyboard::PopFlags(n)` as `CSI <nu` | `termina` 0.3.3, `src/escape/csi.rs` |
 | The output pane forces the width of a cell with `CellDiffOption::ForcedWidth` | `crates/mu-tui/src/pane.rs`, `draw_text` |
 | With a width function, the fork draws no cell outside its area for a grapheme wider than the area. It leaves the row of that grapheme empty | The test `grapheme_wider_than_the_area_draws_no_cell_outside_it` of the fork |
+| `screen_cursor` gives the column one past the area after a row that the text fills exactly | The test `cursor_at_a_full_row`, which fails with no clamp |
 | `char::is_control` is the test of a control character in `clean` | `crates/mu-tui/src/text.rs` |
 | The widths of the library come from `char_width` in `util.rs`, `display_width_to` in `wrap.rs` and `drawn_graphemes` in `widget.rs` | `ratatui-textarea` 0.9.4 |
 | The latest release is 0.9.4, and upstream has no commit after it | crates.io and the commit list of `ratatui/ratatui-textarea`, read on 2026-11-20 |
@@ -296,7 +296,7 @@ Each item under "Not tested" of the decision:
 - [The fork falls behind upstream fixes] → The same test fails on each bump, so each upstream release gets a rebase.
 - [A crash with SIGKILL leaves the kitty flag and bracketed paste on] → The panic hook covers a panic. After a SIGKILL, the user runs `reset`. The decision page says so.
 - [A player line shows `%r` in the output pane] → It is what the game got. A display of the line break can come with #101.
-- [In Terminal.app, Shift+Enter sends each line of an unfinished pose] → The decision page and the configuration guide name Ctrl+J as the line break there. #101 makes the keymap configurable.
+- [In Terminal.app, Shift+Enter sends each line of an unfinished pose] → The decision page names Ctrl+J as the line break there. #101 makes the keymap configurable.
 - [The documentation of PennMUSH or RhostMUSH misses a quirk that differs from TinyMUX] → The owner overrides the field in the game file. The first evening on such a game finds it.
 - [A game reads `%r` in some commands only] → Task 2.1 checks the docs of each game. A game that extends no built-in type has no `line_break`, so its worlds refuse a text of several lines.
 

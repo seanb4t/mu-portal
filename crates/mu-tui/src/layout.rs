@@ -28,7 +28,8 @@ pub enum Size {
     /// The size of a constraint.
     Fixed(Constraint),
     /// One row for each wrapped row of the text of an editor, and at least one row. It is at
-    /// most `max_rows`, and at most half of the rows that the split divides.
+    /// most `max_rows`, and at most half of the rows that the split divides. In a split of
+    /// columns, it is the width that the other children leave.
     Editor {
         /// The editor whose text gives the rows.
         id: EditorId,

@@ -24,6 +24,8 @@ impl EditorId {
 #[derive(Debug)]
 pub struct EditorState {
     textarea: TextArea<'static>,
+    /// What the terminal can draw, for the widths of the text.
+    caps: Arc<Caps>,
     /// The area that the last render drew in.
     area: Rect,
 }
@@ -31,16 +33,24 @@ pub struct EditorState {
 impl EditorState {
     /// An empty editor for a terminal with `caps`.
     #[must_use]
-    pub fn with_caps(caps: &Arc<Caps>) -> Self {
+    pub fn with_caps(caps: Arc<Caps>) -> Self {
         Self {
-            textarea: textarea(&[String::new()], caps),
+            textarea: textarea(&[String::new()], &caps),
+            caps,
             area: Rect::default(),
         }
     }
 
     /// Wraps and draws the editor for a terminal with `caps`.
-    pub(crate) fn set_caps(&mut self, caps: &Arc<Caps>) {
-        set_widths(&mut self.textarea, caps);
+    pub(crate) fn set_caps(&mut self, caps: Arc<Caps>) {
+        set_widths(&mut self.textarea, &caps);
+        self.caps = caps;
+    }
+
+    /// The area that the last render drew in.
+    #[must_use]
+    pub const fn area(&self) -> Rect {
+        self.area
     }
 
     /// The text of the editor, with an LF between each two lines.
@@ -51,9 +61,9 @@ impl EditorState {
 
     /// Puts `text` in the editor, with one line for each part between two LF and the cursor at
     /// the end. The history of the edits starts again.
-    pub(crate) fn set_text(&mut self, text: &str, caps: &Arc<Caps>) {
+    pub(crate) fn set_text(&mut self, text: &str) {
         let lines: Vec<String> = text.split('\n').map(str::to_owned).collect();
-        self.textarea = textarea(&lines, caps);
+        self.textarea = textarea(&lines, &self.caps);
     }
 
     /// The rows that the text takes in an area of `width` columns.

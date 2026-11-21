@@ -4,12 +4,16 @@
 use mu_tui::probe::Outcome;
 use mu_tui::width::Profile;
 use mu_tui::wrap::{self, Row};
-use mu_tui::{Effect, Model, Msg, update, view};
+use mu_tui::{EditorId, Effect, Model, Msg, update, view};
 use proptest::prelude::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use termina::Event as TermEvent;
-use termina::event::{KeyCode, KeyEvent, Modifiers};
+use termina::event::{KeyCode, Modifiers};
+
+use support::{press, type_lines, type_text};
+
+mod support;
 
 const FAMILY: &str = "👨\u{200d}👩\u{200d}👧";
 
@@ -39,35 +43,12 @@ fn bottom(app: &mut Model, width: u16, height: u16, count: usize) -> Vec<String>
     rows[rows.len() - count..].to_vec()
 }
 
-fn press(app: &mut Model, code: KeyCode, modifiers: Modifiers) -> Vec<Effect> {
-    update(
-        app,
-        Msg::Terminal(TermEvent::Key(KeyEvent::new(code, modifiers))),
-    )
-}
-
 fn key(app: &mut Model, code: KeyCode) {
     assert_eq!(press(app, code, Modifiers::NONE), []);
 }
 
 fn ctrl(app: &mut Model, c: char) {
     assert_eq!(press(app, KeyCode::Char(c), Modifiers::CONTROL), []);
-}
-
-fn type_text(app: &mut Model, text: &str) {
-    for c in text.chars() {
-        key(app, KeyCode::Char(c));
-    }
-}
-
-/// Types each line, with Ctrl+J between each two.
-fn type_lines(app: &mut Model, lines: &[&str]) {
-    for (index, line) in lines.iter().enumerate() {
-        if index > 0 {
-            ctrl(app, 'j');
-        }
-        type_text(app, line);
-    }
 }
 
 fn paste(app: &mut Model, text: &str) {
@@ -193,7 +174,9 @@ fn terminal_of_3_rows() {
 fn terminal_of_1_row() {
     let mut app = app();
     type_lines(&mut app, &["one", "two", "three"]);
-    assert_eq!(screen(&mut app, 80, 1).len(), 1);
+    screen(&mut app, 80, 1);
+    let editor = app.editor(EditorId::POSE).unwrap();
+    assert!(editor.area().height <= 1, "{:?}", editor.area());
 }
 
 #[test]
@@ -413,5 +396,50 @@ proptest! {
         let mut second = app();
         paste(&mut second, &cleaned);
         prop_assert_eq!(second.input(), cleaned);
+    }
+}
+
+/// A key that moves the cursor or deletes.
+fn move_or_delete() -> impl Strategy<Value = KeyCode> {
+    prop::sample::select(vec![
+        KeyCode::Left,
+        KeyCode::Right,
+        KeyCode::Up,
+        KeyCode::Down,
+        KeyCode::Home,
+        KeyCode::End,
+        KeyCode::Backspace,
+        KeyCode::Delete,
+    ])
+}
+
+proptest! {
+    /// After each sequence of moves and deletes, a typed `z` lands between two graphemes. A `z`
+    /// inside a grapheme leaves a part of it, such as an emoji with a joiner and no next emoji.
+    #[test]
+    fn cursor_stays_at_a_grapheme_boundary(
+        lines in prop::collection::vec(
+            prop::collection::vec(
+                prop::sample::select(vec!["a", FAMILY, "🇺🇸", "e\u{301}", "👍🏽"]),
+                0..6,
+            ),
+            1..4,
+        ),
+        keys in prop::collection::vec(move_or_delete(), 0..40),
+    ) {
+        let mut app = app();
+        let lines: Vec<String> = lines.iter().map(|line| line.concat()).collect();
+        let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
+        type_lines(&mut app, &lines);
+        screen(&mut app, 80, 24);
+        for code in keys {
+            key(&mut app, code);
+        }
+        type_text(&mut app, "z");
+        let text = app.input();
+        let whole = ["a", FAMILY, "🇺🇸", "e\u{301}", "👍🏽", "z", "\n"];
+        for grapheme in unicode_segmentation::UnicodeSegmentation::graphemes(text.as_str(), true) {
+            prop_assert!(whole.contains(&grapheme), "{grapheme:?} in {text:?}");
+        }
     }
 }

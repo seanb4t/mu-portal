@@ -1,6 +1,6 @@
 ---
 title: Input editor
-description: The pose editor uses ratatui-textarea, with a patch for grapheme cursor moves and one width function.
+description: The pose editor uses ratatui-textarea, with patches for grapheme cursor moves, one width function and the count of the wrapped rows.
 sidebar:
   order: 19
 ---
@@ -9,21 +9,39 @@ sidebar:
 
 The pose editor and each other input of the terminal client use `ratatui-textarea`. The project does not write its own editor.
 
-Before the first release, the project patches `ratatui-textarea` in two places and offers each patch upstream:
+The project patches `ratatui-textarea` in three places and offers each patch upstream:
 
-- The cursor moves by grapheme, not by code point. A grapheme is one character as the reader sees it, for example an emoji with joiners. Right, Left and Backspace each move over or delete one grapheme.
-- The cursor position, the soft wrap and the render use one width function. The client can give that function the width profile from the [character width decision](/decisions/character-width/).
+- The cursor moves by grapheme, not by code point. A grapheme is one character as the reader sees it, for example an emoji with joiners. Right, Left, Backspace and Delete each move over or delete one grapheme. Each other move, such as Up and Down, stops at a grapheme boundary.
+- The cursor position, the soft wrap and the render use one width function. The client gives that function the width profile from the [character width decision](/decisions/character-width/). With the function, the render gives each cell its width as a forced width.
+- The library gives the count of the wrapped rows for a width. The client sizes the editor with it.
 
-Until upstream accepts a patch, the client builds on a fork through a `[patch.crates-io]` entry that Renovate can see.
+Until upstream accepts each patch, the client builds on the fork `seanb4t/ratatui-textarea`. The branch `mu` of the fork holds the three patches. The entry `[patch.crates-io]` of the root `Cargo.toml` names one commit of that branch. A Renovate regex manager follows the branch, because the cargo manager of Renovate reads no `[patch]` table. If the patch does not apply, the test `textarea_comes_from_the_fork` fails. After a Renovate update of the commit, run `cargo update -p ratatui-textarea` on its branch.
+
+The pull requests to upstream open after the pose editor merges.
 
 The client does these things itself, outside the library:
 
 - It turns on bracketed paste. A paste arrives as one event, and the client inserts it as one edit. The library ignores a paste event.
-- It turns each CR and each CR LF of a paste into LF.
+- It turns each CR and each CR LF of a paste into LF, and drops each other control character apart from the tab.
 - It places the terminal cursor at the insertion point after each frame. The library only draws a styled cell as its cursor, and an input method opens its candidate box at the terminal cursor.
-- If the terminal has the kitty keyboard protocol, the client turns it on.
+- If the terminal answers the query of the kitty keyboard flags, the client pushes the flag that disambiguates escape codes. It pops the flag at exit.
 
-Enter sends the input. Shift+Enter and Ctrl+J insert a line break in each terminal that the spike tested. Alt+Enter also inserts one, except in Terminal.app, where Option+Enter is a plain Enter.
+The keys of the editor are entries of the keymap:
+
+| Key | What it does |
+|---|---|
+| Enter, Ctrl+M | Sends the text as one command. The server writes the line break of the world in place of each line break. |
+| Alt+Enter, Ctrl+Enter | Sends each line as its own command, in order. Ctrl+Enter needs the kitty keyboard protocol. |
+| Ctrl+J, Shift+Enter | Inserts a line break. Shift+Enter needs a terminal that reports Shift with Enter. |
+| Alt+R | Replaces each line break with the line break of the world in focus. |
+| Ctrl+U | Deletes to the start of the line, as readline does. |
+| Ctrl+Z, Ctrl+Shift+Z | Undo, and redo. Redo needs a terminal that reports Shift. |
+
+Ctrl+R does nothing, so a later change can give it to a search of the history. Each other editing key is a key of the library, and those keys follow readline.
+
+Terminal.app sends Shift+Enter as Alt+Enter. So in Terminal.app, Shift+Enter sends each line, and Ctrl+J is the key of a line break.
+
+The client restores the terminal at exit and after a panic. After a kill with SIGKILL, the terminal keeps the modes of the client. Then type `reset`.
 
 ## Reason
 
@@ -31,9 +49,9 @@ The spike measured the library with a pose of 4096 bytes and 51 lines. The text 
 
 | Measure | Result |
 |---|---|
-| Insert of the paste | 18 µs, one undo step |
-| Full frame with the paste, width 40 to 120 | 11 µs to 24 µs |
-| The same paste as one key event for each character, with a frame after each | 213 ms, and undo cannot go back to empty |
+| Insert of the paste | 18.7 µs, one undo step |
+| Full frame with the paste, width 40 to 120 | 10.2 µs to 26.5 µs |
+| The same paste as one key event for each character, with a frame after each | 217.5 ms, and undo cannot go back to empty |
 | Cursor positions where the terminal cursor and the drawn cursor disagree, width 20 to 80 | 73 to 262 of 3928 |
 | Cursor positions inside a grapheme | 24 of 3928 |
 
@@ -62,10 +80,16 @@ In the Terminal.app run, `pbcopy` ran with no UTF-8 locale and changed the text 
 
 - Ghostty without herdr. herdr ran between Ghostty and the editor, and it can change the keys and the paste.
 - A paste of non-ASCII text in Terminal.app with a UTF-8 clipboard.
-- The two patches. The spike measured the defects, and it did not write the fixes.
-- The input method box on a row after a wide emoji, where the cursor columns disagree. Each manual run used a row with no emoji.
-- tmux, Linux and Windows.
-- A paste larger than 4096 bytes, and a terminal that cuts a long paste.
+- tmux and Windows.
+- A terminal that cuts a long paste.
+- The types `pennmush` and `rhostmush` on a live game.
+
+The pose editor change tested these items, which the spike did not:
+
+- The three patches, with their tests in the fork and the tests of the editor in the client.
+- The terminal cursor on a row after a wide grapheme, in a pseudo-terminal. A test checks its cell.
+- Linux. The pseudo-terminal tests run there in CI.
+- A paste of 64 KiB, as one edit with one undo.
 - Right-to-left text.
 
 ## Source

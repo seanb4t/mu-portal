@@ -82,13 +82,16 @@ fn constraint(size: Size, direction: Direction, area: Rect, parts: &Parts) -> Co
     match size {
         Size::Fixed(constraint) => constraint,
         Size::Editor { id, max_rows } => {
-            // The editor grows along the split. Its text wraps at the other length.
-            let (along, across) = match direction {
-                Direction::Vertical => (area.height, area.width),
-                Direction::Horizontal => (area.width, area.height),
-            };
-            let rows = parts.editors.get(&id).map_or(1, |state| state.rows(across));
-            let limit = max_rows.min(along / 2).max(1);
+            // The rows of the text give a height, so only a split of rows can use them. In a
+            // split of columns, the editor takes the width that the other children leave.
+            if direction == Direction::Horizontal {
+                return Constraint::Min(0);
+            }
+            let rows = parts
+                .editors
+                .get(&id)
+                .map_or(1, |state| state.rows(area.width));
+            let limit = max_rows.min(area.height / 2).max(1);
             let rows = u16::try_from(rows).unwrap_or(u16::MAX).clamp(1, limit);
             Constraint::Length(rows)
         }

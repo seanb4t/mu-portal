@@ -105,7 +105,12 @@ pub enum Effect {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Reply {
     /// The server took the line.
-    Sent,
+    Sent {
+        /// The world of the line.
+        world: String,
+        /// The text of the line.
+        text: String,
+    },
     /// The server refused the line.
     Refused {
         /// The world of the line.
@@ -398,8 +403,18 @@ fn world_to_send_to(model: &mut Model) -> Option<String> {
     world
 }
 
+/// The world in focus, or a notice that no world has the focus. While the lines of a send of
+/// each line wait, it is a notice and no world, so the lines stay in order and none is lost.
+fn world_for_a_send(model: &mut Model) -> Option<String> {
+    if model.queue.is_some() {
+        model.notice("a send of each line is not done yet, so the text stays in the editor");
+        return None;
+    }
+    world_to_send_to(model)
+}
+
 fn submit(model: &mut Model) -> Option<Effect> {
-    let world = world_to_send_to(model)?;
+    let world = world_for_a_send(model)?;
     let text = model.input();
     model.set_input("");
     Some(Effect::Send { world, text })
@@ -408,18 +423,16 @@ fn submit(model: &mut Model) -> Option<Effect> {
 /// Sends the first line of the pose editor, and keeps the other lines for the replies. Each
 /// line goes to the world in focus now, also if the focus moves before the last line goes.
 fn submit_lines(model: &mut Model) -> Option<Effect> {
-    let world = world_to_send_to(model)?;
+    let world = world_for_a_send(model)?;
     let text = model.input();
     model.set_input("");
     let mut rest: VecDeque<String> = text.split('\n').map(str::to_owned).collect();
     let sent = rest.pop_front().unwrap_or_default();
-    if !rest.is_empty() {
-        model.queue = Some(LineQueue {
-            world: world.clone(),
-            sent: sent.clone(),
-            rest,
-        });
-    }
+    model.queue = Some(LineQueue {
+        world: world.clone(),
+        sent: sent.clone(),
+        rest,
+    });
     Some(Effect::Send { world, text: sent })
 }
 
@@ -427,8 +440,7 @@ fn submit_lines(model: &mut Model) -> Option<Effect> {
 /// edit goes through the text area, so undo brings the lines back.
 fn join_lines(model: &mut Model) {
     let line_break = model
-        .focus
-        .and_then(|index| model.worlds.get(index))
+        .focused_world()
         .and_then(|world| world.line_break.clone());
     let Some(line_break) = line_break else {
         model.notice("the world in focus sets no line break, so the lines stay as they are");
@@ -509,13 +521,15 @@ fn on_client(model: &mut Model, item: ClientEvent) {
 }
 
 fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
-    let Reply::Refused {
-        world,
-        text,
-        reason,
-    } = reply
-    else {
-        return next_line(model).into_iter().collect();
+    let (world, text, reason) = match reply {
+        Reply::Sent { world, text } => {
+            return next_line(model, &world, &text).into_iter().collect();
+        }
+        Reply::Refused {
+            world,
+            text,
+            reason,
+        } => (world, text, reason),
     };
     let notice = format!("-- {}", clean(&reason));
     let pane = model
@@ -544,16 +558,23 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
     Vec::new()
 }
 
-/// The send of the next line of a send of each line, after the server took the line before it.
-fn next_line(model: &mut Model) -> Option<Effect> {
-    let queue = model.queue.as_mut()?;
-    let text = queue.rest.pop_front()?;
-    let world = queue.world.clone();
-    queue.sent.clone_from(&text);
-    if queue.rest.is_empty() {
+/// The send of the next line of a send of each line, after the server took `text` in `world`.
+/// Only the reply of the line that the queue waits for moves the queue. After the reply of its
+/// last line, the queue ends.
+fn next_line(model: &mut Model, world: &str, text: &str) -> Option<Effect> {
+    let queue = model
+        .queue
+        .as_mut()
+        .filter(|queue| queue.world == world && queue.sent == text)?;
+    let Some(next) = queue.rest.pop_front() else {
         model.queue = None;
-    }
-    Some(Effect::Send { world, text })
+        return None;
+    };
+    queue.sent.clone_from(&next);
+    Some(Effect::Send {
+        world: queue.world.clone(),
+        text: next,
+    })
 }
 
 /// `key` as the pose editor reads it. A key that the editor does not know becomes

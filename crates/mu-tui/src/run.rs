@@ -105,7 +105,7 @@ async fn event_loop(
                     let replies = replies.clone();
                     tokio::spawn(async move {
                         let answer = match client.send(&world, &text).await {
-                            Ok(_) => Reply::Sent,
+                            Ok(_) => Reply::Sent { world, text },
                             Err(error) => Reply::Refused {
                                 world,
                                 text,
