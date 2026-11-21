@@ -97,10 +97,10 @@ The editor SHALL use the same width for each grapheme as the output pane. That i
 - **THEN** the cell of `x` in the editor is at column 3
 
 ### Requirement: Keys insert a line break
-Alt+Enter and Ctrl+J SHALL insert a line break at the cursor. If the terminal reports the Shift modifier with Enter, Shift+Enter SHALL insert one. A terminal with the kitty keyboard protocol reports it. Enter with no modifier SHALL NOT insert one.
+Ctrl+J SHALL insert a line break at the cursor. If the terminal reports the Shift modifier with Enter, Shift+Enter SHALL insert one. A terminal with the kitty keyboard protocol reports it. Enter with no modifier and Alt+Enter SHALL NOT insert one.
 
 #### Scenario: Each key of a line break
-- **WHEN** the user types `a`, the client gets the key event of one of Shift+Enter, Alt+Enter and Ctrl+J, and the user types `b`
+- **WHEN** the user types `a`, the client gets the key event of Shift+Enter or of Ctrl+J, and the user types `b`
 - **THEN** the editor holds `a`, a line break and `b`, on 2 rows
 
 ### Requirement: The editing keys follow readline

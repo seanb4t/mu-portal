@@ -38,6 +38,20 @@ The hidden flag `--fake-world <id>=env:<NAME>` of `mu server` SHALL add a fake w
 - **WHEN** a client sends `one` followed by LF and `two` to `alpha/aria`
 - **THEN** the stream holds a game event with the text `You say, "one%rtwo"`
 
+### Requirement: ListWorlds gives the state of each world
+The API call `ListWorlds` SHALL return each world with its id and its state, one of `connecting`, `connected`, `reconnecting` and `disconnected`. A world in the state `reconnecting` SHALL also carry the time of its next attempt. A world with a `line_break` SHALL also carry that text, and a world with none SHALL carry no such field. **BREAKING**: the state `reconnecting` is new, so a client that refuses an unknown state fails on it.
+
+#### Scenario: A world that waits to reconnect
+- **GIVEN** a configured world `alpha/aria` in the state `reconnecting`
+- **WHEN** a client calls `ListWorlds`
+- **THEN** the reply holds `alpha/aria` in the state `reconnecting`, with a time of the next attempt that is after the call
+
+#### Scenario: The line break of a world
+- **GIVEN** a server with the fake world `alpha/aria`, and a configured world `beta/bryn` with no `line_break`
+- **WHEN** a client calls `ListWorlds`
+- **THEN** the reply holds `alpha/aria` with the line break `%r`
+- **AND** the reply holds `beta/bryn` with no line break
+
 ### Requirement: A command reaches only its world
 The API call `Send` SHALL send one line to the world it names, and no other world. The reply SHALL hold the sequence number of the player event. If a hook gagged the line, the reply SHALL hold no number. An unknown world SHALL fail with `not_found`. A world in the state `connecting`, `reconnecting` or `disconnected` SHALL fail with `failed_precondition`. A text with CR SHALL fail with `invalid_argument`. If the world has a `line_break`, the server SHALL replace each LF of the text with it. The replace SHALL come before the hooks, the journal and the write to the game. A text with LF to a world with no `line_break` SHALL fail with `invalid_argument`. A call that the server refuses SHALL record no event. If the write of the line to the game fails, the call SHALL fail with `failed_precondition`. The server SHALL then record the disconnect of the world and no player event.
 

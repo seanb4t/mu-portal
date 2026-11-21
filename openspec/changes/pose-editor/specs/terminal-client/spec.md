@@ -88,6 +88,40 @@ The client SHALL turn on mouse capture and bracketed paste at the start. When it
 
 ## ADDED Requirements
 
+### Requirement: Alt+Enter sends each line as a command
+If the user presses Alt+Enter, the client SHALL send each line of the editor to the world in focus as its own text. It SHALL send the lines in order and clear the editor. An empty line SHALL go as an empty text. If the terminal reports the Ctrl modifier with Enter, Ctrl+Enter SHALL do the same. The client SHALL send a line only after the server answered the line before it.
+
+#### Scenario: Each line is a command
+- **GIVEN** the world in focus is the fake world `alpha/aria`
+- **WHEN** the user types `one`, Ctrl+J and `two`, and the client gets the key event of Alt+Enter or of Ctrl+Enter
+- **THEN** the screen shows `You say, "one"` and then `You say, "two"`
+- **AND** the editor is empty and takes one row
+
+### Requirement: A refused line stops a send of each line
+If the server refuses a line of a send of each line, the client SHALL send no later line. It SHALL put the refused line and each later line back in the editor. It SHALL show the reason as a line with the prefix `-- `.
+
+#### Scenario: A line that the server refuses
+- **GIVEN** the editor holds the lines `one`, `two` and `three`, and a test server that accepts `one` and refuses `two`
+- **WHEN** the user presses Alt+Enter
+- **THEN** the server gets `one` and `two`, and it does not get `three`
+- **AND** the screen shows a line that starts with `-- `
+- **AND** the editor holds the lines `two` and `three`
+
+### Requirement: Alt+R joins the lines in place
+If the user presses Alt+R, the client SHALL replace each line break of the editor with the `line_break` of the world in focus. It SHALL send nothing. If that world has no `line_break`, or no world is in focus, the client SHALL NOT change the editor. It SHALL then show a line with the prefix `-- ` that contains `line break`.
+
+#### Scenario: The lines become one line
+- **GIVEN** the world in focus is the fake world `alpha/aria`
+- **WHEN** the user types `one`, Ctrl+J and `two`, and presses Alt+R
+- **THEN** the editor holds the one line `one%rtwo`
+- **AND** the server records no event
+
+#### Scenario: A world with no line break
+- **GIVEN** the world in focus is a configured world with no `line_break`
+- **WHEN** the user types `one`, Ctrl+J and `two`, and presses Alt+R
+- **THEN** the editor still holds `one` and `two` on 2 rows
+- **AND** the screen shows a line that starts with `-- ` and contains `line break`
+
 ### Requirement: The client turns on the kitty keyboard protocol
 The startup probe SHALL ask the terminal for its kitty keyboard flags, before the device attributes query. If the terminal answers, the client SHALL push the flag that disambiguates escape codes before its first frame. If the terminal does not answer before the probe stops, the client SHALL push no flag. A late answer SHALL NOT reach the editor.
 

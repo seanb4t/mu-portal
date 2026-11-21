@@ -25,7 +25,7 @@ See proposal.md for the motivation. The facts below shape the approach.
 - A drawn cursor. The terminal cursor is the only cursor of the editor.
 - A display of the line break of a world in the output pane. A player line of a joined text shows as `> one%rtwo`, as the game got it.
 - A check of each terminal by hand beyond Rex. See "Using the spike".
-- A line break from Shift+Enter on a terminal that sends it as CR. Alt+Enter and Ctrl+J insert a line break on every terminal.
+- A line break from Shift+Enter on a terminal that sends it as CR or as ESC CR. Ctrl+J inserts a line break on every terminal.
 - U+FFFD for a grapheme wider than the editor. D1 states what the editor does there.
 
 ## Decisions
@@ -86,7 +86,9 @@ The default keymap gets these entries:
 | Key | Action |
 |---|---|
 | Shift+Enter | `Newline` |
-| Alt+Enter | `Newline` |
+| Alt+Enter | `SubmitLines` |
+| Ctrl+Enter | `SubmitLines` |
+| Alt+R | `JoinLines` |
 | Ctrl+J | `Newline` |
 | Ctrl+U | `DeleteToLineStart` |
 | Ctrl+Z | `Undo` |
@@ -94,7 +96,7 @@ The default keymap gets these entries:
 | Ctrl+R | `Ignore` |
 | Ctrl+M | `Submit` |
 
-Each one needs its own entry. Without one, Shift+Enter and Alt+Enter fall back to the entry of Enter and send the text. Without one, Ctrl+J reaches `TextArea::input` and deletes to the start of the line.
+Each one needs its own entry. Without one, Shift+Enter, Alt+Enter and Ctrl+Enter fall back to the entry of Enter and send the text as one command. Without one, Ctrl+J reaches `TextArea::input` and deletes to the start of the line.
 
 The editing keys follow readline, the convention of shells and of TinyFugue. The library differs from readline in four keys, and the entries above change them:
 
@@ -105,7 +107,7 @@ The editing keys follow readline, the convention of shells and of TinyFugue. The
 
 These keys of the library already match readline and stay: Ctrl+A, Ctrl+E, Ctrl+K, Ctrl+W, Ctrl+D, Ctrl+H, Ctrl+B, Ctrl+F, Alt+B, Alt+F, Alt+D and Ctrl+Y. Ctrl+N and Ctrl+P stay the next and the previous world. In readline they move in the history, and #101 decides them with the input history.
 
-Termina reads the byte LF as Ctrl+J and the byte CR as Enter. ESC CR is Enter with Alt. With the kitty keyboard flag, Shift+Enter is `CSI 13;2u`. Without the flag, most terminals send Shift+Enter as CR, so it sends the text. The spike found that Terminal.app sends it as ESC CR, so it inserts a line break there.
+Termina reads the byte LF as Ctrl+J and the byte CR as Enter. ESC CR is Enter with Alt. With the kitty keyboard flag, Shift+Enter is `CSI 13;2u`. Without the flag, most terminals send Shift+Enter as CR, so it sends the text. The spike found that Terminal.app sends it as ESC CR, which is Alt+Enter. So Shift+Enter sends each line there, and Ctrl+J is the line break. Without the flag, a terminal sends Ctrl+Enter as CR or as LF, so it sends the text as one command or inserts a line break.
 
 Every other key goes to `TextArea::input` as today, with the editing keys of the library.
 
@@ -164,6 +166,28 @@ The join is in the session and not in the client, so each client and each handle
 
 Enforced by: the scenarios of `world-config` and `world-sessions`, the constructor of `LineBreak`, and a property test of the join. `crates/mu-core/tests/portal.rs` already holds `send_with_lf_is_refused`, on a world with no `line_break`. It covers "A line break in the text" and stays as it is. `crates/mu-cli/tests/worlds.rs` holds a test of the same name on a fake world, which now joins. Task 2.4 removes that copy, and `fake_world_gets_a_joined_line` takes its place.
 
+### D12. The client knows the line break of each world
+
+The message `World` of `crates/mu-proto` gets `optional string line_break = 4`. `ListWorlds` fills it from the `ResolvedWorld`. The client keeps it in the `World` of its model. The value changes only with a restart of the server, as each other field of a configured world does.
+
+The join of D9 stays on the server, as the one rule for each sender. The client uses the value only to edit: `JoinLines` replaces each LF of the editor with it, through the edit calls of the library, so undo steps restore the lines. A joined text holds no LF, so the join of the server then changes nothing. Both sides use the one configured value, so they cannot disagree.
+
+The project has no release yet. So this change, and each later one before the first release, keeps no compatibility with an older client or server.
+
+Enforced by: the scenario "The line break of a world", and the scenarios of "Alt+R joins the lines in place".
+
+### D13. A send of each line
+
+`SubmitLines` splits the text of the editor at each LF and clears the editor. The model keeps the lines in a queue. `update` returns `Effect::Send` for the first line. On the reply of a line, `update` returns the effect for the next one. So the lines reach the game in order, and `update` still does no I/O.
+
+On a refusal, `update` empties the queue. It puts the refused line and the later lines back with `set_input`, before any text that the player typed since. It shows the reason as each refused send does today.
+
+A plain Enter while the queue holds lines sends at once, and its place among the lines of the queue is not fixed. That case is rare, and an order rule for it can come with the client commands of #101.
+
+Alternative: one API call with a list of lines. Rejected, because each line is an ordinary `Send`, and a hook and the journal see each one as a line of the player.
+
+Enforced by: the scenarios of "Alt+Enter sends each line as a command" and of "A refused line stops a send of each line".
+
 ### D11. Built-in types extend built-in types
 
 `Quirks` reads `extends` in a built-in type, and `parse_quirks` puts it in the `extends` of the layer. The resolver already follows the chain of a user type, so it follows this chain with no change. The files `types/pennmush.toml` and `types/rhostmush.toml` hold only `extends = "tinymux"`. So both types get the character set, the login template, the keepalive and the line break of `tinymux`.
@@ -182,6 +206,7 @@ Enforced by: the scenarios "A built-in type that extends another" and "A built-i
 | The terminal cursor, paste and kitty keys through a terminal | `crates/mu-cli/tests/client.rs`, on a pseudo-terminal with `vt100` |
 | `terminal-client` | `crates/mu-tui/tests/app.rs`, or `crates/mu-cli/tests/client.rs` where a scenario needs a terminal |
 | `world-config` | `crates/mu-cli/tests/world_config.rs`, and `crates/mu-core/tests/world_config.rs` for "Each built-in type reads as quirks" and the type `LineBreak` |
+| `terminal-client`, a send of each line and a join in place | `crates/mu-tui/tests/app.rs`, with the replies of a test server, and `crates/mu-cli/tests/client.rs` for "Each line is a command" |
 | `world-sessions` | `crates/mu-cli/tests/worlds.rs` for the fake world, and `crates/mu-core/tests/portal.rs`, `connection.rs` and `scripts.rs` for a world with a chosen `line_break`. "The fake world answers a mark in order" has its test in `crates/mu-fake-server/src/memory.rs`. |
 
 The pseudo-terminal tests run on Linux in CI and on macOS on the owner's machine.
@@ -215,6 +240,7 @@ Each item under "Not tested" of the decision:
 | A paste is one edit and holds no ESC | Unit tests of the clean and the pseudo-terminal scenario |
 | The client restores each mode it sets | The pseudo-terminal scenarios at exit, and review of the panic path, which no test can reach |
 | `update` does no I/O | Review, as the architecture decision says |
+| The lines of a send of each line reach the game in order | The scenario "Each line is a command" and the unit tests of the queue |
 | An `extends` of a built-in type names a built-in type, with no loop | The test `built_in_type_extends_only_a_built_in_type` |
 | A world joins only with its own `line_break` | The scenarios of `world-sessions`, and the property test `joined_text_is_one_line` |
 | A `line_break` of a `ResolvedWorld` is in its range | The constructor of `LineBreak` |
@@ -231,7 +257,7 @@ Each item under "Not tested" of the decision:
 | The kitty keyboard protocol reports Shift+Enter as `CSI 13;2u` with flag 1 only | 5.1 |
 | TinyMUX and AresMUSH read `%r` as a line break in a command, and Evennia reads `|/` | 2.1 |
 | PennMUSH and RhostMUSH match TinyMUX in the login line, the `IDLE` keepalive, the character set and `%r` | 2.1 |
-| A terminal with the kitty keyboard flag reports Ctrl+M and Ctrl+Shift+Z as keys of their own | 5.1 |
+| A terminal with the kitty keyboard flag reports Ctrl+M, Ctrl+Shift+Z and Ctrl+Enter as keys of their own | 5.1 |
 | `Frame::set_cursor_position` shows the cursor after the frame | 4.1 |
 | The library draws no cell outside its area for a grapheme wider than the area | 3.2 |
 | `screen_cursor` gives the column one past the area after a row that the text fills exactly | 5.5 |
@@ -261,6 +287,7 @@ Each item under "Not tested" of the decision:
 - [The fork falls behind upstream fixes] → The same test fails on each bump, so each upstream release gets a rebase.
 - [A crash with SIGKILL leaves the kitty flag and bracketed paste on] → The panic hook covers a panic. After a SIGKILL, the user runs `reset`. The decision page says so.
 - [A player line shows `%r` in the output pane] → It is what the game got. A display of the line break can come with #101.
+- [In Terminal.app, Shift+Enter sends each line of an unfinished pose] → The decision page and the configuration guide name Ctrl+J as the line break there. #101 makes the keymap configurable.
 - [The documentation of PennMUSH or RhostMUSH misses a quirk that differs from TinyMUX] → The owner overrides the field in the game file. The first evening on such a game finds it.
 - [A game reads `%r` in some commands only] → Task 2.1 checks the docs of each game. A game that extends no built-in type has no `line_break`, so its worlds refuse a text of several lines.
 

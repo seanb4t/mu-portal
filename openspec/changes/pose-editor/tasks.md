@@ -38,6 +38,7 @@ Load the `rust-best-practices` skill before this group.
   - In `crates/mu-cli/tests/worlds.rs`: `fake_world_answers`, `fake_world_flag_is_hidden`, for "The flag is hidden", `missing_password_variable` and `fake_world_does_not_reconnect`
   - In `crates/mu-fake-server/src/memory.rs`: `fake_game_answers_mark_in_order`, for "The fake world answers a mark in order"
 - [ ] 2.5 Add `line_break` to `docs/src/content/docs/guides/configuration.md`, with the value of each built-in type and the refusal of a world with none. Add `pennmush` and `rhostmush` to the list of the built-in types there, with a line that no live game checked them. Make sure that `mise run docs:check` passes.
+- [ ] 2.6 Add `optional string line_break = 4` to the message `World` in `crates/mu-proto`, as D12 says, and fill it in `ListWorlds`. Add `list_worlds_shows_the_line_break` to `crates/mu-cli/tests/worlds.rs`, for "The line break of a world". Make sure that it passes, and that `list_worlds_shows_reconnecting` still passes, for "A world that waits to reconnect".
 
 ## 3. The fork of ratatui-textarea
 
@@ -86,7 +87,7 @@ Load the `rust-best-practices` skill before this group.
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 5.1 Read the current documentation of the kitty keyboard protocol. Find the bytes of Shift+Enter, Alt+Enter, Ctrl+J, Ctrl+M and Ctrl+Shift+Z with only the flag that disambiguates escape codes. Add a row to the table "Checked facts". Make sure that D5 and D8 match the documentation, or change them and the `terminal-client` delta to match it.
+- [ ] 5.1 Read the current documentation of the kitty keyboard protocol. Find the bytes of Shift+Enter, Alt+Enter, Ctrl+Enter, Ctrl+J, Ctrl+M and Ctrl+Shift+Z with only the flag that disambiguates escape codes. Add a row to the table "Checked facts". Make sure that D5 and D8 match the documentation, or change them and the `terminal-client` delta to match it.
 - [ ] 5.2 Add the actions `Newline`, `Undo`, `Redo`, `DeleteToLineStart` and `Ignore`, and the entries of D5 to the default keymap. Add a unit test of `update` for each entry that checks the text of the editor and the list of effects. Add these tests to `crates/mu-tui/tests/editor.rs`:
   - `each_key_inserts_a_line_break`, for "Each key of a line break"
   - `ctrl_u_deletes_to_the_start_of_the_line`, for "Ctrl+U deletes to the start of the line"
@@ -113,6 +114,15 @@ Load the `rust-best-practices` skill before this group.
   - `cursor_at_a_full_row`, for "The cursor after a full row"
   Make sure that the four tests pass. Add a row to the table "Checked facts" for the column that `screen_cursor` gives after a full row.
 
+- [ ] 5.6 Add the action `SubmitLines` and the queue of D13, with the entries of Alt+Enter and Ctrl+Enter. Add these tests to `crates/mu-tui/tests/app.rs`, for the requirement "Alt+Enter sends each line as a command":
+  - `each_line_is_a_command`, for "Each line is a command", once for each of the two keys, with an empty line among the lines
+  - `refused_line_stops_the_rest`, for "A line that the server refuses", of the requirement "A refused line stops a send of each line"
+  Add `alt_enter_sends_each_line` to `crates/mu-cli/tests/client.rs`, for the screen of "Each line is a command" on a fake world. Make sure that the three tests pass, and that `each_line_is_a_command` fails with the entry of Alt+Enter removed.
+- [ ] 5.7 Keep the `line_break` of each world in the model, from `ListWorlds`. Add the action `JoinLines` of D12, with the entry of Alt+R. Add these tests to `crates/mu-tui/tests/app.rs`, for the requirement "Alt+R joins the lines in place":
+  - `lines_become_one_line`, for "The lines become one line"
+  - `join_with_no_line_break`, for "A world with no line break"
+  Make sure that both tests pass.
+
 ## 6. The kitty keyboard protocol
 
 Load the `rust-best-practices` skill before this group.
@@ -127,7 +137,7 @@ Load the `rust-best-practices` skill before this group.
 
 ## 7. Docs and live checks
 
-- [ ] 7.1 Update `docs/src/content/docs/decisions/input-editor.md`. Add the three patches with the links of their upstream pull requests, and the fork and its pin. Add the kitty flag that the client pushes, and the items under "Not tested" that this change tested. Add a line on `reset` after a SIGKILL. Make sure that `mise run docs:check` passes.
+- [ ] 7.1 Update `docs/src/content/docs/decisions/input-editor.md`. Add the three patches with the links of their upstream pull requests, and the fork and its pin. Add the kitty flag that the client pushes, and the items under "Not tested" that this change tested. Add the keys of the editor, with the line that Shift+Enter sends each line in Terminal.app. Add a line on `reset` after a SIGKILL. Make sure that `mise run docs:check` passes.
 - [ ] 7.2 Run `mu client` in a Rex block through the `rex` CLI, on a server with a fake world. Type a pose of two paragraphs with Shift+Enter, paste the sample pose, and send each one. Check by eye that an input method opens its box at the cursor on a row after `👨‍👩‍👧`. Make sure that the game answers each pose as one line, and that the PR body records the result of each step.
 - [ ] 7.3 Open one Parked issue for Ghostty without herdr. Open one for a paste of non-ASCII text in Terminal.app with a UTF-8 clipboard. Make sure that both issues are in the GitHub Project with the status Parked.
 - [ ] 7.4 Run the checks of the whole workspace. Make sure that `mise run check` passes.
