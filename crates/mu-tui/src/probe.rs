@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 
 use rustix::termios::{OptionalActions, SpecialCodeIndex, tcgetattr, tcsetattr};
 use termina::escape::csi::{
-    Csi, Cursor, DecModeSetting, DecPrivateMode, DecPrivateModeCode, Device, Mode,
+    Csi, Cursor, DecModeSetting, DecPrivateMode, DecPrivateModeCode, Device, Keyboard, Mode,
 };
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 use termina::{Event, Parser};
@@ -49,6 +49,9 @@ const GRAPHICS_ID: &str = "i=31";
 /// The kitty graphics query: one RGB pixel, sent directly, with the query action.
 const GRAPHICS_QUERY: &str = "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\";
 
+/// The query of the kitty keyboard flags. A terminal with the protocol answers `CSI ? flags u`.
+const KEYBOARD_QUERY: &str = "\x1b[?u";
+
 /// The bytes of every query, in one write.
 #[must_use]
 pub fn queries() -> Vec<u8> {
@@ -60,6 +63,7 @@ pub fn queries() -> Vec<u8> {
     }
     out.push_str("\r\x1b[2K");
     out.push_str(GRAPHICS_QUERY);
+    out.push_str(KEYBOARD_QUERY);
     out.push_str("\x1b[c");
     out.into_bytes()
 }
@@ -83,6 +87,8 @@ pub enum Answer {
     },
     /// The answer to the kitty graphics query: true for `OK`.
     Graphics(bool),
+    /// The answer to the query of the kitty keyboard flags, so the terminal knows the protocol.
+    Keyboard,
     /// Primary device attributes, the last answer.
     Da1,
 }
@@ -315,6 +321,10 @@ fn csi(bytes: &[u8], framed: &mut Framed) {
             Event::Csi(Csi::Device(Device::DeviceAttributes(()))) => {
                 framed.answers.push(Answer::Da1);
             }
+            // Only the presence of the answer counts. Termina reads one digit of the flags.
+            Event::Csi(Csi::Keyboard(Keyboard::ReportFlags(_))) => {
+                framed.answers.push(Answer::Keyboard);
+            }
             other => framed.events.push(other),
         }
     }
@@ -348,6 +358,16 @@ fn graphics(body: &str) -> Option<Answer> {
         .then(|| Answer::Graphics(message == "OK"))
 }
 
+/// How the terminal reports keys.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum KeyboardProtocol {
+    /// The terminal did not answer the query of the kitty keyboard flags before DA1.
+    #[default]
+    Legacy,
+    /// The terminal answered the query, so it knows the kitty keyboard protocol.
+    Kitty,
+}
+
 /// What the answers of the probe give.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Outcome {
@@ -357,6 +377,8 @@ pub struct Outcome {
     pub grapheme_mode: Option<DecModeSetting>,
     /// True if the terminal draws kitty images.
     pub graphics: bool,
+    /// The keyboard protocol of the terminal, from the query of the kitty keyboard flags.
+    pub keyboard: KeyboardProtocol,
     /// True if DA1 answered, so every answer came.
     pub complete: bool,
     /// True if the cursor answers gave the width of each grapheme of [`GRAPHEMES`]. If false,
@@ -385,6 +407,7 @@ impl Outcome {
                 } => outcome.grapheme_mode = Some(setting),
                 Answer::Mode { .. } => {}
                 Answer::Graphics(ok) => outcome.graphics = ok,
+                Answer::Keyboard => outcome.keyboard = KeyboardProtocol::Kitty,
                 Answer::Da1 => outcome.complete = true,
             }
         }

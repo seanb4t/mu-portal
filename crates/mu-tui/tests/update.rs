@@ -37,7 +37,10 @@ fn ctrl_c_returns_quit_and_keeps_the_model() {
     type_text(&mut model, "hi");
     let effects = press(&mut model, KeyCode::Char('c'), Modifiers::CONTROL);
     assert_eq!(effects, [Effect::Quit]);
-    assert_eq!((model.focused(), model.input()), (Some("alpha/aria"), "hi"));
+    assert_eq!(
+        (model.focused(), model.input().as_str()),
+        (Some("alpha/aria"), "hi")
+    );
 }
 
 #[test]
@@ -177,7 +180,10 @@ fn other_key_drops_a_cut_reply() {
     assert_eq!(model.input(), "");
     press(&mut model, KeyCode::Char('n'), Modifiers::CONTROL);
     type_text(&mut model, "c");
-    assert_eq!((model.focused(), model.input()), (Some("beta/bryn"), "c"));
+    assert_eq!(
+        (model.focused(), model.input().as_str()),
+        (Some("beta/bryn"), "c")
+    );
 }
 
 #[test]

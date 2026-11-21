@@ -2,14 +2,14 @@
 //! changes it for each message. [`view`](crate::view) records what each pane drew, and returns
 //! a scrolled pane to the bottom when the newest row shows.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 use mu_client::ClientError;
 use mu_proto::World as ProtoWorld;
 use ratatui::style::Style;
-use ratatui_textarea::{CursorMove, TextArea};
 
+use crate::editor::{EditorId, EditorState};
 use crate::keymap::Keymap;
 use crate::layout::Node;
 use crate::pane::{Caps, PaneState};
@@ -31,6 +31,20 @@ pub(crate) struct World {
     pub(crate) unseen: bool,
     /// The SGR style at the end of the last game line, which the next game line starts with.
     pub(crate) style: Style,
+    /// The text that the game reads as a line break inside one command, from the list of the
+    /// worlds. None for a world that has none, or that the list did not hold.
+    pub(crate) line_break: Option<String>,
+}
+
+/// The lines of a send of each line that did not go yet.
+#[derive(Debug)]
+pub(crate) struct LineQueue {
+    /// The world that had the focus at the key. Each line goes to it.
+    pub(crate) world: String,
+    /// The line that the server did not answer yet.
+    pub(crate) sent: String,
+    /// The lines after it, in order.
+    pub(crate) rest: VecDeque<String>,
 }
 
 /// The order of the worlds: by the game part, then by the character part.
@@ -48,7 +62,9 @@ pub struct Model {
     /// What the terminal can draw, which every pane shares.
     pub(crate) caps: Arc<Caps>,
     next_pane: u32,
-    pub(crate) input: TextArea<'static>,
+    pub(crate) editors: HashMap<EditorId, EditorState>,
+    /// The lines of a send of each line that waits for the server.
+    pub(crate) queue: Option<LineQueue>,
     pub(crate) lost: bool,
     pub(crate) keymap: Keymap,
     pub(crate) layout: Node,
@@ -83,13 +99,15 @@ impl Model {
     /// order by game and then by character, and the first world in that order has the focus.
     #[must_use]
     pub fn new(worlds: impl IntoIterator<Item = String>) -> Self {
+        let caps = Arc::default();
         let mut model = Self {
             worlds: Vec::new(),
             focus: None,
             panes: HashMap::from([(PaneId::NOTICES, PaneState::default())]),
-            caps: Arc::default(),
+            editors: HashMap::from([(EditorId::POSE, EditorState::with_caps(&caps))]),
+            queue: None,
+            caps,
             next_pane: 1,
-            input: input_line(String::new()),
             lost: false,
             keymap: Keymap::default(),
             layout: Node::default(),
@@ -109,7 +127,14 @@ impl Model {
     #[must_use]
     pub fn from_listing(listed: Result<Vec<ProtoWorld>, ClientError>) -> Self {
         match listed {
-            Ok(worlds) => Self::new(worlds.into_iter().map(|world| world.id)),
+            Ok(worlds) => {
+                let mut model = Self::new(worlds.iter().map(|world| world.id.clone()));
+                for listed in worlds {
+                    let index = model.world(&listed.id);
+                    model.worlds[index].line_break = listed.line_break;
+                }
+                model
+            }
             Err(error) => {
                 let mut model = Self::new([]);
                 model.notice(&format!("could not list the worlds: {error}"));
@@ -158,10 +183,25 @@ impl Model {
         self.worlds.iter().map(|world| world.id.as_str()).collect()
     }
 
-    /// The text of the input line.
+    /// The text of the pose editor, with an LF between each two lines.
     #[must_use]
-    pub fn input(&self) -> &str {
-        self.input.lines().first().map_or("", String::as_str)
+    pub fn input(&self) -> String {
+        self.editor(EditorId::POSE)
+            .map_or_else(String::new, EditorState::text)
+    }
+
+    /// The state of the editor `id`.
+    #[must_use]
+    pub fn editor(&self, id: EditorId) -> Option<&EditorState> {
+        self.editors.get(&id)
+    }
+
+    /// The pose editor.
+    pub(crate) fn pose(&mut self) -> &mut EditorState {
+        let caps = &self.caps;
+        self.editors
+            .entry(EditorId::POSE)
+            .or_insert_with(|| EditorState::with_caps(caps))
     }
 
     /// The index of `id`, which this adds in its order, with a new pane, if it is new. A new
@@ -185,6 +225,7 @@ impl Model {
                         pane,
                         unseen: false,
                         style: Style::default(),
+                        line_break: None,
                     },
                 );
                 match self.focus {
@@ -207,6 +248,9 @@ impl Model {
         self.caps = Arc::new(caps);
         for pane in self.panes.values_mut() {
             pane.set_caps(Arc::clone(&self.caps));
+        }
+        for editor in self.editors.values_mut() {
+            editor.set_caps(&self.caps);
         }
     }
 
@@ -240,15 +284,10 @@ impl Model {
             .push(line);
     }
 
-    /// Puts `text` in the input line, with the cursor at its end.
-    pub(crate) fn set_input(&mut self, text: String) {
-        self.input = input_line(text);
+    /// Puts `text` in the pose editor, one line for each part between two LF, with the cursor at
+    /// its end.
+    pub(crate) fn set_input(&mut self, text: &str) {
+        let caps = Arc::clone(&self.caps);
+        self.pose().set_text(text, &caps);
     }
-}
-
-fn input_line(text: String) -> TextArea<'static> {
-    let mut input = TextArea::new(vec![text]);
-    input.set_cursor_line_style(Style::default());
-    input.move_cursor(CursorMove::End);
-    input
 }

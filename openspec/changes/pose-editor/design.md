@@ -133,9 +133,9 @@ Enforced by: the pseudo-terminal scenarios, which read the cursor of `vt100`.
 
 ### D8. The kitty keyboard protocol
 
-The probe writes `CSI ?u` before the DA1 query. Termina parses the answer `CSI ?<flags>u` as `Csi::Keyboard(Keyboard::ReportFlags)`. The probe gets the variant `Answer::Keyboard` for it. `Outcome` gets the flag `kitty_keyboard`. An answer before DA1 sets it. The client uses only the presence of the answer, not its flags. Termina 0.3.3 reads only the first byte after `?` as the flags, so a value of 10 or more reads wrong.
+The probe writes `CSI ?u` before the DA1 query. Termina parses the answer `CSI ?<flags>u` as `Csi::Keyboard(Keyboard::ReportFlags)`. The probe gets the variant `Answer::Keyboard` for it. `Outcome` gets the field `keyboard`, with the values `Legacy` and `Kitty` of `KeyboardProtocol`. An answer before DA1 sets `Kitty`. The client uses only the presence of the answer, not its flags. Termina 0.3.3 reads only the first byte after `?` as the flags, so a value of 10 or more reads wrong.
 
-If `kitty_keyboard` is true, `run` writes `CSI >1u` after the probe. That is the flag that disambiguates escape codes. The restore at exit pops it with `Keyboard::PopFlags(1)`, which Termina writes as `CSI <1u`.
+If `keyboard` is `Kitty`, `run` writes `CSI >1u` after the probe. That is the flag that disambiguates escape codes. The restore at exit pops it with `Keyboard::PopFlags(1)`, which Termina writes as `CSI <1u`.
 
 `run.rs` holds one `AtomicBool` for mode 2027 today. It becomes one shared `Restore` value, with a flag for mode 2027 and a flag for the kitty keyboard flag. `screen::open`, `screen::leave` and the panic hook take that one value. A later mode adds a field, and no restore path gets a new argument.
 
@@ -180,7 +180,7 @@ Enforced by: the scenario "The line break of a world", and the scenarios of "Alt
 
 `SubmitLines` splits the text of the editor at each LF and clears the editor. The model keeps the lines in a queue, with the id of the world that had the focus at the key. `update` returns `Effect::Send` for the first line, to that world. On the reply of a line, `update` returns the effect for the next one. That line goes to the world of the queue, and not to the world in focus. A plain send takes the world from the focus, and its reply names no world. So without the id, a Ctrl+N between two lines sends the rest of a script to another character. So the lines reach the game in order, and `update` still does no I/O.
 
-On a refusal, `update` empties the queue. It puts the refused line and the later lines back with `set_input`, before any text that the player typed since. It shows the reason as each refused send does today.
+The reply of a send names no line. So the queue also keeps the line that waits for its reply. A refusal of that line in the world of the queue stops the queue. On a refusal, `update` empties the queue. It puts the refused line and the later lines back with `set_input`, before any text that the player typed since. It shows the reason as each refused send does today.
 
 A plain Enter while the queue holds lines sends at once, and its place among the lines of the queue is not fixed. That case is rare, and an order rule for it can come with the client commands of #101.
 

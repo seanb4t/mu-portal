@@ -10,6 +10,26 @@ pub(crate) fn clean(text: &str) -> String {
     text.chars().map(printable).collect()
 }
 
+/// The text of a paste as the editor takes it. Each CR LF and each lone CR becomes an LF. Each
+/// other control character goes, apart from the tab. So the text holds no ESC, and the editor
+/// cannot write a sequence of the paste to the terminal.
+pub(crate) fn clean_paste(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\r' => {
+                chars.next_if_eq(&'\n');
+                out.push('\n');
+            }
+            '\n' | '\t' => out.push(c),
+            c if c.is_control() => {}
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 /// The char of the kitty image placeholder. Only the pane draws it, for an image line.
 pub(crate) const PLACEHOLDER: char = '\u{10EEEE}';
 

@@ -84,4 +84,4 @@ vte = "0.15.0"
 # function, and the count of the wrapped rows. The patch applies only while the fork has the
 # version that `[workspace.dependencies]` asks for.
 [patch.crates-io]
-ratatui-textarea = { git = "https://github.com/seanb4t/ratatui-textarea", rev = "ad115f8c47b06e37ef757fb11dea31015a9c723d" }
+ratatui-textarea = { git = "https://github.com/seanb4t/ratatui-textarea", rev = "462cce4cdf10ba145f18cc27abadbea240379598" }

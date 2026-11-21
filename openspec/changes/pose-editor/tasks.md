@@ -55,14 +55,14 @@ Each patch is one commit on its own branch of the fork, with its own unit tests,
 Load the `rust-best-practices` skill before this group.
 
 - [x] 4.1 Read the current documentation of ratatui for `Frame::set_cursor_position` and `StatefulWidget`. Add the rows to the table "Checked facts". Make sure that each difference from the sources is an edit of the design.
-- [ ] 4.2 Add `EditorId`, `EditorState` and the `Editor` widget of D3. Replace `Leaf::Input` with `Leaf::Editor(EditorId)`, and give the caps of the probe to each editor in `Model::set_caps`. Set the width function of patch 2 from the caps, and the wrap mode to `WrapMode::WordOrGlyph`, as D3 says. Add these tests to `crates/mu-tui/tests/editor.rs`:
+- [x] 4.2 Add `EditorId`, `EditorState` and the `Editor` widget of D3. Replace `Leaf::Input` with `Leaf::Editor(EditorId)`, and give the caps of the probe to each editor in `Model::set_caps`. Set the width function of patch 2 from the caps, and the wrap mode to `WrapMode::WordOrGlyph`, as D3 says. Add these tests to `crates/mu-tui/tests/editor.rs`:
   - `editor_uses_the_probed_widths`, for the cell of `x` in "A terminal that adds code point widths"
   - `editor_uses_unicode_width`, for "A terminal that does not answer"
   - `word_wider_than_the_editor`, for "A word wider than the editor"
   - `line_wider_than_the_editor`, for "A line wider than the editor", with the Enter part through `update` and its `Effect::Send`
   - `editor_and_pane_wrap_alike`, which gives the texts of the two tests above to the editor and to `wrap::wrap`, and compares the rows
   Make sure that the five tests pass, and that every test in `crates/mu-tui/tests/app.rs` passes.
-- [ ] 4.3 Add `Size` to the layout tree, with `Size::Editor { id, max_rows }`, and the sizing of D4 to `view`. The editor then grows with its text up to the limit. Add these tests to `crates/mu-tui/tests/editor.rs`, for the requirement "The editor grows with its text":
+- [x] 4.3 Add `Size` to the layout tree, with `Size::Editor { id, max_rows }`, and the sizing of D4 to `view`. The editor then grows with its text up to the limit. Add these tests to `crates/mu-tui/tests/editor.rs`, for the requirement "The editor grows with its text":
   - `three_lines`, for "Three lines"
   - `more_rows_than_the_limit`, for "More rows than the limit"
   - `short_terminal`, for "A short terminal"
@@ -71,14 +71,14 @@ Load the `rust-best-practices` skill before this group.
   - `terminal_of_1_row`, for "A terminal of 1 row", where `view` does not panic
   - `back_to_one_row`, for "Back to one row"
   Make sure that the seven tests pass. The screen still has three parts: the top row, the output pane and the rows of the editor. Add the row of the editor to `first_view` for "The first view". Make sure that these tests of the requirement "The screen has three parts" pass in `crates/mu-tui/tests/app.rs`: `first_view`, `first_view_snapshot`, `world_order`, for "The order of the worlds", and `no_worlds`, for "No worlds".
-- [ ] 4.4 Add these tests of grapheme moves through `update` to `crates/mu-tui/tests/editor.rs`:
+- [x] 4.4 Add these tests of grapheme moves through `update` to `crates/mu-tui/tests/editor.rs`:
   - `backspace_after_an_emoji_with_joiners`, for "Backspace after an emoji with joiners"
   - `left_over_a_flag`, for "Left over a flag"
   - `right_over_a_combining_accent`, for "Right over a combining accent"
   - `delete_before_a_skin_tone`, for "Delete before a skin tone"
   - `up_into_an_emoji_with_joiners`, for "Up into an emoji with joiners"
   Make sure that the five tests pass, and that each one fails with the patch entry of task 3.4 removed.
-- [ ] 4.5 Make `Model::input` return the lines of the editor joined with LF, as D3 says. Make `Model::set_input` split its text at each LF into the lines of the editor, so a refused text goes back as its lines. Add these tests:
+- [x] 4.5 Make `Model::input` return the lines of the editor joined with LF, as D3 says. Make `Model::set_input` split its text at each LF into the lines of the editor, so a refused text goes back as its lines. Add these tests:
   - `pose_of_two_lines`, in `crates/mu-cli/tests/client.rs`, for "A pose of two lines"
   - `line_break_that_the_world_refuses`, in `crates/mu-cli/tests/client.rs` on a scripted game, for "A line break that the world refuses". Its game file extends no built-in type, because `ConfigDir::tcp_world` extends `tinymux`, which sets a `line_break`.
   Make sure that both tests pass, and that `enter_sends_to_world_in_focus`, `empty_enter_sends_empty_line`, `enter_with_no_world` and `refused_line_keeps_input` still pass.
@@ -88,14 +88,14 @@ Load the `rust-best-practices` skill before this group.
 Load the `rust-best-practices` skill before this group.
 
 - [x] 5.1 Read the current documentation of the kitty keyboard protocol. Find the bytes of Shift+Enter, Alt+Enter, Ctrl+Enter, Ctrl+J, Ctrl+M and Ctrl+Shift+Z with only the flag that disambiguates escape codes. Add a row to the table "Checked facts". Make sure that D5 and D8 match the documentation, or change them and the `terminal-client` delta to match it.
-- [ ] 5.2 Add the actions `Newline`, `Undo`, `Redo`, `DeleteToLineStart` and `Ignore`, and the entries of D5 to the default keymap. Add a unit test of `update` for each entry that checks the text of the editor and the list of effects. Add these tests to `crates/mu-tui/tests/editor.rs`:
+- [x] 5.2 Add the actions `Newline`, `Undo`, `Redo`, `DeleteToLineStart` and `Ignore`, and the entries of D5 to the default keymap. Add a unit test of `update` for each entry that checks the text of the editor and the list of effects. Add these tests to `crates/mu-tui/tests/editor.rs`:
   - `each_key_inserts_a_line_break`, for "Each key of a line break"
   - `ctrl_u_deletes_to_the_start_of_the_line`, for "Ctrl+U deletes to the start of the line"
   - `ctrl_u_at_the_start_of_a_line`, for "Ctrl+U at the start of a line"
   - `undo_and_redo`, for "Undo and redo"
   - `ctrl_r_changes_nothing`, for "Ctrl+R changes nothing"
   Add `ctrl_m_sends` to `crates/mu-tui/tests/app.rs`, for "Ctrl+M sends". Make sure that the six tests pass. Make sure that `each_key_inserts_a_line_break` fails for Shift+Enter with its keymap entry removed, and that `ctrl_r_changes_nothing` fails with the entry of Ctrl+R removed.
-- [ ] 5.3 Add the clean of D6 as `clean_paste` in `crates/mu-tui/src/text.rs`. Add the handling of `Event::Paste` in `update`. Write the sample pose of the spike once with `cargo run -p input-editor -- sample 4096` in `spikes/`, and commit it as `crates/mu-tui/tests/data/pose-4096.txt`. Add these tests to `crates/mu-tui/tests/editor.rs`:
+- [x] 5.3 Add the clean of D6 as `clean_paste` in `crates/mu-tui/src/text.rs`. Add the handling of `Event::Paste` in `update`. Write the sample pose of the spike once with `cargo run -p input-editor -- sample 4096` in `spikes/`, and commit it as `crates/mu-tui/tests/data/pose-4096.txt`. Add these tests to `crates/mu-tui/tests/editor.rs`:
   - `paste_of_several_lines`, for "A paste of several lines"
   - `undo_of_a_paste`, for "Undo of a paste", with `pose-4096.txt`
   - `control_characters_in_a_paste`, for the text of the editor in "Control characters in a paste"
@@ -103,23 +103,23 @@ Load the `rust-best-practices` skill before this group.
   - `paste_over_a_selection`, for "A paste with a selection"
   - `clean_paste_holds_no_control_character`, a property test with the `proptest` of the repository, as in `crates/mu-tui/tests/app.rs`. For each string, the clean holds no control character but tab and LF, and a second clean changes nothing.
   Make sure that the six tests pass.
-- [ ] 5.4 Turn on bracketed paste in `screen::enter`, and turn it off in `screen::leave` and in the panic path. The client then restores the terminal at exit and on a panic, with each mode that it set. Add these tests to `crates/mu-cli/tests/client.rs`:
+- [x] 5.4 Turn on bracketed paste in `screen::enter`, and turn it off in `screen::leave` and in the panic path. The client then restores the terminal at exit and on a panic, with each mode that it set. Add these tests to `crates/mu-cli/tests/client.rs`:
   - `bracketed_paste_at_the_start_and_at_exit`, for "Bracketed paste at the start and at exit"
   - `paste_writes_no_escape`, for the terminal output in "Control characters in a paste"
   Make sure that both tests pass. Make sure that these tests of the requirement "The client restores the terminal" still pass: `modes_at_exit`, for "The modes at exit", and `mode_2027_already_on`, for "Mode 2027 was already on".
-- [ ] 5.5 Set the terminal cursor in `view` and the default cursor style, with the clamp to the last column, as D7 says. Add these tests to `crates/mu-cli/tests/client.rs`:
+- [x] 5.5 Set the terminal cursor in `view` and the default cursor style, with the clamp to the last column, as D7 says. Add these tests to `crates/mu-cli/tests/client.rs`:
   - `cursor_after_typing`, for "The cursor after typing"
   - `cursor_on_a_wrapped_row_after_a_wide_grapheme`, for "The cursor on a wrapped row after a wide grapheme"
   - `editor_cursor_with_probed_widths`, for the terminal cursor in "A terminal that adds code point widths"
   - `cursor_at_a_full_row`, for "The cursor after a full row"
   Make sure that the four tests pass. Add a row to the table "Checked facts" for the column that `screen_cursor` gives after a full row.
 
-- [ ] 5.6 Add the action `SubmitLines` and the queue of D13, with the entries of Alt+Enter and Ctrl+Enter. Add these tests to `crates/mu-tui/tests/app.rs`, for the requirement "Alt+Enter sends each line as a command":
+- [x] 5.6 Add the action `SubmitLines` and the queue of D13, with the entries of Alt+Enter and Ctrl+Enter. Add these tests to `crates/mu-tui/tests/app.rs`, for the requirement "Alt+Enter sends each line as a command":
   - `each_line_is_a_command`, for "Each line is a command", once for each of the two keys, with an empty line among the lines
   - `focus_moves_between_two_lines`, for "The focus moves between two lines"
   - `refused_line_stops_the_rest`, for "A line that the server refuses", of the requirement "A refused line stops a send of each line"
   Add `alt_enter_sends_each_line` to `crates/mu-cli/tests/client.rs`, for the screen of "Each line is a command" on a fake world. Make sure that the four tests pass, and that `each_line_is_a_command` fails with the entry of Alt+Enter removed.
-- [ ] 5.7 Keep the `line_break` of each world in the model, from `ListWorlds`. Add the action `JoinLines` of D12, with the entry of Alt+R. Add these tests to `crates/mu-tui/tests/app.rs`, for the requirement "Alt+R joins the lines in place":
+- [x] 5.7 Keep the `line_break` of each world in the model, from `ListWorlds`. Add the action `JoinLines` of D12, with the entry of Alt+R. Add these tests to `crates/mu-tui/tests/app.rs`, for the requirement "Alt+R joins the lines in place":
   - `lines_become_one_line`, for "The lines become one line"
   - `join_with_no_line_break`, for "A world with no line break"
   Make sure that both tests pass.
@@ -128,8 +128,8 @@ Load the `rust-best-practices` skill before this group.
 
 Load the `rust-best-practices` skill before this group.
 
-- [ ] 6.1 Add the query `CSI ?u` before DA1 in `probe::queries`. Add the variant `Answer::Keyboard` and the flag `kitty_keyboard` of `Outcome`, as D8 says. Add unit tests of the probe in `crates/mu-tui/tests/probe.rs` for an answer before DA1, no answer, and an answer of `CSI ?15u`. Make sure that the tests pass.
-- [ ] 6.2 Replace the `AtomicBool` of mode 2027 with the shared `Restore` value of D8. Push the flag in `run`, and pop it with `Keyboard::PopFlags(1)` in `screen::leave` and in the panic path. Teach the scripted probe answers of the test terminal the kitty keyboard answer. Add these tests to `crates/mu-cli/tests/client.rs`:
+- [x] 6.1 Add the query `CSI ?u` before DA1 in `probe::queries`. Add the variant `Answer::Keyboard` and the field `keyboard` of `Outcome`, as D8 says. Add unit tests of the probe in `crates/mu-tui/tests/probe.rs` for an answer before DA1, no answer, and an answer of `CSI ?15u`. Add unit tests of the restore in `crates/mu-tui/tests/screen.rs`. Make sure that the tests pass.
+- [x] 6.2 Replace the `AtomicBool` of mode 2027 with the shared `Restore` value of D8. Push the flag in `run`, and pop it with `Keyboard::PopFlags(1)` in `screen::leave` and in the panic path. Teach the scripted probe answers of the test terminal the kitty keyboard answer. Add these tests to `crates/mu-cli/tests/client.rs`:
   - `terminal_with_kitty_keyboard`, for "A terminal with the protocol"
   - `terminal_without_kitty_keyboard`, for "A terminal without the protocol"
   - `shift_enter_with_kitty_keyboard`, for "Shift+Enter with the protocol"

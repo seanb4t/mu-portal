@@ -146,6 +146,9 @@ fn first_view() {
         top(&mut app)
     );
     assert_eq!(rows(&mut app), ["Welcome, aria."]);
+    // The editor takes only the bottom row.
+    type_text(&mut app, "look");
+    assert_eq!(screen(&mut app)[22..], ["", "look"]);
 }
 
 #[test]
@@ -875,4 +878,133 @@ proptest! {
             }
         }
     }
+}
+
+// Ctrl+M, a send of each line, and a join in place.
+
+fn send(world: &str, text: &str) -> Effect {
+    Effect::Send {
+        world: world.to_owned(),
+        text: text.to_owned(),
+    }
+}
+
+/// Types each line, with Ctrl+J between each two.
+fn type_lines(app: &mut Model, lines: &[&str]) {
+    for (index, line) in lines.iter().enumerate() {
+        if index > 0 {
+            assert_eq!(press(app, ctrl('j')), []);
+        }
+        type_text(app, line);
+    }
+}
+
+fn refused(world: &str, text: &str) -> Reply {
+    Reply::Refused {
+        world: world.to_owned(),
+        text: text.to_owned(),
+        reason: format!("{world} is not connected"),
+    }
+}
+
+#[test]
+fn ctrl_m_sends() {
+    let mut app = two_worlds();
+    press(&mut app, ctrl('n'));
+    type_text(&mut app, "hi");
+    assert_eq!(press(&mut app, ctrl('m')), [send("beta/bryn", "hi")]);
+    assert_eq!(app.input(), "");
+}
+
+#[test]
+fn each_line_is_a_command() {
+    for modifiers in [Modifiers::ALT, Modifiers::CONTROL] {
+        let mut app = two_worlds();
+        type_lines(&mut app, &["one", "", "two"]);
+        let enter = KeyEvent::new(KeyCode::Enter, modifiers);
+        assert_eq!(press(&mut app, enter), [send("alpha/aria", "one")]);
+        assert_eq!(app.input(), "");
+        let sent = |app: &mut Model| update(app, Msg::Reply(Reply::Sent));
+        assert_eq!(sent(&mut app), [send("alpha/aria", "")]);
+        assert_eq!(sent(&mut app), [send("alpha/aria", "two")]);
+        assert_eq!(sent(&mut app), []);
+    }
+}
+
+#[test]
+fn focus_moves_between_two_lines() {
+    let mut app = two_worlds();
+    type_lines(&mut app, &["one", "two"]);
+    let enter = KeyEvent::new(KeyCode::Enter, Modifiers::ALT);
+    assert_eq!(press(&mut app, enter), [send("alpha/aria", "one")]);
+    press(&mut app, ctrl('n'));
+    assert_eq!(
+        update(&mut app, Msg::Reply(Reply::Sent)),
+        [send("alpha/aria", "two")]
+    );
+}
+
+#[test]
+fn refused_line_stops_the_rest() {
+    let mut app = two_worlds();
+    type_lines(&mut app, &["one", "two", "three"]);
+    let enter = KeyEvent::new(KeyCode::Enter, Modifiers::ALT);
+    assert_eq!(press(&mut app, enter), [send("alpha/aria", "one")]);
+    assert_eq!(
+        update(&mut app, Msg::Reply(Reply::Sent)),
+        [send("alpha/aria", "two")]
+    );
+    on_reply(&mut app, refused("alpha/aria", "two"));
+    assert_eq!(app.input(), "two\nthree");
+    assert_eq!(update(&mut app, Msg::Reply(Reply::Sent)), []);
+    let screen = screen(&mut app);
+    assert!(
+        screen.iter().any(|row| row.starts_with("-- ")),
+        "{screen:?}"
+    );
+    assert_eq!(screen[22..], ["two", "three"]);
+}
+
+/// A model from a list of worlds: `alpha/aria` with the line break `%r`, and `beta/bryn` with
+/// none.
+fn listed() -> Model {
+    let world = |id: &str, line_break: Option<&str>| World {
+        id: id.to_owned(),
+        line_break: line_break.map(str::to_owned),
+        ..Default::default()
+    };
+    Model::from_listing(Ok(vec![
+        world("alpha/aria", Some("%r")),
+        world("beta/bryn", None),
+    ]))
+}
+
+#[test]
+fn lines_become_one_line() {
+    let mut app = listed();
+    type_lines(&mut app, &["one", "two"]);
+    let alt_r = KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT);
+    assert_eq!(press(&mut app, alt_r), []);
+    assert_eq!(app.input(), "one%rtwo");
+    assert_eq!(press(&mut app, ctrl('z')), []);
+    assert_eq!(press(&mut app, ctrl('z')), []);
+    assert_eq!(app.input(), "one\ntwo");
+}
+
+#[test]
+fn join_with_no_line_break() {
+    let mut app = listed();
+    press(&mut app, ctrl('n'));
+    type_lines(&mut app, &["one", "two"]);
+    let alt_r = KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT);
+    assert_eq!(press(&mut app, alt_r), []);
+    assert_eq!(app.input(), "one\ntwo");
+    let screen = screen(&mut app);
+    assert!(
+        screen
+            .iter()
+            .any(|row| row.starts_with("-- ") && row.contains("line break")),
+        "{screen:?}"
+    );
+    assert_eq!(screen[22..], ["one", "two"]);
 }

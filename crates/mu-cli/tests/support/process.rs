@@ -501,10 +501,24 @@ pub enum Answers {
     Late,
     /// The answers of [`Self::Late`], with mode 2027 as set.
     LateGraphemeModeSet,
+    /// The default answers, and the kitty keyboard flags as 0.
+    Kitty,
+    /// The answers of [`Self::Late`], and the kitty keyboard flags as 0.
+    LateKitty,
+}
+
+impl Answers {
+    /// True if the answers go out only after the first frame.
+    const fn late(self) -> bool {
+        matches!(
+            self,
+            Self::Late | Self::LateGraphemeModeSet | Self::LateKitty
+        )
+    }
 }
 
 /// The queries of the probe that the pseudo-terminal answers.
-const QUERIES: [&[u8]; 3] = [b"\x1b[6n", b"\x1b[c", b"\x1b[?2027$p"];
+const QUERIES: [&[u8]; 4] = [b"\x1b[6n", b"\x1b[c", b"\x1b[?2027$p", b"\x1b[?u"];
 
 /// Answers the queries in the bytes of the client, from the `vt100` screen at each query.
 struct Answerer {
@@ -564,7 +578,7 @@ impl Answerer {
             .unwrap_or(self.pending.len());
         parser.process(&self.pending[..keep]);
         self.pending.drain(..keep);
-        if matches!(self.answers, Answers::Late | Answers::LateGraphemeModeSet) {
+        if self.answers.late() {
             self.held.append(&mut out);
             let drawn = self.probed
                 && parser
@@ -594,9 +608,11 @@ impl Answerer {
                 };
                 format!("\x1b[{};{}R", row + 1, col + 1).into_bytes()
             }
-            b"\x1b[c" if matches!(self.answers, Answers::Late | Answers::LateGraphemeModeSet) => {
-                b"\x1b_Gi=31;OK\x1b\\\x1b[?62;22c".to_vec()
-            }
+            b"\x1b[c" if self.answers.late() => b"\x1b_Gi=31;OK\x1b\\\x1b[?62;22c".to_vec(),
+            b"\x1b[?u" => match self.answers {
+                Answers::Kitty | Answers::LateKitty => b"\x1b[?0u".to_vec(),
+                _ => Vec::new(),
+            },
             b"\x1b[c" => b"\x1b[?62;22c".to_vec(),
             _ => {
                 let value =

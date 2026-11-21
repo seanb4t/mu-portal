@@ -2,6 +2,7 @@
 //! the render of [`view`](crate::view) also changes the model, as the module doc of
 //! [`model`](crate::model) says.
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use mu_client::ClientEvent;
@@ -16,11 +17,11 @@ use termina::event::{
 
 use crate::convert::convert;
 use crate::keymap::Wheel;
-use crate::model::{Late, Model, PaneId};
+use crate::model::{Late, LineQueue, Model, PaneId};
 use crate::pane::{Caps, PaneState};
 use crate::probe::{self, Outcome};
 use crate::store::Image;
-use crate::text::{clean, line};
+use crate::text::{clean, clean_paste, line};
 
 /// One input of the model.
 #[derive(Clone, Debug)]
@@ -49,8 +50,24 @@ pub enum Action {
     FocusNext,
     /// Give the focus to the previous world, before the first world the last.
     FocusPrev,
-    /// Send the input line to the world in focus, and return its pane to the bottom.
+    /// Send the text of the pose editor to the world in focus as one command, and return its
+    /// pane to the bottom.
     Submit,
+    /// Send each line of the pose editor to the world in focus as its own command, in order,
+    /// and return its pane to the bottom.
+    SubmitLines,
+    /// Insert a line break in the pose editor.
+    Newline,
+    /// Replace each line break of the pose editor with the line break of the world in focus.
+    JoinLines,
+    /// Delete the text of the pose editor from the start of the line to the cursor.
+    DeleteToLineStart,
+    /// Undo the last edit of the pose editor.
+    Undo,
+    /// Bring back the edit that the last undo removed.
+    Redo,
+    /// Do nothing. An entry with it keeps a key from the pose editor.
+    Ignore,
     /// Scroll the pane in focus by this many pages: back for a negative count, forward for a
     /// positive one. A page is the height of the text area less one row, and at least one row. The text
     /// area has no row of the unfinished line.
@@ -67,7 +84,7 @@ pub enum Effect {
     Send {
         /// The world in focus.
         world: String,
-        /// The text of the input line.
+        /// The text of the pose editor, or one line of it.
         text: String,
     },
     /// Leave the client.
@@ -93,7 +110,7 @@ pub enum Reply {
     Refused {
         /// The world of the line.
         world: String,
-        /// The text of the line, which goes back to the input line.
+        /// The text of the line, which goes back to the pose editor.
         text: String,
         /// Why the server refused it.
         reason: String,
@@ -105,6 +122,11 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
     match msg {
         Msg::Terminal(TermEvent::Key(key)) => on_key(model, key),
         Msg::Terminal(TermEvent::Mouse(mouse)) => on_mouse(model, mouse),
+        Msg::Terminal(TermEvent::Paste(text)) => {
+            // A paste replaces a selection, and one undo removes its text.
+            model.pose().textarea().insert_str(clean_paste(&text));
+            Vec::new()
+        }
         Msg::Terminal(TermEvent::Csi(Csi::Device(Device::DeviceAttributes(())))) => {
             model.late = Late::None;
             Vec::new()
@@ -135,10 +157,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
             }
             Vec::new()
         }
-        Msg::Reply(reply) => {
-            on_reply(model, reply);
-            Vec::new()
-        }
+        Msg::Reply(reply) => on_reply(model, reply),
     }
 }
 
@@ -259,7 +278,7 @@ fn on_input_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
     if let Some(action) = model.keymap.get(&key) {
         act(model, action)
     } else {
-        model.input.input(input_key(key));
+        model.pose().textarea().input(input_key(key));
         Vec::new()
     }
 }
@@ -316,13 +335,42 @@ fn act(model: &mut Model, action: Action) -> Vec<Effect> {
             move_focus(model, false);
             Vec::new()
         }
-        Action::Submit => {
-            let effects = submit(model).into_iter().collect();
+        Action::Submit | Action::SubmitLines => {
+            let effects = if action == Action::Submit {
+                submit(model)
+            } else {
+                submit_lines(model)
+            };
             if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
                 state.to_bottom();
             }
-            effects
+            effects.into_iter().collect()
         }
+        Action::Newline => {
+            model.pose().textarea().insert_newline();
+            Vec::new()
+        }
+        Action::JoinLines => {
+            join_lines(model);
+            Vec::new()
+        }
+        Action::DeleteToLineStart => {
+            let textarea = model.pose().textarea();
+            // At the start of a line, the delete of the library takes the line break before it.
+            if textarea.cursor().1 > 0 {
+                textarea.delete_line_by_head();
+            }
+            Vec::new()
+        }
+        Action::Undo => {
+            model.pose().textarea().undo();
+            Vec::new()
+        }
+        Action::Redo => {
+            model.pose().textarea().redo();
+            Vec::new()
+        }
+        Action::Ignore => Vec::new(),
         Action::ScrollPage(pages) => {
             if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
                 state.scroll_pages(pages);
@@ -338,17 +386,61 @@ fn act(model: &mut Model, action: Action) -> Vec<Effect> {
     }
 }
 
-fn submit(model: &mut Model) -> Option<Effect> {
-    let Some(world) = model.focused().map(str::to_owned) else {
+/// The world in focus, or a notice that no world has the focus.
+fn world_to_send_to(model: &mut Model) -> Option<String> {
+    let world = model.focused().map(str::to_owned);
+    if world.is_none() {
         model.push(
             PaneId::NOTICES,
             "-- no world has the focus, so the line goes nowhere",
         );
-        return None;
-    };
-    let text = model.input().to_owned();
-    model.set_input(String::new());
+    }
+    world
+}
+
+fn submit(model: &mut Model) -> Option<Effect> {
+    let world = world_to_send_to(model)?;
+    let text = model.input();
+    model.set_input("");
     Some(Effect::Send { world, text })
+}
+
+/// Sends the first line of the pose editor, and keeps the other lines for the replies. Each
+/// line goes to the world in focus now, also if the focus moves before the last line goes.
+fn submit_lines(model: &mut Model) -> Option<Effect> {
+    let world = world_to_send_to(model)?;
+    let text = model.input();
+    model.set_input("");
+    let mut rest: VecDeque<String> = text.split('\n').map(str::to_owned).collect();
+    let sent = rest.pop_front().unwrap_or_default();
+    if !rest.is_empty() {
+        model.queue = Some(LineQueue {
+            world: world.clone(),
+            sent: sent.clone(),
+            rest,
+        });
+    }
+    Some(Effect::Send { world, text: sent })
+}
+
+/// Replaces each line break of the pose editor with the line break of the world in focus. The
+/// edit goes through the text area, so undo brings the lines back.
+fn join_lines(model: &mut Model) {
+    let line_break = model
+        .focus
+        .and_then(|index| model.worlds.get(index))
+        .and_then(|world| world.line_break.clone());
+    let Some(line_break) = line_break else {
+        model.notice("the world in focus sets no line break, so the lines stay as they are");
+        return;
+    };
+    let text = model.input();
+    if !text.contains('\n') {
+        return;
+    }
+    let textarea = model.pose().textarea();
+    textarea.select_all();
+    textarea.insert_str(text.replace('\n', &line_break));
 }
 
 fn move_focus(model: &mut Model, forward: bool) {
@@ -416,14 +508,14 @@ fn on_client(model: &mut Model, item: ClientEvent) {
     }
 }
 
-fn on_reply(model: &mut Model, reply: Reply) {
+fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
     let Reply::Refused {
         world,
         text,
         reason,
     } = reply
     else {
-        return;
+        return next_line(model).into_iter().collect();
     };
     let notice = format!("-- {}", clean(&reason));
     let pane = model
@@ -432,10 +524,39 @@ fn on_reply(model: &mut Model, reply: Reply) {
         .find(|each| each.id == world)
         .map_or(PaneId::NOTICES, |world| world.pane);
     model.push(pane, &notice);
-    model.set_input(text);
+    // A refused line of a send of each line stops the send. The line and each later line go
+    // back to the editor, before the text that the player typed since.
+    let queue = model
+        .queue
+        .take_if(|queue| queue.world == world && queue.sent == text);
+    match queue {
+        Some(queue) => {
+            let mut lines = vec![text];
+            lines.extend(queue.rest);
+            let typed = model.input();
+            if !typed.is_empty() {
+                lines.push(typed);
+            }
+            model.set_input(&lines.join("\n"));
+        }
+        None => model.set_input(&text),
+    }
+    Vec::new()
 }
 
-/// `key` as the input line reads it. A key that the input line does not know becomes
+/// The send of the next line of a send of each line, after the server took the line before it.
+fn next_line(model: &mut Model) -> Option<Effect> {
+    let queue = model.queue.as_mut()?;
+    let text = queue.rest.pop_front()?;
+    let world = queue.world.clone();
+    queue.sent.clone_from(&text);
+    if queue.rest.is_empty() {
+        model.queue = None;
+    }
+    Some(Effect::Send { world, text })
+}
+
+/// `key` as the pose editor reads it. A key that the editor does not know becomes
 /// `Key::Null`, which it ignores.
 fn input_key(key: KeyEvent) -> Input {
     let key_code = match key.code {

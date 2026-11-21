@@ -6,6 +6,7 @@
 
 pub mod convert;
 mod diacritics;
+mod editor;
 mod keymap;
 pub mod kitty;
 mod layout;
@@ -21,8 +22,9 @@ mod view;
 pub mod width;
 pub mod wrap;
 
+pub use editor::{Editor, EditorId, EditorState};
 pub use keymap::{Chord, Keymap, Wheel};
-pub use layout::{Leaf, Node};
+pub use layout::{Leaf, Node, Size};
 pub use model::{Model, PaneId};
 pub use pane::{Caps, OutputPane, PaneState, Position};
 pub use run::run;

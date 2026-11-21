@@ -486,3 +486,233 @@ async fn failed_start_leaves_the_terminal_as_it_was() {
         (false, false)
     );
 }
+
+// The pose editor.
+
+/// The last `count` rows of `rows`, with no trailing spaces.
+fn last_rows(rows: &[String], count: usize) -> Vec<&str> {
+    rows[rows.len() - count..]
+        .iter()
+        .map(|row| row.trim_end())
+        .collect()
+}
+
+#[tokio::test]
+async fn pose_of_two_lines() {
+    let (_session, mut client) = attached().await;
+    // Ctrl+J is the byte LF.
+    client.send(b"one\ntwo\r");
+    client
+        .wait_rows("the joined pose, and an empty editor of one row", |rows| {
+            rows.iter().any(|row| row.contains("You say, \"one%rtwo\""))
+                && last_rows(rows, 1) == [""]
+                && !rows.iter().any(|row| row.trim_end() == "one")
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn alt_enter_sends_each_line() {
+    let (_session, mut client) = attached().await;
+    // Alt+Enter is ESC and CR.
+    client.send(b"one\ntwo\x1b\r");
+    client
+        .wait_rows("an answer to each line, in order", |rows| {
+            let at = |text: &str| rows.iter().position(|row| row.contains(text));
+            match (at("You say, \"one\""), at("You say, \"two\"")) {
+                (Some(one), Some(two)) => one < two && last_rows(rows, 1) == [""],
+                _ => false,
+            }
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn line_break_that_the_world_refuses() {
+    let game = ScriptedGame::new(Script::new().silent());
+    let listening = game.listen().await.unwrap();
+    let port = listening.addr().port();
+    // A type with no `extends` sets no line break.
+    let conf = ConfigDir::tcp_world(port, "autoconnect = true\n")
+        .file("types/plain.toml", "")
+        .file(
+            "games/alpha.toml",
+            &format!("extends = \"plain\"\nhost = \"127.0.0.1\"\nport = {port}\n"),
+        );
+    let session = Session::start(ServerBuilder::new().arg("--config").arg(conf.path())).await;
+    let mut client = PtyClient::start(session.server.socket(), session.server.dir().path());
+    client
+        .wait_top("the world", |top| top.contains("alpha/aria"))
+        .await;
+    client.send(b"one\ntwo\r");
+    client
+        .wait_rows("the refusal, and the two lines in the editor", |rows| {
+            rows.iter()
+                .any(|row| row.starts_with("-- ") && row.contains("line break"))
+                && last_rows(rows, 2) == ["one", "two"]
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn bracketed_paste_at_the_start_and_at_exit() {
+    let session = Session::with_worlds(TWO_WORLDS).await;
+    let mut client = PtyClient::start(session.server.socket(), session.server.dir().path());
+    client.wait_greeting().await;
+    // The greeting is in the first frame with a world, so the mode came before it.
+    assert!(holds(&client.output(), b"\x1b[?2004h"));
+    assert!(!holds(&client.output(), b"\x1b[?2004l"));
+    client.send(b"\x03");
+    assert!(client.exit_within(BOUND).await.is_some());
+    client
+        .wait_output("bracketed paste off", b"\x1b[?2004l")
+        .await;
+}
+
+#[tokio::test]
+async fn paste_writes_no_escape() {
+    let (_session, mut client) = attached().await;
+    let started = client.output().len();
+    client.send(b"\x1b[200~a\x1b[31mb\x07\tc\xc2\x9bd\x1b[201~");
+    client
+        .wait_rows("the pasted text with no control character", |rows| {
+            last_rows(rows, 1) == ["a[31mb  cd"]
+        })
+        .await;
+    let output = client.output().split_off(started);
+    assert!(!holds(&output, b"\x1b[31m"), "{}", output.escape_ascii());
+}
+
+/// Waits until the terminal cursor shows at the 0-based `row` and `col`.
+async fn cursor_at(client: &PtyClient, row: u16, col: u16) {
+    client
+        .wait_screen(
+            &format!("the cursor at row {row}, column {col}"),
+            |screen| !screen.hide_cursor() && screen.cursor_position() == (row, col),
+        )
+        .await;
+}
+
+#[tokio::test]
+async fn cursor_after_typing() {
+    let (_session, mut client) = attached().await;
+    client.send(b"hello");
+    cursor_at(&client, 23, 5).await;
+}
+
+/// A server with two worlds, and a client in a terminal of 20 columns that shows the greeting.
+async fn attached_narrow() -> (Session, PtyClient) {
+    let session = Session::with_worlds(TWO_WORLDS).await;
+    let client = PtyClient::start_sized(
+        session.server.socket(),
+        session.server.dir().path(),
+        Answers::Default,
+        (24, 20),
+    );
+    client.wait_greeting().await;
+    (session, client)
+}
+
+#[tokio::test]
+async fn cursor_on_a_wrapped_row_after_a_wide_grapheme() {
+    let (_session, mut client) = attached_narrow().await;
+    client.send(format!("{}漢字", "x".repeat(18)).as_bytes());
+    cursor_at(&client, 23, 2).await;
+}
+
+#[tokio::test]
+async fn cursor_at_a_full_row() {
+    let (_session, mut client) = attached_narrow().await;
+    client.send("x".repeat(20).as_bytes());
+    cursor_at(&client, 23, 19).await;
+    client
+        .wait_rows("an editor of one row", |rows| {
+            rows[22].trim_end() != "x".repeat(20)
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn editor_cursor_with_probed_widths() {
+    let session = Session::with_worlds(TWO_WORLDS).await;
+    let mut client = PtyClient::start_with(
+        session.server.socket(),
+        session.server.dir().path(),
+        Answers::ZwjWidth(8),
+    );
+    client.wait_greeting().await;
+    client.send(format!("{FAMILY}x").as_bytes());
+    // The emoji takes 8 cells and `x` one, so the cursor is at column 10, counted from 1.
+    cursor_at(&client, 23, 9).await;
+}
+
+// The kitty keyboard protocol.
+
+const PUSH_FLAG: &[u8] = b"\x1b[>1u";
+const POP_FLAG: &[u8] = b"\x1b[<1u";
+
+#[tokio::test]
+async fn terminal_with_kitty_keyboard() {
+    let session = Session::with_worlds(TWO_WORLDS).await;
+    let mut client = PtyClient::start_with(
+        session.server.socket(),
+        session.server.dir().path(),
+        Answers::Kitty,
+    );
+    client.wait_greeting().await;
+    assert!(holds(&client.output(), PUSH_FLAG));
+    assert!(!holds(&client.output(), POP_FLAG));
+    client.send(b"\x03");
+    assert!(client.exit_within(BOUND).await.is_some());
+    client.wait_output("the pop of the flag", POP_FLAG).await;
+}
+
+#[tokio::test]
+async fn terminal_without_kitty_keyboard() {
+    let output = output_at_exit(Answers::Default).await;
+    assert_eq!(
+        (holds(&output, PUSH_FLAG), holds(&output, POP_FLAG)),
+        (false, false),
+        "{}",
+        output.escape_ascii()
+    );
+}
+
+#[tokio::test]
+async fn shift_enter_with_kitty_keyboard() {
+    let session = Session::with_worlds(TWO_WORLDS).await;
+    let mut client = PtyClient::start_with(
+        session.server.socket(),
+        session.server.dir().path(),
+        Answers::Kitty,
+    );
+    client.wait_greeting().await;
+    // With the flag, the terminal sends Shift+Enter as CSI 13;2u.
+    client.send(b"a\x1b[13;2ub");
+    client
+        .wait_rows("a and b on two rows of the editor", |rows| {
+            last_rows(rows, 2) == ["a", "b"]
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn late_kitty_keyboard_answer() {
+    let session = Session::with_worlds(TWO_WORLDS).await;
+    let mut client = PtyClient::start_with(
+        session.server.socket(),
+        session.server.dir().path(),
+        Answers::LateKitty,
+    );
+    client.wait_greeting().await;
+    client.send(b"z");
+    client
+        .wait_rows("only z in the editor", |rows| last_rows(rows, 1) == ["z"])
+        .await;
+    client.send(b"\x03");
+    assert!(client.exit_within(BOUND).await.is_some());
+    client
+        .wait_output("the exit from the alternate screen", b"\x1b[?1049l")
+        .await;
+    assert!(!holds(&client.output(), PUSH_FLAG));
+}
