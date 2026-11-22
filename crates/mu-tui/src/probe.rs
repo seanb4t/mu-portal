@@ -132,7 +132,16 @@ pub enum Skip {
     Apc,
     /// The rest of an APC after an ESC at the end of the last read. A `\` ends it.
     ApcEsc,
+    /// The text of a bracketed paste, up to [`PASTE_END`]. Each read gives its text as a paste
+    /// event, so a paste of any length goes through.
+    Paste,
 }
+
+/// The mark of the terminal before the text of a bracketed paste.
+pub const PASTE_START: &[u8] = b"\x1b[200~";
+
+/// The mark of the terminal after the text of a bracketed paste.
+pub const PASTE_END: &[u8] = b"\x1b[201~";
 
 /// Adds `read` to `pending` and frames the bytes of `pending` that make whole frames. A frame is
 /// a complete CSI, an APC, a broken sequence, or a run of other bytes. A CSI or APC with no end,
@@ -151,6 +160,55 @@ pub fn frame(pending: &mut Vec<u8>, skip: &mut Skip, read: &[u8]) -> Framed {
     let read = &read[skipped(skip, read, pending)..];
     pending.extend_from_slice(read);
     let mut framed = Framed::default();
+    loop {
+        if *skip == Skip::Paste && !paste(pending, skip, &mut framed) {
+            return framed;
+        }
+        if !frame_to_paste(pending, skip, &mut framed) {
+            return framed;
+        }
+    }
+}
+
+/// Gives the text of the open paste in `pending` as a paste event. Returns true if the paste
+/// ended, with its end mark gone from `pending`. If it did not end, `pending` keeps only the
+/// bytes that can start the end mark or a UTF-8 character.
+fn paste(pending: &mut Vec<u8>, skip: &mut Skip, framed: &mut Framed) -> bool {
+    let end = pending
+        .windows(PASTE_END.len())
+        .position(|window| window == PASTE_END);
+    let (text, used, ended) = end.map_or_else(
+        || {
+            let text = pending.len() - held_for_paste(pending);
+            (text, text, false)
+        },
+        |at| (at, at + PASTE_END.len(), true),
+    );
+    if text > 0 {
+        let text = String::from_utf8_lossy(&pending[..text]).into_owned();
+        framed.events.push(Event::Paste(text));
+    }
+    pending.drain(..used);
+    if ended {
+        *skip = Skip::Nothing;
+    }
+    ended
+}
+
+/// The count of bytes at the end of the text of an open paste that can need the next read: the
+/// start of [`PASTE_END`], or the first bytes of a UTF-8 character.
+fn held_for_paste(text: &[u8]) -> usize {
+    let mark = (1..PASTE_END.len())
+        .rev()
+        .find(|&count| text.ends_with(&PASTE_END[..count]))
+        .unwrap_or(0);
+    mark.max(unfinished_tail(text))
+}
+
+/// Frames `pending` as [`frame`] says, up to the start mark of a paste. Returns true if a paste
+/// started: its mark and each byte before it are gone from `pending`, and `skip` is
+/// [`Skip::Paste`].
+fn frame_to_paste(pending: &mut Vec<u8>, skip: &mut Skip, framed: &mut Framed) -> bool {
     let mut used = 0;
     let mut at = 0;
     while at < pending.len() {
@@ -167,8 +225,13 @@ pub fn frame(pending: &mut Vec<u8>, skip: &mut Skip, read: &[u8]) -> Framed {
         let rest = &pending[at..];
         let len = match scan(rest) {
             Scan::Open => break,
+            Scan::Csi(len) if &rest[..len] == PASTE_START => {
+                pending.drain(..at + len);
+                *skip = Skip::Paste;
+                return true;
+            }
             Scan::Csi(len) => {
-                csi(&rest[..len], &mut framed);
+                csi(&rest[..len], framed);
                 len
             }
             Scan::Apc(len) => {
@@ -199,7 +262,7 @@ pub fn frame(pending: &mut Vec<u8>, skip: &mut Skip, read: &[u8]) -> Framed {
         };
         pending.clear();
     }
-    framed
+    false
 }
 
 /// The count of bytes at the start of `read` that belong to the sequence that `skip` drops. Sets
@@ -207,6 +270,9 @@ pub fn frame(pending: &mut Vec<u8>, skip: &mut Skip, read: &[u8]) -> Framed {
 /// them: a new frame starts at it, and the ESC that ended the sequence in the last read comes
 /// back to `pending`.
 fn skipped(skip: &mut Skip, read: &[u8], pending: &mut Vec<u8>) -> usize {
+    if *skip == Skip::Paste {
+        return 0;
+    }
     for (at, &byte) in read.iter().enumerate() {
         match (*skip, byte) {
             (Skip::Apc, ESC) => match read.get(at + 1) {
@@ -235,7 +301,7 @@ fn skipped(skip: &mut Skip, read: &[u8], pending: &mut Vec<u8>) -> usize {
                 pending.push(ESC);
                 return at;
             }
-            (Skip::Csi | Skip::Nothing, _) => {
+            (Skip::Csi | Skip::Nothing | Skip::Paste, _) => {
                 *skip = Skip::Nothing;
                 return at;
             }
@@ -505,7 +571,10 @@ pub fn read_answers(
     let mut answers = Vec::new();
     let mut events = Vec::new();
     let mut chunk = [0; 1024];
-    while !answers.contains(&Answer::Da1) && now() + TICK <= deadline {
+    // A paste that started keeps the probe reading to its end, for at most `wait` more.
+    while (!answers.contains(&Answer::Da1) && now() + TICK <= deadline)
+        || (skip == Skip::Paste && now() + TICK <= deadline + wait)
+    {
         let count = match read(&mut chunk) {
             Ok(count) => count,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
@@ -516,7 +585,12 @@ pub fn read_answers(
         events.extend(framed.events);
     }
     let mut outcome = Outcome::learn(&answers);
-    if !outcome.complete && matches!(pending.as_slice(), [ESC] | [ESC, b'[', ..]) {
+    if skip == Skip::Paste {
+        // The rest of a paste that did not end in time reaches the event reader as keys.
+        if !pending.is_empty() {
+            events.push(Event::Paste(String::from_utf8_lossy(&pending).into_owned()));
+        }
+    } else if !outcome.complete && matches!(pending.as_slice(), [ESC] | [ESC, b'[', ..]) {
         outcome.open = pending;
     } else {
         events.extend(flush(&pending));

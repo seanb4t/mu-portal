@@ -1,5 +1,6 @@
 //! The framer of the probe input, the read loop of the probe, and what the answers give.
 
+use proptest::prelude::*;
 use std::cell::Cell;
 use std::io;
 use std::time::{Duration, Instant};
@@ -418,4 +419,97 @@ fn queries_ask_for_the_keyboard_flags_before_da1() {
     };
     let (keyboard, da1) = (at(b"\x1b[?u"), at(b"\x1b[c"));
     assert!(keyboard.is_some() && keyboard < da1, "{keyboard:?} {da1:?}");
+}
+
+// A bracketed paste during the probe.
+
+/// The text of each paste event of `framing`, joined, and the other events.
+fn pasted(events: &[Event]) -> (String, Vec<Event>) {
+    let mut text = String::new();
+    let mut other = Vec::new();
+    for event in events {
+        match event {
+            Event::Paste(part) => text.push_str(part),
+            event => other.push(event.clone()),
+        }
+    }
+    (text, other)
+}
+
+#[test]
+fn paste_is_one_paste_event() {
+    let framing = framed(&[b"\x1b[200~one\rtwo\x1b[201~x"]);
+    assert_eq!(
+        framing.events,
+        [
+            Event::Paste("one\rtwo".to_owned()),
+            key('x', Modifiers::NONE)
+        ]
+    );
+}
+
+#[test]
+fn paste_holds_no_reply() {
+    let framing = framed(&[b"\x1b[200~\x1b[?62c\x1b[201~"]);
+    assert_eq!(
+        (framing.answers, framing.events),
+        (vec![], vec![Event::Paste("\x1b[?62c".to_owned())])
+    );
+}
+
+#[test]
+fn paste_longer_than_the_cap_goes_through() {
+    let text = "a".repeat(PENDING_MAX * 3);
+    let bytes = [b"\x1b[200~", text.as_bytes(), b"\x1b[201~"].concat();
+    let reads: Vec<&[u8]> = bytes.chunks(1000).collect();
+    let framing = framed(&reads);
+    assert_eq!(pasted(&framing.events), (text, vec![]));
+    assert_eq!((framing.pending, framing.skip), (vec![], Skip::Nothing));
+}
+
+proptest! {
+    #[test]
+    fn paste_split_anywhere_gives_its_text(
+        text in "[a-z\r\n\u{e9}\u{6f22}\u{1f44d}]{0,40}",
+        cuts in proptest::collection::vec(0usize..80, 0..6),
+    ) {
+        let bytes = [b"\x1b[200~", text.as_bytes(), b"\x1b[201~", b"z"].concat();
+        let mut cuts: Vec<usize> = cuts.into_iter().map(|cut| cut % (bytes.len() + 1)).collect();
+        cuts.sort_unstable();
+        let mut reads = Vec::new();
+        let mut from = 0;
+        for cut in cuts.into_iter().chain([bytes.len()]) {
+            reads.push(&bytes[from..cut]);
+            from = cut;
+        }
+        let framing = framed(&reads);
+        prop_assert_eq!(
+            pasted(&framing.events),
+            (text, vec![key('z', Modifiers::NONE)])
+        );
+    }
+}
+
+#[test]
+fn open_paste_keeps_the_probe_reading() {
+    let clock = FakeClock::new();
+    let (outcome, events) =
+        read_answers(clock.read(b"\x1b[?62c\x1b[200~one"), || clock.now(), WAIT).unwrap();
+    assert!(outcome.complete);
+    assert_eq!(events, [Event::Paste("one".to_owned())]);
+    assert!(clock.reads.get() > 1);
+    assert!(clock.elapsed.get() <= WAIT * 2, "{:?}", clock.elapsed.get());
+}
+
+#[test]
+fn ended_paste_does_not_hold_the_probe() {
+    let clock = FakeClock::new();
+    let (_, events) = read_answers(
+        clock.read(b"\x1b[200~one\x1b[201~\x1b[?62c"),
+        || clock.now(),
+        WAIT,
+    )
+    .unwrap();
+    assert_eq!(events, [Event::Paste("one".to_owned())]);
+    assert_eq!(clock.reads.get(), 1);
 }
