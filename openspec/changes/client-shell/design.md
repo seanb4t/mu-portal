@@ -66,7 +66,7 @@ Enforced by: the `workspace_boundary.rs` allowlist (`serde` added for `mu-tui`, 
 
 ### D3. Key names
 
-A key name is modifiers from `ctrl`, `alt`, `shift` and `super`, then one key, joined with `+`. A key is one lowercase character, `plus` for the `+` key, or a name of a special key. The special keys are `enter`, `tab`, `backspace`, `esc` and `space`. The others are `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`, `insert`, `delete` and `f1` to `f12`. So `+` is only the joiner. An uppercase character is refused, because `shift+a` names that key. The order of the modifiers does not matter, and a repeated modifier is refused.
+A key name is modifiers from `ctrl`, `alt`, `shift` and `super`, then one key, joined with `+`. A key is one character that is not an uppercase letter and not `+`, the name `plus` for the `+` key, or a name of a special key. So digits such as the `1` of `alt+1` are keys. The special keys are `enter`, `tab`, `backspace`, `esc` and `space`. The others are `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`, `insert`, `delete` and `f1` to `f12`. So `+` is only the joiner. An uppercase character is refused, because `shift+a` names that key. The order of the modifiers does not matter, and a repeated modifier is refused.
 
 `ClientConfig::keymap()` parses each name to a chord. If two names give one chord, it refuses both and names them. `"none"` binds the chord to the entry `ignore`, so the key does nothing. The fallback from a modified chord to the plain key then cannot reach a send.
 
@@ -80,7 +80,7 @@ At `Submit` or `SubmitLines`, `update` checks the editor text. One line that sta
 
 The check runs before `build`, in this order:
 
-1. The name must name an entry, and the entry must not have `edits` set.
+1. The name must name an entry, and the entry must not have `edits` set. The entry `ignore` counts as an editing entry, so `/ignore` is a bad command.
 2. An entry with no `arg` must get no argument.
 3. A required argument must be present.
 4. For `ArgKind::World`, an omitted optional world becomes the world in focus. With no world in focus, the command is bad. A given world must be in `candidates` (D10). This holds for `/connect`, `/disconnect` and `/focus` alike.
@@ -91,7 +91,7 @@ A bad command adds a hint with `Model::hint` and leaves the editor as it is. A g
 
 `Help` adds one hint line for each entry. The line holds the name, the argument of the entry, and the description.
 
-The quit arm: today each key that is not `Quit` clears `quit_armed`. A `Quit` from a command sets the arm with the mark `by_command`. With that mark, a key that only edits the editor does not clear the arm. A second `/quit` then quits. A send, any other command, or a key that reaches another entry clears it.
+The quit arm: today each key that is not `Quit` clears `quit_armed`. A `Quit` from a command sets the arm with the mark `by_command`. With that mark, no key clears the arm by itself: a key that edits the editor, and the Enter or Alt+Enter that submits, leave it. The parse of the submitted text decides. A `/quit` quits. A text that goes to a game, or any other command, clears the arm. So the Enter of the second `/quit` cannot clear the arm before the parse.
 
 Enforced by: the spec tests of `client-commands`, and unit tests of the parser in `tests/update.rs` for `/connect `, `/`, `/ focus` and `/quit now`.
 

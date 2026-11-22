@@ -46,7 +46,7 @@ A bad file is one that the client cannot read or parse, or that holds an unknown
 - **AND** the exit status is 1
 
 ### Requirement: The keys table binds a key to an entry
-The table `[keys]` SHALL map a key to the name of an entry of the registry, or to `"none"`. A key SHALL be modifiers from `ctrl`, `alt`, `shift` and `super`, then one key, joined with `+`. A key is one lowercase character, `plus`, or a name of a special key. Each binding SHALL replace the default binding of that key. A key bound to `"none"` SHALL do nothing. The keys that the table does not name SHALL keep their defaults.
+The table `[keys]` SHALL map a key to the name of an entry of the registry, or to `"none"`. A key SHALL be modifiers from `ctrl`, `alt`, `shift` and `super`, then one key, joined with `+`. A key is one character that is not an uppercase letter and not `+`, the name `plus`, or a name of a special key. Each binding SHALL replace the default binding of that key. A key bound to `"none"` SHALL do nothing. The keys that the table does not name SHALL keep their defaults.
 
 #### Scenario: A new binding
 - **GIVEN** `<dir>/client.toml` holds `[keys]` with `"alt+n" = "focus-next"`, and a server with the fake worlds `alpha/aria` and `beta/bryn`
