@@ -14,7 +14,7 @@ Facts from the code at e96b221:
 - The model has two kinds of `-- ` line. `Model::notice` keeps a line, which shows again after a reset. `Model::hint` is for one moment.
 - `text::line` gives the `> ` and `-- ` prefixes of each source, and cleans the text.
 - `mu-cli` reads `server.toml` with `mu_core::world::parse_toml` and a `Hidden` value (`crates/mu-cli/src/server_config.rs`). Its errors name the file, the line and the column. `mu-tui` has no `serde`.
-- The world resolver is in `mu-core` (`crates/mu-core/src/world/dir.rs`). It refuses each top-level `.toml` except `global.toml` and `SERVER_FILE`. `is_server_file` also takes that name in another case, and the same file by another name.
+- The world resolver is in `mu-core` (`crates/mu-core/src/world/dir.rs`). It refuses each top-level `.toml` except `global.toml` and `SERVER_FILE`. `is_server_file` also takes that name in another case, but only when it is the same file as `SERVER_FILE`. A hard link under another name stays an error.
 
 ## Goals / Non-Goals
 
@@ -56,7 +56,7 @@ Enforced by: `Msg` has no variant that holds an `Action`, which the compiler che
 
 `mu-tui` defines `ClientConfig` with `serde::Deserialize` and `deny_unknown_fields`. Its fields are `echo: Echo` and `keys: BTreeMap<String, String>`. `mu-cli` reads `client.toml` as it reads `server.toml`. It joins the name to the directory, and gives the defaults for a missing directory or file. It parses the text with `mu_core::world::parse_toml` and `Hidden::Tables(&[])`, because the file holds no secret. So a parse error names the file, the line and the column, in the format of `server.toml`.
 
-`ClientConfig::keymap()` in `mu-tui` turns the `[keys]` table into a `Keymap` over the default (D3). It refuses an unknown entry, and an entry whose argument is required. It returns an error that names the key and the entry. `mu-cli` puts the path of `client.toml` before that error, so stderr names the file for each bad binding as for a parse error. A file that exists and cannot be read is an error that names the path. If `--config` or `MU_CONFIG` names a missing directory, `mu client` writes the warning of `ConfigArgs::worlds` on stderr before the screen opens, with the verb `client`, and goes on with the defaults.
+`ClientConfig::keymap()` in `mu-tui` turns the `[keys]` table into a `Keymap` over the default (D3). It refuses an unknown entry, and an entry whose argument is required. It returns an error that names the key and the entry. `mu-cli` puts the path of `client.toml` before that error, so stderr names the file for each bad binding as for a parse error. A file that exists and cannot be read is an error that names the path. If `--config` or `MU_CONFIG` names a missing directory, `mu client` warns on stderr before the screen opens, and goes on with the defaults. The check and its text move out of `ConfigArgs::worlds` into `ConfigArgs::warn_missing(verb)` in `config.rs`. `worlds()` and `client::run` both call it, so the client resolves no world to get the warning.
 
 So `mu-tui` gains only `serde`. The TOML parse stays in `mu-core`, which already does it.
 
@@ -66,9 +66,9 @@ Enforced by: the `workspace_boundary.rs` allowlist (`serde` added for `mu-tui`, 
 
 ### D3. Key names
 
-A key name is modifiers from `ctrl`, `alt`, `shift` and `super`, then one key, joined with `+`. A key is one character that is not an uppercase letter and not `+`, the name `plus` for the `+` key, or a name of a special key. So digits such as the `1` of `alt+1` are keys. The special keys are `enter`, `tab`, `backspace`, `esc` and `space`. The others are `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`, `insert`, `delete` and `f1` to `f12`. So `+` is only the joiner. An uppercase character is refused, because `shift+a` names that key. The order of the modifiers does not matter, and a repeated modifier is refused.
+A key name is modifiers from `ctrl`, `alt`, `shift` and `super`, then one key, joined with `+`. A key is one character that is not an uppercase letter and not `+`, the name `plus` for the `+` key, or a name of a special key. So digits such as the `1` of `alt+1` are keys. The special keys are `enter`, `tab`, `backspace`, `esc` and `space`. Termina gives Shift+Tab as `KeyCode::BackTab` with `SHIFT`, so the parse makes `shift+tab` that chord, and the lookup turns `Tab` with `SHIFT` into it. The others are `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`, `insert`, `delete` and `f1` to `f12`. So `+` is only the joiner. An uppercase character is refused, because `shift+a` names that key. The order of the modifiers does not matter, and a repeated modifier is refused.
 
-In the kitty path, Termina keeps the unshifted letter, so Shift+Z arrives as `Char('z')` with `SHIFT`. The default redo at head is the same chord, `Char('z')` with `CONTROL` and `SHIFT`. A legacy terminal gives `Char('Z')`, with or without `SHIFT`. So the parse makes `shift+z` the chord `Char('z')` with `SHIFT`. At a key, the lookup turns an uppercase letter into its lowercase letter with `SHIFT` before it looks up the chord. So `ctrl+shift+z` in `[keys]` replaces the default redo. Shift with a character that is not a letter is refused, because the terminal gives the shifted character instead, such as `!` for Shift+1. The player binds that character itself. Task 1.3 checks these reports in Ghostty and Terminal.app.
+The client pushes only `DISAMBIGUATE_ESCAPE_CODES`. So Shift and a letter alone arrive as text, and Termina gives the uppercase letter, such as `Char('Z')` with `SHIFT`. A chord with Ctrl, Alt or Super keeps the unshifted letter, so Ctrl+Shift+Z arrives as `Char('z')` with `CONTROL` and `SHIFT`. The default redo at head is that chord. A legacy terminal gives `Char('Z')`, with or without `SHIFT`. So the parse makes `shift+z` the chord `Char('z')` with `SHIFT`. At a key, the lookup turns an uppercase letter into its lowercase letter with `SHIFT` before it looks up the chord. So `ctrl+shift+z` in `[keys]` replaces the default redo. Shift with a character that is not a letter is refused, because the terminal gives the shifted character instead, such as `!` for Shift+1. The player binds that character itself. Task 1.3 checks these reports, and Shift+Tab, in Ghostty and Terminal.app.
 
 `ClientConfig::keymap()` parses each name to a chord. If two names give one chord, it refuses both and names them. `"none"` binds the chord to the entry `ignore`, so the key does nothing. The fallback from a modified chord to the plain key then cannot reach a send.
 
@@ -78,7 +78,7 @@ Enforced by: the tests of `keymap.rs`, that property test, and the spec scenario
 
 ### D4. Commands are parsed in `update` at a send
 
-At `Submit` or `SubmitLines`, `update` checks the editor text. One line that starts with `/` and not `//` is a command. The text after `/` is split at the first run of spaces into a name and an argument. An argument of only spaces is no argument.
+At `Submit` or `SubmitLines`, `update` checks the editor text. One line that starts with `/` and not `//` is a command. The text after `/` is split at the first run of spaces into a name and an argument. The argument loses its spaces at both ends before any check. So an argument of only spaces is no argument, and `/focus beta/bryn ` names `beta/bryn`.
 
 The check runs before `build`, in this order:
 
@@ -87,7 +87,9 @@ The check runs before `build`, in this order:
 3. A required argument must be present.
 4. For `ArgKind::World`, an omitted optional world becomes the world in focus. With no world in focus, the command is bad. A given world must be in `candidates` (D10). This holds for `/connect`, `/disconnect` and `/focus` alike.
 
-`act` also resolves an omitted world, for a key bound to `connect` or `disconnect`. With no world in focus, `act` adds the hint `no world` and sends nothing. So both front ends meet the same rule, and the command check only adds that the text stays in the editor.
+One function `world_arg(model, Option<String>) -> Result<String, Refusal>` in `update.rs` resolves a world argument. It gives the world in focus for an omitted world, and refuses an unknown world or no world in focus. Step 4 of the command check and `act`, for a key bound to `connect` or `disconnect`, both call it. On a refusal, `act` adds the hint and sends nothing. The command check only adds that the text stays in the editor.
+
+One helper `no_world(what)` gives the text `no world has the focus, so <what>`. The send, the join, the key and the command all use it.
 
 A bad command adds a hint with `Model::hint` and leaves the editor as it is. A good command first adds its text to the history of the world in focus at the Enter, then clears the editor, and then runs `act`. So `/focus beta/bryn` goes into the history of the world that had the focus before it. With no world in focus, a command enters no history. `//` is removed to one `/`, and the text goes the normal send path.
 
@@ -105,9 +107,11 @@ Enforced by: the spec tests of `client-commands`, and unit tests of the parser i
 
 `HistoryPrev` and `HistoryNext` are bound to Up and Down. Up acts only on the first logical line of the pose editor, and Down only on the last. On other lines, `update` gives the key to the editor as before. A logical line is a line between line breaks, not a wrapped row.
 
-One function `set_focus(model, index)` in `update.rs` changes the focus. It sets the index, clears the unseen mark of that world, and ends a walk. `move_focus`, `focus-1` to `focus-9`, `/focus` and the end of the first list all call it. When a walk ends, the editor keeps its text, and the draft goes into the history of the world of the walk.
+One method `Model::set_focus(index)` changes the focus. It sets the index, clears the unseen mark of that world, and ends a walk. If no world had the focus, it also copies the kept notices into the pane of that world, as `Model::world` does at head. While `first_list` is set, it does nothing. `move_focus`, `focus-1` to `focus-9`, `/focus`, the `None` arm of `Model::world` and the end of the first list all call it. When a walk ends, the editor keeps its text, and the draft goes into the history of the world of the walk.
 
 Down with no walk does nothing. It does not restore an empty draft.
+
+A send or a command during a walk also ends the walk. The saved draft goes into the history of the world of the walk first, and then the sent text. So Up gives the sent text, and then the draft.
 
 Enforced by: the spec tests of the history requirements, and a property test that a walk of Up and Down with no send gives back the draft.
 
@@ -119,7 +123,7 @@ Enforced by: the spec tests of the history requirements, and a property test tha
 2. The first returned text goes alone into the editor, with the cursor at the start of its first line. So the next Up recalls history at once.
 3. The other returned texts, and then the held text, go into the history of their world. They are pushed in reverse order, so the first Up gives the next one. A stream end or a reset puts the held text into the history of the world in focus.
 
-The line of a refusal in `on_reply` stays a push to the pane of the refused world, as at head. It holds the reason. If texts went into history, it also holds their count. With none, it holds the reason alone. The line of `return_waiting` stays a hint, as at head. It keeps its count of each world and adds `Up recalls the rest`.
+The line of a refusal in `on_reply` stays a push to the pane of the refused world, as at head. It holds the reason. If texts went into history, it also holds their count. The count is of the entries that the push kept, because Up gives only those. A returned text equal to the newest entry is not counted. With none, it holds the reason alone. The line of `return_waiting` stays a hint, as at head. It keeps its count of each world and adds `Up recalls the rest`.
 
 The alternative was a marker line between the texts in the editor. #151 rejects it, because Alt+Enter sends the marker as a command.
 
@@ -135,7 +139,7 @@ Enforced by: the spec scenarios of the echo requirements on `TestBackend`. A tes
 
 `run.rs` opens the screen first, and sends the first list as an effect. `Msg::Listed` becomes the one path of every list, the first included. `Model::from_listing` goes away. The tests build a model with `Model::new` and then give it `Msg::Listed`, so they run the path that `run.rs` runs.
 
-The model starts with `Listing::Asked` and a flag `first_list`. The top row shows `listing worlds` while the flag is set. The stream starts from the first event, so its events can add worlds before the list ends. While the flag is set, the focus stays empty: `Model::world` adds the world and gives it no focus. At the end of the list, `set_focus` gives the focus to the first world. Each end of the first list clears the flag: a reply with worlds, a failure, and the 30 s limit. A failed first list adds a notice with the reason, as `from_listing` did. A reset while the first list is with the server keeps the flag, and the list is asked again as today.
+The model starts with `Listing::Asked` and a flag `first_list`. The top row shows `listing worlds` while the flag is set. The stream starts from the first event, so its events can add worlds before the list ends. While the flag is set, the focus stays empty: `Model::world` adds the world and gives it no focus. Each end of the first list clears the flag: a reply with worlds, a failure, and the 30 s limit. Then, if the model holds a world, `set_focus` gives the focus to the first world, with the kept notices, such as the width notice of the probe. So a world that an event added stays in reach also after a failed list. A failed first list adds a notice with the reason, as `from_listing` did. A reset while the first list is with the server keeps the flag, and the list is asked again as today.
 
 The list that `mu-cli` makes before `run` decides whether to start a server. It gets the limit `START_LIMIT`, so a server that accepts and does not answer cannot keep the terminal blank. `start_server` also passes the configuration directory of `mu client`, so the server that it starts reads the same worlds.
 

@@ -169,7 +169,13 @@ A line here is a line between line breaks, not a wrapped row. If the cursor is o
 - **THEN** the editor still holds `a` and `b`, and the cursor is on `a`
 
 ### Requirement: A focus change ends a walk
-A change of the focus SHALL end a walk of the history. The editor SHALL keep its text. The saved draft, if not empty, SHALL go into the history of the world that had the focus.
+A change of the focus SHALL end a walk of the history. The editor SHALL keep its text. The saved draft, if not empty, SHALL go into the history of the world that had the focus. A send or a command during a walk SHALL also end it, and the draft SHALL go into the history before the sent text.
+
+#### Scenario: A send during a walk
+- **GIVEN** the user sent `one` to `alpha/aria`, typed `draft` and pressed Up
+- **WHEN** the user presses Enter, and then presses Up twice
+- **THEN** the server records the player event `one` twice for `alpha/aria`
+- **AND** the editor holds `draft`
 
 #### Scenario: A focus change ends a walk
 - **GIVEN** the user sent `one` to `alpha/aria`, typed `draft` and pressed Up
@@ -236,6 +242,21 @@ The client SHALL open the screen before its first list of the worlds. Until that
 - **WHEN** an event of `alpha/aria` arrives, and the user types `hi` and presses Enter
 - **THEN** the screen shows a line that starts with `-- ` and contains `no world`
 - **AND** the client sends no text
+
+#### Scenario: A focus key before the first list
+- **GIVEN** the client opened the screen, its first list of the worlds did not end yet, and an event of `alpha/aria` arrived
+- **WHEN** the user presses Alt+1, types `hi` and presses Enter
+- **THEN** the screen shows a line that starts with `-- ` and contains `no world`
+
+#### Scenario: A failed first list after an event
+- **GIVEN** the client opened the screen, its first list of the worlds did not end yet, and an event of `alpha/aria` arrived
+- **WHEN** the reply to the list is the error `boom`
+- **THEN** the top row shows `[alpha/aria]`
+
+#### Scenario: A notice before the first list
+- **GIVEN** the terminal does not answer the probe of its width, and the first list of the worlds did not end yet
+- **WHEN** the list ends with the world `alpha/aria`
+- **THEN** the pane of `alpha/aria` shows the notice of the probe
 
 #### Scenario: The first list fails
 - **GIVEN** the client opened the screen, and its first list of the worlds did not end yet

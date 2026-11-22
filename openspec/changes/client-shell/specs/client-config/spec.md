@@ -83,6 +83,11 @@ A binding of `[keys]` SHALL stop the client as a bad file in each of these cases
 - **THEN** stderr names `client.toml`, `ctrl+shift+z` and `shift+ctrl+z`
 - **AND** the exit status is 1
 
+#### Scenario: A binding of Shift+Tab
+- **GIVEN** `<dir>/client.toml` holds `[keys]` with `"shift+tab" = "focus-prev"`, and a server with the fake worlds `alpha/aria`, `beta/bryn` and `gamma/gil`
+- **WHEN** the user starts `mu client --config <dir>` and presses Shift+Tab
+- **THEN** the top row shows `[gamma/gil]`
+
 #### Scenario: An uppercase key
 - **GIVEN** `<dir>/client.toml` holds `[keys]` with `"ctrl+N" = "quit"`
 - **WHEN** the user starts `mu client --config <dir>`

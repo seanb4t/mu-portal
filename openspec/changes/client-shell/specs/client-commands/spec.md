@@ -121,6 +121,11 @@ A bad command names no entry, or an entry that does not run as a command. It can
 - **WHEN** the user types `/focus beta/bryn` and presses Enter
 - **THEN** the top row shows `[beta/bryn]`
 
+#### Scenario: A world with a trailing space
+- **GIVEN** a server with the fake worlds `alpha/aria` and `beta/bryn`, and the world in focus is `alpha/aria`
+- **WHEN** the user types `/focus beta/bryn ` with a trailing space and presses Enter
+- **THEN** the top row shows `[beta/bryn]`
+
 ### Requirement: Quit by command
 `/quit` SHALL do what Ctrl+C does, under the requirement "Ctrl+C quits the client only". If a `/quit` armed the quit because texts wait, the keys that type the next command SHALL NOT cancel the arm. A second `/quit` SHALL then quit. Any other send or command, also a bad command, SHALL cancel the arm.
 
