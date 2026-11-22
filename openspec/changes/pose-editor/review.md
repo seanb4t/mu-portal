@@ -1,10 +1,10 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-21T15:59:42+00:00
-head: e2c754f69328bbb4acadb6c9c1a3d6aac3408c94
-round: 6
-next_id: 85
+reviewed_at: 2026-11-22T11:35:30+00:00
+head: 7a572527c39b3877b6a968867f0901368c8b1dc7
+round: 7
+next_id: 95
 lenses:
   spec-lint: not-applicable
   approach: ok
@@ -20,12 +20,16 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-83 | test-coverage | should-fix | in-change | delta scenario 'A send while lines wait' has no matrix row | review > absent-row — "A send while lines wait" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-84 | test-coverage | should-fix | in-change | delta scenario 'The last line is refused' has no matrix row | review > absent-row — "The last line is refused" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-65 | verify | should-fix | in-change | PARTIAL: the fix 064a081061aaf4a039f9d178db451be781a71810 of R-65 did not hold. app-1: No decision keeps one line of a send of each line in flight when a plain Enter interleaves. Reply::Sent names no send, so the Sent of the plain line releases the next queued line before the queued line in flight is answered. Each send is its own spawned task, so two queued lines can then reach the server out of order, and a refusal of the first no longer stops the second. D13 calls only the place of the plain line unfixed.; inv-1: The rule that a line of a send of each line goes only after the server answered the line before it has no enforcement point. Reply::Sent names no send, and next_line advances the queue on any Sent. Sends run in spawned tasks, so the Sent of a plain Enter during the queue sends the next queued line while the earlier one is in flight. Two queued lines are then in flight at once, and their order at the server is not fixed. queue.sent is then overwritten, so a refusal of the earlier line no longer matches take_if and the rest of the script keeps going. | crates/mu-tui/src/update.rs:568 — ".filter(\|queue\| queue.world == world && queue.sent == text)?;" | fix it again | regression |  | wrong-behaviour |
-| R-66 | verify | should-fix | in-change | ver-fix-R-66: REGRESSED: the fix 064a081061aaf4a039f9d178db451be781a71810 of R-66 did not hold. No decision says what a second Alt+Enter does while a queue waits. submit_lines assigns a new LineQueue over the old one, so the lines that the first Alt+Enter had not sent yet are dropped: they never go to the game and never come back to the editor.; ver-1: The guard of a send while a queue waits writes its notice with Model::notice, which also appends the line to model.notices. That list is replayed into the pane in focus on each ClientEvent::Reset and when a first world arrives. So each blocked Enter adds one more stale 'a send of each line is not done yet' line that comes back after every reset, also when no queue waits. world_to_send_to writes its notice of the same kind with model.push to the notices pane, which keeps it out of the replayed list. | crates/mu-tui/src/update.rs:410 — "model.notice("a send of each line is not done yet, so the text stays in the editor");" | ver-fix-R-66: fix it again; ver-1: Write the notice with model.push to the pane in focus, as world_to_send_to does, so it does not go into the replayed list. Add a test that a Reset after a blocked Enter does not show the notice again. | regression |  | wrong-behaviour |
-| R-70 | verify | should-fix | in-change | REGRESSED: the fix 064a081061aaf4a039f9d178db451be781a71810 of R-70 did not hold. A second Alt+Enter while lines of an earlier send of each line still wait replaces model.queue. The waiting lines of the first script are dropped with no notice and never sent, and the reply of the in-flight line of the first script then advances the new queue, so two lines are in flight. No guard keeps one queue, and no test presses Alt+Enter twice. | crates/mu-tui/src/update.rs:409 — "if model.queue.is_some() {" | fix it again | regression |  | wrong-behaviour |
-| R-77 | verify | suggestion | in-change | PARTIAL: the fix 064a081061aaf4a039f9d178db451be781a71810 of R-77 did not hold. The cursor of the editor stops only at a grapheme boundary after any sequence of moves and edits. That is a rule over every text and every key sequence, and its tests are fixed examples: four graphemes in the fork, and five scenarios in editor.rs. A move kind that the fork misses, such as a word move or an undo that restores a cursor, has no test. | crates/mu-tui/tests/editor.rs:402 — "/// A key that moves the cursor or deletes." | fix it again | regression | severity? should-fix 0.65 | unmet-requirement |
+| R-85 | test-coverage | should-fix | in-change | delta scenario 'A refused line after more text' has no matrix row | review > absent-row — "A refused line after more text" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-86 | test-coverage | should-fix | in-change | delta scenario 'Back and forward' has no matrix row | review > absent-row — "Back and forward" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-87 | test-coverage | should-fix | in-change | delta scenario 'A new line while scrolled back' has no matrix row | review > absent-row — "A new line while scrolled back" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-88 | test-coverage | should-fix | in-change | delta scenario 'Enter returns to the bottom' has no matrix row | review > absent-row — "Enter returns to the bottom" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-89 | test-coverage | should-fix | in-change | delta scenario 'The mouse wheel' has no matrix row | review > absent-row — "The mouse wheel" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-90 | test-coverage | should-fix | in-change | delta scenario 'A pane of one row' has no matrix row | review > absent-row — "A pane of one row" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-91 | test-coverage | should-fix | in-change | delta scenario 'A pane of no rows' has no matrix row | review > absent-row — "A pane of no rows" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-92 | test-coverage | should-fix | in-change | delta scenario 'A late answer' has no matrix row | review > absent-row — "A late answer" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-93 | test-coverage | should-fix | in-change | delta scenario 'A send of each line while a send waits' has no matrix row | review > absent-row — "A send of each line while a send waits" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-94 | test-coverage | should-fix | in-change | delta scenario 'A line break that the editor cannot hold' has no matrix row | review > absent-row — "A line break that the editor cannot hold" | add the row with its covering task or test |  |  | unmet-requirement |
 
 ## Repeats
 
@@ -36,6 +40,8 @@ lenses:
 | R-80 | test-coverage | should-fix | covered row 'An empty line' has no verification run | review > not-run — "An empty line" |
 | R-81 | test-coverage | should-fix | covered row 'Each line is a command' has no verification run | review > not-run — "Each line is a command" |
 | R-82 | test-coverage | should-fix | covered row 'A world that waits to reconnect' has no verification run | review > not-run — "A world that waits to reconnect" |
+| R-83 | test-coverage | should-fix | delta scenario 'A send while lines wait' has no matrix row | review > absent-row — "A send while lines wait" |
+| R-84 | test-coverage | should-fix | delta scenario 'The last line is refused' has no matrix row | review > absent-row — "The last line is refused" |
 
 ## Out of bound
 
@@ -55,10 +61,11 @@ None.
 | 4 | plan | follow-up | 533e1bb37337a23ee482e7bf7ed03099b4449945 | b01d86a06b9f44dbb8c045703ada6e0155c16d47d90e87bfacaaa6a40470a3d3 | approve-with-notes | 7 | 12 | 0 | 1 | 0 |  |
 | 5 | implementation | full | 1e283cd9eed30835f5cdca9cd37f29a4b1f51c9a | 43802f79263b59f8367004c232f37b37886658fa20c9a37b1d6f521985416bbf | changes-requested | 20 | 0 | 0 | 0 | 0 |  |
 | 6 | implementation | follow-up | e2c754f69328bbb4acadb6c9c1a3d6aac3408c94 | 7e9fc30b47a3102a544d760591c74b0d34d85a08717ff6deb514e06bcc4ad610 | approve-with-notes | 2 | 5 | 4 | 12 | 0 |  |
+| 7 | implementation | follow-up | 7a572527c39b3877b6a968867f0901368c8b1dc7 | 7a1a91a3b9fbe94ec431984c415c6b13bd215b18909bdb7df526b2b42ce479ed | approve-with-notes | 10 | 7 | 0 | 4 | 0 |  |
 
 ## Judge
 
-judge: 8 questions, 0.000 USD
+judge: 0 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -257,9 +264,10 @@ None.
 
 ## Lens notes
 
-- verify: R-71: the new assertion of terminal_of_1_row checks the editor area, as the THEN asks. In a frame of 1 row no layout can give the editor more than 1 row, so only a panic (such as clamp(1, 0) with the floor removed) fails it. That follows from the scenario text, not from the test.
-- verify: R-65 residue: next_line and the refusal arm match a reply to the queue by world and text. A plain send issued before the Alt+Enter with the same text as the first queued line (for example an empty line, or a repeated command) still moves the queue early, so two lines can be in flight and a later refusal takes the plain arm.
-- verify: R-77 residue: the property test cursor_stays_at_a_grapheme_boundary draws its keys from Left, Right, Up, Down, Home, End, Backspace and Delete. Word moves (Alt+B, Alt+F, Ctrl+W), undo and redo, and a mouse jump, which the claim names, are still not in it.
+- verify: R-65, R-66 and R-70 share one fix. world_for_a_send refuses every send while model.queue is Some. submit_lines refuses a send of each line while a plain send to the same world waits. on_reply moves the queue only for a Sent reply that matches no plain send and matches queue.world and queue.sent. So at most one line of a queue is in flight, and no line of another send goes between two lines of a queue.
+- verify: The fix makes the client refuse every send while a queue line waits for its reply. If a Send call never returns, the client sends nothing until the restart. run.rs turns each answer of client.send into a Reply, and an RPC error gives Reply::Refused. No reading found a path that drops the reply, so this is no finding.
+- verify: cursor_stays_at_a_grapheme_boundary picks keys from plain moves, Ctrl+Left/Right (WordBack/WordForward in the fork at 462cce4), Ctrl+W, Ctrl+K, Ctrl+U, Ctrl+Z and Ctrl+Shift+Z. It does not use Top, Bottom, the paragraph moves (Ctrl+Alt+Up/Down and Alt+Up/Down in the fork) or a mouse Jump. These moves also go through move_cursor_with_shift, the one place where patch 1 snaps the cursor.
+- verify: The other ranges of diff-hunks.txt were read: keymap.rs docs, model.rs from_listing filter, probe.rs, screen.rs pop, text.rs doc, mu-cli server.rs LineBreak::new, check.rs check_line_break, deny.toml, the app.rs refused_line_goes_before_the_typed_text test and editor.rs line 20. None of them has a regression.
 
 ## Ledger
 
@@ -329,26 +337,36 @@ None.
 | R-62 | 4 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The line break of a world"] | refuted | tasks.md names a test for each scenario: ctrl_u_at_the_start_of_a_line in task 5.2, each_line_is_a_command and refused_line_stops_the_rest in 5.6, lines_become_one_line and join_with_no_line_break in 5.7, list_worlds_shows_the_line_break in 2.6. The matrix is carried from round 1, and a follow-up round does not rebuild it. |  |  | delta scenario 'The line break of a world' has no matrix row |
 | R-63 | 5 | 6 | blocker | in-change | drift | ["path","crates/mu-tui/src/update.rs",431] | resolved | resolved in round 6 from fixed 064a081061aaf4a039f9d178db451be781a71810 |  |  | join_lines adds a third copy of the lookup of the world in focus. Model::focused and Model::focused_pane already map focus to a World with the same expression, so a change of how focus names a world must be made in three places. |
 | R-64 | 5 | 6 | blocker | in-change | drift | ["path","crates/mu-tui/tests/editor.rs",57] | resolved | resolved in round 6 from fixed 064a081061aaf4a039f9d178db451be781a71810 |  | scope? beyond-scope 0.69; severity? suggestion 0.84 | tests/editor.rs adds a third copy of the test helper type_text, which app.rs and update.rs of the same test directory already hold. The repository keeps shared test helpers in a support module, as crates/mu-cli/tests/support/mod.rs and crates/mu-core/tests/support/mod.rs do. |
-| R-65 | 5 | 6 | should-fix | in-change | wrong-behaviour | ["artifact",["specs/terminal-client/spec.md","Requirement: Alt+Enter sends each line as a command"],"The client SHALL send a line only after the server answered the line before it."] | fixed | 307d52c8638f8e7e341a8e2b82f2acd047cb345f |  | severity? blocker 0.87 | app-1: No decision keeps one line of a send of each line in flight when a plain Enter interleaves. Reply::Sent names no send, so the Sent of the plain line releases the next queued line before the queued line in flight is answered. Each send is its own spawned task, so two queued lines can then reach the server out of order, and a refusal of the first no longer stops the second. D13 calls only the place of the plain line unfixed.; inv-1: The rule that a line of a send of each line goes only after the server answered the line before it has no enforcement point. Reply::Sent names no send, and next_line advances the queue on any Sent. Sends run in spawned tasks, so the Sent of a plain Enter during the queue sends the next queued line while the earlier one is in flight. Two queued lines are then in flight at once, and their order at the server is not fixed. queue.sent is then overwritten, so a refusal of the earlier line no longer matches take_if and the rest of the script keeps going. |
-| R-66 | 5 | 6 | should-fix | in-change | wrong-behaviour | ["artifact",["specs/terminal-client/spec.md","Requirement: Alt+Enter sends each line as a command"],"the client SHALL send each line of the editor to the world in focus as its own text. It SHALL send the lines in order and clear the editor."] | fixed | 307d52c8638f8e7e341a8e2b82f2acd047cb345f |  |  | No decision says what a second Alt+Enter does while a queue waits. submit_lines assigns a new LineQueue over the old one, so the lines that the first Alt+Enter had not sent yet are dropped: they never go to the game and never come back to the editor. |
+| R-65 | 5 | 7 | should-fix | in-change | wrong-behaviour | ["artifact",["specs/terminal-client/spec.md","Requirement: Alt+Enter sends each line as a command"],"The client SHALL send a line only after the server answered the line before it."] | resolved | resolved in round 7 from fixed 307d52c8638f8e7e341a8e2b82f2acd047cb345f |  | severity? blocker 0.87 | app-1: No decision keeps one line of a send of each line in flight when a plain Enter interleaves. Reply::Sent names no send, so the Sent of the plain line releases the next queued line before the queued line in flight is answered. Each send is its own spawned task, so two queued lines can then reach the server out of order, and a refusal of the first no longer stops the second. D13 calls only the place of the plain line unfixed.; inv-1: The rule that a line of a send of each line goes only after the server answered the line before it has no enforcement point. Reply::Sent names no send, and next_line advances the queue on any Sent. Sends run in spawned tasks, so the Sent of a plain Enter during the queue sends the next queued line while the earlier one is in flight. Two queued lines are then in flight at once, and their order at the server is not fixed. queue.sent is then overwritten, so a refusal of the earlier line no longer matches take_if and the rest of the script keeps going. |
+| R-66 | 5 | 7 | should-fix | in-change | wrong-behaviour | ["artifact",["specs/terminal-client/spec.md","Requirement: Alt+Enter sends each line as a command"],"the client SHALL send each line of the editor to the world in focus as its own text. It SHALL send the lines in order and clear the editor."] | resolved | resolved in round 7 from fixed 307d52c8638f8e7e341a8e2b82f2acd047cb345f |  |  | No decision says what a second Alt+Enter does while a queue waits. submit_lines assigns a new LineQueue over the old one, so the lines that the first Alt+Enter had not sent yet are dropped: they never go to the game and never come back to the editor. |
 | R-67 | 5 | 6 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D13. A send of each line"],"It puts the refused line and the later lines back with `set_input`, before any text that the player typed since."] | resolved | resolved in round 6 from fixed 064a081061aaf4a039f9d178db451be781a71810 |  |  | app-3: D13 puts a refused line back before the text that the player typed since. next_line clears the queue when it sends the last line, so a refusal of that last line takes the plain path, and set_input replaces the typed text with the refused line alone.; inv-3: D13 puts a refused line back before the text that the player typed since. next_line sets model.queue to None when it sends the last line, so a refusal of the last line takes the None arm and set_input replaces the typed text. refused_line_stops_the_rest refuses only the middle of three lines and types nothing in between, so neither edge is tested. |
 | R-68 | 5 | 6 | should-fix | in-change | drift | ["path","crates/mu-tui/tests/editor.rs",64] | resolved | resolved in round 6 from fixed 064a081061aaf4a039f9d178db451be781a71810 |  |  | The change writes the test helper type_lines twice, in app.rs and editor.rs, with the same doc line and the same Ctrl+J between lines. If the key of a line break changes, one copy can be fixed and the other not. |
 | R-69 | 5 | 6 | should-fix | in-change | drift | ["path","crates/mu-tui/tests/editor.rs",42] | resolved | resolved in round 6 from fixed 064a081061aaf4a039f9d178db451be781a71810 |  | severity? suggestion 0.87 | tests/editor.rs copies the helper press of tests/update.rs, which wraps a code and modifiers into a key message for update, line for line. |
-| R-70 | 5 | 6 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-tui/src/update.rs",417] | fixed | 307d52c8638f8e7e341a8e2b82f2acd047cb345f |  |  | A second Alt+Enter while lines of an earlier send of each line still wait replaces model.queue. The waiting lines of the first script are dropped with no notice and never sent, and the reply of the in-flight line of the first script then advances the new queue, so two lines are in flight. No guard keeps one queue, and no test presses Alt+Enter twice. |
+| R-70 | 5 | 7 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-tui/src/update.rs",417] | resolved | resolved in round 7 from fixed 307d52c8638f8e7e341a8e2b82f2acd047cb345f |  |  | A second Alt+Enter while lines of an earlier send of each line still wait replaces model.queue. The waiting lines of the first script are dropped with no notice and never sent, and the reply of the in-flight line of the first script then advances the new queue, so two lines are in flight. No guard keeps one queue, and no test presses Alt+Enter twice. |
 | R-71 | 5 | 6 | should-fix | in-change | false-test | ["path","crates/mu-tui/tests/editor.rs",196] | resolved | resolved in round 6 from fixed 064a081061aaf4a039f9d178db451be781a71810 |  |  | tes-1: terminal_of_1_row asserts only the frame has 1 row, not that the editor takes at most 1 row as the THEN says.; hon-1: terminal_of_1_row asserts the screen has 1 row, but the test set the height to 1, so the assertion cannot fail. The THEN 'the editor takes at most 1 row' is not touched; only a panic would fail it. |
 | R-72 | 5 | 6 | suggestion | in-change |  | ["artifact",["design.md","D3. The editor widget and its state"],"`EditorState` holds the `TextArea`, the width profile as `Arc<Caps>`, and the last area that it drew."] | resolved | resolved in round 6 from fixed 064a081061aaf4a039f9d178db451be781a71810 |  | severity? should-fix 0.66 | D3 says EditorState holds the width profile as Arc<Caps>. The state holds only the TextArea and the area. The caps live in the closure of the width function, and set_text takes them as an argument from the model. |
 | R-73 | 5 | 6 | suggestion | in-change |  | ["artifact",["design.md","Risks / Trade-offs"],"The decision page and the configuration guide name Ctrl+J as the line break there."] | resolved | resolved in round 6 from fixed 064a081061aaf4a039f9d178db451be781a71810 |  | severity? should-fix 0.82 | The Terminal.app risk names the configuration guide as a place that names Ctrl+J as the line break. No task adds that to the guide, and the guide does not mention Ctrl+J or Terminal.app at head. Only task 7.1 covers the decision page. |
 | R-74 | 5 | 6 | suggestion | in-change |  | ["artifact",["design.md","Facts about third-party tools to check"],"`screen_cursor` gives the column one past the area after a row that the text fills exactly \| 5.5"] | resolved | resolved in round 6 from fixed 064a081061aaf4a039f9d178db451be781a71810 |  | severity? should-fix 0.80 | The fact of screen_cursor after a full row is still listed as a fact to check under task 5.5. Task 5.5 is done, D7 states the answer, and the test cursor_at_a_full_row exists, but the row was not moved to Checked facts as the task asks. |
 | R-75 | 5 | 6 | suggestion | in-change |  | ["path","crates/mu-tui/src/editor.rs",54] | resolved | resolved in round 6 from fixed 064a081061aaf4a039f9d178db451be781a71810 |  | scope? beyond-scope 0.66; severity? should-fix 0.83 | EditorState does not hold its caps, as PaneState does and as D3 says. Each set_text call must pass the caps of the model, where PaneState::clear keeps its own. |
 | R-76 | 5 | 6 | suggestion | in-change |  | ["path","crates/mu-tui/src/view.rs",88] | resolved | resolved in round 6 from fixed 064a081061aaf4a039f9d178db451be781a71810 |  | severity? should-fix 0.64 | Size::Editor in a horizontal split wraps the text at the height of the split and sets the width of the editor to a row count. #101 puts an editor in a pane that the player arranges, so it must change this sizing, though D4 says it needs no new shape of Size. |
-| R-77 | 5 | 6 | suggestion | in-change | unmet-requirement | ["artifact",["design.md","What enforces each rule"],"The tests of patch 1 in the fork, and the scenarios of \\"The cursor moves by grapheme\\""] | fixed | 307d52c8638f8e7e341a8e2b82f2acd047cb345f |  | severity? should-fix 0.65 | The cursor of the editor stops only at a grapheme boundary after any sequence of moves and edits. That is a rule over every text and every key sequence, and its tests are fixed examples: four graphemes in the fork, and five scenarios in editor.rs. A move kind that the fork misses, such as a word move or an undo that restores a cursor, has no test. |
-| R-78 | 5 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A terminal that adds code point widths"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'A terminal that adds code point widths' has no verification run |
-| R-79 | 5 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Control characters in a paste"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'Control characters in a paste' has no verification run |
-| R-80 | 5 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"An empty line"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'An empty line' has no verification run |
-| R-81 | 5 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Each line is a command"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'Each line is a command' has no verification run |
-| R-82 | 5 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A world that waits to reconnect"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'A world that waits to reconnect' has no verification run |
-| R-83 | 6 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A send while lines wait"] | refuted | tasks.md names a test for each scenario in task 5.6: send_waits_for_the_lines_of_a_send_of_each_line and refused_last_line_goes_before_the_typed_text. Both tests ran and passed in mise run check at the fix commit. The matrix is carried from round 5, and a follow-up round does not rebuild it. |  |  | delta scenario 'A send while lines wait' has no matrix row |
-| R-84 | 6 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The last line is refused"] | refuted | tasks.md names a test for each scenario in task 5.6: send_waits_for_the_lines_of_a_send_of_each_line and refused_last_line_goes_before_the_typed_text. Both tests ran and passed in mise run check at the fix commit. The matrix is carried from round 5, and a follow-up round does not rebuild it. |  |  | delta scenario 'The last line is refused' has no matrix row |
+| R-77 | 5 | 7 | suggestion | in-change | unmet-requirement | ["artifact",["design.md","What enforces each rule"],"The tests of patch 1 in the fork, and the scenarios of \\"The cursor moves by grapheme\\""] | resolved | resolved in round 7 from fixed 307d52c8638f8e7e341a8e2b82f2acd047cb345f |  | severity? should-fix 0.65 | The cursor of the editor stops only at a grapheme boundary after any sequence of moves and edits. That is a rule over every text and every key sequence, and its tests are fixed examples: four graphemes in the fork, and five scenarios in editor.rs. A move kind that the fork misses, such as a word move or an undo that restores a cursor, has no test. |
+| R-78 | 5 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A terminal that adds code point widths"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'A terminal that adds code point widths' has no verification run |
+| R-79 | 5 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Control characters in a paste"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'Control characters in a paste' has no verification run |
+| R-80 | 5 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"An empty line"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'An empty line' has no verification run |
+| R-81 | 5 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Each line is a command"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'Each line is a command' has no verification run |
+| R-82 | 5 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A world that waits to reconnect"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'A world that waits to reconnect' has no verification run |
+| R-83 | 6 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A send while lines wait"] | refuted | tasks.md names a test for each scenario in task 5.6: send_waits_for_the_lines_of_a_send_of_each_line and refused_last_line_goes_before_the_typed_text. Both tests ran and passed in mise run check at the fix commit. The matrix is carried from round 5, and a follow-up round does not rebuild it. |  |  | delta scenario 'A send while lines wait' has no matrix row |
+| R-84 | 6 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The last line is refused"] | refuted | tasks.md names a test for each scenario in task 5.6: send_waits_for_the_lines_of_a_send_of_each_line and refused_last_line_goes_before_the_typed_text. Both tests ran and passed in mise run check at the fix commit. The matrix is carried from round 5, and a follow-up round does not rebuild it. |  |  | delta scenario 'The last line is refused' has no matrix row |
+| R-85 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A refused line after more text"] |  |  |  |  | delta scenario 'A refused line after more text' has no matrix row |
+| R-86 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Back and forward"] |  |  |  |  | delta scenario 'Back and forward' has no matrix row |
+| R-87 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A new line while scrolled back"] |  |  |  |  | delta scenario 'A new line while scrolled back' has no matrix row |
+| R-88 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Enter returns to the bottom"] |  |  |  |  | delta scenario 'Enter returns to the bottom' has no matrix row |
+| R-89 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The mouse wheel"] |  |  |  |  | delta scenario 'The mouse wheel' has no matrix row |
+| R-90 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A pane of one row"] |  |  |  |  | delta scenario 'A pane of one row' has no matrix row |
+| R-91 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A pane of no rows"] |  |  |  |  | delta scenario 'A pane of no rows' has no matrix row |
+| R-92 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A late answer"] |  |  |  |  | delta scenario 'A late answer' has no matrix row |
+| R-93 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A send of each line while a send waits"] |  |  |  |  | delta scenario 'A send of each line while a send waits' has no matrix row |
+| R-94 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A line break that the editor cannot hold"] |  |  |  |  | delta scenario 'A line break that the editor cannot hold' has no matrix row |
 
 ## Reviewed files
 
@@ -356,7 +374,9 @@ None.
 |---|---|
 | Cargo.lock | ae12d6ee0d8d3f78423cd967de551b6b8bf019a7 |
 | Cargo.toml | 8c6e01906f5d4c1d13721712f30516a9bf1f0dd0 |
-| crates/mu-cli/src/server.rs | 5477927b25d519b2dcc8b953f8a94a3a10d120af |
+| architecture/model.c4 | 9e58b2c5e5fe4128ed96bc5f170a49e69b1a5edc |
+| architecture/views.c4 | 72e18fec89464e14629f95a155f7f2a503cdcd57 |
+| crates/mu-cli/src/server.rs | 5fcc1ca56145fc264ecc6c2b44dd0604f9cdb225 |
 | crates/mu-cli/src/world.rs | e1ad214479f938e9617f9698caddb3e672ecd3e2 |
 | crates/mu-cli/tests/client.rs | 46b406d7b26399bef5f22ef14101d5ca941bd4a8 |
 | crates/mu-cli/tests/repo_config.rs | acfb406ec19bcd48fcbdabeb8ce93ca9bc6b5aa2 |
@@ -368,7 +388,7 @@ None.
 | crates/mu-core/src/portal.rs | 826bbaea8064ea16f0b497edd34453f0db40f601 |
 | crates/mu-core/src/session.rs | cb0aeb02b8c49990943f84cc4ceb915282254a41 |
 | crates/mu-core/src/world/builtin.rs | 5e38aea2407ec1972cbf4e8a472be26caf4bff7d |
-| crates/mu-core/src/world/check.rs | 27f0dbc04401aaf4231b55e63f576c7bea5a4382 |
+| crates/mu-core/src/world/check.rs | b40c2d150492b331afdbfb0113182fac821de489 |
 | crates/mu-core/src/world/layer.rs | 2df3ab269a3c1a32a2243f602c2bc1d58169a409 |
 | crates/mu-core/src/world/mod.rs | 8172ff2f8644b5fbdbcdd55dc910c8b59ad931ab |
 | crates/mu-core/src/world/resolve.rs | 2a967da71ccf25d8281b494c54755bdc218547b5 |
@@ -386,34 +406,36 @@ None.
 | crates/mu-server/src/service.rs | 81a0a07cd304f6624daf18c4625934d028ac6375 |
 | crates/mu-tui/examples/image-pane.rs | 5c9ed2d0fdc5f3c9479cb73fe1584ee625615487 |
 | crates/mu-tui/src/editor.rs | ec44faf4c97d7e9a8e14ae02ff06e4cd861fcb84 |
-| crates/mu-tui/src/keymap.rs | 52e7cb0531f3d9857488ad8336d32abe88f50e90 |
+| crates/mu-tui/src/keymap.rs | b9b030d0d4846fbdc526058b035bf499b18332f3 |
 | crates/mu-tui/src/layout.rs | a733e998b83f74af03cc745990fa789a56fafad7 |
 | crates/mu-tui/src/lib.rs | f537f4780b2d6befe77c20fc8186da2f8be12fb4 |
-| crates/mu-tui/src/model.rs | 4dd0b23d752552b47d834df5c4e75a0d1dfb1390 |
-| crates/mu-tui/src/probe.rs | 1c2e4e998f6ac26c3fba93b7d69c4f5199ecbf5d |
+| crates/mu-tui/src/model.rs | 0d46964f3f425b4cf87ae26735cdc1a49f17ecfd |
+| crates/mu-tui/src/probe.rs | 3d9f7dab5ea2f5d9e476c76ca00ac8e6a59c5474 |
 | crates/mu-tui/src/run.rs | 5ff60fced916fb261a99a1cd0076fce5f7fe41cd |
-| crates/mu-tui/src/screen.rs | c4ae98df0e16192c1d14e4423505b4de293da09a |
-| crates/mu-tui/src/text.rs | 4ffb745e77024d2ac6f95384e3b84a8ba234c207 |
-| crates/mu-tui/src/update.rs | a53597abd90609a8b89a685da955df22276a50b8 |
+| crates/mu-tui/src/screen.rs | f86002546de3af3d3ea63bc1dc096c2f78e947eb |
+| crates/mu-tui/src/text.rs | 4b3ff78698c7fa24822353e0abc5156a81318cdd |
+| crates/mu-tui/src/update.rs | 8fa188ef959747ecc29482545e68590701e03a98 |
 | crates/mu-tui/src/view.rs | 926cbffca7516b83317dd63b06f7af6bd05a9b28 |
-| crates/mu-tui/tests/app.rs | 6fc7b5de7530d8eabde2eb63aa654359483fb01b |
+| crates/mu-tui/tests/app.rs | b04ef36aedba4e0858df624256e07bed084f1dd3 |
 | crates/mu-tui/tests/data/pose-4096.txt | c6433795dec0a1a12252e94772813e0fa9d85c42 |
-| crates/mu-tui/tests/editor.rs | 08887da8821cdf91f05462edd5b2d4cdd0636e47 |
+| crates/mu-tui/tests/editor.rs | 973e3329bd84d0f8d9abade9dc8e3131e09d1bcd |
 | crates/mu-tui/tests/probe.rs | 70e02261e628a96534d3ba314c5664ba7e884c29 |
 | crates/mu-tui/tests/screen.rs | 4b0619a019e7ad24cf5dfc349ebab26ca78a1a82 |
 | crates/mu-tui/tests/support/mod.rs | fc347cea3e5cd13187f6b106ea0b3ecbb1ef1de6 |
 | crates/mu-tui/tests/update.rs | f8d4e93e11f7c3c852ed81fd763df785f6d7f87b |
-| deny.toml | bc72cc7d12ae78717442d2a3f09e3fd4a136bd88 |
-| docs/src/content/docs/decisions/input-editor.md | 8e16636bca0a3b47d6dc7ba5652f1da6900d5674 |
+| deny.toml | ecdacacc07b67e62f6827d8d3cd4203ab878e5cf |
+| docs/src/content/docs/architecture/terminal-client.mdx | fd7bec68c4bb0708e52cd96578c753618550c904 |
+| docs/src/content/docs/decisions/input-editor.md | 582c9620add11cb38eda89314aaa98214241ba2b |
 | docs/src/content/docs/guides/configuration.md | e79b09b090a962865543e3c3a01d0c47ee77501f |
+| docs/src/content/docs/guides/first-run.md | e75bc2ef2f61bfa018f6910eb6f0cddc2f2061d9 |
 | openspec/changes/pose-editor/.openspec.yaml | 5274a13b087156d95ab9dc0d0657588a63841492 |
-| openspec/changes/pose-editor/design.md | cf94f0e6b0fa377893092d1d858dadd8e78f2b72 |
+| openspec/changes/pose-editor/design.md | ee4c3c2ed1439d15d5a862c960bdc2fd42460a95 |
 | openspec/changes/pose-editor/proposal.md | 9b911e9f4cd34aba0bea4ecc091c1ef42faa8014 |
 | openspec/changes/pose-editor/specs/input-editor/spec.md | 93d59ed60bede447652e7528067b3934106c85de |
-| openspec/changes/pose-editor/specs/terminal-client/spec.md | a3d6cd61680a28afc8fdbb5f6abd1ebb07c87c7a |
+| openspec/changes/pose-editor/specs/terminal-client/spec.md | 6872cbe65b8e6541d2eeae7305cf5ce11633d8c0 |
 | openspec/changes/pose-editor/specs/world-config/spec.md | 2eeb164fcf41e83a3abffe9bea12526962651288 |
 | openspec/changes/pose-editor/specs/world-sessions/spec.md | 9e742df53f7a26c80022063a2c3c8b9de7099fc8 |
-| openspec/changes/pose-editor/tasks.md | sha256:fd69f0ae5f1eb5059b0838858e0abd663be4fa3ddbd9a03504e58907dd95786e |
+| openspec/changes/pose-editor/tasks.md | sha256:7df733b1a5a3580614c2e9e8ffa0fbf099f444cc570a0a2c12bbd0768e485628 |
 | openspec/review.json | absent |
 | renovate.json | 672ea39af9d44dc1b02542067e1cdb821e7fdc3d |
 
