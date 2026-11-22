@@ -1321,3 +1321,15 @@ fn reset_asks_for_the_list() {
     };
     assert_eq!(update(&mut app, Msg::Client(reset)), [Effect::ListWorlds]);
 }
+
+#[test]
+fn paste_during_the_probe_fills_the_editor() {
+    let mut app = two_worlds();
+    let mut pending = Vec::new();
+    let mut skip = mu_tui::probe::Skip::Nothing;
+    let framed = mu_tui::probe::frame(&mut pending, &mut skip, b"\x1b[200~one\rtwo\x1b[201~");
+    for event in framed.events {
+        assert_eq!(update(&mut app, Msg::Terminal(event)), []);
+    }
+    assert_eq!(app.input(), "one\ntwo");
+}
