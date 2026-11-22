@@ -1,7 +1,7 @@
 //! The scenarios of the terminal-client capability on `update` and `view`, drawn on a
 //! `TestBackend`.
 
-use mu_client::{ClientError, ClientEvent};
+use mu_client::ClientEvent;
 use mu_proto::{Event, EventKind, Source, World};
 use mu_tui::convert::convert;
 use mu_tui::{Effect, Model, Msg, Reply, update, view};
@@ -191,10 +191,7 @@ fn listed_worlds_are_the_worlds() {
 const LIST_FAILED: &str = "-- could not list the worlds: unavailable: no server";
 
 fn failed_listing() -> Model {
-    Model::from_listing(Err(ClientError {
-        code: "unavailable",
-        message: "no server".to_owned(),
-    }))
+    Model::from_listing(Err("unavailable: no server".to_owned()))
 }
 
 #[test]
@@ -935,6 +932,10 @@ fn alt_enter() -> KeyEvent {
     KeyEvent::new(KeyCode::Enter, Modifiers::ALT)
 }
 
+fn alt_r() -> KeyEvent {
+    KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT)
+}
+
 /// True if a row of the screen is a notice that holds `text`.
 fn has_notice(app: &mut Model, text: &str) -> bool {
     screen(app)
@@ -1111,7 +1112,7 @@ fn hint_does_not_come_back_after_a_reset() {
     let mut app = listed();
     press(&mut app, ctrl('n'));
     type_lines(&mut app, &["one", "two"]);
-    press(&mut app, KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT));
+    press(&mut app, alt_r());
     assert!(has_notice(&mut app, "sets no line break"));
     on_event(
         &mut app,
@@ -1132,7 +1133,7 @@ fn line_break_that_the_editor_cannot_hold_is_no_line_break() {
         };
         let mut app = Model::from_listing(Ok(vec![world]));
         type_lines(&mut app, &["one", "two"]);
-        press(&mut app, KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT));
+        press(&mut app, alt_r());
         assert_eq!(app.input(), "one\ntwo", "{line_break:?}");
     }
 }
@@ -1155,8 +1156,7 @@ fn listed() -> Model {
 fn lines_become_one_line() {
     let mut app = listed();
     type_lines(&mut app, &["one", "two"]);
-    let alt_r = KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT);
-    assert_eq!(press(&mut app, alt_r), []);
+    assert_eq!(press(&mut app, alt_r()), []);
     assert_eq!(app.input(), "one%rtwo");
     assert_eq!(press(&mut app, ctrl('z')), []);
     assert_eq!(press(&mut app, ctrl('z')), []);
@@ -1168,8 +1168,7 @@ fn join_with_no_line_break() {
     let mut app = listed();
     press(&mut app, ctrl('n'));
     type_lines(&mut app, &["one", "two"]);
-    let alt_r = KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT);
-    assert_eq!(press(&mut app, alt_r), []);
+    assert_eq!(press(&mut app, alt_r()), []);
     assert_eq!(app.input(), "one\ntwo");
     let screen = screen(&mut app);
     assert!(
@@ -1260,10 +1259,6 @@ fn quit_with_no_waiting_send_leaves_at_once() {
 }
 
 // The line break of a world that the first list did not hold.
-
-fn alt_r() -> KeyEvent {
-    KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT)
-}
 
 /// A client whose first list failed, with `alpha/aria` from its first event.
 fn unlisted_world() -> Model {
@@ -1383,4 +1378,16 @@ fn notice_of_the_returned_lines_does_not_come_back_after_a_reset() {
     on_event(&mut app, reset);
     // The reset puts back nothing more, so no line about returned lines is on the screen.
     assert!(!has_notice(&mut app, "lines that waited"));
+}
+
+#[test]
+fn reset_during_a_list_asks_again_after_its_reply() {
+    // The new world asked for a list, and its reply did not come yet.
+    let mut app = unlisted_world();
+    let reset = ClientEvent::Reset {
+        instance_id: "i".to_owned(),
+    };
+    on_event(&mut app, reset);
+    let after = update(&mut app, Msg::Listed(Err("old server".to_owned())));
+    assert_eq!(after, [Effect::ListWorlds]);
 }

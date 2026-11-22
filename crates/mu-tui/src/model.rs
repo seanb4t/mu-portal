@@ -5,7 +5,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
-use mu_client::ClientError;
 use mu_proto::World as ProtoWorld;
 use ratatui::style::Style;
 
@@ -81,6 +80,9 @@ pub(crate) enum Listing {
     Idle,
     /// A list is with the server, and its reply did not come yet.
     Asked,
+    /// A list is with the server, and the server reset after the client asked for it. Its
+    /// reply can be of the server before the reset, so the client asks again after it.
+    AskedBeforeReset,
 }
 
 /// The wait for the probe answers that came after the probe stopped reading. Termina gives the
@@ -135,7 +137,7 @@ impl Model {
     /// A model with the worlds of a list of worlds. A failed list gives no worlds and a notice
     /// with its error. The events of each world add the world later.
     #[must_use]
-    pub fn from_listing(listed: Result<Vec<ProtoWorld>, ClientError>) -> Self {
+    pub fn from_listing(listed: Result<Vec<ProtoWorld>, String>) -> Self {
         match listed {
             Ok(worlds) => {
                 let mut model = Self::new(worlds.iter().map(|world| world.id.clone()));

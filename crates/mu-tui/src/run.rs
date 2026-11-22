@@ -26,7 +26,18 @@ use crate::view::view;
 ///
 /// An I/O error of the terminal.
 pub async fn run(client: PortalClient) -> io::Result<()> {
-    let mut model = Model::from_listing(client.list_worlds().await);
+    let listed = within(
+        async {
+            client
+                .list_worlds()
+                .await
+                .map_err(|error| error.to_string())
+        },
+        CALL_LIMIT,
+        "",
+    )
+    .await;
+    let mut model = Model::from_listing(listed);
     // The probe sets mode 2027, so a panic before its replies turns the mode off.
     let restore = Arc::new(Restore::default());
     restore.set_grapheme_mode(true);

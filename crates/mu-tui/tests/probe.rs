@@ -512,3 +512,11 @@ fn cut_end_mark_is_not_text_of_the_paste() {
     .unwrap();
     assert_eq!(events, [Event::Paste("one".to_owned())]);
 }
+
+#[test]
+fn cut_character_is_not_text_of_the_paste() {
+    let clock = FakeClock::new();
+    let bytes = b"\x1b[?62c\x1b[200~one\xf0\x9f\x91";
+    let (_, events) = read_answers(clock.read(bytes), || clock.now(), WAIT).unwrap();
+    assert_eq!(events, [Event::Paste("one".to_owned())]);
+}

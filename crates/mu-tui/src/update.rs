@@ -155,12 +155,17 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
         Msg::Action(action) => act(model, action),
         Msg::Client(item) => on_client(model, item),
         Msg::Listed(listed) => {
+            let again = model.listing == Listing::AskedBeforeReset;
             model.listing = Listing::Idle;
             // A failed list changes nothing: a later new world or Alt+R asks again.
             if let Ok(worlds) = listed {
                 model.learn(worlds);
             }
-            Vec::new()
+            if again {
+                list_worlds(model).into_iter().collect()
+            } else {
+                Vec::new()
+            }
         }
         Msg::Probe(outcome) => {
             on_probe(model, &outcome);
@@ -486,8 +491,10 @@ fn join_lines(model: &mut Model) -> Option<Effect> {
 
 /// A list of the worlds, unless one is with the server already.
 fn list_worlds(model: &mut Model) -> Option<Effect> {
-    (std::mem::replace(&mut model.listing, Listing::Asked) == Listing::Idle)
-        .then_some(Effect::ListWorlds)
+    (model.listing == Listing::Idle).then(|| {
+        model.listing = Listing::Asked;
+        Effect::ListWorlds
+    })
 }
 
 fn move_focus(model: &mut Model, forward: bool) {
@@ -527,6 +534,9 @@ fn on_client(model: &mut Model, item: ClientEvent) -> Vec<Effect> {
                 }
             }
             return_waiting(model, "the server started again");
+            if model.listing == Listing::Asked {
+                model.listing = Listing::AskedBeforeReset;
+            }
             list_worlds(model).into_iter().collect()
         }
         ClientEvent::Resumed => {
