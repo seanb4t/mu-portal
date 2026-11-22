@@ -1,10 +1,10 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-22T18:56:42+00:00
-head: b41497026abb8489e48b028165124f94180b278e
-round: 4
-next_id: 36
+reviewed_at: 2026-11-22T19:21:20+00:00
+head: 678537b33820ade6045b1478b9f5970d6df6e650
+round: 5
+next_id: 38
 lenses:
   spec-lint: not-applicable
   approach: ok
@@ -20,13 +20,15 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-35 | test-coverage | should-fix | in-change | delta scenario 'The server resets while a list is with it' has no matrix row | review > absent-row — "The server resets while a list is with it" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-36 | test-coverage | should-fix | in-change | delta scenario 'A list that failed' has no matrix row | review > absent-row — "A list that failed" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-37 | test-coverage | should-fix | in-change | delta scenario 'A list with a new world' has no matrix row | review > absent-row — "A list with a new world" | add the row with its covering task or test |  |  | unmet-requirement |
 
 ## Repeats
 
 | id | lens | severity | claim | evidence |
 |---|---|---|---|---|
 | R-34 | test-coverage | should-fix | covered row 'A reply near the limit' has no verification run | review > not-run — "A reply near the limit" |
+| R-35 | test-coverage | should-fix | delta scenario 'The server resets while a list is with it' has no matrix row | review > absent-row — "The server resets while a list is with it" |
 
 ## Out of bound
 
@@ -47,6 +49,8 @@ None.
 | R-25 | should-fix | accepted | Only a full round writes matrix rows; each scenario has a named passing test, and the full first round of the implementation review writes the rows. Owner accepted. |  |
 | R-33 | suggestion | deferred | A broader property test of an open paste; the cut cases have example tests. Owner chose to defer it. | https://github.com/seanb4t/mu-portal/issues/159 |
 | R-35 | should-fix | accepted | Only a full round writes matrix rows; reset_during_a_list_asks_again_after_its_reply covers the scenario, passes, and tasks.md names it. Owner accepted. |  |
+| R-36 | should-fix | accepted | Only a full round writes matrix rows; failed_list_names_its_reason_at_alt_r and list_adds_a_world_that_the_client_did_not_hold cover the scenarios and pass, and tasks.md names them. Owner accepted. |  |
+| R-37 | should-fix | accepted | Only a full round writes matrix rows; failed_list_names_its_reason_at_alt_r and list_adds_a_world_that_the_client_did_not_hold cover the scenarios and pass, and tasks.md names them. Owner accepted. |  |
 
 ## Rounds
 
@@ -56,6 +60,7 @@ None.
 | 2 | plan | follow-up | 2e9ec7680a63ad888079b2c3907d15208b524ec2 | 3daad9b6805f725d68f5061772d2543502b26610e665da4e35d413fe0b96b258 | approve-with-notes | 4 | 0 | 3 | 14 | 0 |  |
 | 3 | implementation | full | dd6f32ab242c347831b7aed1a5c28c00c5801157 | 3af5daad20d2335fe8ef8a2fd1701c9039a81a9106287e1801c41c592fb33987 | approve-with-notes | 9 | 0 | 0 | 0 | 0 |  |
 | 4 | implementation | follow-up | b41497026abb8489e48b028165124f94180b278e | 4c529945f044515f38b6012d5a7351dccd729b2bfa46a65426d5018ad8b1175c | approve-with-notes | 1 | 1 | 0 | 9 | 0 |  |
+| 5 | implementation | follow-up | 678537b33820ade6045b1478b9f5970d6df6e650 | 7f895883abfb10d5676a898d485d18cfa8a19acf526b4b01c27f2eb6059eb61a | approve-with-notes | 2 | 2 | 0 | 0 | 0 |  |
 
 ## Judge
 
@@ -123,6 +128,9 @@ judge: 0 questions, 0.000 USD
 - exit 0: `cargo nextest run -p mu-tui --test send --locked -E 'test(=answer_just_inside_the_limit_is_sent)'`
 - exit 0: `cargo nextest run -p mu-tui --test send --locked -E 'test(=answer_just_past_the_limit_is_refused)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=top_row_counts_the_sends_that_wait)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=reset_during_a_list_asks_again_after_its_reply)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=failed_list_names_its_reason_at_alt_r)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=list_adds_a_world_that_the_client_did_not_hold)'`
 
 ## Dropped
 
@@ -130,9 +138,12 @@ None.
 
 ## Lens notes
 
-- verify: The startup list maps its error with to_string and the Effect::ListWorlds arm with error.message. Only the startup error reaches the screen, as the notice of Model::from_listing, and a failed later list shows no notice, so the difference has no visible result.
-- verify: R-14 and R-15 share the fix commit 9861b0d with R-11. Their fix lines are the spec line of the scenario 'A terminal that does not answer' and the task commands. probe_with_no_answer in crates/mu-cli/tests/client.rs calls x_at(&client, 2), the 0-based form of column 3.
-- verify: reset_during_a_list_asks_again_after_its_reply passes the Reset through on_event, which accepts no effect or ListWorlds. So it does not by itself show that the Reset sends no second list. The Listed reply that it checks still needs AskedBeforeReset.
+- verify: prior.json has no row with the disposition fixed, so fixes is empty.
+- verify: Every code and test range of diff-hunks.txt was read at head: model.rs 69-74 and 131, probe.rs 119-162 and 555-596, run.rs 122-148, update.rs 160-167, 472-489 and 651-675, tests/app.rs 939-947 and 1271-1436. No regression found in them.
+- verify: The ranges of review.md in diff-hunks.txt were not read, because the agent rules forbid a read of review.md.
+- verify: join_lines (update.rs 481-489): with a failed list on record and a later list still with the server, the Alt+R hint says 'so it asks again' while list_worlds returns None. A list is with the server then, so the user still gets the line break; the wording is only loose.
+- verify: probe.rs 151-152: the doc comment of frame wraps unevenly ('...an open bracketed' then 'paste. If an open CSI or'). Cosmetic only.
+- verify: return_waiting (update.rs 659) calls queue.drain(1..), which panics on an empty queue. No path at head leaves an empty queue in Model::sends: enqueue always adds at least one text, and next_send and on_reply remove an emptied entry.
 
 ## Ledger
 
@@ -171,8 +182,10 @@ None.
 | R-31 | 3 | 4 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D6. The probe framer holds a whole paste"],"A cut end mark or a cut UTF-8 character at its end is not part of that text."] | resolved | resolved in round 4 from fixed 7ef2ca230c93227b0461dacd4b5c44765d031260 |  |  | D6 says a cut UTF-8 character at the end of a paste that is still open is not part of its text, enforced by held_for_paste through unfinished_tail. No test ends an open paste inside a multi-byte character. cut_end_mark_is_not_text_of_the_paste only cuts the end mark, so a regression gives a U+FFFD in the editor and passes. |
 | R-32 | 3 | 4 | suggestion | in-change |  | ["artifact",["design.md","Context"],"A send to a world that connects waits behind the connect."] | resolved | resolved in round 4 from fixed bda7c0d9dabb58add3edb90e16790bc765d838c7 |  | severity? should-fix 0.82 | design.md says that a send to a world that connects waits behind the connect, up to 20 s on the server. At head the session refuses a Send at once unless the connection is Up and Live, so a send never waits behind a connect. The 30 s limit still holds over the server's bounds, but its stated reason is wrong. |
 | R-33 | 3 | 3 | suggestion | in-change |  | ["path","crates/mu-tui/tests/probe.rs",459] | deferred | ticket: https://github.com/seanb4t/mu-portal/issues/159; reason: A broader property test of an open paste; the cut cases have example tests. Owner chose to defer it. |  |  | The text of a paste still open at the end of the probe is, for any cut point, a prefix of the pasted text with no byte of the end mark and no replacement character. The property test covers only a closed paste. |
-| R-34 | 3 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A reply near the limit"] | refuted | Both covering tests of the row ran and passed: verification-runs.txt has exit 0 for answer_just_inside_the_limit_is_sent and answer_just_past_the_limit_is_refused, on two lines because the row names two tests. |  |  | covered row 'A reply near the limit' has no verification run |
-| R-35 | 4 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The server resets while a list is with it"] | accepted | ticket: none; reason: Only a full round writes matrix rows; reset_during_a_list_asks_again_after_its_reply covers the scenario, passes, and tasks.md names it. Owner accepted. |  |  | delta scenario 'The server resets while a list is with it' has no matrix row |
+| R-34 | 3 | 5 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A reply near the limit"] | refuted | Both covering tests of the row ran and passed: verification-runs.txt has exit 0 for answer_just_inside_the_limit_is_sent and answer_just_past_the_limit_is_refused, on two lines because the row names two tests. |  |  | covered row 'A reply near the limit' has no verification run |
+| R-35 | 4 | 5 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The server resets while a list is with it"] | accepted | ticket: none; reason: Only a full round writes matrix rows; reset_during_a_list_asks_again_after_its_reply covers the scenario, passes, and tasks.md names it. Owner accepted. |  |  | delta scenario 'The server resets while a list is with it' has no matrix row |
+| R-36 | 5 | 5 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A list that failed"] | accepted | ticket: none; reason: Only a full round writes matrix rows; failed_list_names_its_reason_at_alt_r and list_adds_a_world_that_the_client_did_not_hold cover the scenarios and pass, and tasks.md names them. Owner accepted. |  |  | delta scenario 'A list that failed' has no matrix row |
+| R-37 | 5 | 5 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A list with a new world"] | accepted | ticket: none; reason: Only a full round writes matrix rows; failed_list_names_its_reason_at_alt_r and list_adds_a_world_that_the_client_did_not_hold cover the scenarios and pass, and tasks.md names them. Owner accepted. |  |  | delta scenario 'A list with a new world' has no matrix row |
 
 ## Reviewed files
 
@@ -180,21 +193,21 @@ None.
 |---|---|
 | crates/mu-tui/Cargo.toml | b89f2c80623814f900413f4e9e6e2c23752aeffc |
 | crates/mu-tui/src/lib.rs | 17a66cb024d4d73909d76a8deaebb3d451ea9ede |
-| crates/mu-tui/src/model.rs | d9fa88d7e34b64ce998bb815a37a159db48f92a5 |
-| crates/mu-tui/src/probe.rs | e0c75ef039ae12c1020b382cea551a144e0da783 |
-| crates/mu-tui/src/run.rs | e52cb557040aac441fa13c34e45b26895f200a03 |
-| crates/mu-tui/src/update.rs | fab2f5818af357d6e74defcf8e4415ceab325efc |
+| crates/mu-tui/src/model.rs | 4089d239901159c2e9f9f3076b0f4961bc207ac9 |
+| crates/mu-tui/src/probe.rs | 3664685f03a1b40c17555215f1a2075be7d9d1b1 |
+| crates/mu-tui/src/run.rs | 9c60d87dae4ec9dd551d4bf57a5f6ea66904c172 |
+| crates/mu-tui/src/update.rs | 891d501c8ff67b2a2e46a5e8085f8d22ffb1c5a7 |
 | crates/mu-tui/src/view.rs | 415d0a746078255bc29ef49207aabe7ecb717650 |
 | crates/mu-tui/tests/app.proptest-regressions | 81f7accb35b1da9e96d79f56e22f71eed5a9b06d |
-| crates/mu-tui/tests/app.rs | 32b66816bec8a570c9d56d167939982880fba8eb |
+| crates/mu-tui/tests/app.rs | 3e6f6177d77103658167a9bb7945c2d46898724b |
 | crates/mu-tui/tests/probe.rs | 6144897a220543586f8b362da5dc52a6126b7f50 |
 | crates/mu-tui/tests/send.rs | 2d320a2bd62ed7afab07f0831a651e9f3b55074a |
-| docs/src/content/docs/guides/first-run.md | 96273aba6ac5bb8b7eccb65322a9359929b96e57 |
+| docs/src/content/docs/guides/first-run.md | 45c3bd9abe50c2a84915b867e636cc11d741248e |
 | openspec/changes/send-queue-limits/.openspec.yaml | b6809d6be7a6faad01a1bd5da9bea068ac829d8f |
-| openspec/changes/send-queue-limits/design.md | 370d3e4274c8c0e42af4a625f011d97fb092b046 |
-| openspec/changes/send-queue-limits/proposal.md | f58466e8d5f1e12c719021b35aac497045d46766 |
-| openspec/changes/send-queue-limits/specs/terminal-client/spec.md | 083cd5227166aa5d6f3853a2c3de2771e5a3fac2 |
-| openspec/changes/send-queue-limits/tasks.md | sha256:c49ea388fdaa3d781cbce237ba255f1be29b7ab37a6496773d5b6272429c96f4 |
+| openspec/changes/send-queue-limits/design.md | 12fc18c6277a80c1a16e45a04d916dd2c6d0130f |
+| openspec/changes/send-queue-limits/proposal.md | ac8d0c8aaba9ec56752d16a9019144271e110386 |
+| openspec/changes/send-queue-limits/specs/terminal-client/spec.md | c88ca257a92c082ac965c031d6addff8948cded7 |
+| openspec/changes/send-queue-limits/tasks.md | sha256:6d9ac976945f85109865953aaec9892d7d9e56948fb2e5c1117dc2d1efcf45e7 |
 | openspec/review.json | absent |
 
 ## Plan review (2026-11-22)
