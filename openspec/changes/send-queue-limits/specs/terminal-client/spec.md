@@ -97,6 +97,11 @@ If the user presses Alt+R, the client SHALL replace each line break of the edito
 - **WHEN** the list of the worlds that the client asks for gives `alpha/aria` the `line_break` `%r`, and the user types `one`, Ctrl+J and `two`, and presses Alt+R
 - **THEN** the editor holds the one line `one%rtwo`
 
+#### Scenario: The server resets while a list is with it
+- **GIVEN** the client asked for the list of the worlds, and the reply did not come yet
+- **WHEN** the server resets, and the reply of that list comes after the reset
+- **THEN** the client asks for the list one more time
+
 #### Scenario: No world in focus
 - **GIVEN** the first list of the worlds failed, and no world sent an event
 - **WHEN** the user types `one`, Ctrl+J and `two`, and presses Alt+R

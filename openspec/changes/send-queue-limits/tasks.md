@@ -34,6 +34,7 @@ The code is on the branch `fix/send-queue-and-paste`. Each task names the tests 
   - `list_takes_the_line_break_of_a_new_world` (scenario "A world that the first list did not hold")
   - `unknown_line_break_asks_the_server` (scenario "A line break that the client does not know")
   - `alt_r_with_no_world_names_the_line_break` (scenario "No world in focus")
+  - `reset_during_a_list_asks_again_after_its_reply` (scenario "The server resets while a list is with it")
   - `one_list_at_a_time` and `reset_asks_for_the_list`
 
   Write `list_with_no_answer_fails` in `send.rs`. Make sure that `cargo nextest run -p mu-tui --test app --test send --locked` passes.
@@ -46,7 +47,7 @@ The code is on the branch `fix/send-queue-and-paste`. Each task names the tests 
   - `paste_longer_than_the_cap_goes_through`
   - the property test `paste_split_anywhere_gives_its_text` (scenario "A paste split across reads")
   - `open_paste_keeps_the_probe_reading` and `ended_paste_does_not_hold_the_probe`
-  - `cut_end_mark_is_not_text_of_the_paste`
+  - `cut_end_mark_is_not_text_of_the_paste` and `cut_character_is_not_text_of_the_paste`
 
   Make sure that `cargo nextest run -p mu-tui --test probe --locked` passes.
 - [x] 3.3 Write `paste_during_the_probe_fills_the_editor` (scenario "A paste during the queries") in `app.rs`. It frames the bytes with `probe::frame` and gives each event to `update`. Make sure that `cargo nextest run -p mu-tui --test app --locked -E 'test(=paste_during_the_probe_fills_the_editor)'` fails with the framer of `main` and passes with D6.

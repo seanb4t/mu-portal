@@ -18,7 +18,7 @@ The change is tracked by issue #147. It also fixes #148 and #149.
 
 ## Choices the owner will notice
 
-- The limit of a send is 30 seconds, fixed. No configuration changes it. The server gives up on a connect or a write to a game after 10 seconds, so its own answer comes first when a game is slow.
+- The limit of a send is 30 seconds, fixed. No configuration changes it. The server gives up on a write to a game after 10 seconds, so its own answer comes first when a game is slow.
 - A list of the worlds has the same limit of 30 seconds. A list with no answer counts as failed.
 - A send that hits the limit goes back to the editor although the game can have it. A second send of it can repeat it in the game. The notice says so.
 - The count shows as `(2 waiting)` after the world in the top row. The line that is with the server is not in the count, so a single send shows no count.

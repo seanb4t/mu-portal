@@ -4,7 +4,7 @@
 
 See proposal.md for the three faults. The send queue is `Model::sends`, a map from a world to its texts in order. The first text of a world is with the server. `update` sends the next one after the reply of the first one (`enqueue`, `on_reply`, `next_send` in `crates/mu-tui/src/update.rs`). The event loop in `run.rs` turns `Effect::Send` into a task that calls `PortalClient::send` and gives the result back as `Msg::Reply`.
 
-The server bounds its own work on a send. `crates/mu-core/src/session.rs` gives a connect `CONNECT_TIMEOUT` and a write to the game `WRITE_TIMEOUT`, 10 seconds each. A send to a world that connects waits behind the connect.
+The server bounds its own work on a send. `crates/mu-core/src/session.rs` gives a write to the game `WRITE_TIMEOUT`, 10 seconds. A session does one command at a time, so a send can wait behind one other write. A send during a connect or a login is refused at once.
 
 The line break of a world comes from `ListWorlds`, and only `Model::from_listing` reads it at startup.
 
@@ -25,9 +25,9 @@ The probe (`crates/mu-tui/src/probe.rs`) reads the terminal itself for at most 5
 
 ### D1. One limit for each call, in the event loop
 
-`run::within` wraps a call in `tokio::time::timeout` with `CALL_LIMIT` (30 s). A call with no answer by then becomes an error with the reason `the server gave no answer in 30 s`. `run::reply_of` turns the result of a send into `Reply::Sent` or `Reply::Refused`, and its reason adds that the game can have the line or not. So `on_reply` puts the texts back as it does for a refusal. A list of the worlds goes through `within` too, so a list with no answer becomes `Msg::Listed(Err)`. One helper, `spawn_reply`, starts both calls on a task and gives their message to the loop.
+`run::within` wraps a call in `tokio::time::timeout` with `CALL_LIMIT` (30 s). A call with no answer by then becomes an error with the reason `the server gave no answer in 30 s`. `run::reply_of` turns the result of a send into `Reply::Sent` or `Reply::Refused`, and its reason adds that the game can have the line or not. So `on_reply` puts the texts back as it does for a refusal. A list of the worlds goes through `within` too, so a list with no answer becomes `Msg::Listed(Err)`. The first list at startup also goes through `within`, and a list with no answer becomes the failed first list that `Model::from_listing` shows as a notice. One helper, `spawn_reply`, starts both calls on a task and gives their message to the loop.
 
-The limit is above the 10 seconds of the server. When a game is slow, the server's own refusal, with its exact reason, comes first. A send behind a connect can wait 20 seconds on the server, and that is still inside the limit.
+The limit is above the 10 seconds of the server. When a game is slow, the server's own refusal, with its exact reason, comes first. A send behind one other write can wait 20 seconds on the server, and that is still inside the limit.
 
 Alternative: the per-call timeout of connectrpc (`CallOptions::with_timeout` through the generated `send_with_options`). It sends the deadline to the server too. The handler of the server can then stop in the middle of a write to the game. The limit of the client is a limit on the wait of the client only. `tokio::time::timeout` keeps it so, and a paused tokio clock tests it with no server. The default timeout of `ClientConfig` is not an option either: it also ends the event stream.
 
@@ -74,7 +74,7 @@ Enforced by: `top_row_counts_the_sends_that_wait` in `app.rs`.
 
 ### D5. A list of the worlds as an effect
 
-`Effect::ListWorlds` asks for the list, and `Msg::Listed` brings it back. `Model::learn` sets the line break of each listed world and marks it as listed. `World::listed` tells "no line break" from "not known yet". `Model::listing` (an enum, `Idle` or `Asked`) keeps one list with the server at a time. A failed list, or one with no answer within the limit of D1, sets `Idle` and changes nothing else.
+`Effect::ListWorlds` asks for the list, and `Msg::Listed` brings it back. `Model::learn` sets the line break of each listed world and marks it as listed. `World::listed` tells "no line break" from "not known yet". `Model::listing` (an enum: `Idle`, `Asked` or `AskedBeforeReset`) keeps one list with the server at a time. A failed list, or one with no answer within the limit of D1, sets `Idle` and changes nothing else. A reset while a list is with the server sets `AskedBeforeReset`, because the reply can be of the server before the reset. That reply then asks for one more list.
 
 Alt+R has three outcomes:
 
@@ -91,6 +91,7 @@ Enforced by these tests in `app.rs`:
 - `alt_r_with_no_world_names_the_line_break`
 - `one_list_at_a_time`
 - `reset_asks_for_the_list`
+- `reset_during_a_list_asks_again_after_its_reply`
 
 ### D6. The probe framer holds a whole paste
 
@@ -105,7 +106,7 @@ Enforced by these tests in `crates/mu-tui/tests/probe.rs`:
 - `paste_longer_than_the_cap_goes_through`
 - the property test `paste_split_anywhere_gives_its_text`
 - `open_paste_keeps_the_probe_reading` and `ended_paste_does_not_hold_the_probe`
-- `cut_end_mark_is_not_text_of_the_paste`
+- `cut_end_mark_is_not_text_of_the_paste` and `cut_character_is_not_text_of_the_paste`
 
 `paste_during_the_probe_fills_the_editor` in `app.rs` also enforces it.
 
