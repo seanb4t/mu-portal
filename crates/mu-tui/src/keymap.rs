@@ -27,10 +27,13 @@ impl Chord {
     /// Ctrl and the character `c`.
     #[must_use]
     pub const fn ctrl(c: char) -> Self {
-        Self {
-            code: KeyCode::Char(c),
-            modifiers: Modifiers::CONTROL,
-        }
+        Self::with(KeyCode::Char(c), Modifiers::CONTROL)
+    }
+
+    /// `code` with `modifiers`.
+    #[must_use]
+    pub const fn with(code: KeyCode, modifiers: Modifiers) -> Self {
+        Self { code, modifiers }
     }
 }
 
@@ -43,8 +46,8 @@ pub enum Wheel {
     Down,
 }
 
-/// The table from a [`Chord`] or a [`Wheel`] step to an [`Action`]. A key that is in no entry
-/// goes to the input line.
+/// The table from a [`Chord`] or a [`Wheel`] step to an [`Action`]. A key for which
+/// [`Keymap::get`] gives no action goes to the pose editor.
 #[derive(Clone, Debug)]
 pub struct Keymap {
     entries: Vec<(Chord, Action)>,
@@ -107,14 +110,50 @@ impl Keymap {
 }
 
 impl Default for Keymap {
-    /// Ctrl+C quits, Ctrl+N and Ctrl+P move the focus, and Enter sends the input line. The page
-    /// keys scroll one page, and each step of the mouse wheel scrolls three rows.
+    /// Ctrl+C quits, and Ctrl+N and Ctrl+P move the focus. The page keys scroll one page, and
+    /// each step of the mouse wheel scrolls three rows.
+    ///
+    /// Enter and Ctrl+M send the text of the pose editor as one command. Alt+Enter and
+    /// Ctrl+Enter send each line as its own command. Shift+Enter and Ctrl+J insert a line
+    /// break. Alt+R joins the lines with the line break of the world.
+    ///
+    /// The editing keys follow readline: Ctrl+U deletes to the start of the line. Ctrl+R does
+    /// nothing, so the redo of the text area does not take it. Ctrl+Z is undo, and Ctrl+Shift+Z
+    /// is redo.
     fn default() -> Self {
         let mut keymap = Self::empty();
         keymap.bind(Chord::ctrl('c'), Action::Quit);
         keymap.bind(Chord::ctrl('n'), Action::FocusNext);
         keymap.bind(Chord::ctrl('p'), Action::FocusPrev);
         keymap.bind(Chord::plain(KeyCode::Enter), Action::Submit);
+        keymap.bind(Chord::ctrl('m'), Action::Submit);
+        keymap.bind(
+            Chord::with(KeyCode::Enter, Modifiers::ALT),
+            Action::SubmitLines,
+        );
+        keymap.bind(
+            Chord::with(KeyCode::Enter, Modifiers::CONTROL),
+            Action::SubmitLines,
+        );
+        keymap.bind(
+            Chord::with(KeyCode::Enter, Modifiers::SHIFT),
+            Action::Newline,
+        );
+        keymap.bind(Chord::ctrl('j'), Action::Newline);
+        keymap.bind(
+            Chord::with(KeyCode::Char('r'), Modifiers::ALT),
+            Action::JoinLines,
+        );
+        keymap.bind(Chord::ctrl('u'), Action::DeleteToLineStart);
+        keymap.bind(Chord::ctrl('r'), Action::Ignore);
+        keymap.bind(Chord::ctrl('z'), Action::Undo);
+        keymap.bind(
+            Chord::with(
+                KeyCode::Char('z'),
+                Modifiers::CONTROL.union(Modifiers::SHIFT),
+            ),
+            Action::Redo,
+        );
         keymap.bind(Chord::plain(KeyCode::PageUp), Action::ScrollPage(-1));
         keymap.bind(Chord::plain(KeyCode::PageDown), Action::ScrollPage(1));
         keymap.bind_wheel(Wheel::Up, Action::ScrollRows(-3));

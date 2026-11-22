@@ -32,6 +32,20 @@
       "packageNameTemplate": "https://github.com/RhostMUSH/trunk",
       "currentValueTemplate": "master",
       "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "The commit of the ratatui-textarea fork in [patch.crates-io], which follows the branch mu. The cargo manager reads no [patch] table",
+      "managerFilePatterns": [
+        "/^Cargo\\.toml$/"
+      ],
+      "matchStrings": [
+        "git = \"https://github\\.com/seanb4t/ratatui-textarea\", rev = \"(?<currentDigest>[0-9a-f]{40})\""
+      ],
+      "depNameTemplate": "seanb4t/ratatui-textarea",
+      "packageNameTemplate": "https://github.com/seanb4t/ratatui-textarea",
+      "currentValueTemplate": "mu",
+      "datasourceTemplate": "git-refs"
     }
   ],
   "packageRules": [

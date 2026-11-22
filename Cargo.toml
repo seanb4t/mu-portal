@@ -79,3 +79,9 @@ unicode-width = "0.2.3"
 uuid = { version = "1.29.2", features = ["v4"] }
 vt100 = "0.18.1"
 vte = "0.15.0"
+
+# The fork of ratatui-textarea, at its branch `mu`: a cursor that moves by grapheme, a width
+# function, and the count of the wrapped rows. The patch applies only while the fork has the
+# version that `[workspace.dependencies]` asks for.
+[patch.crates-io]
+ratatui-textarea = { git = "https://github.com/seanb4t/ratatui-textarea", rev = "462cce4cdf10ba145f18cc27abadbea240379598" }

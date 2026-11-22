@@ -4,10 +4,10 @@
 use std::sync::Arc;
 
 use mu_core::{
-    EventKind, Journal, MemoryJournal, NewEvent, Portal, PortalError, ResolvedWorld, Source,
-    WorldId, WorldSetup, WorldState, WorldStatus,
+    EventKind, Journal, LineBreakError, MemoryJournal, NewEvent, Portal, PortalError,
+    ResolvedWorld, Source, WorldId, WorldSetup, WorldState, WorldStatus,
 };
-use mu_fake_server::{ConnectGate, FakeTransport};
+use mu_fake_server::{ConnectGate, FakeGame, FakeTransport};
 
 use support::*;
 
@@ -88,13 +88,12 @@ async fn empty_send_reaches_game() {
     );
 }
 
-async fn refused_line_break(text: &str) {
-    let (aria, game) = world("alpha/aria", PW);
+async fn refused_line_break(aria: WorldSetup, game: FakeGame, text: &str, why: LineBreakError) {
     let portal = started(vec![aria]).await;
     let last = portal.journal().last();
     assert_eq!(
         portal.send(&id("alpha/aria"), text).await,
-        Err(PortalError::LineBreak)
+        Err(PortalError::LineBreak(why))
     );
     idle(&portal).await;
     assert_eq!(portal.journal().last(), last);
@@ -103,12 +102,37 @@ async fn refused_line_break(text: &str) {
 
 #[tokio::test(start_paused = true)]
 async fn send_with_lf_is_refused() {
-    refused_line_break("one\ntwo").await;
+    let (aria, game) = world("alpha/aria", PW);
+    refused_line_break(aria, game, "one\ntwo", LineBreakError::NotJoined).await;
 }
 
 #[tokio::test(start_paused = true)]
 async fn send_with_cr_is_refused() {
-    refused_line_break("one\rtwo").await;
+    let (aria, game) = world("alpha/aria", PW);
+    refused_line_break(aria, game, "one\rtwo", LineBreakError::CarriageReturn).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn carriage_return_to_a_world_that_joins() {
+    let (aria, game) = world_joining("alpha/aria", PW, "%r");
+    refused_line_break(aria, game, "one\r\ntwo", LineBreakError::CarriageReturn).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn line_break_that_the_world_joins() {
+    let (aria, game) = world_joining("alpha/aria", PW, "|/");
+    let portal = started(vec![aria]).await;
+    let seq = portal
+        .send(&id("alpha/aria"), "one\ntwo\n\nthree")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(game.wait_for_lines(2).await[1], "one|/two|/|/three");
+    let event = wait_event(&portal, |event| event.seq == seq).await;
+    assert_eq!(
+        (event.kind, event.source, event.text.as_str()),
+        (EventKind::Input, Source::Player, "one|/two|/|/three")
+    );
 }
 
 #[tokio::test(start_paused = true)]

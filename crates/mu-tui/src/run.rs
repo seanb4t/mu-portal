@@ -3,7 +3,6 @@
 use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures::StreamExt as _;
 use mu_client::PortalClient;
@@ -14,7 +13,7 @@ use tokio::sync::mpsc;
 use crate::kitty;
 use crate::model::Model;
 use crate::probe;
-use crate::screen::{self, Screen};
+use crate::screen::{self, Restore, Screen};
 use crate::update::{Effect, Msg, Reply, update};
 use crate::view::view;
 
@@ -28,12 +27,20 @@ use crate::view::view;
 pub async fn run(client: PortalClient) -> io::Result<()> {
     let mut model = Model::from_listing(client.list_worlds().await);
     // The probe sets mode 2027, so a panic before its replies turns the mode off.
-    let grapheme_mode = Arc::new(AtomicBool::new(true));
-    let (mut terminal, reader) = screen::open(&grapheme_mode)?;
-    let probed = probe::run(terminal.backend_mut(), probe::WAIT);
+    let restore = Arc::new(Restore::default());
+    restore.set_grapheme_mode(true);
+    let (mut terminal, reader) = screen::open(&restore)?;
+    let probed = probe::run(terminal.backend_mut(), probe::WAIT).and_then(|probed| {
+        // Only a terminal that answered the query in time gets the flag. A late answer is a
+        // terminal event, which the update drops.
+        if probed.0.keyboard == probe::KeyboardProtocol::Kitty {
+            screen::push_keyboard_flag(terminal.backend_mut(), &restore)?;
+        }
+        Ok(probed)
+    });
     let result = match probed {
         Ok((mut outcome, input)) => {
-            grapheme_mode.store(outcome.resets_grapheme_mode(), Ordering::Relaxed);
+            restore.set_grapheme_mode(outcome.resets_grapheme_mode());
             let open = std::mem::take(&mut outcome.open);
             // The probe result goes first, then the input that came during the probe, then the
             // bytes of a cut answer. The input came before those bytes.
@@ -43,17 +50,14 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
                 .collect();
             let result = event_loop(&mut terminal, reader, early, &mut model, &client).await;
             if model.keeps_grapheme_mode() {
-                grapheme_mode.store(false, Ordering::Relaxed);
+                restore.set_grapheme_mode(false);
             }
             result
         }
         Err(error) => Err(error),
     };
     // Dropping the backend returns the terminal to cooked mode.
-    let left = screen::leave(
-        terminal.backend_mut(),
-        grapheme_mode.load(Ordering::Relaxed),
-    );
+    let left = screen::leave(terminal.backend_mut(), &restore);
     screen::finish(result, left)
 }
 
@@ -101,7 +105,7 @@ async fn event_loop(
                     let replies = replies.clone();
                     tokio::spawn(async move {
                         let answer = match client.send(&world, &text).await {
-                            Ok(_) => Reply::Sent,
+                            Ok(_) => Reply::Sent { world, text },
                             Err(error) => Reply::Refused {
                                 world,
                                 text,

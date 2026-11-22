@@ -134,6 +134,31 @@ impl Login {
     }
 }
 
+/// The text that a game reads as a line break inside one command, such as `%r`. It holds 1 to
+/// 16 characters and no control character, so a text joined with it stays one line.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LineBreak(String);
+
+impl LineBreak {
+    /// A line break of the text `text`.
+    ///
+    /// # Errors
+    ///
+    /// A [`FieldError`] when `text` is empty, holds more than 16 characters, or holds a control
+    /// character.
+    pub fn new(text: impl Into<String>) -> Result<Self, FieldError> {
+        let text = text.into();
+        check::check_line_break(&text)?;
+        Ok(Self(text))
+    }
+
+    /// The text of the line break.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// When a keepalive sends its line: the value of `keepalive.mode`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -386,6 +411,9 @@ pub struct ResolvedWorld {
     pub columns: u16,
     /// The height of the window.
     pub rows: u16,
+    /// The text that the game reads as a line break inside one command, or none for a world
+    /// that takes only a text of one line.
+    pub line_break: Option<LineBreak>,
     /// The login, or none for a world that logs in by hand.
     pub login: Option<Login>,
     /// The mode of `keepalive.mode`, also for a world with no keepalive.
@@ -417,6 +445,7 @@ impl ResolvedWorld {
             charset: defaults.charset,
             columns: defaults.columns,
             rows: defaults.rows,
+            line_break: None,
             login: None,
             keepalive_mode: defaults.keepalive_mode,
             keepalive: None,

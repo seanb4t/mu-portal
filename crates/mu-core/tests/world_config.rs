@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use mu_core::world::{
     BUILT_IN_TYPES, ConfigError, FIELD_PATHS, Layer, LayerFields, LayerKey, LayerOrigin,
-    LayerSource, LoginFields, Trust, built_in_layers, parse_quirks, resolve,
+    LayerSource, LineBreak, LoginFields, Trust, built_in_layers, parse_quirks, resolve,
 };
 
 /// A source that gives fixed layers.
@@ -163,12 +163,19 @@ fn built_in_types_hold_only_quirks() {
         .collect();
     assert_eq!(
         names,
-        ["built-in aresmush", "built-in evennia", "built-in tinymux"]
+        [
+            "built-in aresmush",
+            "built-in evennia",
+            "built-in pennmush",
+            "built-in rhostmush",
+            "built-in tinymux"
+        ]
     );
     assert_eq!(BUILT_IN_TYPES.len(), names.len());
     for layer in built_in_layers().unwrap() {
         let mut rest = layer.fields.clone();
         rest.charset = None;
+        rest.line_break = None;
         rest.keepalive = None;
         if let Some(login) = &mut rest.login {
             login.template = None;
@@ -177,8 +184,40 @@ fn built_in_types_hold_only_quirks() {
             rest.login = None;
         }
         assert_eq!(rest, LayerFields::default(), "{}", layer.origin);
-        assert!(layer.fields != LayerFields::default(), "{}", layer.origin);
+        assert!(
+            layer.extends.is_some() || layer.fields != LayerFields::default(),
+            "{}",
+            layer.origin
+        );
     }
+}
+
+#[test]
+fn built_in_type_extends_only_a_built_in_type() {
+    let layers = built_in_layers().unwrap();
+    let parent = |name: &str| {
+        layers
+            .iter()
+            .find(|layer| layer.key == LayerKey::Type(name.to_owned()))
+            .map(|layer| layer.extends.clone())
+    };
+    for (name, _) in BUILT_IN_TYPES {
+        let mut seen = vec![(*name).to_owned()];
+        let mut current = parent(name).unwrap();
+        while let Some(next) = current {
+            assert!(!seen.contains(&next), "{name}: a loop through {next}");
+            current = parent(&next).unwrap_or_else(|| panic!("{name}: {next} is not built in"));
+            seen.push(next);
+        }
+    }
+}
+
+#[test]
+fn line_break_outside_its_range() {
+    for text in ["", "one\ntwo", "%\n", "%\r"] {
+        assert!(LineBreak::new(text).is_err(), "{text:?}");
+    }
+    assert_eq!(LineBreak::new("%r").unwrap().as_str(), "%r");
 }
 
 #[test]

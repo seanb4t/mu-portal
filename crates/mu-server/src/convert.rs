@@ -3,7 +3,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use connectrpc::ConnectError;
-use mu_core::{Event, EventKind, PortalError, Source, WorldId, WorldState, WorldStatus};
+use mu_core::{Event, EventKind, LineBreak, PortalError, Source, WorldId, WorldState, WorldStatus};
 use mu_proto as proto;
 
 /// The code of each engine error. One function holds the whole map.
@@ -15,7 +15,7 @@ pub fn status(error: &PortalError) -> ConnectError {
         PortalError::NotConnected(_)
         | PortalError::TlsNotSupported(_)
         | PortalError::NoSecret(..) => ConnectError::failed_precondition(message),
-        PortalError::LineBreak => ConnectError::invalid_argument(message),
+        PortalError::LineBreak(_) => ConnectError::invalid_argument(message),
         PortalError::PastEnd { .. } => ConnectError::out_of_range(message),
         PortalError::Stopped => ConnectError::unavailable(message),
     }
@@ -67,11 +67,12 @@ pub fn time_ms(time: SystemTime) -> i64 {
 
 /// The schema message of a world and its status.
 #[must_use]
-pub fn world(id: &WorldId, status: WorldStatus) -> proto::World {
+pub fn world(id: &WorldId, status: WorldStatus, line_break: Option<&LineBreak>) -> proto::World {
     proto::World {
         id: id.to_string(),
         state: state(status.state).into(),
         next_attempt_ms: status.next_attempt.map(time_ms),
+        line_break: line_break.map(|line_break| line_break.as_str().to_owned()),
         ..Default::default()
     }
 }
@@ -94,7 +95,7 @@ pub fn event(event: &Event) -> proto::Event {
 #[cfg(test)]
 mod tests {
     use connectrpc::ErrorCode;
-    use mu_core::{Seq, WorldId};
+    use mu_core::{LineBreakError, Seq, WorldId};
 
     use super::*;
 
@@ -118,7 +119,10 @@ mod tests {
                 PortalError::NoSecret(world, "env:PW is not set".to_owned()),
                 ErrorCode::FailedPrecondition,
             ),
-            (PortalError::LineBreak, ErrorCode::InvalidArgument),
+            (
+                PortalError::LineBreak(LineBreakError::NotJoined),
+                ErrorCode::InvalidArgument,
+            ),
             (
                 PortalError::PastEnd {
                     from: Seq(8),

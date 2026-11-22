@@ -8,10 +8,9 @@
 
 use std::io::{self, Write};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::{env, fs};
 
-use mu_tui::screen::{self, Screen};
+use mu_tui::screen::{self, Restore, Screen};
 use mu_tui::store::Image;
 use mu_tui::{Caps, OutputPane, PaneState, kitty, probe};
 use ratatui::layout::Size;
@@ -42,13 +41,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = env::args().nth(1).ok_or("usage: image-pane <file.png>")?;
     let png = fs::read(&path)?;
     let size = png_size(&png).ok_or("not a PNG file")?;
-    let grapheme_mode = Arc::new(AtomicBool::new(true));
-    let (mut terminal, reader) = screen::open(&grapheme_mode)?;
-    let result = session(&mut terminal, &reader, &grapheme_mode, &path, &png, size);
-    let left = screen::leave(
-        terminal.backend_mut(),
-        grapheme_mode.load(Ordering::Relaxed),
-    );
+    let restore = Arc::new(Restore::default());
+    restore.set_grapheme_mode(true);
+    let (mut terminal, reader) = screen::open(&restore)?;
+    let result = session(&mut terminal, &reader, &restore, &path, &png, size);
+    let left = screen::leave(terminal.backend_mut(), &restore);
     Ok(screen::finish(result, left)?)
 }
 
@@ -58,14 +55,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn session(
     terminal: &mut Screen,
     reader: &EventReader,
-    grapheme_mode: &AtomicBool,
+    restore: &Restore,
     path: &str,
     png: &[u8],
     (width, height): (u32, u32),
 ) -> io::Result<()> {
     let cell = screen::cell(terminal)?;
     let (outcome, _early) = probe::run(terminal.backend_mut(), probe::WAIT)?;
-    grapheme_mode.store(outcome.resets_grapheme_mode(), Ordering::Relaxed);
+    restore.set_grapheme_mode(outcome.resets_grapheme_mode());
     let graphics = outcome.graphics;
     let size = cell.unwrap_or(CELL);
     let image = Image::new(ID, cells(height, size.height), cells(width, size.width))

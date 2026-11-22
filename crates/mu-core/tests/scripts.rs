@@ -317,6 +317,26 @@ async fn hook_line_break_is_dropped() {
     line_break_from_hook("say hi\rsay bye").await;
 }
 
+/// A hook that keeps each player line that it gets.
+struct Recorder(Arc<Mutex<Vec<String>>>);
+
+impl Hook for Recorder {
+    fn on_player_line(&self, line: &str) -> HookAction {
+        self.0.lock().unwrap().push(line.to_owned());
+        HookAction::Pass
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn hook_sees_the_joined_line() {
+    let lines = Arc::new(Mutex::new(Vec::new()));
+    let (aria, _) = world_joining("alpha/aria", PW, "%r");
+    let hook = Recorder(Arc::clone(&lines));
+    let portal = started(vec![aria.with_hook(Arc::new(hook))]).await;
+    portal.send(&id("alpha/aria"), "one\ntwo").await.unwrap();
+    assert_eq!(*lines.lock().unwrap(), ["one%rtwo"]);
+}
+
 /// A line framer that sends each line in capitals.
 struct Shout(LineFramer);
 

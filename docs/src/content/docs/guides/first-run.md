@@ -46,18 +46,21 @@ target/debug/mu client
 
 `mu` with no verb also starts the client. The client finds the server on the same socket. If no server answers, the client starts one in the background with only the configured worlds. That server writes its output to `server.log` next to the socket.
 
-The top row lists the worlds. The world in focus is in square brackets: `[alpha/aria] beta/bryn`. The rows below show the lines of the world in focus. The bottom row is the input line.
+The top row lists the worlds. The world in focus is in square brackets: `[alpha/aria] beta/bryn`. The rows below show the lines of the world in focus. The bottom row is the pose editor, where you write the text to send. It grows with its text.
 
 ## Use the client
 
 | Key | Action |
 |---|---|
-| Enter | Sends the input line to the world in focus, and returns its lines to the bottom |
+| Enter | Sends the text of the pose editor to the world in focus, and returns its lines to the bottom |
+| Ctrl+J | Inserts a line break in the pose editor |
 | PageUp | Scrolls the lines back by the height of the pane less one row |
 | PageDown | Scrolls the lines forward by the height of the pane less one row |
 | Ctrl+N | Moves the focus to the next world |
 | Ctrl+P | Moves the focus to the world before |
 | Ctrl+C | Quits the client. The server and its worlds keep running. |
+
+The [input editor decision](/decisions/input-editor/) lists the other keys of the pose editor.
 
 Type `hello` and press Enter. The screen shows `> hello`, and then the answer of the fake world, `You say, "hello"`. A line from the system has the prefix `-- `, for example `-- connect aria ****`. The server replaced the password with `****`.
 

@@ -5,7 +5,8 @@ use std::io;
 use std::time::{Duration, Instant};
 
 use mu_tui::probe::{
-    Answer, GRAPHEMES, Outcome, PENDING_MAX, Skip, TICK, WAIT, flush, frame, is_set, read_answers,
+    Answer, GRAPHEMES, KeyboardProtocol, Outcome, PENDING_MAX, Skip, TICK, WAIT, flush, frame,
+    is_set, read_answers,
 };
 use mu_tui::width::{Class, Rule};
 use termina::Event;
@@ -373,4 +374,48 @@ fn only_set_and_permanently_set_are_set() {
         DecModeSetting::PermanentlyReset,
     ];
     assert_eq!(settings.map(is_set), [false, true, false, true, false]);
+}
+
+/// The outcome of the answers that the framer gives for `bytes`.
+fn outcome_of(bytes: &[u8]) -> Outcome {
+    Outcome::learn(&framed(&[bytes]).answers)
+}
+
+#[test]
+fn keyboard_answer_before_da1_means_the_protocol() {
+    let framing = framed(&[b"\x1b[?0u\x1b[?62;22c"]);
+    assert_eq!(framing.answers, [Answer::Keyboard, Answer::Da1]);
+    assert_eq!(framing.events, []);
+    assert_eq!(
+        outcome_of(b"\x1b[?0u\x1b[?62;22c").keyboard,
+        KeyboardProtocol::Kitty
+    );
+}
+
+#[test]
+fn no_keyboard_answer_means_no_protocol() {
+    assert_eq!(
+        outcome_of(b"\x1b[?62;22c").keyboard,
+        KeyboardProtocol::Legacy
+    );
+}
+
+#[test]
+fn keyboard_answer_of_two_digits_means_the_protocol() {
+    assert_eq!(
+        outcome_of(b"\x1b[?15u\x1b[?62;22c").keyboard,
+        KeyboardProtocol::Kitty
+    );
+}
+
+#[test]
+fn queries_ask_for_the_keyboard_flags_before_da1() {
+    let queries = mu_tui::probe::queries();
+    let at = |needle: &[u8]| {
+        queries
+            .windows(needle.len())
+            .position(|window| window == needle)
+    };
+    let (keyboard, da1) = (at(b"\x1b[?u"), at(b"\x1b[c"));
+    assert!(keyboard.is_some() && keyboard < da1, "{keyboard:?} {da1:?}");
 }

@@ -18,8 +18,8 @@ use super::layer::{
     ReconnectFields,
 };
 use super::{
-    Backoff, Entry, EntryKind, Keepalive, KeepaliveMode, Login, Reconnect, ReconnectMode,
-    ResolvedWorld, WorldDefaults,
+    Backoff, Entry, EntryKind, Keepalive, KeepaliveMode, LineBreak, Login, Reconnect,
+    ReconnectMode, ResolvedWorld, WorldDefaults,
 };
 
 /// The paths of the fields that a resolved world can have, in the order of `mu world show`. A
@@ -32,6 +32,7 @@ pub const FIELD_PATHS: &[&str] = &[
     "charset",
     "columns",
     "rows",
+    "line_break",
     "login.template",
     "login.name",
     "login.secret",
@@ -299,6 +300,11 @@ fn finish(
         .as_deref()
         .and_then(Charset::from_name)
         .ok_or_else(|| missing("charset"))?;
+    let line_break = merged
+        .line_break
+        .map(LineBreak::new)
+        .transpose()
+        .map_err(|error| ConfigError::of_field(&id, &error))?;
     let login = merged.login.unwrap_or_default();
     let login = match (login.name, login.secret) {
         (Some(name), Some(secret)) => {
@@ -333,6 +339,7 @@ fn finish(
         charset,
         columns: merged.columns.unwrap_or(defaults.columns),
         rows: merged.rows.unwrap_or(defaults.rows),
+        line_break,
         login,
         keepalive_mode,
         keepalive,

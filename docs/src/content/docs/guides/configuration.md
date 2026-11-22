@@ -58,6 +58,7 @@ secret = "env:ARIA_PW"
 | `host`, `port`, `tls` | The place to connect |
 | `autoconnect` | Whether the world connects at the start of the server |
 | `charset` | The text encoding, `utf-8` or `iso-8859-1` |
+| `line_break` | The text that the game reads as a line break inside one command, such as `%r` |
 | `columns`, `rows` | The size of the window that the game sees |
 | `login.template` | The login line, with `{login}` and `{password}` in it |
 | `login.name` | The login name |
@@ -126,7 +127,30 @@ A field takes its value from the last file that sets it. A table, such as `login
 
 ## Types and extends
 
-A game must name its type with `extends`. A type in `types/` names its parent with `extends` too. The chain ends at a built-in type, `tinymux`, `aresmush` or `evennia`, or at a type in `types/` with no `extends`. A built-in type sets only the quirks of its server, for example the encoding, the login template and the keepalive. It does not set a preference such as `columns`, so a value in `global.toml` reaches each world.
+A game must name its type with `extends`. A type in `types/` names its parent with `extends` too. The chain ends at a built-in type or at a type in `types/` with no `extends`. A built-in type sets only the quirks of its server, for example the encoding, the login template, the keepalive and the line break. It does not set a preference such as `columns`, so a value in `global.toml` reaches each world.
+
+The built-in types are:
+
+| Type | Line break | Notes |
+|---|---|---|
+| `tinymux` | `%r` | |
+| `pennmush` | `%r` | Extends `tinymux`. |
+| `rhostmush` | `%r` | Extends `tinymux`, with the keepalive line `idle`. |
+| `aresmush` | `%r` | |
+| `evennia` | `\|/` | |
+
+The types `pennmush` and `rhostmush` come from the documentation of those servers. No live game checked them. If a game differs, set the field in its game file.
+
+## The line break of a world
+
+A pose can have several lines. The server sends it to the game as one command, and writes the `line_break` of the world in place of each line break. A built-in type sets the value for its server. A game file or a type in `types/` can set another value of 1 to 16 characters:
+
+```toml
+# games/alpha.toml
+line_break = "%r%t"
+```
+
+A world with no `line_break` refuses a text of several lines. That is a world whose type chain ends at a type in `types/` that sets none.
 
 A file in `types/` cannot have the name of a built-in type. A loop in the chain is an error. The global file and the character files cannot use `extends`.
 

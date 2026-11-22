@@ -12,24 +12,15 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::CellDiffOption;
 use termina::Event as TermEvent;
-use termina::event::{KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
+use termina::event::{KeyCode, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
 fn model() -> Model {
     Model::new(["alpha/aria".to_owned(), "beta/bryn".to_owned()])
 }
 
-fn press(model: &mut Model, code: KeyCode, modifiers: Modifiers) -> Vec<Effect> {
-    update(
-        model,
-        Msg::Terminal(TermEvent::Key(KeyEvent::new(code, modifiers))),
-    )
-}
+use support::{press, type_text};
 
-fn type_text(model: &mut Model, text: &str) {
-    for c in text.chars() {
-        assert_eq!(press(model, KeyCode::Char(c), Modifiers::NONE), []);
-    }
-}
+mod support;
 
 #[test]
 fn ctrl_c_returns_quit_and_keeps_the_model() {
@@ -37,7 +28,10 @@ fn ctrl_c_returns_quit_and_keeps_the_model() {
     type_text(&mut model, "hi");
     let effects = press(&mut model, KeyCode::Char('c'), Modifiers::CONTROL);
     assert_eq!(effects, [Effect::Quit]);
-    assert_eq!((model.focused(), model.input()), (Some("alpha/aria"), "hi"));
+    assert_eq!(
+        (model.focused(), model.input().as_str()),
+        (Some("alpha/aria"), "hi")
+    );
 }
 
 #[test]
@@ -177,7 +171,10 @@ fn other_key_drops_a_cut_reply() {
     assert_eq!(model.input(), "");
     press(&mut model, KeyCode::Char('n'), Modifiers::CONTROL);
     type_text(&mut model, "c");
-    assert_eq!((model.focused(), model.input()), (Some("beta/bryn"), "c"));
+    assert_eq!(
+        (model.focused(), model.input().as_str()),
+        (Some("beta/bryn"), "c")
+    );
 }
 
 #[test]

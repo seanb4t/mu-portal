@@ -185,6 +185,35 @@ fn hk_pins(hk_pkl: &str) -> Vec<String> {
         .collect()
 }
 
+/// The git URL of the fork of `ratatui-textarea`, which `[patch.crates-io]` names.
+const TEXTAREA_FORK: &str = "git+https://github.com/seanb4t/ratatui-textarea?";
+
+/// True if each `ratatui-textarea` package of `Cargo.lock` comes from the fork, and one exists.
+/// A patch that does not match the version of the requirement gives only a warning, and the
+/// build then takes the crate from crates.io.
+fn textarea_is_the_fork(cargo_lock: &str) -> bool {
+    let lock = toml(cargo_lock);
+    let sources: Vec<&str> = lock
+        .get("package")
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|package| {
+            package.get("name").and_then(toml::Value::as_str) == Some("ratatui-textarea")
+        })
+        .map(|package| {
+            package
+                .get("source")
+                .and_then(toml::Value::as_str)
+                .unwrap_or("")
+        })
+        .collect();
+    !sources.is_empty()
+        && sources
+            .iter()
+            .all(|source| source.starts_with(TEXTAREA_FORK))
+}
+
 /// True if the two import lines of `hk.pkl` hold four releases equal to the `hk` release of `mise.toml`.
 fn hk_pins_match(hk_pkl: &str, mise: &str) -> bool {
     let mise = toml(mise);
@@ -917,5 +946,26 @@ fn design_rules_cover_spikes() {
             !design_rules_name_spikes_page(&config(&rules)),
             "{case} breaks the rule"
         );
+    }
+}
+
+#[test]
+fn textarea_comes_from_the_fork() {
+    assert!(textarea_is_the_fork(&repo_file("Cargo.lock")));
+
+    let package = |source: &str| {
+        format!(
+            "[[package]]\nname = \"ratatui-textarea\"\nversion = \"0.9.4\"\nsource = \"{source}\"\n"
+        )
+    };
+    let fork = "git+https://github.com/seanb4t/ratatui-textarea?rev=abc#abc";
+    let registry = "registry+https://github.com/rust-lang/crates.io-index";
+    assert!(textarea_is_the_fork(&package(fork)));
+    for (case, lock) in [
+        ("the registry", package(registry)),
+        ("both sources", package(fork) + &package(registry)),
+        ("no package", String::new()),
+    ] {
+        assert!(!textarea_is_the_fork(&lock), "{case} breaks the rule");
     }
 }

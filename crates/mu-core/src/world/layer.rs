@@ -112,6 +112,9 @@ pub struct LayerFields {
     /// The height of the window.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rows: Option<u16>,
+    /// The text that the game reads as a line break inside one command, such as `%r`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_break: Option<String>,
     /// The table `login`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub login: Option<LoginFields>,
@@ -192,6 +195,7 @@ pub(crate) struct LayerFile {
     charset: Option<String>,
     columns: Option<u16>,
     rows: Option<u16>,
+    line_break: Option<String>,
     #[serde(default, deserialize_with = "table")]
     login: Option<LoginFields>,
     #[serde(default, deserialize_with = "table")]
@@ -217,6 +221,7 @@ impl LayerFile {
             charset: self.charset,
             columns: self.columns,
             rows: self.rows,
+            line_break: self.line_break,
             login: self.login,
             keepalive: self.keepalive,
             reconnect: self.reconnect,
@@ -228,11 +233,13 @@ impl LayerFile {
     }
 }
 
-/// A built-in type, which sets only quirks.
+/// A built-in type, which sets only quirks and can extend another built-in type.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Quirks {
+    extends: Option<String>,
     charset: Option<String>,
+    line_break: Option<String>,
     #[serde(default, deserialize_with = "table")]
     login: Option<QuirkLogin>,
     #[serde(default, deserialize_with = "table")]
@@ -254,21 +261,24 @@ struct QuirkKeepalive {
     seconds: Option<u32>,
 }
 
-impl From<Quirks> for LayerFields {
-    fn from(quirks: Quirks) -> Self {
-        Self {
-            charset: quirks.charset,
-            login: quirks.login.map(|login| LoginFields {
+impl Quirks {
+    /// The `extends` of the type, and its fields.
+    pub(crate) fn split(self) -> (Option<String>, LayerFields) {
+        let fields = LayerFields {
+            charset: self.charset,
+            line_break: self.line_break,
+            login: self.login.map(|login| LoginFields {
                 template: login.template,
                 ..LoginFields::default()
             }),
-            keepalive: quirks.keepalive.map(|keepalive| KeepaliveFields {
+            keepalive: self.keepalive.map(|keepalive| KeepaliveFields {
                 command: keepalive.command,
                 seconds: keepalive.seconds,
                 ..KeepaliveFields::default()
             }),
-            ..Self::default()
-        }
+            ..LayerFields::default()
+        };
+        (self.extends, fields)
     }
 }
 
