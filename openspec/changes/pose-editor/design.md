@@ -176,17 +176,19 @@ The project has no release yet. So this change, and each later one before the fi
 
 Enforced by: the scenario "The line break of a world", and the scenarios of "Alt+R joins the lines in place".
 
-### D13. A send of each line
+### D13. One queue of sends for each world
 
-`SubmitLines` splits the text of the editor at each LF and clears the editor. The model keeps the lines in a queue, with the id of the world that had the focus at the key. `update` returns `Effect::Send` for the first line, to that world. On the reply of a line, `update` returns the effect for the next one. That line goes to the world of the queue, and not to the world in focus. A plain send takes the world from the focus, and its reply names no world. So without the id, a Ctrl+N between two lines sends the rest of a script to another character. So the lines reach the game in order, and `update` still does no I/O.
+A game reads its lines in order, so the texts of a world must reach it in the order of the keys. The loop runs each `Effect::Send` as a task of its own. So two sends of one world in flight together have no fixed order at the server. The model keeps one queue for each world: the texts that the server did not answer yet. The first text of a queue is with the server. If a text becomes the first one of its queue, `update` returns `Effect::Send` for it. So each world has at most one send in flight, and `update` still does no I/O.
 
-The reply of a send names no line. So the queue also keeps the line that waits for its reply. A refusal of that line in the world of the queue stops the queue. On a refusal, `update` empties the queue. It puts the refused line and the later lines back with `set_input`, before any text that the player typed since. A refused plain send goes back the same way. It shows the reason as each refused send does today.
+`Submit` adds the text of the editor to the queue of the world in focus as one entry. `SubmitLines` splits the text at each LF and adds one entry for each line. Each key clears the editor. An entry keeps its world, and not the focus. So a Ctrl+N between two lines does not send the rest of a script to another character. The queues of two worlds are independent.
 
-While the queue waits, Enter, Alt+Enter and Ctrl+Enter send nothing. The text stays in the editor, and a notice says why. So no line of another send goes between two lines of the queue, and a second send of each line does not replace the queue. `Reply::Sent` names its world and its text. Only the reply of the line that the queue waits for moves the queue. The model keeps the world and the text of each plain send that waits for its reply. While a plain send to a world waits, Alt+Enter and Ctrl+Enter to that world send nothing, with the same notice. So a reply for a world is the reply of one send only, and a refusal never goes to the wrong send. The notice of a send that waits is a line of one moment. So it does not come back after a Reset, as a notice of the client does. The queue stays until the server answers its last line, so a refusal of that line also keeps the text that the player typed since.
+`Reply::Sent` and `Reply::Refused` name their world and their text. No other send of that world is in flight. So the reply for a world is always the reply of the first entry of its queue. On `Sent`, `update` drops the first entry and returns the effect for the next one. On `Refused`, `update` empties the queue of that world. It puts the refused text and the entries after it back with `set_input`, in order, before any text that the player typed since. It shows the reason as each refused send does today. An entry of Enter with several lines goes back as its lines.
+
+The queue has no timeout. A send that the server never answers stops the queue of its world until the client starts again. Issue #147 tracks this.
 
 Alternative: one API call with a list of lines. Rejected, because each line is an ordinary `Send`, and a hook and the journal see each one as a line of the player.
 
-Enforced by: the scenarios of "Alt+Enter sends each line as a command" and of "A refused line stops a send of each line".
+Enforced by: the scenarios of "Alt+Enter sends each line as a command" and of "The sends to a world go in order". The scenarios of "A refused text stops the sends after it" enforce the refusal.
 
 ### D11. Built-in types extend built-in types
 
@@ -240,7 +242,7 @@ Each item under "Not tested" of the decision:
 | A paste is one edit and holds no ESC | Unit tests of the clean and the pseudo-terminal scenario |
 | The client restores each mode it sets | The pseudo-terminal scenarios at exit, and review of the panic path, which no test can reach |
 | `update` does no I/O | Review, as the architecture decision says |
-| The lines of a send of each line reach the game in order | The scenario "Each line is a command" and the unit tests of the queue |
+| The texts of a world reach the game in the order of the keys | The scenarios of "The sends to a world go in order" and "Each line is a command" |
 | An `extends` of a built-in type names a built-in type, with no loop | The test `built_in_type_extends_only_a_built_in_type` |
 | A world joins only with its own `line_break` | The scenarios of `world-sessions`, and the property test `joined_text_is_one_line` |
 | A `line_break` of a `ResolvedWorld` is in its range | The constructor of `LineBreak` |

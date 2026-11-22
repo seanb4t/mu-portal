@@ -24,7 +24,7 @@ The client SHALL use the alternate screen. The top row SHALL list the worlds in 
 - **THEN** the top row shows `no worlds`
 
 ### Requirement: Enter sends the input to the world in focus
-If the user presses Enter, the client SHALL send the whole text of the editor to the world in focus and clear the editor. Ctrl+M SHALL do the same as Enter. A line break of the text SHALL go to the server as LF. An empty editor SHALL send an empty line. If the server refuses the text, the client SHALL put the text back in the editor, before the text that the user typed since. It SHALL show the reason as a line with the prefix `-- `.
+If the user presses Enter, the client SHALL send the whole text of the editor to the world in focus and clear the editor. Ctrl+M SHALL do the same as Enter. A line break of the text SHALL go to the server as LF. An empty editor SHALL send an empty line. If the server refuses the text, the client SHALL put the text back in the editor. The requirement "A refused text stops the sends after it" gives the rule. It SHALL show the reason as a line with the prefix `-- `.
 
 #### Scenario: A line goes to the world in focus
 - **GIVEN** the world in focus is `beta/bryn`
@@ -162,25 +162,33 @@ If the user presses Alt+Enter, the client SHALL send each line of the editor to 
 - **THEN** the server gets `one` and `two` for `alpha/aria`
 - **AND** the server gets no line for `beta/bryn`
 
-### Requirement: A send waits for a send of each line
-While a line of a send of each line waits for its answer, Enter, Alt+Enter and Ctrl+Enter SHALL send nothing. While a send of Enter to the world in focus waits for its answer, Alt+Enter and Ctrl+Enter SHALL send nothing. In each case, the client SHALL keep the text in the editor and show a line with the prefix `-- `.
+### Requirement: The sends to a world go in order
+The client SHALL send the texts of a world to the server in the order of the keys, from Enter, Alt+Enter and Ctrl+Enter alike. It SHALL send a text of a world only after the server answered the text of that world before it. A key that sends SHALL clear the editor also while an earlier text waits. A text that waits for one world SHALL NOT delay a text for another world.
+
+#### Scenario: Two sends of Enter
+- **GIVEN** the user typed `one` and pressed Enter in `alpha/aria`, and the server did not answer yet
+- **WHEN** the user types `two` and presses Enter
+- **THEN** the editor is empty, and the client did not send `two` yet
+- **AND** after the server answers `one`, the client sends `two`
 
 #### Scenario: A send while lines wait
 - **GIVEN** the user pressed Alt+Enter on the lines `one` and `two`, and the server did not answer `one` yet
 - **WHEN** the user types `next` and presses Enter or Alt+Enter
-- **THEN** the client sends nothing, and the editor still holds `next`
-- **AND** the screen shows a line that starts with `-- ` and contains `not done yet`
-- **AND** after the server answers `one`, the client sends `two`
+- **THEN** the editor is empty
+- **AND** the server gets `one`, `two` and `next` in this order, each after the answer for the one before
 
 #### Scenario: A send of each line while a send waits
 - **GIVEN** the user typed `one` and pressed Enter in `alpha/aria`, and the server did not answer yet
 - **WHEN** the user types `one`, Ctrl+J and `two`, and presses Alt+Enter
-- **THEN** the client sends nothing, and the editor still holds `one` and `two`
-- **AND** the screen shows a line that starts with `-- ` and contains `not done yet`
-- **AND** after the server answers the first `one`, Alt+Enter sends the lines
+- **THEN** the server gets `one`, `one` and `two` in this order, each after the answer for the one before
 
-### Requirement: A refused line stops a send of each line
-If the server refuses a line of a send of each line, the client SHALL send no later line. It SHALL put the refused line and each later line back in the editor, before the text that the user typed since. It SHALL show the reason as a line with the prefix `-- `.
+#### Scenario: A send to another world
+- **GIVEN** the user typed `before` and pressed Enter in `alpha/aria`, and the server did not answer yet
+- **WHEN** the user presses Ctrl+N, types `one` and presses Enter
+- **THEN** the client sends `one` to `beta/bryn` at once
+
+### Requirement: A refused text stops the sends after it
+If the server refuses a text, the client SHALL send none of the texts that wait for the same world. It SHALL put the refused text and each text that waits for that world back in the editor, in order. These texts SHALL go before the text that the user typed since. It SHALL show the reason as a line with the prefix `-- `. A key that sends after that SHALL send at once.
 
 #### Scenario: A line that the server refuses
 - **GIVEN** the editor holds the lines `one`, `two` and `three`, and a test server that accepts `one` and refuses `two`
@@ -193,6 +201,12 @@ If the server refuses a line of a send of each line, the client SHALL send no la
 - **GIVEN** the user pressed Alt+Enter on the lines `one` and `two`, and the server accepted `one`
 - **WHEN** the user types `later`, and the server refuses `two`
 - **THEN** the editor holds the lines `two` and `later`
+
+#### Scenario: A refused send of Enter with a send after it
+- **GIVEN** the user typed `one` and pressed Enter, typed `two` and pressed Enter, and the server did not answer yet
+- **WHEN** the user types `later`, and the server refuses `one`
+- **THEN** the server does not get `two`
+- **AND** the editor holds the lines `one`, `two` and `later`
 
 ### Requirement: Alt+R joins the lines in place
 If the user presses Alt+R, the client SHALL replace each line break of the editor with the `line_break` of the world in focus. It SHALL send nothing. If that world has no `line_break`, or no world is in focus, the client SHALL NOT change the editor. A `line_break` from the server that is empty or holds a control character SHALL count as no `line_break`. It SHALL then show a line with the prefix `-- ` that contains `line break`.
