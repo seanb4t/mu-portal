@@ -192,6 +192,16 @@ fn paste(pending: &mut Vec<u8>, skip: &mut Skip, framed: &mut Framed, from: usiz
     true
 }
 
+/// The count of bytes at the end of the text of an open paste that a later read can complete:
+/// the start of [`PASTE_END`], or the first bytes of a UTF-8 character.
+fn held_for_paste(text: &[u8]) -> usize {
+    let mark = (1..PASTE_END.len())
+        .rev()
+        .find(|&count| text.ends_with(&PASTE_END[..count]))
+        .unwrap_or(0);
+    mark.max(unfinished_tail(text))
+}
+
 /// Frames `pending` as [`frame`] says, up to the start mark of a paste. Returns true if a paste
 /// started: its mark and each byte before it are gone from `pending`, and `skip` is
 /// [`Skip::Paste`].
@@ -573,9 +583,11 @@ pub fn read_answers(
     }
     let mut outcome = Outcome::learn(&answers);
     if skip == Skip::Paste {
-        // The rest of a paste that did not end in time reaches the event reader as keys.
-        if !pending.is_empty() {
-            events.push(Event::Paste(String::from_utf8_lossy(&pending).into_owned()));
+        // The rest of a paste that did not end in time reaches the event reader as keys. A cut
+        // end mark or a cut UTF-8 character at the end is not text of the paste.
+        let text = &pending[..pending.len() - held_for_paste(&pending)];
+        if !text.is_empty() {
+            events.push(Event::Paste(String::from_utf8_lossy(text).into_owned()));
         }
     } else if !outcome.complete && matches!(pending.as_slice(), [ESC] | [ESC, b'[', ..]) {
         outcome.open = pending;

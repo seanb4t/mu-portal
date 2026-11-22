@@ -1333,3 +1333,51 @@ fn paste_during_the_probe_fills_the_editor() {
     }
     assert_eq!(app.input(), "one\ntwo");
 }
+
+#[test]
+fn alt_r_with_no_world_names_the_line_break() {
+    let mut app = failed_listing();
+    type_lines(&mut app, &["one", "two"]);
+    assert_eq!(press(&mut app, alt_r()), []);
+    assert!(has_notice(&mut app, "line break"));
+    assert_eq!(app.input(), "one\ntwo");
+}
+
+#[test]
+fn quit_with_only_the_line_with_the_server_asks_again() {
+    let mut app = two_worlds();
+    type_text(&mut app, "one");
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [send("alpha/aria", "one")]
+    );
+    assert_eq!(press(&mut app, ctrl('c')), []);
+    assert!(has_notice(&mut app, "1 line not sent yet"));
+    assert_eq!(press(&mut app, ctrl('c')), [Effect::Quit]);
+}
+
+#[test]
+fn lost_server_puts_back_the_lines_in_the_order_of_the_worlds() {
+    let mut app = two_worlds();
+    press(&mut app, ctrl('n'));
+    type_lines(&mut app, &["b1", "b2"]);
+    assert_eq!(press(&mut app, alt_enter()), [send("beta/bryn", "b1")]);
+    press(&mut app, ctrl('p'));
+    type_lines(&mut app, &["a1", "a2"]);
+    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "a1")]);
+    on_event(&mut app, ClientEvent::Lost);
+    assert_eq!(app.input(), "a2\nb2");
+}
+
+#[test]
+fn notice_of_the_returned_lines_does_not_come_back_after_a_reset() {
+    let mut app = three_lines_sent();
+    on_event(&mut app, ClientEvent::Lost);
+    assert!(has_notice(&mut app, "lines that waited"));
+    let reset = ClientEvent::Reset {
+        instance_id: "i".to_owned(),
+    };
+    on_event(&mut app, reset);
+    // The reset puts back nothing more, so no line about returned lines is on the screen.
+    assert!(!has_notice(&mut app, "lines that waited"));
+}

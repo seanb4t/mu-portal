@@ -461,7 +461,10 @@ fn submit_lines(model: &mut Model) -> Option<Effect> {
 /// edit goes through the text area, so two undos bring the lines back: one for the joined text,
 /// and one for the lines.
 fn join_lines(model: &mut Model) -> Option<Effect> {
-    let world = model.focused_world()?;
+    let Some(world) = model.focused_world() else {
+        model.hint("no world has the focus, so no line break joins the lines");
+        return None;
+    };
     let (listed, line_break) = (world.listed, world.line_break.clone());
     if !listed {
         model.hint("the client does not know the line break of the world in focus yet, try again");
@@ -633,7 +636,7 @@ fn return_waiting(model: &mut Model, why: &str) {
     if lines.is_empty() {
         return;
     }
-    model.notice(&format!(
+    model.hint(&format!(
         "{why}, so {} that waited went back to the editor",
         line_count(lines.len())
     ));

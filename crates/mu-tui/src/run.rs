@@ -103,26 +103,23 @@ async fn event_loop(
                 }
                 Effect::Send { world, text } => {
                     let client = client.clone();
-                    let replies = replies.clone();
-                    tokio::spawn(async move {
+                    spawn_reply(&replies, async move {
                         let call = async {
                             client
                                 .send(&world, &text)
                                 .await
                                 .map_err(|error| error.message)
                         };
-                        let answer = reply_of(call, world.clone(), text.clone(), SEND_LIMIT).await;
-                        // The loop holds the receiver until it returns.
-                        let _ = replies.send(Msg::Reply(answer));
+                        let answer = reply_of(call, world.clone(), text.clone(), CALL_LIMIT).await;
+                        Msg::Reply(answer)
                     });
                 }
                 Effect::ListWorlds => {
                     let client = client.clone();
-                    let replies = replies.clone();
-                    tokio::spawn(async move {
-                        let listed = client.list_worlds().await.map_err(|error| error.message);
-                        // The loop holds the receiver until it returns.
-                        let _ = replies.send(Msg::Listed(listed));
+                    spawn_reply(&replies, async move {
+                        let call =
+                            async { client.list_worlds().await.map_err(|error| error.message) };
+                        Msg::Listed(within(call, CALL_LIMIT, "").await)
                     });
                 }
             }
@@ -130,11 +127,43 @@ async fn event_loop(
     }
 }
 
-/// The longest time that the client waits for the reply of one send.
-pub const SEND_LIMIT: Duration = Duration::from_secs(10);
+/// The longest time that the client waits for the reply of a send or a list of the worlds. It
+/// is above the limits of the server for a connect and for a write to a game, so the server's
+/// own answer comes first when the game is slow.
+pub const CALL_LIMIT: Duration = Duration::from_secs(30);
+
+/// Runs `call` on a task, and gives its message to the loop.
+fn spawn_reply(
+    replies: &mpsc::UnboundedSender<Msg>,
+    call: impl Future<Output = Msg> + Send + 'static,
+) {
+    let replies = replies.clone();
+    tokio::spawn(async move {
+        // The loop holds the receiver until it returns.
+        let _ = replies.send(call.await);
+    });
+}
+
+/// The result of `call`, or a reason if it gives no answer within `limit`.
+///
+/// # Errors
+///
+/// The error of `call`, or `the server gave no answer in <seconds> s` followed by `late`.
+pub async fn within<T>(
+    call: impl Future<Output = Result<T, String>>,
+    limit: Duration,
+    late: &str,
+) -> Result<T, String> {
+    tokio::time::timeout(limit, call).await.unwrap_or_else(|_| {
+        Err(format!(
+            "the server gave no answer in {} s{late}",
+            limit.as_secs()
+        ))
+    })
+}
 
 /// The reply to a send of `text` to `world` that `call` makes. A call that fails is a refusal
-/// with its reason. A call with no answer after `limit` is a refusal too, because a send that
+/// with its reason. A call with no answer within `limit` is a refusal too, because a send that
 /// waits stops each later send of its world.
 pub async fn reply_of<T>(
     call: impl Future<Output = Result<T, String>>,
@@ -142,20 +171,12 @@ pub async fn reply_of<T>(
     text: String,
     limit: Duration,
 ) -> Reply {
-    match tokio::time::timeout(limit, call).await {
-        Ok(Ok(_)) => Reply::Sent { world, text },
-        Ok(Err(reason)) => Reply::Refused {
+    match within(call, limit, ", so the game can have the line or not").await {
+        Ok(_) => Reply::Sent { world, text },
+        Err(reason) => Reply::Refused {
             world,
             text,
             reason,
-        },
-        Err(_) => Reply::Refused {
-            world,
-            text,
-            reason: format!(
-                "the server gave no answer in {} s, so the game can have the line or not",
-                limit.as_secs()
-            ),
         },
     }
 }
