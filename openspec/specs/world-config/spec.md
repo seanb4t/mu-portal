@@ -204,7 +204,7 @@ Rules and scripts SHALL share one space of ids in a world. An id twice in one ar
 - **AND** the exit status is 1
 
 ### Requirement: Built-in types set only quirks
-The binary SHALL hold the built-in types `tinymux`, `aresmush` and `evennia`. A built-in type SHALL set only quirk fields: `charset`, `login.template`, `keepalive.command` and `keepalive.seconds`. The built-in type `tinymux` SHALL set `charset = "iso-8859-1"`. A name of a character set SHALL match with no regard to case. A user type SHALL NOT have the name of a built-in type.
+The binary SHALL hold the built-in types `tinymux`, `pennmush`, `rhostmush`, `aresmush` and `evennia`. A built-in type SHALL set only quirk fields: `charset`, `line_break`, `login.template`, `keepalive.command` and `keepalive.seconds`. A built-in type can also name another built-in type with `extends`, and it then gets each quirk that it does not set. The types `pennmush` and `rhostmush` SHALL extend `tinymux`. The built-in type `tinymux` SHALL set `charset = "iso-8859-1"`. The types `tinymux` and `aresmush` SHALL set `line_break = "%r"`, and `evennia` SHALL set `line_break = "|/"`. A name of a character set SHALL match with no regard to case. A user type SHALL NOT have the name of a built-in type.
 
 #### Scenario: Each built-in type reads as quirks
 - **WHEN** a test reads each built-in type with the schema of the quirk fields, which refuses every other field
@@ -221,8 +221,27 @@ The binary SHALL hold the built-in types `tinymux`, `aresmush` and `evennia`. A 
 - **THEN** stderr names `types/tinymux.toml` and `tinymux`
 - **AND** the exit status is 1
 
+#### Scenario: The line break of each built-in type
+- **GIVEN** the games `alpha`, `beta` and `gamma` extend `tinymux`, `aresmush` and `evennia`
+- **WHEN** the user runs `mu world show` for a character of each game with `--config <dir>`
+- **THEN** stdout shows `line_break = "%r"` for `alpha` and `beta`, and `line_break = "|/"` for `gamma`
+
+#### Scenario: A built-in type that extends another
+- **GIVEN** the games `alpha` and `beta` extend `pennmush` and `rhostmush`
+- **WHEN** the user runs `mu world show` for a character of each game with `--config <dir>`
+- **THEN** for each game, stdout shows `charset = "iso-8859-1"` and `line_break = "%r"`
+
+#### Scenario: A built-in type extends only a built-in type
+- **WHEN** a test reads each built-in type
+- **THEN** each `extends` names another built-in type, and no chain of types returns to its start
+
+#### Scenario: A game overrides the line break of its type
+- **GIVEN** the game `alpha` extends `tinymux` and sets `line_break = "%R"`
+- **WHEN** the user runs `mu world show alpha/aria --config <dir>`
+- **THEN** stdout shows `line_break = "%R"`
+
 ### Requirement: Each field is known
-Each layer SHALL set only the fields of a world. The connection fields are `host`, `port`, `tls` and `autoconnect`. The display fields are `charset`, `columns` and `rows`. The tables are `login`, `keepalive` and `reconnect`. `login` holds `template`, `name` and `secret`. `keepalive` holds `mode`, `command` and `seconds`. `reconnect` holds `mode`, `initial`, `max` and `attempts`. The arrays are `rules`, `scripts` and `disable`. A layer that allows it also sets `extends`. An unknown field, or a value of the wrong type or out of range, SHALL be an error that names the file and the field.
+Each layer SHALL set only the fields of a world. The connection fields are `host`, `port`, `tls` and `autoconnect`. The display fields are `charset`, `columns` and `rows`. The field `line_break` is the text that the game reads as a line break inside one command. The tables are `login`, `keepalive` and `reconnect`. `login` holds `template`, `name` and `secret`. `keepalive` holds `mode`, `command` and `seconds`. `reconnect` holds `mode`, `initial`, `max` and `attempts`. The arrays are `rules`, `scripts` and `disable`. A layer that allows it also sets `extends`. An unknown field, or a value of the wrong type or out of range, SHALL be an error that names the file and the field.
 
 #### Scenario: An unknown field
 - **GIVEN** the game `alpha` sets `hots = "mux.example.org"`
@@ -260,7 +279,7 @@ Each layer SHALL set only the fields of a world. The connection fields are `host
 - **AND** the exit status is 1
 
 ### Requirement: Each value is in its range
-The range of `port`, `columns` and `rows` SHALL be 1 to 65535. The range of `keepalive.seconds` SHALL be 1 to 86400. The range of `reconnect.initial` SHALL be 1 to 3600, of `reconnect.max` 1 to 86400, and of `reconnect.attempts` 0 to 10000. `login.name`, `login.template` and `keepalive.command` SHALL hold no CR and no LF. `login.template` SHALL hold `{password}`. A value outside its range SHALL be an error that names the file and the field.
+The range of `port`, `columns` and `rows` SHALL be 1 to 65535. The range of `keepalive.seconds` SHALL be 1 to 86400. The range of `reconnect.initial` SHALL be 1 to 3600, of `reconnect.max` 1 to 86400, and of `reconnect.attempts` 0 to 10000. `login.name`, `login.template` and `keepalive.command` SHALL hold no CR and no LF. `line_break` SHALL hold 1 to 16 characters and no control character. `login.template` SHALL hold `{password}`. A value outside its range SHALL be an error that names the file and the field.
 
 #### Scenario: The edges of each range
 - **GIVEN** a field of `port`, `columns`, `rows`, `keepalive.seconds`, `reconnect.initial` and `reconnect.max`, and for each field a value at its edges: 0, 1 and the top of its range, and one more than the top
@@ -280,6 +299,13 @@ The range of `port`, `columns` and `rows` SHALL be 1 to 65535. The range of `kee
 - **WHEN** the user runs `mu world list --config <dir>`
 - **THEN** stderr names `games/alpha.toml` and the field
 - **AND** the exit status is 1
+
+#### Scenario: The edges of the line break
+- **GIVEN** the game `alpha` sets `line_break` to one of these values: an empty text, `%r`, 16 letters `x`, 17 letters `x`, 16 letters `é` and 17 letters `é`
+- **AND** the other values are `%` with one of these characters: a tab, an LF, a CR, U+0085 and DEL
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** the exit status is 0 for `%r`, for 16 letters `x` and for 16 letters `é`
+- **AND** for each other value, stderr names `games/alpha.toml` and `line_break`, and the exit status is 1
 
 ### Requirement: A password is a secret reference
 The field `login.secret` SHALL be a secret reference of the form `env:<NAME>`. No field SHALL hold a password. Neither the resolution of the configuration nor `mu world` SHALL read the secret.
