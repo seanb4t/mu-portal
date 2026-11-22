@@ -22,7 +22,7 @@ Each world SHALL have an id of the form `<game>/<character>`. Each id SHALL have
 - **THEN** each parse succeeds, and the display of each id is the text it came from
 
 ### Requirement: The fake world stands in for a game
-The hidden flag `--fake-world <id>=env:<NAME>` of `mu server` SHALL add a fake world. The flag can repeat. The fake world SHALL take the password from the environment variable `<NAME>` and the login name from the character part of the id. It SHALL greet, accept the login line `connect <login> <password>`, and answer each later line `<text>` with `You say, "<text>"`. The line `@drop` SHALL make the fake world close the connection from its side. The fake world SHALL answer `IAC DO TIMING-MARK` with `IAC WILL TIMING-MARK`, after it answers every line that came before the mark, before and after the login. A mark SHALL NOT count as a line that the game got. A fake world SHALL send its login as soon as it connects. It SHALL have no keepalive and SHALL NOT reconnect. `mu server --help` SHALL NOT list the flag.
+The hidden flag `--fake-world <id>=env:<NAME>` of `mu server` SHALL add a fake world. The flag can repeat. The fake world SHALL take the password from the environment variable `<NAME>` and the login name from the character part of the id. It SHALL greet, accept the login line `connect <login> <password>`, and answer each later line `<text>` with `You say, "<text>"`. The line `@drop` SHALL make the fake world close the connection from its side. The fake world SHALL answer `IAC DO TIMING-MARK` with `IAC WILL TIMING-MARK`, after it answers every line that came before the mark, before and after the login. A mark SHALL NOT count as a line that the game got. A fake world SHALL send its login as soon as it connects. It SHALL have no keepalive, SHALL NOT reconnect, and SHALL have `line_break = "%r"`. `mu server --help` SHALL NOT list the flag.
 
 #### Scenario: The fake world answers
 - **GIVEN** a server with `--fake-world alpha/aria=env:ALPHA_PW`
@@ -52,8 +52,13 @@ The hidden flag `--fake-world <id>=env:<NAME>` of `mu server` SHALL add a fake w
 - **THEN** `ListWorlds` returns `alpha/aria` in the state `disconnected`
 - **AND** the fake game gets no new connection
 
+#### Scenario: The fake world gets a joined line
+- **GIVEN** a server with `--fake-world alpha/aria=env:ALPHA_PW`
+- **WHEN** a client sends `one` followed by LF and `two` to `alpha/aria`
+- **THEN** the stream holds a game event with the text `You say, "one%rtwo"`
+
 ### Requirement: A command reaches only its world
-The API call `Send` SHALL send one line to the world it names, and no other world. The reply SHALL hold the sequence number of the player event. If a hook gagged the line, the reply SHALL hold no number. An unknown world SHALL fail with `not_found`. A world in the state `connecting`, `reconnecting` or `disconnected` SHALL fail with `failed_precondition`. A text with CR or LF SHALL fail with `invalid_argument`. A call that the server refuses SHALL record no event. If the write of the line to the game fails, the call SHALL fail with `failed_precondition`. The server SHALL then record the disconnect of the world and no player event.
+The API call `Send` SHALL send one line to the world it names, and no other world. The reply SHALL hold the sequence number of the player event. If a hook gagged the line, the reply SHALL hold no number. An unknown world SHALL fail with `not_found`. A world in the state `connecting`, `reconnecting` or `disconnected` SHALL fail with `failed_precondition`. A text with CR SHALL fail with `invalid_argument`. If the world has a `line_break`, the server SHALL replace each LF of the text with it. The replace SHALL come before the hooks, the journal and the write to the game. A text with LF to a world with no `line_break` SHALL fail with `invalid_argument`. A call that the server refuses SHALL record no event. If the write of the line to the game fails, the call SHALL fail with `failed_precondition`. The server SHALL then record the disconnect of the world and no player event.
 
 #### Scenario: Two characters on one game
 - **GIVEN** a server with the fake worlds `alpha/aria` and `alpha/ash`
@@ -103,10 +108,28 @@ The API call `Send` SHALL send one line to the world it names, and no other worl
 - **AND** the server records no event
 
 #### Scenario: A line break in the text
+- **GIVEN** the world `alpha/aria` has no `line_break`
 - **WHEN** a client sends `one` followed by LF and `two` to `alpha/aria`
 - **THEN** the call fails with the code `invalid_argument`
 - **AND** the server records no event
 - **AND** the fake world gets no line
+
+#### Scenario: A line break that the world joins
+- **GIVEN** the world `alpha/aria` has `line_break = "|/"`, and is connected
+- **WHEN** a client sends `one`, LF, `two`, LF, LF and `three` to `alpha/aria`
+- **THEN** the game gets the one line `one|/two|/|/three`
+- **AND** the stream holds a player event with the text `one|/two|/|/three`
+
+#### Scenario: A carriage return to a world that joins
+- **GIVEN** the world `alpha/aria` has `line_break = "%r"`
+- **WHEN** a client sends `one` followed by CR, LF and `two` to `alpha/aria`
+- **THEN** the call fails with the code `invalid_argument`
+- **AND** the server records no event
+
+#### Scenario: A hook sees the joined line
+- **GIVEN** the world `alpha/aria` has `line_break = "%r"`, and a hook that records each player line it gets
+- **WHEN** a client sends `one` followed by LF and `two` to `alpha/aria`
+- **THEN** the hook gets `one%rtwo`
 
 ### Requirement: A world connects and disconnects alone
 The API calls `Connect` and `Disconnect` SHALL change the state of the world they name only. A world that disconnects SHALL leave every other world in its state.
@@ -280,12 +303,18 @@ At the start of the server, each fake world and each configured world with `auto
 - **AND** the reply holds `alpha/aria` in the state `disconnected` and `beta/bryn` in the state `connected`
 
 ### Requirement: ListWorlds gives the state of each world
-The API call `ListWorlds` SHALL return each world with its id and its state, one of `connecting`, `connected`, `reconnecting` and `disconnected`. A world in the state `reconnecting` SHALL also carry the time of its next attempt. **BREAKING**: the state `reconnecting` is new, so a client that refuses an unknown state fails on it.
+The API call `ListWorlds` SHALL return each world with its id and its state, one of `connecting`, `connected`, `reconnecting` and `disconnected`. A world in the state `reconnecting` SHALL also carry the time of its next attempt. A world with a `line_break` SHALL also carry that text, and a world with none SHALL carry no such field. **BREAKING**: the state `reconnecting` is new, so a client that refuses an unknown state fails on it.
 
 #### Scenario: A world that waits to reconnect
 - **GIVEN** a configured world `alpha/aria` in the state `reconnecting`
 - **WHEN** a client calls `ListWorlds`
 - **THEN** the reply holds `alpha/aria` in the state `reconnecting`, with a time of the next attempt that is after the call
+
+#### Scenario: The line break of a world
+- **GIVEN** a server with the fake world `alpha/aria`, and a configured world `beta/bryn` with no `line_break`
+- **WHEN** a client calls `ListWorlds`
+- **THEN** the reply holds `alpha/aria` with the line break `%r`
+- **AND** the reply holds `beta/bryn` with no line break
 
 ### Requirement: A wait of the engine covers a pending login
 The session SHALL answer a control frame only after the login of its world went out. A world that goes down SHALL also answer it. A world in the state `reconnecting` SHALL answer a frame at once, as a world that is down does.
