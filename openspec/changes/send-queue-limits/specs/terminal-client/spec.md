@@ -29,7 +29,7 @@ If the user presses Ctrl+C, the client SHALL leave the alternate screen, restore
 - **THEN** the client does not quit
 
 ### Requirement: A refused text stops the sends after it
-If the server refuses a text, the client SHALL send none of the texts that wait for the same world. A send with no reply in time counts as a refusal. The requirement "A send with no reply is refused" gives the time. It SHALL put the refused text and each text that waits for that world back in the editor, in order. These texts SHALL go before the text that the user typed since. It SHALL show the reason as a line with the prefix `-- `. A key that sends after that SHALL send at once. If the event stream ends, or the server resets, the client SHALL put each text that waits behind the text with the server back in the editor, in the order of the worlds, before the text that the user typed since. It SHALL show a line with the prefix `-- ` that holds their count. The text with the server SHALL stay, and its reply SHALL act on it alone.
+If the server refuses a text, the client SHALL send none of the texts that wait for the same world. A send with no reply in time counts as a refusal. The requirement "A send with no reply is refused" gives the time. It SHALL put the refused text and each text that waits for that world back in the editor, in order. These texts SHALL go before the text that the user typed since. It SHALL show the reason as a line with the prefix `-- `. A key that sends after that SHALL send at once. If the event stream ends, or the server resets, the client SHALL put each text that waits behind the text with the server back in the editor, in the order of the worlds, before the text that the user typed since. It SHALL show a line with the prefix `-- ` that holds their count and the count of each world. The text with the server SHALL stay, and its reply SHALL act on it alone.
 
 #### Scenario: A line that the server refuses
 - **GIVEN** the editor holds the lines `one`, `two` and `three`, and a test server that accepts `one` and refuses `two`
@@ -61,6 +61,7 @@ If the server refuses a text, the client SHALL send none of the texts that wait 
 - **GIVEN** lines wait behind a send in `beta/bryn`, and after that behind a send in `alpha/aria`
 - **WHEN** the event stream ends
 - **THEN** the editor holds the lines of `alpha/aria` before the lines of `beta/bryn`
+- **AND** the screen shows `1 line of alpha/aria, 1 line of beta/bryn`
 
 #### Scenario: The server resets while lines wait
 - **GIVEN** the user pressed Alt+Enter on the lines `one`, `two` and `three`, and the server did not answer `one` yet
@@ -73,7 +74,7 @@ If the server refuses a text, the client SHALL send none of the texts that wait 
 - **THEN** the editor holds the lines `one`, `two` and `three`
 
 ### Requirement: Alt+R joins the lines in place
-If the user presses Alt+R, the client SHALL replace each line break of the editor with the `line_break` of the world in focus. It SHALL send nothing. If that world has no `line_break`, or no world is in focus, the client SHALL NOT change the editor. A `line_break` from the server that is empty or holds a control character SHALL count as no `line_break`. It SHALL then show a line with the prefix `-- ` that contains `line break`. If no list of the worlds held the world in focus yet, the client SHALL NOT change the editor. It SHALL show a line with the prefix `-- ` that contains `does not know the line break`, and ask the server for the list of the worlds. The client SHALL also ask for that list after the first event of a world that it did not hold, and after the server resets. It SHALL ask for one list at a time. A list with no reply within 30 seconds SHALL count as failed. A list SHALL set the `line_break` of each world in it. With no world in focus, the client SHALL ask for no list.
+If the user presses Alt+R, the client SHALL replace each line break of the editor with the `line_break` of the world in focus. It SHALL send nothing. If that world has no `line_break`, or no world is in focus, the client SHALL NOT change the editor. A `line_break` from the server that is empty or holds a control character SHALL count as no `line_break`. It SHALL then show a line with the prefix `-- ` that contains `line break`. If no list of the worlds held the world in focus yet, the client SHALL NOT change the editor. It SHALL show a line with the prefix `-- ` that contains `does not know the line break`, and ask the server for the list of the worlds. The client SHALL also ask for that list after the first event of a world that it did not hold, and after the server resets. It SHALL ask for one list at a time. A list with no reply within 30 seconds SHALL count as failed. A list SHALL set the `line_break` of each world in it, and SHALL add each world in it that the client does not hold. If the last list failed, the line about the unknown line break SHALL also hold the reason of that failure. With no world in focus, the client SHALL ask for no list.
 
 #### Scenario: The lines become one line
 - **GIVEN** the world in focus is the fake world `alpha/aria`
@@ -101,6 +102,17 @@ If the user presses Alt+R, the client SHALL replace each line break of the edito
 - **GIVEN** the client asked for the list of the worlds, and the reply did not come yet
 - **WHEN** the server resets, and the reply of that list comes after the reset
 - **THEN** the client asks for the list one more time
+
+#### Scenario: A list that failed
+- **GIVEN** the last list of the worlds failed with the reason `unavailable: no server`, and no list held the world in focus
+- **WHEN** the user presses Alt+R
+- **THEN** the screen shows `the last list of the worlds failed (unavailable: no server)`
+- **AND** the client asks the server for the list of the worlds
+
+#### Scenario: A list with a new world
+- **GIVEN** the client holds no world
+- **WHEN** a list of the worlds holds `beta/bryn`
+- **THEN** the top row shows `beta/bryn`
 
 #### Scenario: No world in focus
 - **GIVEN** the first list of the worlds failed, and no world sent an event

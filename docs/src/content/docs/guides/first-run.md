@@ -46,7 +46,7 @@ target/debug/mu client
 
 `mu` with no verb also starts the client. The client finds the server on the same socket. If no server answers, the client starts one in the background with only the configured worlds. That server writes its output to `server.log` next to the socket.
 
-The top row lists the worlds. The world in focus is in square brackets: `[alpha/aria] beta/bryn`. The rows below show the lines of the world in focus. The bottom row is the pose editor, where you write the text to send. It grows with its text.
+The top row lists the worlds. The world in focus is in square brackets: `[alpha/aria] beta/bryn`. A world with lines that wait for the server shows their count, for example `(2 waiting)`. The rows below show the lines of the world in focus. The bottom row is the pose editor, where you write the text to send. It grows with its text.
 
 ## Use the client
 

@@ -35,6 +35,8 @@ The code is on the branch `fix/send-queue-and-paste`. Each task names the tests 
   - `unknown_line_break_asks_the_server` (scenario "A line break that the client does not know")
   - `alt_r_with_no_world_names_the_line_break` (scenario "No world in focus")
   - `reset_during_a_list_asks_again_after_its_reply` (scenario "The server resets while a list is with it")
+  - `failed_list_names_its_reason_at_alt_r` (scenario "A list that failed")
+  - `list_adds_a_world_that_the_client_did_not_hold` (scenario "A list with a new world")
   - `one_list_at_a_time` and `reset_asks_for_the_list`
 
   Write `list_with_no_answer_fails` in `send.rs`. Make sure that `cargo nextest run -p mu-tui --test app --test send --locked` passes.

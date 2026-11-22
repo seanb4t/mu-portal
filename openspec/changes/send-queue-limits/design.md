@@ -43,7 +43,7 @@ Enforced by these tests in `crates/mu-tui/tests/send.rs`, on a paused tokio cloc
 
 ### D2. A loss or a reset returns the texts behind the one with the server
 
-`return_waiting` drains each queue from its second text, in the order of the worlds, and puts the texts in the editor before the typed text. The first text stays, because its call is still open. Its reply then acts on the first text alone: `Sent` empties the queue, and `Refused` puts back only that text. The line about the returned texts is a hint, so a later reset does not show it again.
+`return_waiting` drains each queue from its second text, in the order of the worlds, and puts the texts in the editor before the typed text. The first text stays, because its call is still open. Its reply then acts on the first text alone: `Sent` empties the queue, and `Refused` puts back only that text. The line about the returned texts is a hint, so a later reset does not show it again. It names the count of each world, because the texts of all worlds go to the one editor.
 
 Alternative: clear each whole queue. Then the next send of a world goes while its first call is still open. Two texts of one world are then with the server at once. That breaks the order of the sends.
 
@@ -74,7 +74,7 @@ Enforced by: `top_row_counts_the_sends_that_wait` in `app.rs`.
 
 ### D5. A list of the worlds as an effect
 
-`Effect::ListWorlds` asks for the list, and `Msg::Listed` brings it back. `Model::learn` sets the line break of each listed world and marks it as listed. `World::listed` tells "no line break" from "not known yet". `Model::listing` (an enum: `Idle`, `Asked` or `AskedBeforeReset`) keeps one list with the server at a time. A failed list, or one with no answer within the limit of D1, sets `Idle` and changes nothing else. A reset while a list is with the server sets `AskedBeforeReset`, because the reply can be of the server before the reset. That reply then asks for one more list.
+`Effect::ListWorlds` asks for the list, and `Msg::Listed` brings it back. `Model::learn` sets the line break of each listed world and marks it as listed. A listed world that the model does not hold comes in, with its own pane. `Model::list_failure` keeps the reason of the last failed list, and the hint of Alt+R on an unlisted world names it. `World::listed` tells "no line break" from "not known yet". `Model::listing` (an enum: `Idle`, `Asked` or `AskedBeforeReset`) keeps one list with the server at a time. A failed list, or one with no answer within the limit of D1, sets `Idle`, keeps its reason, and changes no world. A reset while a list is with the server sets `AskedBeforeReset`, because the reply can be of the server before the reset. That reply then asks for one more list.
 
 Alt+R has three outcomes:
 
@@ -92,6 +92,8 @@ Enforced by these tests in `app.rs`:
 - `one_list_at_a_time`
 - `reset_asks_for_the_list`
 - `reset_during_a_list_asks_again_after_its_reply`
+- `failed_list_names_its_reason_at_alt_r`
+- `list_adds_a_world_that_the_client_did_not_hold`
 
 ### D6. The probe framer holds a whole paste
 
