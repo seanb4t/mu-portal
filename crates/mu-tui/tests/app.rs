@@ -1358,15 +1358,18 @@ fn quit_with_only_the_line_with_the_server_asks_again() {
 
 #[test]
 fn lost_server_puts_back_the_lines_in_the_order_of_the_worlds() {
-    let mut app = two_worlds();
-    press(&mut app, ctrl('n'));
-    type_lines(&mut app, &["b1", "b2"]);
-    assert_eq!(press(&mut app, alt_enter()), [send("beta/bryn", "b1")]);
-    press(&mut app, ctrl('p'));
-    type_lines(&mut app, &["a1", "a2"]);
-    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "a1")]);
-    on_event(&mut app, ClientEvent::Lost);
-    assert_eq!(app.input(), "a2\nb2");
+    // Each model has its own map of sends, so the runs cover several orders of a hash map.
+    for _ in 0..32 {
+        let mut app = two_worlds();
+        press(&mut app, ctrl('n'));
+        type_lines(&mut app, &["b1", "b2"]);
+        assert_eq!(press(&mut app, alt_enter()), [send("beta/bryn", "b1")]);
+        press(&mut app, ctrl('p'));
+        type_lines(&mut app, &["a1", "a2"]);
+        assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "a1")]);
+        on_event(&mut app, ClientEvent::Lost);
+        assert_eq!(app.input(), "a2\nb2");
+    }
 }
 
 #[test]

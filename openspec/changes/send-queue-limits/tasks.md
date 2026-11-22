@@ -49,7 +49,7 @@ The code is on the branch `fix/send-queue-and-paste`. Each task names the tests 
   - `cut_end_mark_is_not_text_of_the_paste`
 
   Make sure that `cargo nextest run -p mu-tui --test probe --locked` passes.
-- [x] 3.3 Write `paste_during_the_probe_fills_the_editor` (scenario "A paste during the queries") in `app.rs`. It frames the bytes with `probe::frame` and gives each event to `update`. Make sure that it fails with the framer of `main` and passes with D6.
+- [x] 3.3 Write `paste_during_the_probe_fills_the_editor` (scenario "A paste during the queries") in `app.rs`. It frames the bytes with `probe::frame` and gives each event to `update`. Make sure that `cargo nextest run -p mu-tui --test app --locked -E 'test(=paste_during_the_probe_fills_the_editor)'` fails with the framer of `main` and passes with D6.
 
 ## 4. The scenarios that the modified requirements keep
 

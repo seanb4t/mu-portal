@@ -123,7 +123,7 @@ Before its first frame, the client SHALL ask the terminal for the state of mode 
 - **GIVEN** a terminal that answers no query
 - **WHEN** the user starts `mu client`
 - **THEN** the top row shows the worlds
-- **AND** after the game line `👨‍👩‍👧x`, the cell of `x` is at column 2, the `unicode-width` value of `👨‍👩‍👧`
+- **AND** after the game line `👨‍👩‍👧x`, the cell of `x` is at column 3, because the `unicode-width` value of `👨‍👩‍👧` is 2
 
 #### Scenario: A late answer
 - **GIVEN** a terminal that answers the queries only after the client draws its first frame
