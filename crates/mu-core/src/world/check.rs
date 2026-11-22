@@ -95,13 +95,14 @@ pub(crate) fn check_keepalive(
     Ok(())
 }
 
-/// Checks the text of a line break: 1 to 16 characters, and no control character.
+/// Checks the text of a line break: 1 to [`MAX_LINE_BREAK_CHARS`] characters, and no control
+/// character.
 pub(crate) fn check_line_break(line_break: &str) -> Result<(), FieldError> {
     let count = line_break.chars().count();
     if !(1..=MAX_LINE_BREAK_CHARS).contains(&count) {
         return Err(FieldError::new(
             "line_break",
-            "must hold from 1 to 16 characters",
+            format!("must hold from 1 to {MAX_LINE_BREAK_CHARS} characters"),
         ));
     }
     if line_break.chars().any(char::is_control) {

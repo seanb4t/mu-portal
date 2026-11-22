@@ -60,7 +60,8 @@ pub enum Action {
     Newline,
     /// Replace each line break of the pose editor with the line break of the world in focus.
     JoinLines,
-    /// Delete the text of the pose editor from the start of the line to the cursor.
+    /// Delete the selection of the pose editor. With no selection, delete the text from the
+    /// start of the line to the cursor.
     DeleteToLineStart,
     /// Undo the last edit of the pose editor.
     Undo,
@@ -82,7 +83,7 @@ pub enum Action {
 pub enum Effect {
     /// Send `text` to `world`, and give the result back as a [`Msg::Reply`].
     Send {
-        /// The world in focus.
+        /// The world to send to: the world that had the focus at the key.
         world: String,
         /// The text of the pose editor, or one line of it.
         text: String,
@@ -423,8 +424,14 @@ fn submit(model: &mut Model) -> Option<Effect> {
 
 /// Sends the first line of the pose editor, and keeps the other lines for the replies. Each
 /// line goes to the world in focus now, also if the focus moves before the last line goes.
+/// While a plain send to that world waits for its reply, it is a notice and no send. So a
+/// reply for that world is the reply of one send only.
 fn submit_lines(model: &mut Model) -> Option<Effect> {
     let world = world_for_a_send(model)?;
+    if model.plain_sends.iter().any(|(each, _)| *each == world) {
+        model.hint("a send to this world is not done yet, so the text stays in the editor");
+        return None;
+    }
     let text = model.input();
     model.set_input("");
     let mut rest: VecDeque<String> = text.split('\n').map(str::to_owned).collect();
@@ -438,7 +445,8 @@ fn submit_lines(model: &mut Model) -> Option<Effect> {
 }
 
 /// Replaces each line break of the pose editor with the line break of the world in focus. The
-/// edit goes through the text area, so undo brings the lines back.
+/// edit goes through the text area, so two undos bring the lines back: one for the joined text,
+/// and one for the lines.
 fn join_lines(model: &mut Model) {
     let line_break = model
         .focused_world()
@@ -555,23 +563,18 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
         .find(|each| each.id == world)
         .map_or(PaneId::NOTICES, |world| world.pane);
     model.push(pane, &notice);
-    // A refused line of a send of each line stops the send. The line and each later line go
-    // back to the editor, before the text that the player typed since.
+    // A refused line of a send of each line stops the send. The refused line and each later
+    // line of the send go back to the editor, before the text that the player typed since.
     let queue = model
         .queue
         .take_if(|queue| plain.is_none() && queue.world == world && queue.sent == text);
-    match queue {
-        Some(queue) => {
-            let mut lines = vec![text];
-            lines.extend(queue.rest);
-            let typed = model.input();
-            if !typed.is_empty() {
-                lines.push(typed);
-            }
-            model.set_input(&lines.join("\n"));
-        }
-        None => model.set_input(&text),
+    let mut lines = vec![text];
+    lines.extend(queue.into_iter().flat_map(|queue| queue.rest));
+    let typed = model.input();
+    if !typed.is_empty() {
+        lines.push(typed);
     }
+    model.set_input(&lines.join("\n"));
     Vec::new()
 }
 

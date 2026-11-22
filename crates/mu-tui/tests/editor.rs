@@ -17,7 +17,7 @@ mod support;
 
 const FAMILY: &str = "👨\u{200d}👩\u{200d}👧";
 
-/// The sample pose of the input-editor spike: 4096 bytes in 51 lines.
+/// A sample pose: 4096 bytes in 51 lines.
 const POSE: &str = include_str!("data/pose-4096.txt");
 
 fn app() -> Model {

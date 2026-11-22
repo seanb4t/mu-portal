@@ -152,6 +152,10 @@ fn serve_worlds(args: &ServerArgs) -> ExitCode {
         .into_iter()
         .map(|world| configured_setup(world, &store))
         .collect();
+    let line_break = match LineBreak::new("%r") {
+        Ok(line_break) => line_break,
+        Err(error) => return fail(&error),
+    };
     for fake in &args.fake_worlds {
         let password = match load_password(store.as_ref(), &fake.secret) {
             Ok(password) => password,
@@ -161,7 +165,7 @@ fn serve_worlds(args: &ServerArgs) -> ExitCode {
         let world = ResolvedWorld {
             autoconnect: true,
             reconnect: Reconnect::Off,
-            line_break: LineBreak::new("%r").ok(),
+            line_break: Some(line_break.clone()),
             ..ResolvedWorld::with_default_login(fake.id.clone(), fake.secret.clone())
         };
         worlds.push(WorldSetup::new(world, Some(password), Arc::new(transport)));

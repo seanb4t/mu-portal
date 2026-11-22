@@ -361,7 +361,7 @@ fn graphics(body: &str) -> Option<Answer> {
 /// How the terminal reports keys.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum KeyboardProtocol {
-    /// The terminal did not answer the query of the kitty keyboard flags before DA1.
+    /// The terminal did not answer the query of the kitty keyboard flags before the probe ended.
     #[default]
     Legacy,
     /// The terminal answered the query, so it knows the kitty keyboard protocol.

@@ -11,7 +11,7 @@ pub(crate) fn clean(text: &str) -> String {
 }
 
 /// The text of a paste as the editor takes it. Each CR LF and each lone CR becomes an LF. Each
-/// other control character goes, apart from the tab. So the text holds no ESC, and the editor
+/// other control character goes, apart from the LF and the tab. So the text holds no ESC, and the editor
 /// cannot write a sequence of the paste to the terminal.
 pub(crate) fn clean_paste(text: &str) -> String {
     let mut out = String::with_capacity(text.len());

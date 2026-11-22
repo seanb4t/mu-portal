@@ -32,11 +32,12 @@ pub(crate) struct World {
     /// The SGR style at the end of the last game line, which the next game line starts with.
     pub(crate) style: Style,
     /// The text that the game reads as a line break inside one command, from the list of the
-    /// worlds. None for a world that has none, or that the list did not hold.
+    /// worlds. None for a world that has none, or that the list did not hold, and for a text
+    /// that is empty or holds a control character.
     pub(crate) line_break: Option<String>,
 }
 
-/// The lines of a send of each line that did not go yet.
+/// The state of a send of each line: the line that waits for its reply, and the lines after it.
 #[derive(Debug)]
 pub(crate) struct LineQueue {
     /// The world that had the focus at the key. Each line goes to it.
@@ -134,7 +135,10 @@ impl Model {
                 let mut model = Self::new(worlds.iter().map(|world| world.id.clone()));
                 for listed in worlds {
                     let index = model.world(&listed.id);
-                    model.worlds[index].line_break = listed.line_break;
+                    // The editor holds no control character, and an empty text joins nothing.
+                    model.worlds[index].line_break = listed
+                        .line_break
+                        .filter(|text| !text.is_empty() && !text.chars().any(char::is_control));
                 }
                 model
             }

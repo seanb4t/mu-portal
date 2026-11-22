@@ -343,6 +343,19 @@ fn refused_line_keeps_input() {
 }
 
 #[test]
+fn refused_line_goes_before_the_typed_text() {
+    let mut app = two_worlds();
+    type_text(&mut app, "hi");
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [send("alpha/aria", "hi")]
+    );
+    type_text(&mut app, "next");
+    on_reply(&mut app, refused("alpha/aria", "hi"));
+    assert_eq!(app.input(), "hi\nnext");
+}
+
+#[test]
 fn ctrl_n_moves_focus() {
     let mut app = two_worlds();
     press(&mut app, ctrl('n'));
@@ -994,18 +1007,19 @@ fn reply_of_another_send_does_not_move_the_queue() {
         press(&mut app, key(KeyCode::Enter)),
         [send("alpha/aria", "before")]
     );
+    press(&mut app, ctrl('n'));
     type_lines(&mut app, &["one", "two"]);
-    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
+    assert_eq!(press(&mut app, alt_enter()), [send("beta/bryn", "one")]);
     // The reply of the plain send comes while `one` waits.
     assert_eq!(sent(&mut app, "alpha/aria", "before"), []);
     assert_eq!(
-        sent(&mut app, "alpha/aria", "one"),
-        [send("alpha/aria", "two")]
+        sent(&mut app, "beta/bryn", "one"),
+        [send("beta/bryn", "two")]
     );
 }
 
 #[test]
-fn reply_of_an_equal_send_does_not_move_the_queue() {
+fn send_of_each_line_waits_for_a_plain_send_to_the_world() {
     let mut app = two_worlds();
     type_text(&mut app, "one");
     assert_eq!(
@@ -1013,13 +1027,12 @@ fn reply_of_an_equal_send_does_not_move_the_queue() {
         [send("alpha/aria", "one")]
     );
     type_lines(&mut app, &["one", "two"]);
-    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
-    // The first reply is the one of the plain send, which has the same world and text.
+    assert_eq!(press(&mut app, alt_enter()), []);
+    assert_eq!(app.input(), "one\ntwo");
+    assert!(has_notice(&mut app, "not done yet"));
+    // After the reply of the plain send, the send of each line works.
     assert_eq!(sent(&mut app, "alpha/aria", "one"), []);
-    assert_eq!(
-        sent(&mut app, "alpha/aria", "one"),
-        [send("alpha/aria", "two")]
-    );
+    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
 }
 
 #[test]
@@ -1058,6 +1071,21 @@ fn send_waits_for_the_lines_of_a_send_of_each_line() {
             press(&mut app, key(KeyCode::Enter)),
             [send("alpha/aria", "next")]
         );
+    }
+}
+
+#[test]
+fn line_break_that_the_editor_cannot_hold_is_no_line_break() {
+    for line_break in ["", "\u{1b}[2J", "a\nb"] {
+        let world = World {
+            id: "alpha/aria".to_owned(),
+            line_break: Some(line_break.to_owned()),
+            ..Default::default()
+        };
+        let mut app = Model::from_listing(Ok(vec![world]));
+        type_lines(&mut app, &["one", "two"]);
+        press(&mut app, KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT));
+        assert_eq!(app.input(), "one\ntwo", "{line_break:?}");
     }
 }
 

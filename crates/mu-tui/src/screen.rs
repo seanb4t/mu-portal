@@ -91,7 +91,8 @@ pub fn leave(out: &mut impl Write, restore: &Restore) -> io::Result<()> {
     }
     // The terminal keeps the flags of the alternate screen apart, so the pop comes before the
     // client leaves that screen.
-    if restore.keyboard_flag.load(Ordering::Relaxed) {
+    // The pop is not idempotent, so one push gets one pop, also if this runs twice.
+    if restore.keyboard_flag.swap(false, Ordering::Relaxed) {
         write!(out, "{}", Csi::Keyboard(Keyboard::PopFlags(1)))?;
     }
     write!(
