@@ -180,9 +180,9 @@ Enforced by: the scenario "The line break of a world", and the scenarios of "Alt
 
 `SubmitLines` splits the text of the editor at each LF and clears the editor. The model keeps the lines in a queue, with the id of the world that had the focus at the key. `update` returns `Effect::Send` for the first line, to that world. On the reply of a line, `update` returns the effect for the next one. That line goes to the world of the queue, and not to the world in focus. A plain send takes the world from the focus, and its reply names no world. So without the id, a Ctrl+N between two lines sends the rest of a script to another character. So the lines reach the game in order, and `update` still does no I/O.
 
-The reply of a send names no line. So the queue also keeps the line that waits for its reply. A refusal of that line in the world of the queue stops the queue. On a refusal, `update` empties the queue. It puts the refused line and the later lines back with `set_input`, before any text that the player typed since. It shows the reason as each refused send does today.
+The reply of a send names no line. So the queue also keeps the line that waits for its reply. A refusal of that line in the world of the queue stops the queue. On a refusal, `update` empties the queue. It puts the refused line and the later lines back with `set_input`, before any text that the player typed since. A refused plain send goes back the same way. It shows the reason as each refused send does today.
 
-While the queue waits, Enter, Alt+Enter and Ctrl+Enter send nothing. The text stays in the editor, and a notice says why. So no line of another send goes between two lines of the queue, and a second send of each line does not replace the queue. `Reply::Sent` names its world and its text. Only the reply of the line that the queue waits for moves the queue. The model keeps the world and the text of each plain send that waits for its reply. So the reply of a send from before the queue does not move the queue, also with the same world and text. The notice of a send that waits is a line of one moment. So it does not come back after a Reset, as a notice of the client does. The queue stays until the server answers its last line, so a refusal of that line also keeps the text that the player typed since.
+While the queue waits, Enter, Alt+Enter and Ctrl+Enter send nothing. The text stays in the editor, and a notice says why. So no line of another send goes between two lines of the queue, and a second send of each line does not replace the queue. `Reply::Sent` names its world and its text. Only the reply of the line that the queue waits for moves the queue. The model keeps the world and the text of each plain send that waits for its reply. While a plain send to a world waits, Alt+Enter and Ctrl+Enter to that world send nothing, with the same notice. So a reply for a world is the reply of one send only, and a refusal never goes to the wrong send. The notice of a send that waits is a line of one moment. So it does not come back after a Reset, as a notice of the client does. The queue stays until the server answers its last line, so a refusal of that line also keeps the text that the player typed since.
 
 Alternative: one API call with a list of lines. Rejected, because each line is an ordinary `Send`, and a hook and the journal see each one as a line of the player.
 
@@ -252,12 +252,13 @@ Each item under "Not tested" of the decision:
 
 | Fact | Task |
 |---|---|
-| A terminal with the kitty keyboard flag sends Alt+Enter as `CSI 13;3u` and Ctrl+Enter as `CSI 13;5u` | 7.2, in Rex |
+| None | |
 
 ### Checked facts
 
 | Fact | Source |
 |---|---|
+| A terminal with the kitty keyboard flag reports Alt+Enter and Ctrl+Enter apart from Enter | Task 7.2 in Rex, on 2026-11-21: each key sent each line of a text of two lines |
 | Termina gives a bracketed paste as `Event::Paste(String)` | `termina` 0.3.3, `src/event.rs` and `parse_csi_bracketed_paste` in `src/parse.rs` |
 | Termina parses `CSI ?<flags>u` as `Csi::Keyboard(Keyboard::ReportFlags)`, and reads only the first byte as the flags | `termina` 0.3.3, `src/parse.rs` |
 | Termina has `Keyboard::QueryFlags`, `PushFlags` and `PopFlags` | `termina` 0.3.3, `src/escape/csi.rs` |

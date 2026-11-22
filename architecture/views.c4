@@ -25,11 +25,11 @@ views {
 
   dynamic view keyPress {
     title 'One key press'
-    description 'Enter sends the input line to the world in focus.'
+    description 'Enter sends the text of the pose editor to the world in focus.'
     player -> mu.terminal.loop 'presses Enter'
     mu.terminal.loop -> mu.terminal.keymap 'looks up the key'
     mu.terminal.keymap -> mu.terminal.update 'Submit'
-    mu.terminal.update -> mu.terminal.state 'clears the input line and returns the pane to the bottom'
+    mu.terminal.update -> mu.terminal.state 'clears the pose editor and returns the pane to the bottom'
     mu.terminal.update -> mu.terminal.loop 'the effect Send'
     mu.terminal.loop -> mu.server.api 'sends the line'
     mu.terminal.loop -> mu.terminal.render 'draws a frame'

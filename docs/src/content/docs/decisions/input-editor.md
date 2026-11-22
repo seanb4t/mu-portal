@@ -81,6 +81,7 @@ In the Terminal.app run, `pbcopy` ran with no UTF-8 locale and changed the text 
 - Ghostty without herdr. herdr ran between Ghostty and the editor, and it can change the keys and the paste.
 - A paste of non-ASCII text in Terminal.app with a UTF-8 clipboard.
 - tmux and Windows.
+- Right-to-left text.
 - A terminal that cuts a long paste.
 - The types `pennmush` and `rhostmush` on a live game.
 
@@ -90,7 +91,6 @@ The pose editor change tested these items, which the spike did not:
 - The terminal cursor on a row after a wide grapheme, in a pseudo-terminal. A test checks its cell.
 - Linux. The pseudo-terminal tests run there in CI.
 - A paste of 64 KiB, as one edit with one undo.
-- Right-to-left text.
 
 ## Source
 

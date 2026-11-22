@@ -27,7 +27,7 @@ model {
         description 'Changes the model for a Msg or an Action and returns the effects. It does no I/O.'
       }
       state = part 'Model' {
-        description 'The focus, the worlds, the pane states by pane id, the input line and the layout tree.'
+        description 'The focus, the worlds, the pane states by pane id, the editors by editor id, the lines of a send of each line and the layout tree.'
       }
       render = part 'view' {
         description 'Walks the layout tree and renders each widget with its state.'
