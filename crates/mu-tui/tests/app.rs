@@ -1000,7 +1000,69 @@ fn refused_last_line_goes_before_the_typed_text() {
 }
 
 #[test]
-fn reply_of_another_send_does_not_move_the_queue() {
+fn sends_to_a_world_go_one_at_a_time() {
+    let mut app = two_worlds();
+    type_text(&mut app, "one");
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [send("alpha/aria", "one")]
+    );
+    // The second send waits for the reply of the first one, and the editor is empty.
+    type_text(&mut app, "two");
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    assert_eq!(app.input(), "");
+    assert_eq!(
+        sent(&mut app, "alpha/aria", "one"),
+        [send("alpha/aria", "two")]
+    );
+    assert_eq!(sent(&mut app, "alpha/aria", "two"), []);
+}
+
+#[test]
+fn send_goes_after_the_lines_that_wait() {
+    for second in [key(KeyCode::Enter), alt_enter()] {
+        let mut app = two_worlds();
+        type_lines(&mut app, &["one", "two"]);
+        assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
+        type_text(&mut app, "next");
+        assert_eq!(press(&mut app, second), []);
+        assert_eq!(app.input(), "");
+        assert_eq!(
+            sent(&mut app, "alpha/aria", "one"),
+            [send("alpha/aria", "two")]
+        );
+        assert_eq!(
+            sent(&mut app, "alpha/aria", "two"),
+            [send("alpha/aria", "next")]
+        );
+        assert_eq!(sent(&mut app, "alpha/aria", "next"), []);
+    }
+}
+
+#[test]
+fn lines_go_after_a_send_with_the_same_text() {
+    let mut app = two_worlds();
+    type_text(&mut app, "one");
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [send("alpha/aria", "one")]
+    );
+    type_lines(&mut app, &["one", "two"]);
+    assert_eq!(press(&mut app, alt_enter()), []);
+    // Each reply moves the sends on by one, also if two sends hold the same text.
+    assert_eq!(
+        sent(&mut app, "alpha/aria", "one"),
+        [send("alpha/aria", "one")]
+    );
+    assert_eq!(
+        sent(&mut app, "alpha/aria", "one"),
+        [send("alpha/aria", "two")]
+    );
+    assert_eq!(sent(&mut app, "alpha/aria", "two"), []);
+}
+
+#[test]
+fn send_to_another_world_does_not_wait() {
     let mut app = two_worlds();
     type_text(&mut app, "before");
     assert_eq!(
@@ -1010,7 +1072,7 @@ fn reply_of_another_send_does_not_move_the_queue() {
     press(&mut app, ctrl('n'));
     type_lines(&mut app, &["one", "two"]);
     assert_eq!(press(&mut app, alt_enter()), [send("beta/bryn", "one")]);
-    // The reply of the plain send comes while `one` waits.
+    // The reply of one world does not move the sends of the other.
     assert_eq!(sent(&mut app, "alpha/aria", "before"), []);
     assert_eq!(
         sent(&mut app, "beta/bryn", "one"),
@@ -1019,59 +1081,39 @@ fn reply_of_another_send_does_not_move_the_queue() {
 }
 
 #[test]
-fn send_of_each_line_waits_for_a_plain_send_to_the_world() {
+fn refused_send_stops_the_sends_after_it() {
     let mut app = two_worlds();
     type_text(&mut app, "one");
     assert_eq!(
         press(&mut app, key(KeyCode::Enter)),
         [send("alpha/aria", "one")]
     );
-    type_lines(&mut app, &["one", "two"]);
-    assert_eq!(press(&mut app, alt_enter()), []);
-    assert_eq!(app.input(), "one\ntwo");
-    assert!(has_notice(&mut app, "not done yet"));
-    // After the reply of the plain send, the send of each line works.
-    assert_eq!(sent(&mut app, "alpha/aria", "one"), []);
-    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
+    type_text(&mut app, "two");
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    type_text(&mut app, "later");
+    on_reply(&mut app, refused("alpha/aria", "one"));
+    assert_eq!(app.input(), "one\ntwo\nlater");
+    // No send of the world waits now, so a new send goes at once.
+    press(&mut app, ctrl('u'));
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [send("alpha/aria", "one\ntwo\n")]
+    );
 }
 
 #[test]
-fn hint_of_a_send_that_waits_does_not_come_back_after_a_reset() {
+fn hint_does_not_come_back_after_a_reset() {
     let mut app = two_worlds();
     type_lines(&mut app, &["one", "two"]);
-    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
-    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
-    assert!(has_notice(&mut app, "not done yet"));
+    press(&mut app, KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT));
+    assert!(has_notice(&mut app, "sets no line break"));
     on_event(
         &mut app,
         ClientEvent::Reset {
             instance_id: "i".to_owned(),
         },
     );
-    assert!(!has_notice(&mut app, "not done yet"));
-}
-
-#[test]
-fn send_waits_for_the_lines_of_a_send_of_each_line() {
-    for second in [key(KeyCode::Enter), alt_enter()] {
-        let mut app = two_worlds();
-        type_lines(&mut app, &["one", "two"]);
-        assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
-        type_text(&mut app, "next");
-        assert_eq!(press(&mut app, second), []);
-        assert_eq!(app.input(), "next");
-        assert!(has_notice(&mut app, "not done yet"));
-        // The first send still gives its second line, and then a send works again.
-        assert_eq!(
-            sent(&mut app, "alpha/aria", "one"),
-            [send("alpha/aria", "two")]
-        );
-        assert_eq!(sent(&mut app, "alpha/aria", "two"), []);
-        assert_eq!(
-            press(&mut app, key(KeyCode::Enter)),
-            [send("alpha/aria", "next")]
-        );
-    }
+    assert!(!has_notice(&mut app, "sets no line break"));
 }
 
 #[test]

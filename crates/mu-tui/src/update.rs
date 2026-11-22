@@ -2,7 +2,6 @@
 //! the render of [`view`](crate::view) also changes the model, as the module doc of
 //! [`model`](crate::model) says.
 
-use std::collections::VecDeque;
 use std::sync::Arc;
 
 use mu_client::ClientEvent;
@@ -17,7 +16,7 @@ use termina::event::{
 
 use crate::convert::convert;
 use crate::keymap::Wheel;
-use crate::model::{Late, LineQueue, Model, PaneId};
+use crate::model::{Late, Model, PaneId};
 use crate::pane::{Caps, PaneState};
 use crate::probe::{self, Outcome};
 use crate::store::Image;
@@ -404,44 +403,36 @@ fn world_to_send_to(model: &mut Model) -> Option<String> {
     world
 }
 
-/// The world in focus, or a notice that no world has the focus. While the lines of a send of
-/// each line wait, it is a notice and no world, so the lines stay in order and none is lost.
-fn world_for_a_send(model: &mut Model) -> Option<String> {
-    if model.queue.is_some() {
-        model.hint("a send of each line is not done yet, so the text stays in the editor");
-        return None;
-    }
-    world_to_send_to(model)
-}
-
-fn submit(model: &mut Model) -> Option<Effect> {
-    let world = world_for_a_send(model)?;
-    let text = model.input();
-    model.set_input("");
-    model.plain_sends.push((world.clone(), text.clone()));
+/// Adds `texts` to the sends of `world`, in order. If no send of the world waits, the first
+/// one goes to the server now. If one waits, each of `texts` goes after the reply of the send
+/// before it.
+fn enqueue(
+    model: &mut Model,
+    world: String,
+    texts: impl IntoIterator<Item = String>,
+) -> Option<Effect> {
+    let queue = model.sends.entry(world.clone()).or_default();
+    let idle = queue.is_empty();
+    queue.extend(texts);
+    let text = queue.front().filter(|_| idle)?.clone();
     Some(Effect::Send { world, text })
 }
 
-/// Sends the first line of the pose editor, and keeps the other lines for the replies. Each
-/// line goes to the world in focus now, also if the focus moves before the last line goes.
-/// While a plain send to that world waits for its reply, it is a notice and no send. So a
-/// reply for that world is the reply of one send only.
-fn submit_lines(model: &mut Model) -> Option<Effect> {
-    let world = world_for_a_send(model)?;
-    if model.plain_sends.iter().any(|(each, _)| *each == world) {
-        model.hint("a send to this world is not done yet, so the text stays in the editor");
-        return None;
-    }
+/// Sends the text of the pose editor as one line to the world in focus.
+fn submit(model: &mut Model) -> Option<Effect> {
+    let world = world_to_send_to(model)?;
     let text = model.input();
     model.set_input("");
-    let mut rest: VecDeque<String> = text.split('\n').map(str::to_owned).collect();
-    let sent = rest.pop_front().unwrap_or_default();
-    model.queue = Some(LineQueue {
-        world: world.clone(),
-        sent: sent.clone(),
-        rest,
-    });
-    Some(Effect::Send { world, text: sent })
+    enqueue(model, world, [text])
+}
+
+/// Sends each line of the pose editor as its own line. Each line goes to the world in focus
+/// now, also if the focus moves before the last line goes.
+fn submit_lines(model: &mut Model) -> Option<Effect> {
+    let world = world_to_send_to(model)?;
+    let text = model.input();
+    model.set_input("");
+    enqueue(model, world, text.split('\n').map(str::to_owned))
 }
 
 /// Replaces each line break of the pose editor with the line break of the world in focus. The
@@ -529,27 +520,12 @@ fn on_client(model: &mut Model, item: ClientEvent) {
     }
 }
 
+/// The reply of the server to the first send of a world. After `Sent`, the next send of the
+/// world goes. After `Refused`, no send of the world goes: the refused text and each send
+/// after it go back to the editor, before the text that the player typed since.
 fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
-    // The reply of a plain send is not a reply of the queue, also with the same world and text.
-    let (world, text) = match &reply {
-        Reply::Sent { world, text } | Reply::Refused { world, text, .. } => (world, text),
-    };
-    let plain = model
-        .plain_sends
-        .iter()
-        .position(|(each_world, each_text)| each_world == world && each_text == text);
-    if let Some(index) = plain {
-        model.plain_sends.remove(index);
-    }
     let (world, text, reason) = match reply {
-        Reply::Sent { world, text } => {
-            let next = if plain.is_some() {
-                None
-            } else {
-                next_line(model, &world, &text)
-            };
-            return next.into_iter().collect();
-        }
+        Reply::Sent { world, text } => return next_send(model, world, &text).into_iter().collect(),
         Reply::Refused {
             world,
             text,
@@ -563,13 +539,15 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
         .find(|each| each.id == world)
         .map_or(PaneId::NOTICES, |world| world.pane);
     model.push(pane, &notice);
-    // A refused line of a send of each line stops the send. The refused line and each later
-    // line of the send go back to the editor, before the text that the player typed since.
-    let queue = model
-        .queue
-        .take_if(|queue| plain.is_none() && queue.world == world && queue.sent == text);
-    let mut lines = vec![text];
-    lines.extend(queue.into_iter().flat_map(|queue| queue.rest));
+    let waits = model
+        .sends
+        .get(&world)
+        .is_some_and(|queue| queue.front() == Some(&text));
+    let mut lines: Vec<String> = if waits {
+        model.sends.remove(&world).into_iter().flatten().collect()
+    } else {
+        vec![text]
+    };
     let typed = model.input();
     if !typed.is_empty() {
         lines.push(typed);
@@ -578,23 +556,19 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
     Vec::new()
 }
 
-/// The send of the next line of a send of each line, after the server took `text` in `world`.
-/// Only the reply of the line that the queue waits for moves the queue. After the reply of its
-/// last line, the queue ends.
-fn next_line(model: &mut Model, world: &str, text: &str) -> Option<Effect> {
-    let queue = model
-        .queue
-        .as_mut()
-        .filter(|queue| queue.world == world && queue.sent == text)?;
-    let Some(next) = queue.rest.pop_front() else {
-        model.queue = None;
+/// The next send of `world`, after the server took `text`. Only the reply of the first send
+/// of the world moves its sends on.
+fn next_send(model: &mut Model, world: String, text: &str) -> Option<Effect> {
+    let queue = model.sends.get_mut(&world)?;
+    if queue.front().map(String::as_str) != Some(text) {
+        return None;
+    }
+    queue.pop_front();
+    let Some(next) = queue.front().cloned() else {
+        model.sends.remove(&world);
         return None;
     };
-    queue.sent.clone_from(&next);
-    Some(Effect::Send {
-        world: queue.world.clone(),
-        text: next,
-    })
+    Some(Effect::Send { world, text: next })
 }
 
 /// `key` as the pose editor reads it. A key that the editor does not know becomes

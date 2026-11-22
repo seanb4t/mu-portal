@@ -37,17 +37,6 @@ pub(crate) struct World {
     pub(crate) line_break: Option<String>,
 }
 
-/// The state of a send of each line: the line that waits for its reply, and the lines after it.
-#[derive(Debug)]
-pub(crate) struct LineQueue {
-    /// The world that had the focus at the key. Each line goes to it.
-    pub(crate) world: String,
-    /// The line that the server did not answer yet.
-    pub(crate) sent: String,
-    /// The lines after it, in order. The queue stays until the server answers its last line.
-    pub(crate) rest: VecDeque<String>,
-}
-
 /// The order of the worlds: by the game part, then by the character part.
 fn order(id: &str) -> (&str, &str) {
     id.split_once('/').unwrap_or((id, ""))
@@ -64,10 +53,10 @@ pub struct Model {
     pub(crate) caps: Arc<Caps>,
     next_pane: u32,
     pub(crate) editors: HashMap<EditorId, EditorState>,
-    /// The lines of a send of each line that waits for the server.
-    pub(crate) queue: Option<LineQueue>,
-    /// The world and the text of each plain send that the server did not answer yet.
-    pub(crate) plain_sends: Vec<(String, String)>,
+    /// The sends of each world that the server did not answer yet, in the order of the keys.
+    /// The first one is with the server. The client sends the next one after that reply. So
+    /// the lines of a world reach the game in order. A world with no such send has no entry.
+    pub(crate) sends: HashMap<String, VecDeque<String>>,
     pub(crate) lost: bool,
     pub(crate) keymap: Keymap,
     pub(crate) layout: Node,
@@ -108,8 +97,7 @@ impl Model {
             focus: None,
             panes: HashMap::from([(PaneId::NOTICES, PaneState::default())]),
             editors: HashMap::from([(EditorId::POSE, EditorState::with_caps(Arc::clone(&caps)))]),
-            queue: None,
-            plain_sends: Vec::new(),
+            sends: HashMap::new(),
             caps,
             next_pane: 1,
             lost: false,
