@@ -5,7 +5,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
-use mu_client::ClientError;
 use mu_proto::World as ProtoWorld;
 use ratatui::style::Style;
 
@@ -32,9 +31,11 @@ pub(crate) struct World {
     /// The SGR style at the end of the last game line, which the next game line starts with.
     pub(crate) style: Style,
     /// The text that the game reads as a line break inside one command, from the list of the
-    /// worlds. None for a world that has none, or that the list did not hold, and for a text
-    /// that is empty or holds a control character.
+    /// worlds. None for a world that has none, or that no list held yet, and for a text that is
+    /// empty or holds a control character.
     pub(crate) line_break: Option<String>,
+    /// True once a list of the worlds held this world, so `line_break` is known.
+    pub(crate) listed: bool,
 }
 
 /// The order of the worlds: by the game part, then by the character part.
@@ -65,6 +66,25 @@ pub struct Model {
     pub(crate) notices: Vec<String>,
     /// True if a late answer gave mode 2027 as set before the probe.
     pub(crate) keeps_grapheme_mode: bool,
+    /// True after a Quit while a send has no reply yet, the send with the server included,
+    /// until the next key that is not Quit. A second Quit then leaves.
+    pub(crate) quit_armed: bool,
+    pub(crate) listing: Listing,
+    /// The reason of the last list of the worlds, if it failed.
+    pub(crate) list_failure: Option<String>,
+}
+
+/// Whether a list of the worlds is with the server, so a second one does not go.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Listing {
+    /// No list is with the server.
+    #[default]
+    Idle,
+    /// A list is with the server, and its reply did not come yet.
+    Asked,
+    /// A list is with the server, and the server reset after the client asked for it. Its
+    /// reply can be of the server before the reset, so the client asks again after it.
+    AskedBeforeReset,
 }
 
 /// The wait for the probe answers that came after the probe stopped reading. Termina gives the
@@ -106,6 +126,9 @@ impl Model {
             late: Late::None,
             notices: Vec::new(),
             keeps_grapheme_mode: false,
+            quit_armed: false,
+            listing: Listing::Idle,
+            list_failure: None,
         };
         for id in worlds {
             model.world(&id);
@@ -117,17 +140,11 @@ impl Model {
     /// A model with the worlds of a list of worlds. A failed list gives no worlds and a notice
     /// with its error. The events of each world add the world later.
     #[must_use]
-    pub fn from_listing(listed: Result<Vec<ProtoWorld>, ClientError>) -> Self {
+    pub fn from_listing(listed: Result<Vec<ProtoWorld>, String>) -> Self {
         match listed {
             Ok(worlds) => {
                 let mut model = Self::new(worlds.iter().map(|world| world.id.clone()));
-                for listed in worlds {
-                    let index = model.world(&listed.id);
-                    // The editor holds no control character, and an empty text joins nothing.
-                    model.worlds[index].line_break = listed
-                        .line_break
-                        .filter(|text| !text.is_empty() && !text.chars().any(char::is_control));
-                }
+                model.learn(worlds);
                 model
             }
             Err(error) => {
@@ -202,6 +219,20 @@ impl Model {
             .or_insert_with(|| EditorState::with_caps(Arc::clone(caps)))
     }
 
+    /// Takes the line break of each world of a list of the worlds. A listed world that the
+    /// model does not hold yet comes in.
+    pub(crate) fn learn(&mut self, worlds: Vec<ProtoWorld>) {
+        for listed in worlds {
+            let index = self.world(&listed.id);
+            let world = &mut self.worlds[index];
+            // The editor holds no control character, and an empty text joins nothing.
+            world.line_break = listed
+                .line_break
+                .filter(|text| !text.is_empty() && !text.chars().any(char::is_control));
+            world.listed = true;
+        }
+    }
+
     /// The index of `id`, which this adds in its order, with a new pane, if it is new. A new
     /// world takes the focus when no world has it, with the notices in its pane, and the focus
     /// stays on its world.
@@ -224,6 +255,7 @@ impl Model {
                         unseen: false,
                         style: Style::default(),
                         line_break: None,
+                        listed: false,
                     },
                 );
                 match self.focus {

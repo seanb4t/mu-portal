@@ -46,7 +46,7 @@ target/debug/mu client
 
 `mu` with no verb also starts the client. The client finds the server on the same socket. If no server answers, the client starts one in the background with only the configured worlds. That server writes its output to `server.log` next to the socket.
 
-The top row lists the worlds. The world in focus is in square brackets: `[alpha/aria] beta/bryn`. The rows below show the lines of the world in focus. The bottom row is the pose editor, where you write the text to send. It grows with its text.
+The top row lists the worlds. The world in focus is in square brackets: `[alpha/aria] beta/bryn`. A world with lines that wait for the server shows their count, for example `(2 waiting)`. The rows below show the lines of the world in focus. The bottom row is the pose editor, where you write the text to send. It grows with its text.
 
 ## Use the client
 
@@ -58,7 +58,7 @@ The top row lists the worlds. The world in focus is in square brackets: `[alpha/
 | PageDown | Scrolls the lines forward by the height of the pane less one row |
 | Ctrl+N | Moves the focus to the next world |
 | Ctrl+P | Moves the focus to the world before |
-| Ctrl+C | Quits the client. The server and its worlds keep running. |
+| Ctrl+C | Quits the client. The server and its worlds keep running. If lines are not sent yet, the first Ctrl+C shows their count, and a second Ctrl+C quits and drops them. |
 
 The [input editor decision](/decisions/input-editor/) lists the other keys of the pose editor.
 

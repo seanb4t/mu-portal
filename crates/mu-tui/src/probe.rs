@@ -116,11 +116,12 @@ pub const fn is_csi_body(b: u8) -> bool {
     matches!(b, 0x20..=0x3f)
 }
 
-/// The most bytes that [`frame`] holds for an open sequence.
+/// The most bytes that [`frame`] holds for an open sequence. An open bracketed paste has no
+/// such limit.
 pub const PENDING_MAX: usize = 4096;
 
-/// What the framer drops at the start of the next read: the rest of a sequence that passed
-/// [`PENDING_MAX`] and was dropped.
+/// What the framer does with the start of the next read: drop the rest of a sequence that passed
+/// [`PENDING_MAX`], or collect the text of an open bracketed paste.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Skip {
     /// Nothing: the next read starts a frame.
@@ -132,12 +133,23 @@ pub enum Skip {
     Apc,
     /// The rest of an APC after an ESC at the end of the last read. A `\` ends it.
     ApcEsc,
+    /// The text of a bracketed paste, up to [`PASTE_END`]. The framer holds the whole text in
+    /// `pending` and gives it as one paste event, so a paste of any length that ends while the
+    /// framer reads is one edit.
+    Paste,
 }
+
+/// The mark of the terminal before the text of a bracketed paste.
+pub const PASTE_START: &[u8] = b"\x1b[200~";
+
+/// The mark of the terminal after the text of a bracketed paste.
+pub const PASTE_END: &[u8] = b"\x1b[201~";
 
 /// Adds `read` to `pending` and frames the bytes of `pending` that make whole frames. A frame is
 /// a complete CSI, an APC, a broken sequence, or a run of other bytes. A CSI or APC with no end,
 /// an ESC with at most one byte after it, and the first bytes of a UTF-8 character stay in
-/// `pending` for the next read. `pending` holds at most [`PENDING_MAX`] bytes. If an open CSI or
+/// `pending` for the next read. `pending` holds at most [`PENDING_MAX`] bytes, except for the text of an open bracketed
+/// paste. If an open CSI or
 /// APC grows past that limit, the framer drops its bytes, and `skip` makes it drop each byte of
 /// the later reads up to the end of that sequence.
 ///
@@ -146,11 +158,59 @@ pub enum Skip {
 /// - An APC is the graphics answer, or it is dropped.
 /// - An ESC inside an open CSI or APC, or a byte outside the bytes of a CSI, ends the sequence
 ///   as broken. The keys of its bytes are input, and a new frame starts after them.
+/// - [`PASTE_START`] starts a paste. Its text stays in `pending` up to [`PASTE_END`], and then
+///   it is one paste event.
 /// - Other bytes go to a Termina parser.
 pub fn frame(pending: &mut Vec<u8>, skip: &mut Skip, read: &[u8]) -> Framed {
     let read = &read[skipped(skip, read, pending)..];
+    // An end mark of a paste can start in the bytes of the last read.
+    let mut from = pending.len().saturating_sub(PASTE_END.len() - 1);
     pending.extend_from_slice(read);
     let mut framed = Framed::default();
+    loop {
+        if *skip == Skip::Paste && !paste(pending, skip, &mut framed, from) {
+            return framed;
+        }
+        from = 0;
+        if !frame_to_paste(pending, skip, &mut framed) {
+            return framed;
+        }
+    }
+}
+
+/// Gives the text of the open paste in `pending` as one paste event if its end mark came. The
+/// search starts at `from`, because the bytes before it were searched in an earlier read. Returns
+/// true if the paste ended, with its text and end mark gone from `pending`. An open paste stays
+/// whole in `pending`, past [`PENDING_MAX`].
+fn paste(pending: &mut Vec<u8>, skip: &mut Skip, framed: &mut Framed, from: usize) -> bool {
+    let Some(at) = pending[from..]
+        .windows(PASTE_END.len())
+        .position(|window| window == PASTE_END)
+        .map(|at| from + at)
+    else {
+        return false;
+    };
+    let text = String::from_utf8_lossy(&pending[..at]).into_owned();
+    framed.events.push(Event::Paste(text));
+    pending.drain(..at + PASTE_END.len());
+    *skip = Skip::Nothing;
+    true
+}
+
+/// The count of bytes at the end of the text of an open paste that a later read can complete:
+/// the start of [`PASTE_END`], or the first bytes of a UTF-8 character.
+fn held_for_paste(text: &[u8]) -> usize {
+    let mark = (1..PASTE_END.len())
+        .rev()
+        .find(|&count| text.ends_with(&PASTE_END[..count]))
+        .unwrap_or(0);
+    mark.max(unfinished_tail(text))
+}
+
+/// Frames `pending` as [`frame`] says, up to the start mark of a paste. Returns true if a paste
+/// started: its mark and each byte before it are gone from `pending`, and `skip` is
+/// [`Skip::Paste`].
+fn frame_to_paste(pending: &mut Vec<u8>, skip: &mut Skip, framed: &mut Framed) -> bool {
     let mut used = 0;
     let mut at = 0;
     while at < pending.len() {
@@ -167,8 +227,13 @@ pub fn frame(pending: &mut Vec<u8>, skip: &mut Skip, read: &[u8]) -> Framed {
         let rest = &pending[at..];
         let len = match scan(rest) {
             Scan::Open => break,
+            Scan::Csi(len) if &rest[..len] == PASTE_START => {
+                pending.drain(..at + len);
+                *skip = Skip::Paste;
+                return true;
+            }
             Scan::Csi(len) => {
-                csi(&rest[..len], &mut framed);
+                csi(&rest[..len], framed);
                 len
             }
             Scan::Apc(len) => {
@@ -199,7 +264,7 @@ pub fn frame(pending: &mut Vec<u8>, skip: &mut Skip, read: &[u8]) -> Framed {
         };
         pending.clear();
     }
-    framed
+    false
 }
 
 /// The count of bytes at the start of `read` that belong to the sequence that `skip` drops. Sets
@@ -207,6 +272,9 @@ pub fn frame(pending: &mut Vec<u8>, skip: &mut Skip, read: &[u8]) -> Framed {
 /// them: a new frame starts at it, and the ESC that ended the sequence in the last read comes
 /// back to `pending`.
 fn skipped(skip: &mut Skip, read: &[u8], pending: &mut Vec<u8>) -> usize {
+    if *skip == Skip::Paste {
+        return 0;
+    }
     for (at, &byte) in read.iter().enumerate() {
         match (*skip, byte) {
             (Skip::Apc, ESC) => match read.get(at + 1) {
@@ -235,7 +303,7 @@ fn skipped(skip: &mut Skip, read: &[u8], pending: &mut Vec<u8>) -> usize {
                 pending.push(ESC);
                 return at;
             }
-            (Skip::Csi | Skip::Nothing, _) => {
+            (Skip::Csi | Skip::Nothing | Skip::Paste, _) => {
                 *skip = Skip::Nothing;
                 return at;
             }
@@ -484,12 +552,15 @@ fn write_and_read(
     read_answers(|buf| Ok(rustix::io::read(fd, buf)?), Instant::now, wait)
 }
 
-/// Reads with `read` and frames the bytes until DA1 or the time `wait` after the start. A read
+/// Reads with `read` and frames the bytes until DA1 or the time `wait` after the start. While a
+/// bracketed paste is open, it reads on to the end of the paste, for at most `wait` more. A read
 /// starts only if it can end by then, so the last tick can stay unread. `now` is the clock.
 /// Returns what the answers give, and the input that is not an answer, as events.
 ///
-/// If DA1 did not come, an open CSI or a lone ESC at the end is in [`Outcome::open`]. Every other
-/// byte that the framer still holds is input.
+/// The text of a paste that is still open at the end is one paste event. The first bytes of a
+/// cut end mark or of a cut UTF-8 character at its end are dropped, and the rest of the paste
+/// reaches the event reader as keys. Else, if DA1 did not come, an open CSI or a lone ESC at the
+/// end is in [`Outcome::open`]. Every other byte that the framer still holds is input.
 ///
 /// # Errors
 ///
@@ -505,7 +576,10 @@ pub fn read_answers(
     let mut answers = Vec::new();
     let mut events = Vec::new();
     let mut chunk = [0; 1024];
-    while !answers.contains(&Answer::Da1) && now() + TICK <= deadline {
+    // A paste that started keeps the probe reading to its end, for at most `wait` more.
+    while (!answers.contains(&Answer::Da1) && now() + TICK <= deadline)
+        || (skip == Skip::Paste && now() + TICK <= deadline + wait)
+    {
         let count = match read(&mut chunk) {
             Ok(count) => count,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
@@ -516,7 +590,14 @@ pub fn read_answers(
         events.extend(framed.events);
     }
     let mut outcome = Outcome::learn(&answers);
-    if !outcome.complete && matches!(pending.as_slice(), [ESC] | [ESC, b'[', ..]) {
+    if skip == Skip::Paste {
+        // The rest of a paste that did not end in time reaches the event reader as keys. The
+        // first bytes of a cut end mark or of a cut UTF-8 character are dropped (#158).
+        let text = &pending[..pending.len() - held_for_paste(&pending)];
+        if !text.is_empty() {
+            events.push(Event::Paste(String::from_utf8_lossy(text).into_owned()));
+        }
+    } else if !outcome.complete && matches!(pending.as_slice(), [ESC] | [ESC, b'[', ..]) {
         outcome.open = pending;
     } else {
         events.extend(flush(&pending));

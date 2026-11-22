@@ -3,6 +3,7 @@
 use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures::StreamExt as _;
 use mu_client::PortalClient;
@@ -25,7 +26,18 @@ use crate::view::view;
 ///
 /// An I/O error of the terminal.
 pub async fn run(client: PortalClient) -> io::Result<()> {
-    let mut model = Model::from_listing(client.list_worlds().await);
+    let listed = within(
+        async {
+            client
+                .list_worlds()
+                .await
+                .map_err(|error| error.to_string())
+        },
+        CALL_LIMIT,
+        "",
+    )
+    .await;
+    let mut model = Model::from_listing(listed);
     // The probe sets mode 2027, so a panic before its replies turns the mode off.
     let restore = Arc::new(Restore::default());
     restore.set_grapheme_mode(true);
@@ -84,7 +96,7 @@ async fn event_loop(
                 None => return Ok(()),
             },
             Some(item) = events.next() => Msg::Client(item),
-            Some(answer) = reply.recv() => Msg::Reply(answer),
+            Some(msg) = reply.recv() => msg,
             }
         };
         for effect in update(model, msg) {
@@ -102,21 +114,85 @@ async fn event_loop(
                 }
                 Effect::Send { world, text } => {
                     let client = client.clone();
-                    let replies = replies.clone();
-                    tokio::spawn(async move {
-                        let answer = match client.send(&world, &text).await {
-                            Ok(_) => Reply::Sent { world, text },
-                            Err(error) => Reply::Refused {
-                                world,
-                                text,
-                                reason: error.message,
-                            },
+                    spawn_reply(&replies, async move {
+                        let call = async {
+                            client
+                                .send(&world, &text)
+                                .await
+                                .map_err(|error| error.to_string())
                         };
-                        // The loop holds the receiver until it returns.
-                        let _ = replies.send(answer);
+                        let answer = reply_of(call, world.clone(), text.clone(), CALL_LIMIT).await;
+                        Msg::Reply(answer)
+                    });
+                }
+                Effect::ListWorlds => {
+                    let client = client.clone();
+                    spawn_reply(&replies, async move {
+                        let call = async {
+                            client
+                                .list_worlds()
+                                .await
+                                .map_err(|error| error.to_string())
+                        };
+                        Msg::Listed(within(call, CALL_LIMIT, "").await)
                     });
                 }
             }
         }
+    }
+}
+
+/// The longest time that the client waits for the reply of a send or a list of the worlds. A
+/// send waits on the server for at most two writes to the game, of `WRITE_TIMEOUT` (10 s) each
+/// in `mu_core::session`. The limit is above that, so the server's own answer comes first when
+/// the game is slow.
+pub const CALL_LIMIT: Duration = Duration::from_secs(30);
+
+/// Runs `call` on a task, and gives its message to the loop.
+fn spawn_reply(
+    replies: &mpsc::UnboundedSender<Msg>,
+    call: impl Future<Output = Msg> + Send + 'static,
+) {
+    let replies = replies.clone();
+    tokio::spawn(async move {
+        // The loop holds the receiver until it returns.
+        let _ = replies.send(call.await);
+    });
+}
+
+/// The result of `call`, or a reason if it gives no answer within `limit`.
+///
+/// # Errors
+///
+/// The error of `call`, or `the server gave no answer in <seconds> s` followed by `late`.
+pub async fn within<T>(
+    call: impl Future<Output = Result<T, String>>,
+    limit: Duration,
+    late: &str,
+) -> Result<T, String> {
+    tokio::time::timeout(limit, call).await.unwrap_or_else(|_| {
+        Err(format!(
+            "the server gave no answer in {} s{late}",
+            limit.as_secs()
+        ))
+    })
+}
+
+/// The reply to a send of `text` to `world` that `call` makes. A call that fails is a refusal
+/// with its reason. A call with no answer within `limit` is a refusal too, because a send that
+/// waits stops each later send of its world.
+pub async fn reply_of<T>(
+    call: impl Future<Output = Result<T, String>>,
+    world: String,
+    text: String,
+    limit: Duration,
+) -> Reply {
+    match within(call, limit, ", so the game can have the line or not").await {
+        Ok(_) => Reply::Sent { world, text },
+        Err(reason) => Reply::Refused {
+            world,
+            text,
+            reason,
+        },
     }
 }

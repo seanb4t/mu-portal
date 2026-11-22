@@ -1,7 +1,7 @@
 //! The scenarios of the terminal-client capability on `update` and `view`, drawn on a
 //! `TestBackend`.
 
-use mu_client::{ClientError, ClientEvent};
+use mu_client::ClientEvent;
 use mu_proto::{Event, EventKind, Source, World};
 use mu_tui::convert::convert;
 use mu_tui::{Effect, Model, Msg, Reply, update, view};
@@ -119,8 +119,13 @@ fn press(app: &mut Model, key: KeyEvent) -> Vec<Effect> {
     update(app, Msg::Terminal(TermEvent::Key(key)))
 }
 
+/// Gives `item` to the model. Its only effect can be a list of the worlds.
 fn on_event(app: &mut Model, item: ClientEvent) {
-    assert_eq!(update(app, Msg::Client(item)), []);
+    let effects = update(app, Msg::Client(item));
+    assert!(
+        effects.iter().all(|effect| *effect == Effect::ListWorlds),
+        "{effects:?}"
+    );
 }
 
 fn on_reply(app: &mut Model, reply: Reply) {
@@ -186,10 +191,7 @@ fn listed_worlds_are_the_worlds() {
 const LIST_FAILED: &str = "-- could not list the worlds: unavailable: no server";
 
 fn failed_listing() -> Model {
-    Model::from_listing(Err(ClientError {
-        code: "unavailable",
-        message: "no server".to_owned(),
-    }))
+    Model::from_listing(Err("unavailable: no server".to_owned()))
 }
 
 #[test]
@@ -930,6 +932,20 @@ fn alt_enter() -> KeyEvent {
     KeyEvent::new(KeyCode::Enter, Modifiers::ALT)
 }
 
+fn alt_r() -> KeyEvent {
+    KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT)
+}
+
+/// True if the screen shows `text`, also across a wrap. The rows join with a space.
+fn shows(app: &mut Model, text: &str) -> bool {
+    screen(app)
+        .iter()
+        .map(|row| row.trim_end())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .contains(text)
+}
+
 /// True if a row of the screen is a notice that holds `text`.
 fn has_notice(app: &mut Model, text: &str) -> bool {
     screen(app)
@@ -1103,9 +1119,10 @@ fn refused_send_stops_the_sends_after_it() {
 
 #[test]
 fn hint_does_not_come_back_after_a_reset() {
-    let mut app = two_worlds();
+    let mut app = listed();
+    press(&mut app, ctrl('n'));
     type_lines(&mut app, &["one", "two"]);
-    press(&mut app, KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT));
+    press(&mut app, alt_r());
     assert!(has_notice(&mut app, "sets no line break"));
     on_event(
         &mut app,
@@ -1126,7 +1143,7 @@ fn line_break_that_the_editor_cannot_hold_is_no_line_break() {
         };
         let mut app = Model::from_listing(Ok(vec![world]));
         type_lines(&mut app, &["one", "two"]);
-        press(&mut app, KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT));
+        press(&mut app, alt_r());
         assert_eq!(app.input(), "one\ntwo", "{line_break:?}");
     }
 }
@@ -1149,8 +1166,7 @@ fn listed() -> Model {
 fn lines_become_one_line() {
     let mut app = listed();
     type_lines(&mut app, &["one", "two"]);
-    let alt_r = KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT);
-    assert_eq!(press(&mut app, alt_r), []);
+    assert_eq!(press(&mut app, alt_r()), []);
     assert_eq!(app.input(), "one%rtwo");
     assert_eq!(press(&mut app, ctrl('z')), []);
     assert_eq!(press(&mut app, ctrl('z')), []);
@@ -1162,8 +1178,7 @@ fn join_with_no_line_break() {
     let mut app = listed();
     press(&mut app, ctrl('n'));
     type_lines(&mut app, &["one", "two"]);
-    let alt_r = KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT);
-    assert_eq!(press(&mut app, alt_r), []);
+    assert_eq!(press(&mut app, alt_r()), []);
     assert_eq!(app.input(), "one\ntwo");
     let screen = screen(&mut app);
     assert!(
@@ -1173,4 +1188,249 @@ fn join_with_no_line_break() {
         "{screen:?}"
     );
     assert_eq!(screen[22..], ["one", "two"]);
+}
+
+// Sends that wait: the count, a lost server, and a quit.
+
+/// Alpha with the lines `one`, `two` and `three` sent by Alt+Enter: `one` is with the server,
+/// and `two` and `three` wait.
+fn three_lines_sent() -> Model {
+    let mut app = two_worlds();
+    type_lines(&mut app, &["one", "two", "three"]);
+    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
+    app
+}
+
+#[test]
+fn top_row_counts_the_sends_that_wait() {
+    let mut app = three_lines_sent();
+    assert_eq!(top(&mut app), "[alpha/aria] (2 waiting) beta/bryn*");
+    sent(&mut app, "alpha/aria", "one");
+    assert_eq!(top(&mut app), "[alpha/aria] (1 waiting) beta/bryn*");
+    sent(&mut app, "alpha/aria", "two");
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn*");
+}
+
+#[test]
+fn lost_server_puts_the_waiting_lines_back() {
+    let mut app = three_lines_sent();
+    type_text(&mut app, "later");
+    on_event(&mut app, ClientEvent::Lost);
+    assert_eq!(app.input(), "two\nthree\nlater");
+    assert!(has_notice(&mut app, "2 lines that waited went back"));
+    // The send with the server stays: its reply sends nothing more.
+    assert_eq!(sent(&mut app, "alpha/aria", "one"), []);
+}
+
+#[test]
+fn reset_puts_the_waiting_lines_back() {
+    let mut app = three_lines_sent();
+    on_event(
+        &mut app,
+        ClientEvent::Reset {
+            instance_id: "i".to_owned(),
+        },
+    );
+    assert_eq!(app.input(), "two\nthree");
+    assert!(has_notice(&mut app, "the server started again"));
+}
+
+#[test]
+fn refusal_after_a_loss_puts_back_only_its_line() {
+    let mut app = three_lines_sent();
+    on_event(&mut app, ClientEvent::Lost);
+    on_reply(&mut app, refused("alpha/aria", "one"));
+    assert_eq!(app.input(), "one\ntwo\nthree");
+}
+
+#[test]
+fn quit_with_waiting_sends_asks_again() {
+    let mut app = three_lines_sent();
+    assert_eq!(press(&mut app, ctrl('c')), []);
+    assert!(has_notice(&mut app, "3 lines not sent yet"));
+    assert_eq!(press(&mut app, ctrl('c')), [Effect::Quit]);
+}
+
+#[test]
+fn another_key_cancels_the_second_quit() {
+    let mut app = three_lines_sent();
+    press(&mut app, ctrl('c'));
+    type_text(&mut app, "x");
+    assert_eq!(press(&mut app, ctrl('c')), []);
+}
+
+#[test]
+fn quit_with_no_waiting_send_leaves_at_once() {
+    let mut app = three_lines_sent();
+    sent(&mut app, "alpha/aria", "one");
+    sent(&mut app, "alpha/aria", "two");
+    sent(&mut app, "alpha/aria", "three");
+    assert_eq!(press(&mut app, ctrl('c')), [Effect::Quit]);
+}
+
+// Lists of the worlds and the line break, then more cases of the sends that wait, the quit
+// and a paste during the probe.
+
+/// A client whose first list failed, with `alpha/aria` from its first event.
+fn unlisted_world() -> Model {
+    let mut app = failed_listing();
+    let effects = update(&mut app, Msg::Client(game("alpha/aria", "Welcome, aria.")));
+    assert_eq!(effects, [Effect::ListWorlds]);
+    app
+}
+
+fn alpha_with_line_break() -> Vec<World> {
+    vec![World {
+        id: "alpha/aria".to_owned(),
+        line_break: Some("%r".to_owned()),
+        ..Default::default()
+    }]
+}
+
+#[test]
+fn list_takes_the_line_break_of_a_new_world() {
+    let mut app = unlisted_world();
+    assert_eq!(
+        update(&mut app, Msg::Listed(Ok(alpha_with_line_break()))),
+        []
+    );
+    type_lines(&mut app, &["one", "two"]);
+    press(&mut app, alt_r());
+    assert_eq!(app.input(), "one%rtwo");
+}
+
+#[test]
+fn unknown_line_break_asks_the_server() {
+    let mut app = unlisted_world();
+    update(&mut app, Msg::Listed(Err("no server".to_owned())));
+    type_lines(&mut app, &["one", "two"]);
+    assert_eq!(press(&mut app, alt_r()), [Effect::ListWorlds]);
+    assert!(has_notice(&mut app, "does not know the line break"));
+    assert!(!has_notice(&mut app, "sets no line break"));
+    assert_eq!(app.input(), "one\ntwo");
+}
+
+#[test]
+fn one_list_at_a_time() {
+    let mut app = unlisted_world();
+    // The list of the first event is still with the server.
+    assert_eq!(press(&mut app, alt_r()), []);
+    on_event(&mut app, game("beta/bryn", "Welcome, bryn."));
+    assert_eq!(update(&mut app, Msg::Client(game("gamma/cora", "hi"))), []);
+}
+
+#[test]
+fn reset_asks_for_the_list() {
+    let mut app = listed();
+    let reset = ClientEvent::Reset {
+        instance_id: "i".to_owned(),
+    };
+    assert_eq!(update(&mut app, Msg::Client(reset)), [Effect::ListWorlds]);
+}
+
+#[test]
+fn paste_during_the_probe_fills_the_editor() {
+    let mut app = two_worlds();
+    let mut pending = Vec::new();
+    let mut skip = mu_tui::probe::Skip::Nothing;
+    let framed = mu_tui::probe::frame(&mut pending, &mut skip, b"\x1b[200~one\rtwo\x1b[201~");
+    for event in framed.events {
+        assert_eq!(update(&mut app, Msg::Terminal(event)), []);
+    }
+    assert_eq!(app.input(), "one\ntwo");
+}
+
+#[test]
+fn alt_r_with_no_world_names_the_line_break() {
+    let mut app = failed_listing();
+    type_lines(&mut app, &["one", "two"]);
+    assert_eq!(press(&mut app, alt_r()), []);
+    assert!(has_notice(&mut app, "line break"));
+    assert_eq!(app.input(), "one\ntwo");
+}
+
+#[test]
+fn quit_with_only_the_line_with_the_server_asks_again() {
+    let mut app = two_worlds();
+    type_text(&mut app, "one");
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [send("alpha/aria", "one")]
+    );
+    assert_eq!(press(&mut app, ctrl('c')), []);
+    assert!(has_notice(&mut app, "1 line not sent yet"));
+    assert_eq!(press(&mut app, ctrl('c')), [Effect::Quit]);
+}
+
+#[test]
+fn lost_server_puts_back_the_lines_in_the_order_of_the_worlds() {
+    // Each model has its own map of sends, so the 32 runs very likely see both orders of a hash
+    // map.
+    for _ in 0..32 {
+        let mut app = two_worlds();
+        press(&mut app, ctrl('n'));
+        type_lines(&mut app, &["b1", "b2"]);
+        assert_eq!(press(&mut app, alt_enter()), [send("beta/bryn", "b1")]);
+        press(&mut app, ctrl('p'));
+        type_lines(&mut app, &["a1", "a2"]);
+        assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "a1")]);
+        on_event(&mut app, ClientEvent::Lost);
+        assert_eq!(app.input(), "a2\nb2");
+        assert!(shows(&mut app, "1 line of alpha/aria, 1 line of beta/bryn"));
+    }
+}
+
+#[test]
+fn notice_of_the_returned_lines_does_not_come_back_after_a_reset() {
+    let mut app = three_lines_sent();
+    on_event(&mut app, ClientEvent::Lost);
+    assert!(has_notice(&mut app, "lines that waited"));
+    let reset = ClientEvent::Reset {
+        instance_id: "i".to_owned(),
+    };
+    on_event(&mut app, reset);
+    // The reset clears the pane and does not bring hints back, and nothing waits any more, so no
+    // line about returned lines is on the screen.
+    assert!(!has_notice(&mut app, "lines that waited"));
+}
+
+#[test]
+fn reset_during_a_list_asks_again_after_its_reply() {
+    // The new world asked for a list, and its reply did not come yet.
+    let mut app = unlisted_world();
+    let reset = ClientEvent::Reset {
+        instance_id: "i".to_owned(),
+    };
+    on_event(&mut app, reset);
+    let after = update(&mut app, Msg::Listed(Err("old server".to_owned())));
+    assert_eq!(after, [Effect::ListWorlds]);
+}
+
+#[test]
+fn failed_list_names_its_reason_at_alt_r() {
+    let mut app = unlisted_world();
+    assert_eq!(
+        update(
+            &mut app,
+            Msg::Listed(Err("unavailable: no server".to_owned()))
+        ),
+        []
+    );
+    type_lines(&mut app, &["one", "two"]);
+    assert_eq!(press(&mut app, alt_r()), [Effect::ListWorlds]);
+    assert!(shows(
+        &mut app,
+        "the last list of the worlds failed (unavailable: no server)"
+    ));
+}
+
+#[test]
+fn list_adds_a_world_that_the_client_did_not_hold() {
+    let mut app = failed_listing();
+    let beta = World {
+        id: "beta/bryn".to_owned(),
+        ..Default::default()
+    };
+    assert_eq!(update(&mut app, Msg::Listed(Ok(vec![beta]))), []);
+    assert!(top(&mut app).contains("beta/bryn"));
 }

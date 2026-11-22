@@ -1,6 +1,6 @@
 //! [`view`]: draws the model by walking its layout tree.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use crate::editor::{Editor, EditorId, EditorState};
 use crate::layout::{Leaf, Node, Size};
@@ -17,6 +17,7 @@ struct Parts<'a> {
     worlds: &'a [World],
     focus: Option<usize>,
     lost: bool,
+    sends: &'a HashMap<String, VecDeque<String>>,
     editors: &'a mut HashMap<EditorId, EditorState>,
     panes: &'a mut HashMap<PaneId, PaneState>,
     focused_pane: PaneId,
@@ -33,12 +34,14 @@ pub fn view(model: &mut Model, frame: &mut Frame) {
         editors,
         lost,
         layout,
+        sends,
         ..
     } = model;
     let mut parts = Parts {
         worlds,
         focus: *focus,
         lost: *lost,
+        sends,
         editors,
         panes,
         focused_pane,
@@ -115,10 +118,20 @@ fn top_row(parts: &Parts) -> String {
             .map(|(index, world)| {
                 let mark = if world.unseen { "*" } else { "" };
                 let id = clean(&world.id);
-                if parts.focus == Some(index) {
-                    format!("[{id}]{mark}")
+                // The first send is with the server. The ones after it wait for its reply.
+                let waiting = parts
+                    .sends
+                    .get(&world.id)
+                    .map_or(0, |queue| queue.len().saturating_sub(1));
+                let waiting = if waiting == 0 {
+                    String::new()
                 } else {
-                    format!("{id}{mark}")
+                    format!(" ({waiting} waiting)")
+                };
+                if parts.focus == Some(index) {
+                    format!("[{id}]{mark}{waiting}")
+                } else {
+                    format!("{id}{mark}{waiting}")
                 }
             })
             .collect::<Vec<_>>()

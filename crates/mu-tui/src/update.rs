@@ -2,10 +2,11 @@
 //! the render of [`view`](crate::view) also changes the model, as the module doc of
 //! [`model`](crate::model) says.
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use mu_client::ClientEvent;
-use mu_proto::{EventKind, Source};
+use mu_proto::{EventKind, Source, World as ProtoWorld};
 use ratatui::style::Style;
 use ratatui_textarea::{Input, Key};
 use termina::Event as TermEvent;
@@ -16,7 +17,7 @@ use termina::event::{
 
 use crate::convert::convert;
 use crate::keymap::Wheel;
-use crate::model::{Late, Model, PaneId};
+use crate::model::{Late, Listing, Model, PaneId};
 use crate::pane::{Caps, PaneState};
 use crate::probe::{self, Outcome};
 use crate::store::Image;
@@ -38,6 +39,8 @@ pub enum Msg {
     CutReply(Vec<u8>),
     /// The reply of a call.
     Reply(Reply),
+    /// The list of the worlds after an [`Effect::ListWorlds`], or the reason that it failed.
+    Listed(Result<Vec<ProtoWorld>, String>),
 }
 
 /// What a key or a client command means.
@@ -89,6 +92,8 @@ pub enum Effect {
     },
     /// Leave the client.
     Quit,
+    /// Ask the server for the list of the worlds, and give it back as a [`Msg::Listed`].
+    ListWorlds,
     /// Write `text` to the clipboard of the terminal.
     ClipboardWrite(String),
     /// Send the PNG `png` to the terminal as `image`, with a virtual placement of its size,
@@ -148,9 +153,24 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
         }
         Msg::Terminal(_) => Vec::new(),
         Msg::Action(action) => act(model, action),
-        Msg::Client(item) => {
-            on_client(model, item);
-            Vec::new()
+        Msg::Client(item) => on_client(model, item),
+        Msg::Listed(listed) => {
+            let again = model.listing == Listing::AskedBeforeReset;
+            model.listing = Listing::Idle;
+            // A failed list keeps its reason for Alt+R. A later new world, a reset, or Alt+R on
+            // a world that no list held asks again.
+            match listed {
+                Ok(worlds) => {
+                    model.list_failure = None;
+                    model.learn(worlds);
+                }
+                Err(reason) => model.list_failure = Some(reason),
+            }
+            if again {
+                list_worlds(model).into_iter().collect()
+            } else {
+                Vec::new()
+            }
         }
         Msg::Probe(outcome) => {
             on_probe(model, &outcome);
@@ -280,7 +300,11 @@ fn on_cut_reply_key(model: &mut Model, mut bytes: Vec<u8>, key: KeyEvent) -> Vec
 }
 
 fn on_input_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
-    if let Some(action) = model.keymap.get(&key) {
+    let action = model.keymap.get(&key);
+    if action != Some(Action::Quit) {
+        model.quit_armed = false;
+    }
+    if let Some(action) = action {
         act(model, action)
     } else {
         model.pose().textarea().input(input_key(key));
@@ -331,7 +355,18 @@ fn wheel(model: &mut Model, step: Wheel) -> Vec<Effect> {
 
 fn act(model: &mut Model, action: Action) -> Vec<Effect> {
     match action {
-        Action::Quit => vec![Effect::Quit],
+        Action::Quit => {
+            let waiting: usize = model.sends.values().map(VecDeque::len).sum();
+            if waiting == 0 || model.quit_armed {
+                return vec![Effect::Quit];
+            }
+            model.quit_armed = true;
+            model.hint(&format!(
+                "{} not sent yet, quit again to leave and drop them",
+                line_count(waiting)
+            ));
+            Vec::new()
+        }
         Action::FocusNext => {
             move_focus(model, true);
             Vec::new()
@@ -355,10 +390,7 @@ fn act(model: &mut Model, action: Action) -> Vec<Effect> {
             model.pose().textarea().insert_newline();
             Vec::new()
         }
-        Action::JoinLines => {
-            join_lines(model);
-            Vec::new()
-        }
+        Action::JoinLines => join_lines(model).into_iter().collect(),
         Action::DeleteToLineStart => {
             let textarea = model.pose().textarea();
             // At the start of a line, the delete of the library takes the line break before it.
@@ -437,22 +469,46 @@ fn submit_lines(model: &mut Model) -> Option<Effect> {
 
 /// Replaces each line break of the pose editor with the line break of the world in focus. The
 /// edit goes through the text area, so two undos bring the lines back: one for the joined text,
-/// and one for the lines.
-fn join_lines(model: &mut Model) {
-    let line_break = model
-        .focused_world()
-        .and_then(|world| world.line_break.clone());
+/// and one for the lines. If no list held the world in focus yet, the editor stays as it is, and
+/// the client asks for the list of the worlds.
+fn join_lines(model: &mut Model) -> Option<Effect> {
+    let Some(world) = model.focused_world() else {
+        model.hint("no world has the focus, so no line break joins the lines");
+        return None;
+    };
+    let (listed, line_break) = (world.listed, world.line_break.clone());
+    if !listed {
+        let hint = match &model.list_failure {
+            Some(reason) => format!(
+                "the client does not know the line break of the world in focus: the last list of \
+                 the worlds failed ({reason}), so it asks again"
+            ),
+            None => "the client does not know the line break of the world in focus yet, try again"
+                .to_owned(),
+        };
+        model.hint(&hint);
+        return list_worlds(model);
+    }
     let Some(line_break) = line_break else {
         model.hint("the world in focus sets no line break, so the lines stay as they are");
-        return;
+        return None;
     };
     let text = model.input();
     if !text.contains('\n') {
-        return;
+        return None;
     }
     let textarea = model.pose().textarea();
     textarea.select_all();
     textarea.insert_str(text.replace('\n', &line_break));
+    None
+}
+
+/// A list of the worlds, unless one is with the server already.
+fn list_worlds(model: &mut Model) -> Option<Effect> {
+    (model.listing == Listing::Idle).then(|| {
+        model.listing = Listing::Asked;
+        Effect::ListWorlds
+    })
 }
 
 fn move_focus(model: &mut Model, forward: bool) {
@@ -471,7 +527,9 @@ fn move_focus(model: &mut Model, forward: bool) {
     model.worlds[next].unseen = false;
 }
 
-fn on_client(model: &mut Model, item: ClientEvent) {
+/// The effects of an item of the event stream: a list of the worlds after a Reset, or after
+/// the first event of a world that the model did not hold, so the model learns its line break.
+fn on_client(model: &mut Model, item: ClientEvent) -> Vec<Effect> {
     match item {
         ClientEvent::Reset { .. } => {
             model.lost = false;
@@ -489,12 +547,30 @@ fn on_client(model: &mut Model, item: ClientEvent) {
                     model.push(pane, &line);
                 }
             }
+            return_waiting(model, "the server started again");
+            if model.listing == Listing::Asked {
+                model.listing = Listing::AskedBeforeReset;
+            }
+            list_worlds(model).into_iter().collect()
         }
-        ClientEvent::Resumed => model.lost = false,
-        ClientEvent::Lost => model.lost = true,
+        ClientEvent::Resumed => {
+            model.lost = false;
+            Vec::new()
+        }
+        ClientEvent::Lost => {
+            model.lost = true;
+            return_waiting(model, "the client lost the server");
+            Vec::new()
+        }
         ClientEvent::Event(event) => {
             model.lost = false;
+            let count = model.worlds.len();
             let index = model.world(&event.world);
+            let effects = if model.worlds.len() > count {
+                list_worlds(model).into_iter().collect()
+            } else {
+                Vec::new()
+            };
             let unseen = model.focus != Some(index);
             let world = &mut model.worlds[index];
             world.unseen |= unseen;
@@ -516,6 +592,7 @@ fn on_client(model: &mut Model, item: ClientEvent) {
                     pane.push_styled(&converted.text, &converted.spans);
                 }
             }
+            effects
         }
     }
 }
@@ -543,17 +620,61 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
         .sends
         .get(&world)
         .is_some_and(|queue| queue.front() == Some(&text));
-    let mut lines: Vec<String> = if waits {
+    let lines: Vec<String> = if waits {
         model.sends.remove(&world).into_iter().flatten().collect()
     } else {
         vec![text]
     };
+    put_back(model, lines);
+    Vec::new()
+}
+
+/// `1 line` or `<count> lines`.
+fn line_count(count: usize) -> String {
+    if count == 1 {
+        "1 line".to_owned()
+    } else {
+        format!("{count} lines")
+    }
+}
+
+/// Puts `lines` back in the pose editor, before the text that the player typed since.
+fn put_back(model: &mut Model, mut lines: Vec<String>) {
     let typed = model.input();
     if !typed.is_empty() {
         lines.push(typed);
     }
     model.set_input(&lines.join("\n"));
-    Vec::new()
+}
+
+/// Puts the sends that wait behind the send with the server back in the pose editor, in the
+/// order of the worlds, with a hint that names `why` and the count of each world. The send with
+/// the server stays, so its reply still moves on or puts back only that send.
+fn return_waiting(model: &mut Model, why: &str) {
+    let mut lines = Vec::new();
+    let mut counts = Vec::new();
+    for world in &model.worlds {
+        if let Some(queue) = model.sends.get_mut(&world.id) {
+            let before = lines.len();
+            lines.extend(queue.drain(1..));
+            if lines.len() > before {
+                counts.push(format!(
+                    "{} of {}",
+                    line_count(lines.len() - before),
+                    world.id
+                ));
+            }
+        }
+    }
+    if lines.is_empty() {
+        return;
+    }
+    model.hint(&format!(
+        "{why}, so {} that waited went back to the editor: {}",
+        line_count(lines.len()),
+        counts.join(", ")
+    ));
+    put_back(model, lines);
 }
 
 /// The next send of `world`, after the server took `text`. Only the reply of the first send

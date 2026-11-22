@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc d34b8d5970fbb8a87d52c3a73b213bef692ff2800366616dde7fa8e8e9ad8b26 # shrinks to character = "\u{7f}", line = "\u{1b}", source = SOURCE_GAME
+cc 1e4279613b2043b2a77b4a802727f9c50866cd203ffce1bcd8acab1da2867425 # shrinks to start = 0, steps = [Line(0)]
