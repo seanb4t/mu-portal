@@ -3,6 +3,7 @@
 use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures::StreamExt as _;
 use mu_client::PortalClient;
@@ -104,19 +105,48 @@ async fn event_loop(
                     let client = client.clone();
                     let replies = replies.clone();
                     tokio::spawn(async move {
-                        let answer = match client.send(&world, &text).await {
-                            Ok(_) => Reply::Sent { world, text },
-                            Err(error) => Reply::Refused {
-                                world,
-                                text,
-                                reason: error.message,
-                            },
+                        let call = async {
+                            client
+                                .send(&world, &text)
+                                .await
+                                .map_err(|error| error.message)
                         };
+                        let answer = reply_of(call, world.clone(), text.clone(), SEND_LIMIT).await;
                         // The loop holds the receiver until it returns.
                         let _ = replies.send(answer);
                     });
                 }
             }
         }
+    }
+}
+
+/// The longest time that the client waits for the reply of one send.
+pub const SEND_LIMIT: Duration = Duration::from_secs(10);
+
+/// The reply to a send of `text` to `world` that `call` makes. A call that fails is a refusal
+/// with its reason. A call with no answer after `limit` is a refusal too, because a send that
+/// waits stops each later send of its world.
+pub async fn reply_of<T>(
+    call: impl Future<Output = Result<T, String>>,
+    world: String,
+    text: String,
+    limit: Duration,
+) -> Reply {
+    match tokio::time::timeout(limit, call).await {
+        Ok(Ok(_)) => Reply::Sent { world, text },
+        Ok(Err(reason)) => Reply::Refused {
+            world,
+            text,
+            reason,
+        },
+        Err(_) => Reply::Refused {
+            world,
+            text,
+            reason: format!(
+                "the server gave no answer in {} s, so the game can have the line or not",
+                limit.as_secs()
+            ),
+        },
     }
 }

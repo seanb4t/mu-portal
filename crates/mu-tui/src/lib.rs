@@ -27,6 +27,6 @@ pub use keymap::{Chord, Keymap, Wheel};
 pub use layout::{Leaf, Node, Size};
 pub use model::{Model, PaneId};
 pub use pane::{Caps, OutputPane, PaneState, Position};
-pub use run::run;
+pub use run::{SEND_LIMIT, reply_of, run};
 pub use update::{Action, Effect, Msg, Reply, update};
 pub use view::view;

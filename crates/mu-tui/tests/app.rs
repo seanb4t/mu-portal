@@ -1174,3 +1174,81 @@ fn join_with_no_line_break() {
     );
     assert_eq!(screen[22..], ["one", "two"]);
 }
+
+// Sends that wait: the count, a lost server, and a quit.
+
+/// Alpha with the lines `one`, `two` and `three` sent by Alt+Enter: `one` is with the server,
+/// and `two` and `three` wait.
+fn three_lines_sent() -> Model {
+    let mut app = two_worlds();
+    type_lines(&mut app, &["one", "two", "three"]);
+    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
+    app
+}
+
+#[test]
+fn top_row_counts_the_sends_that_wait() {
+    let mut app = three_lines_sent();
+    assert_eq!(top(&mut app), "[alpha/aria] (2 waiting) beta/bryn*");
+    sent(&mut app, "alpha/aria", "one");
+    assert_eq!(top(&mut app), "[alpha/aria] (1 waiting) beta/bryn*");
+    sent(&mut app, "alpha/aria", "two");
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn*");
+}
+
+#[test]
+fn lost_server_puts_the_waiting_lines_back() {
+    let mut app = three_lines_sent();
+    type_text(&mut app, "later");
+    on_event(&mut app, ClientEvent::Lost);
+    assert_eq!(app.input(), "two\nthree\nlater");
+    assert!(has_notice(&mut app, "2 lines that waited went back"));
+    // The send with the server stays: its reply sends nothing more.
+    assert_eq!(sent(&mut app, "alpha/aria", "one"), []);
+}
+
+#[test]
+fn reset_puts_the_waiting_lines_back() {
+    let mut app = three_lines_sent();
+    on_event(
+        &mut app,
+        ClientEvent::Reset {
+            instance_id: "i".to_owned(),
+        },
+    );
+    assert_eq!(app.input(), "two\nthree");
+    assert!(has_notice(&mut app, "the server started again"));
+}
+
+#[test]
+fn refusal_after_a_loss_puts_back_only_its_line() {
+    let mut app = three_lines_sent();
+    on_event(&mut app, ClientEvent::Lost);
+    on_reply(&mut app, refused("alpha/aria", "one"));
+    assert_eq!(app.input(), "one\ntwo\nthree");
+}
+
+#[test]
+fn quit_with_waiting_sends_asks_again() {
+    let mut app = three_lines_sent();
+    assert_eq!(press(&mut app, ctrl('c')), []);
+    assert!(has_notice(&mut app, "3 lines not sent yet"));
+    assert_eq!(press(&mut app, ctrl('c')), [Effect::Quit]);
+}
+
+#[test]
+fn another_key_cancels_the_second_quit() {
+    let mut app = three_lines_sent();
+    press(&mut app, ctrl('c'));
+    type_text(&mut app, "x");
+    assert_eq!(press(&mut app, ctrl('c')), []);
+}
+
+#[test]
+fn quit_with_no_waiting_send_leaves_at_once() {
+    let mut app = three_lines_sent();
+    sent(&mut app, "alpha/aria", "one");
+    sent(&mut app, "alpha/aria", "two");
+    sent(&mut app, "alpha/aria", "three");
+    assert_eq!(press(&mut app, ctrl('c')), [Effect::Quit]);
+}

@@ -65,6 +65,8 @@ pub struct Model {
     pub(crate) notices: Vec<String>,
     /// True if a late answer gave mode 2027 as set before the probe.
     pub(crate) keeps_grapheme_mode: bool,
+    /// True after a Quit with sends that wait, until the next key. A second Quit then leaves.
+    pub(crate) quit_armed: bool,
 }
 
 /// The wait for the probe answers that came after the probe stopped reading. Termina gives the
@@ -106,6 +108,7 @@ impl Model {
             late: Late::None,
             notices: Vec::new(),
             keeps_grapheme_mode: false,
+            quit_armed: false,
         };
         for id in worlds {
             model.world(&id);

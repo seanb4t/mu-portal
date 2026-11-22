@@ -2,6 +2,7 @@
 //! the render of [`view`](crate::view) also changes the model, as the module doc of
 //! [`model`](crate::model) says.
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use mu_client::ClientEvent;
@@ -280,7 +281,11 @@ fn on_cut_reply_key(model: &mut Model, mut bytes: Vec<u8>, key: KeyEvent) -> Vec
 }
 
 fn on_input_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
-    if let Some(action) = model.keymap.get(&key) {
+    let action = model.keymap.get(&key);
+    if action != Some(Action::Quit) {
+        model.quit_armed = false;
+    }
+    if let Some(action) = action {
         act(model, action)
     } else {
         model.pose().textarea().input(input_key(key));
@@ -331,7 +336,18 @@ fn wheel(model: &mut Model, step: Wheel) -> Vec<Effect> {
 
 fn act(model: &mut Model, action: Action) -> Vec<Effect> {
     match action {
-        Action::Quit => vec![Effect::Quit],
+        Action::Quit => {
+            let waiting: usize = model.sends.values().map(VecDeque::len).sum();
+            if waiting == 0 || model.quit_armed {
+                return vec![Effect::Quit];
+            }
+            model.quit_armed = true;
+            model.hint(&format!(
+                "{} not sent yet, quit again to leave and drop them",
+                line_count(waiting)
+            ));
+            Vec::new()
+        }
         Action::FocusNext => {
             move_focus(model, true);
             Vec::new()
@@ -489,9 +505,13 @@ fn on_client(model: &mut Model, item: ClientEvent) {
                     model.push(pane, &line);
                 }
             }
+            return_waiting(model, "the server started again");
         }
         ClientEvent::Resumed => model.lost = false,
-        ClientEvent::Lost => model.lost = true,
+        ClientEvent::Lost => {
+            model.lost = true;
+            return_waiting(model, "the client lost the server");
+        }
         ClientEvent::Event(event) => {
             model.lost = false;
             let index = model.world(&event.world);
@@ -543,17 +563,51 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
         .sends
         .get(&world)
         .is_some_and(|queue| queue.front() == Some(&text));
-    let mut lines: Vec<String> = if waits {
+    let lines: Vec<String> = if waits {
         model.sends.remove(&world).into_iter().flatten().collect()
     } else {
         vec![text]
     };
+    put_back(model, lines);
+    Vec::new()
+}
+
+/// `1 line` or `<count> lines`.
+fn line_count(count: usize) -> String {
+    if count == 1 {
+        "1 line".to_owned()
+    } else {
+        format!("{count} lines")
+    }
+}
+
+/// Puts `lines` back in the pose editor, before the text that the player typed since.
+fn put_back(model: &mut Model, mut lines: Vec<String>) {
     let typed = model.input();
     if !typed.is_empty() {
         lines.push(typed);
     }
     model.set_input(&lines.join("\n"));
-    Vec::new()
+}
+
+/// Puts the sends that wait behind the send with the server back in the pose editor, in the
+/// order of the worlds, with a notice that names `why`. The send with the server stays, so its
+/// reply still moves on or puts back only that send.
+fn return_waiting(model: &mut Model, why: &str) {
+    let mut lines = Vec::new();
+    for world in &model.worlds {
+        if let Some(queue) = model.sends.get_mut(&world.id) {
+            lines.extend(queue.drain(1..));
+        }
+    }
+    if lines.is_empty() {
+        return;
+    }
+    model.notice(&format!(
+        "{why}, so {} that waited went back to the editor",
+        line_count(lines.len())
+    ));
+    put_back(model, lines);
 }
 
 /// The next send of `world`, after the server took `text`. Only the reply of the first send
