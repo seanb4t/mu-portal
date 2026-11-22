@@ -75,7 +75,7 @@ The table `[keys]` SHALL map a key to the name of an entry of the registry, or t
 - **AND** the editor holds `hi`
 
 ### Requirement: A bad binding stops the client
-A binding of `[keys]` SHALL stop the client as a bad file in each of these cases: an unknown key, an unknown entry, an entry that needs an argument, a repeated modifier, and two names of one key.
+A binding of `[keys]` SHALL stop the client as a bad file in each of these cases: an unknown key, an unknown entry, an entry that needs an argument, a repeated modifier, `shift` with a character that is not a letter, and two names of one key. The terminal reports Shift and such a character as the shifted character, such as `!`.
 
 #### Scenario: Two names of one key
 - **GIVEN** `<dir>/client.toml` holds `[keys]` with `"ctrl+shift+z" = "redo"` and `"shift+ctrl+z" = "undo"`
@@ -88,6 +88,17 @@ A binding of `[keys]` SHALL stop the client as a bad file in each of these cases
 - **WHEN** the user starts `mu client --config <dir>`
 - **THEN** stderr names `client.toml` and `ctrl+N`
 - **AND** the exit status is 1
+
+#### Scenario: Shift with a digit
+- **GIVEN** `<dir>/client.toml` holds `[keys]` with `"shift+1" = "quit"`
+- **WHEN** the user starts `mu client --config <dir>`
+- **THEN** stderr names `client.toml` and `shift+1`
+- **AND** the exit status is 1
+
+#### Scenario: A binding of Ctrl+Shift+Z
+- **GIVEN** `<dir>/client.toml` holds `[keys]` with `"ctrl+shift+z" = "none"`
+- **WHEN** the user types `hi`, presses Ctrl+Z, and presses Ctrl+Shift+Z
+- **THEN** the editor is empty
 
 #### Scenario: An unknown entry
 - **GIVEN** `<dir>/client.toml` holds `[keys]` with `"alt+n" = "fly"`

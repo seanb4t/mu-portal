@@ -68,7 +68,7 @@ Enforced by: the `workspace_boundary.rs` allowlist (`serde` added for `mu-tui`, 
 
 A key name is modifiers from `ctrl`, `alt`, `shift` and `super`, then one key, joined with `+`. A key is one character that is not an uppercase letter and not `+`, the name `plus` for the `+` key, or a name of a special key. So digits such as the `1` of `alt+1` are keys. The special keys are `enter`, `tab`, `backspace`, `esc` and `space`. The others are `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`, `insert`, `delete` and `f1` to `f12`. So `+` is only the joiner. An uppercase character is refused, because `shift+a` names that key. The order of the modifiers does not matter, and a repeated modifier is refused.
 
-Termina gives Shift and a letter as the uppercase character with `SHIFT`, for example `Char('A')` with `SHIFT`. Some terminals give `Char('A')` with no modifier. So the parse makes `shift+a` the chord `Char('A')` with `SHIFT`. At a key, the lookup adds `SHIFT` to an uppercase character that lacks it. Shift with a character that is not a letter is refused, because the terminal gives the shifted character instead, such as `!` for Shift+1. The player binds that character itself. Task 1.3 checks these reports in Ghostty and Terminal.app.
+In the kitty path, Termina keeps the unshifted letter, so Shift+Z arrives as `Char('z')` with `SHIFT`. The default redo at head is the same chord, `Char('z')` with `CONTROL` and `SHIFT`. A legacy terminal gives `Char('Z')`, with or without `SHIFT`. So the parse makes `shift+z` the chord `Char('z')` with `SHIFT`. At a key, the lookup turns an uppercase letter into its lowercase letter with `SHIFT` before it looks up the chord. So `ctrl+shift+z` in `[keys]` replaces the default redo. Shift with a character that is not a letter is refused, because the terminal gives the shifted character instead, such as `!` for Shift+1. The player binds that character itself. Task 1.3 checks these reports in Ghostty and Terminal.app.
 
 `ClientConfig::keymap()` parses each name to a chord. If two names give one chord, it refuses both and names them. `"none"` binds the chord to the entry `ignore`, so the key does nothing. The fallback from a modified chord to the plain key then cannot reach a send.
 
@@ -119,7 +119,7 @@ Enforced by: the spec tests of the history requirements, and a property test tha
 2. The first returned text goes alone into the editor, with the cursor at the start of its first line. So the next Up recalls history at once.
 3. The other returned texts, and then the held text, go into the history of their world. They are pushed in reverse order, so the first Up gives the next one. A stream end or a reset puts the held text into the history of the world in focus.
 
-The notice of a refusal in `on_reply` holds the reason. If texts went into history, it also holds their count. With none, it holds the reason alone. The line of `return_waiting` stays a hint, as at head. It keeps its count of each world and adds `Up recalls the rest`.
+The line of a refusal in `on_reply` stays a push to the pane of the refused world, as at head. It holds the reason. If texts went into history, it also holds their count. With none, it holds the reason alone. The line of `return_waiting` stays a hint, as at head. It keeps its count of each world and adds `Up recalls the rest`.
 
 The alternative was a marker line between the texts in the editor. #151 rejects it, because Alt+Enter sends the marker as a command.
 
