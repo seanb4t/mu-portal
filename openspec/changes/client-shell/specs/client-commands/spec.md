@@ -51,7 +51,7 @@ If the text is one line that starts with `//`, the client SHALL send it without 
 - **THEN** the server records a player event `/me waves` for `alpha/aria`
 
 ### Requirement: A bad command keeps its text
-A bad command names no entry, or an entry that does not run as a command. It can also lack a required world, or name a world that the client does not hold. For a bad command, the client SHALL show a line with the prefix `-- ` that says why. The text SHALL stay in the editor, and the client SHALL send nothing.
+A bad command names no entry, or an entry that does not run as a command. It can also lack a required world, or name a world that the client does not hold. It can also give an argument to an entry that takes none. An argument of only spaces SHALL count as no argument. For a bad command, the client SHALL show a line with the prefix `-- ` that says why. The text SHALL stay in the editor, and the client SHALL send nothing.
 
 #### Scenario: An unknown command
 - **WHEN** the user types `/fly` and presses Enter
@@ -62,6 +62,12 @@ A bad command names no entry, or an entry that does not run as a command. It can
 - **WHEN** the user types `/focus` and presses Enter
 - **THEN** the screen shows a line that starts with `-- ` and contains `needs a world`
 - **AND** the editor holds `/focus`
+
+#### Scenario: An argument to an entry that takes none
+- **WHEN** the user types `/quit now` and presses Enter
+- **THEN** the screen shows a line that starts with `-- ` and contains `takes no argument`
+- **AND** the editor holds `/quit now`
+- **AND** the client is still running
 
 #### Scenario: An unknown world
 - **GIVEN** a server with the fake world `alpha/aria`
@@ -84,6 +90,23 @@ A bad command names no entry, or an entry that does not run as a command. It can
 - **THEN** the server reports `beta/bryn` as disconnected
 - **AND** `alpha/aria` is still connected
 
+#### Scenario: Connect with no world in focus
+- **GIVEN** a server with no world
+- **WHEN** the user types `/connect` and presses Enter
+- **THEN** the screen shows a line that starts with `-- ` and contains `no world`
+- **AND** the editor holds `/connect`
+
+#### Scenario: A trailing space is no argument
+- **GIVEN** the world in focus is the fake world `alpha/aria`, and a test disconnected it through the API
+- **WHEN** the user types `/connect ` with a trailing space and presses Enter
+- **THEN** the server connects `alpha/aria`
+
+#### Scenario: Disconnect an unknown world
+- **GIVEN** a server with the fake world `alpha/aria`
+- **WHEN** the user types `/disconnect gamma/gil` and presses Enter
+- **THEN** the screen shows a line that starts with `-- ` and contains `gamma/gil`
+- **AND** `alpha/aria` is still connected
+
 ### Requirement: Focus a world by name
 `/focus <world>` SHALL give the focus to that world.
 
@@ -93,10 +116,23 @@ A bad command names no entry, or an entry that does not run as a command. It can
 - **THEN** the top row shows `[beta/bryn]`
 
 ### Requirement: Quit by command
-`/quit` SHALL do what Ctrl+C does, under the requirement "Ctrl+C quits the client only".
+`/quit` SHALL do what Ctrl+C does, under the requirement "Ctrl+C quits the client only". If a `/quit` armed the quit because texts wait, the keys that type the next command SHALL NOT cancel the arm. A second `/quit` SHALL then quit. Any other send or command SHALL cancel the arm.
 
 #### Scenario: Quit
 - **GIVEN** no text of a world waits for the server
 - **WHEN** the user types `/quit` and presses Enter
 - **THEN** the client exits with status 0
 - **AND** the server is still running
+
+#### Scenario: Quit twice while a text waits
+- **GIVEN** a text of `alpha/aria` waits for the server
+- **WHEN** the user types `/quit` and presses Enter
+- **THEN** the screen shows a line that starts with `-- ` and holds the count of the texts that wait
+- **WHEN** the user types `/quit` and presses Enter again
+- **THEN** the client exits with status 0
+
+#### Scenario: A command with no world in focus
+- **GIVEN** a server with no world
+- **WHEN** the user types `/help` and presses Enter
+- **THEN** the screen shows a row that starts with `-- ` and holds `connect`
+- **AND** the client is still running

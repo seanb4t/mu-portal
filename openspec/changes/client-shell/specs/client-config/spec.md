@@ -33,6 +33,12 @@ A bad file is one that the client cannot read or parse, or that holds an unknown
 - **THEN** stderr names `client.toml` and `echo`
 - **AND** the exit status is 1
 
+#### Scenario: A file that cannot be read
+- **GIVEN** `<dir>/client.toml` exists, and the user cannot read it
+- **WHEN** the user starts `mu client --config <dir>`
+- **THEN** stderr names `client.toml`
+- **AND** the exit status is 1
+
 #### Scenario: Not TOML
 - **GIVEN** `<dir>/client.toml` holds `echo = `
 - **WHEN** the user starts `mu client --config <dir>`
@@ -40,7 +46,7 @@ A bad file is one that the client cannot read or parse, or that holds an unknown
 - **AND** the exit status is 1
 
 ### Requirement: The keys table binds a key to an entry
-The table `[keys]` SHALL map a key to the name of an entry of the registry, or to `"none"`. A key SHALL be lowercase modifier names from `ctrl`, `alt`, `shift` and `super`, then one key name, joined with `+`. Each binding SHALL replace the default binding of that key, and `"none"` SHALL remove it. The keys that the table does not name SHALL keep their defaults. An unknown key name, an unknown entry, or an entry that needs an argument SHALL stop the client as a bad file.
+The table `[keys]` SHALL map a key to the name of an entry of the registry, or to `"none"`. A key SHALL be modifiers from `ctrl`, `alt`, `shift` and `super`, then one key, joined with `+`. A key is one lowercase character, `plus`, or a name of a special key. Each binding SHALL replace the default binding of that key. A key bound to `"none"` SHALL do nothing. The keys that the table does not name SHALL keep their defaults.
 
 #### Scenario: A new binding
 - **GIVEN** `<dir>/client.toml` holds `[keys]` with `"alt+n" = "focus-next"`, and a server with the fake worlds `alpha/aria` and `beta/bryn`
@@ -56,6 +62,32 @@ The table `[keys]` SHALL map a key to the name of an entry of the registry, or t
 - **GIVEN** `<dir>/client.toml` holds `[keys]` with `"ctrl+n" = "none"`, and a server with the fake worlds `alpha/aria` and `beta/bryn`
 - **WHEN** the user starts `mu client --config <dir>` and presses Ctrl+N
 - **THEN** the top row shows `[alpha/aria]`
+
+#### Scenario: A binding replaces a default
+- **GIVEN** `<dir>/client.toml` holds `[keys]` with `"ctrl+n" = "focus-prev"`, and a server with the fake worlds `alpha/aria`, `beta/bryn` and `gamma/gil`
+- **WHEN** the user starts `mu client --config <dir>` and presses Ctrl+N
+- **THEN** the top row shows `[gamma/gil]`
+
+#### Scenario: None on a key with a modifier
+- **GIVEN** `<dir>/client.toml` holds `[keys]` with `"alt+enter" = "none"`, and the world in focus is the fake world `alpha/aria`
+- **WHEN** the user types `hi` and presses Alt+Enter
+- **THEN** the server records no player event
+- **AND** the editor holds `hi`
+
+### Requirement: A bad binding stops the client
+A binding of `[keys]` SHALL stop the client as a bad file in each of these cases: an unknown key, an unknown entry, an entry that needs an argument, a repeated modifier, and two names of one key.
+
+#### Scenario: Two names of one key
+- **GIVEN** `<dir>/client.toml` holds `[keys]` with `"ctrl+shift+z" = "redo"` and `"shift+ctrl+z" = "undo"`
+- **WHEN** the user starts `mu client --config <dir>`
+- **THEN** stderr names `client.toml`, `ctrl+shift+z` and `shift+ctrl+z`
+- **AND** the exit status is 1
+
+#### Scenario: An uppercase key
+- **GIVEN** `<dir>/client.toml` holds `[keys]` with `"ctrl+N" = "quit"`
+- **WHEN** the user starts `mu client --config <dir>`
+- **THEN** stderr names `client.toml` and `ctrl+N`
+- **AND** the exit status is 1
 
 #### Scenario: An unknown entry
 - **GIVEN** `<dir>/client.toml` holds `[keys]` with `"alt+n" = "fly"`

@@ -49,9 +49,10 @@ The flag `--config <dir>` of `mu server`, `mu world` and `mu client` SHALL name 
 - **AND** the exit status is 0
 
 #### Scenario: The client takes the flag
-- **GIVEN** `MU_CONFIG` is `<dir>/env` with a `client.toml` that holds `echo = "loud"`, and `<dir>/flag` holds no `client.toml`
+- **GIVEN** no server runs, `MU_CONFIG` is `<dir>/env` with a `client.toml` that holds `echo = "loud"`, and `<dir>/flag` holds the world `alpha/aria` and no `client.toml`
 - **WHEN** the user starts `mu client --config <dir>/flag`
-- **THEN** the client opens the screen
+- **THEN** the top row shows `[alpha/aria]`
+- **AND** the server that the client started holds the world `alpha/aria`
 
 ### Requirement: Each character file makes one world
 The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml` and `characters/<game>/<character>.toml`, and each file SHALL be optional. It can also hold `server.toml` at its top level, the configuration of the server, and `client.toml`, the configuration of the terminal client. Neither file SHALL make a world or a layer. Each character file SHALL make the world `<game>/<character>`, and its game SHALL be `games/<game>.toml`. A file name that is not a part of a world id SHALL be an error that names the file. So SHALL a character with no game file, and any other file that ends in `.toml`. So SHALL an entry that cannot be read, such as a link to nothing.

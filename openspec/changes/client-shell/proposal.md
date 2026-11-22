@@ -17,20 +17,22 @@ This change is the first of two that #101 splits into. It gives the client a con
 - Each world has its own input history in memory. Up on the first row of the editor recalls the older send, and Down on the last row the newer one.
 - Alt+1 to Alt+9 give the focus to the world at that place in the top row. Alt+Home and Alt+End scroll the pane to its first and last line.
 - The echo line of a send (#140) follows `echo` in `client.toml`: `show`, `dim` or `hide`. The default is `dim`. A joined pose shows as one row for each of its lines, split at the `line_break` of its world.
-- **BREAKING** (spec only, no release yet): after a refusal, a timeout, a stream end or a reset, only the first returned send goes back in the editor. The other returned sends and the text of the editor go into the history of their world. Up then recalls them one at a time (#151). A notice says how many wait there.
+- A change to existing behavior (no release yet): after a refusal, a timeout, a stream end or a reset, only the first returned send goes back in the editor. The other returned sends and the text of the editor go into the history of their world. Up then recalls them one at a time (#151). A notice says how many wait there.
 - The client opens the screen before the first list of the worlds and shows `listing worlds` in the top row while it waits (#161, third item).
 
 ## Choices you will notice
 
 - The command prefix is `/`, and `//` sends one `/`. The prefix is not configurable.
 - A command is only a text of one line. If a text has several lines, it never runs a command. This holds also when a line starts with `/`. Alt+Enter on lines that start with `/` sends them to the game.
-- `/connect` and `/disconnect` with no world act on the world in focus.
+- `/connect` and `/disconnect` with no world act on the world in focus. A trailing space is no argument.
+- A second `/quit` confirms a quit while texts wait. Typing it does not cancel the first one.
 - The echo default is `dim`. Before this change it was `show`.
 - History is per world, kept in memory only, at most 1000 sends for each world. It does not keep an empty send or a send equal to the one before it. Quitting the client loses it.
 - Up and Down recall history only from the first and the last row of the editor. On other rows they move the cursor.
 - A bad `client.toml` stops the client. The client does not start with the defaults and a warning.
 - After a refusal, the editor gets one send back, not all of them. The rest wait in history.
-- The key names of `[keys]` are lowercase and joined with `+`, for example `alt+enter` and `ctrl+shift+z`.
+- The key names of `[keys]` are lowercase and joined with `+`, for example `alt+enter` and `ctrl+shift+z`. The `+` key is `plus`. `"none"` makes a key do nothing.
+- A returned text goes in the editor with the cursor at its start, so Up recalls the next one at once.
 - Tab, Shift+Tab and Ctrl+Space get no binding, because completion will use them later.
 - The palette, the layout file, the tab labels and the statusline are not in this change.
 
@@ -64,7 +66,8 @@ This change is the first of two that #101 splits into. It gives the client a con
 ## Impact
 
 - `crates/mu-tui`: the registry, the keymap from configuration, commands, history, echo, the return path of `update.rs`, and the startup in `run.rs`. It gains `serde` for the configuration types.
-- `crates/mu-cli`: `mu client --config`, the search for `client.toml`, and the parse with `toml` and `serde_path_to_error`, which it already uses. The world resolver accepts `client.toml`.
+- `crates/mu-cli`: `mu client --config`, which it also passes to a server that it starts, and the read of `client.toml` with `mu_core::world::parse_toml`, as `server.toml` is read. The first list of the worlds gets the limit of 5 s.
+- `crates/mu-core`: the world resolver (`world/dir.rs`) accepts `client.toml` beside `server.toml`.
 - `crates/mu-cli/tests/workspace_boundary.rs`: `serde` joins the allowed crates of `mu-tui`.
-- Docs: the terminal client page and a page for `client.toml`.
+- Docs: the terminal client page, a page for `client.toml`, and the configuration guide, which names the top-level files.
 - No change to the API or the server.
