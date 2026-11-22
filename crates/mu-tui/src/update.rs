@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use mu_client::ClientEvent;
-use mu_proto::{EventKind, Source};
+use mu_proto::{EventKind, Source, World as ProtoWorld};
 use ratatui::style::Style;
 use ratatui_textarea::{Input, Key};
 use termina::Event as TermEvent;
@@ -17,7 +17,7 @@ use termina::event::{
 
 use crate::convert::convert;
 use crate::keymap::Wheel;
-use crate::model::{Late, Model, PaneId};
+use crate::model::{Late, Listing, Model, PaneId};
 use crate::pane::{Caps, PaneState};
 use crate::probe::{self, Outcome};
 use crate::store::Image;
@@ -39,6 +39,8 @@ pub enum Msg {
     CutReply(Vec<u8>),
     /// The reply of a call.
     Reply(Reply),
+    /// The list of the worlds after an [`Effect::ListWorlds`], or the reason that it failed.
+    Listed(Result<Vec<ProtoWorld>, String>),
 }
 
 /// What a key or a client command means.
@@ -90,6 +92,8 @@ pub enum Effect {
     },
     /// Leave the client.
     Quit,
+    /// Ask the server for the list of the worlds, and give it back as a [`Msg::Listed`].
+    ListWorlds,
     /// Write `text` to the clipboard of the terminal.
     ClipboardWrite(String),
     /// Send the PNG `png` to the terminal as `image`, with a virtual placement of its size,
@@ -149,8 +153,13 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
         }
         Msg::Terminal(_) => Vec::new(),
         Msg::Action(action) => act(model, action),
-        Msg::Client(item) => {
-            on_client(model, item);
+        Msg::Client(item) => on_client(model, item),
+        Msg::Listed(listed) => {
+            model.listing = Listing::Idle;
+            // A failed list changes nothing: a later new world or Alt+R asks again.
+            if let Ok(worlds) = listed {
+                model.learn(worlds);
+            }
             Vec::new()
         }
         Msg::Probe(outcome) => {
@@ -371,10 +380,7 @@ fn act(model: &mut Model, action: Action) -> Vec<Effect> {
             model.pose().textarea().insert_newline();
             Vec::new()
         }
-        Action::JoinLines => {
-            join_lines(model);
-            Vec::new()
-        }
+        Action::JoinLines => join_lines(model).into_iter().collect(),
         Action::DeleteToLineStart => {
             let textarea = model.pose().textarea();
             // At the start of a line, the delete of the library takes the line break before it.
@@ -454,21 +460,31 @@ fn submit_lines(model: &mut Model) -> Option<Effect> {
 /// Replaces each line break of the pose editor with the line break of the world in focus. The
 /// edit goes through the text area, so two undos bring the lines back: one for the joined text,
 /// and one for the lines.
-fn join_lines(model: &mut Model) {
-    let line_break = model
-        .focused_world()
-        .and_then(|world| world.line_break.clone());
+fn join_lines(model: &mut Model) -> Option<Effect> {
+    let world = model.focused_world()?;
+    let (listed, line_break) = (world.listed, world.line_break.clone());
+    if !listed {
+        model.hint("the client does not know the line break of the world in focus yet, try again");
+        return list_worlds(model);
+    }
     let Some(line_break) = line_break else {
         model.hint("the world in focus sets no line break, so the lines stay as they are");
-        return;
+        return None;
     };
     let text = model.input();
     if !text.contains('\n') {
-        return;
+        return None;
     }
     let textarea = model.pose().textarea();
     textarea.select_all();
     textarea.insert_str(text.replace('\n', &line_break));
+    None
+}
+
+/// A list of the worlds, unless one is with the server already.
+fn list_worlds(model: &mut Model) -> Option<Effect> {
+    (std::mem::replace(&mut model.listing, Listing::Asked) == Listing::Idle)
+        .then_some(Effect::ListWorlds)
 }
 
 fn move_focus(model: &mut Model, forward: bool) {
@@ -487,7 +503,9 @@ fn move_focus(model: &mut Model, forward: bool) {
     model.worlds[next].unseen = false;
 }
 
-fn on_client(model: &mut Model, item: ClientEvent) {
+/// The effects of an item of the event stream: a list of the worlds after a Reset, or after
+/// the first event of a world that the model did not hold, so the model learns its line break.
+fn on_client(model: &mut Model, item: ClientEvent) -> Vec<Effect> {
     match item {
         ClientEvent::Reset { .. } => {
             model.lost = false;
@@ -506,15 +524,26 @@ fn on_client(model: &mut Model, item: ClientEvent) {
                 }
             }
             return_waiting(model, "the server started again");
+            list_worlds(model).into_iter().collect()
         }
-        ClientEvent::Resumed => model.lost = false,
+        ClientEvent::Resumed => {
+            model.lost = false;
+            Vec::new()
+        }
         ClientEvent::Lost => {
             model.lost = true;
             return_waiting(model, "the client lost the server");
+            Vec::new()
         }
         ClientEvent::Event(event) => {
             model.lost = false;
+            let count = model.worlds.len();
             let index = model.world(&event.world);
+            let effects = if model.worlds.len() > count {
+                list_worlds(model).into_iter().collect()
+            } else {
+                Vec::new()
+            };
             let unseen = model.focus != Some(index);
             let world = &mut model.worlds[index];
             world.unseen |= unseen;
@@ -536,6 +565,7 @@ fn on_client(model: &mut Model, item: ClientEvent) {
                     pane.push_styled(&converted.text, &converted.spans);
                 }
             }
+            effects
         }
     }
 }

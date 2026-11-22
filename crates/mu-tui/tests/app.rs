@@ -119,8 +119,13 @@ fn press(app: &mut Model, key: KeyEvent) -> Vec<Effect> {
     update(app, Msg::Terminal(TermEvent::Key(key)))
 }
 
+/// Gives `item` to the model. Its only effect can be a list of the worlds.
 fn on_event(app: &mut Model, item: ClientEvent) {
-    assert_eq!(update(app, Msg::Client(item)), []);
+    let effects = update(app, Msg::Client(item));
+    assert!(
+        effects.iter().all(|effect| *effect == Effect::ListWorlds),
+        "{effects:?}"
+    );
 }
 
 fn on_reply(app: &mut Model, reply: Reply) {
@@ -1103,7 +1108,8 @@ fn refused_send_stops_the_sends_after_it() {
 
 #[test]
 fn hint_does_not_come_back_after_a_reset() {
-    let mut app = two_worlds();
+    let mut app = listed();
+    press(&mut app, ctrl('n'));
     type_lines(&mut app, &["one", "two"]);
     press(&mut app, KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT));
     assert!(has_notice(&mut app, "sets no line break"));
@@ -1251,4 +1257,67 @@ fn quit_with_no_waiting_send_leaves_at_once() {
     sent(&mut app, "alpha/aria", "two");
     sent(&mut app, "alpha/aria", "three");
     assert_eq!(press(&mut app, ctrl('c')), [Effect::Quit]);
+}
+
+// The line break of a world that the first list did not hold.
+
+fn alt_r() -> KeyEvent {
+    KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT)
+}
+
+/// A client whose first list failed, with `alpha/aria` from its first event.
+fn unlisted_world() -> Model {
+    let mut app = failed_listing();
+    let effects = update(&mut app, Msg::Client(game("alpha/aria", "Welcome, aria.")));
+    assert_eq!(effects, [Effect::ListWorlds]);
+    app
+}
+
+fn alpha_with_line_break() -> Vec<World> {
+    vec![World {
+        id: "alpha/aria".to_owned(),
+        line_break: Some("%r".to_owned()),
+        ..Default::default()
+    }]
+}
+
+#[test]
+fn list_takes_the_line_break_of_a_new_world() {
+    let mut app = unlisted_world();
+    assert_eq!(
+        update(&mut app, Msg::Listed(Ok(alpha_with_line_break()))),
+        []
+    );
+    type_lines(&mut app, &["one", "two"]);
+    press(&mut app, alt_r());
+    assert_eq!(app.input(), "one%rtwo");
+}
+
+#[test]
+fn unknown_line_break_asks_the_server() {
+    let mut app = unlisted_world();
+    update(&mut app, Msg::Listed(Err("no server".to_owned())));
+    type_lines(&mut app, &["one", "two"]);
+    assert_eq!(press(&mut app, alt_r()), [Effect::ListWorlds]);
+    assert!(has_notice(&mut app, "does not know the line break"));
+    assert!(!has_notice(&mut app, "sets no line break"));
+    assert_eq!(app.input(), "one\ntwo");
+}
+
+#[test]
+fn one_list_at_a_time() {
+    let mut app = unlisted_world();
+    // The list of the first event is still with the server.
+    assert_eq!(press(&mut app, alt_r()), []);
+    on_event(&mut app, game("beta/bryn", "Welcome, bryn."));
+    assert_eq!(update(&mut app, Msg::Client(game("gamma/cora", "hi"))), []);
+}
+
+#[test]
+fn reset_asks_for_the_list() {
+    let mut app = listed();
+    let reset = ClientEvent::Reset {
+        instance_id: "i".to_owned(),
+    };
+    assert_eq!(update(&mut app, Msg::Client(reset)), [Effect::ListWorlds]);
 }

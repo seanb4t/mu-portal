@@ -85,7 +85,7 @@ async fn event_loop(
                 None => return Ok(()),
             },
             Some(item) = events.next() => Msg::Client(item),
-            Some(answer) = reply.recv() => Msg::Reply(answer),
+            Some(msg) = reply.recv() => msg,
             }
         };
         for effect in update(model, msg) {
@@ -113,7 +113,16 @@ async fn event_loop(
                         };
                         let answer = reply_of(call, world.clone(), text.clone(), SEND_LIMIT).await;
                         // The loop holds the receiver until it returns.
-                        let _ = replies.send(answer);
+                        let _ = replies.send(Msg::Reply(answer));
+                    });
+                }
+                Effect::ListWorlds => {
+                    let client = client.clone();
+                    let replies = replies.clone();
+                    tokio::spawn(async move {
+                        let listed = client.list_worlds().await.map_err(|error| error.message);
+                        // The loop holds the receiver until it returns.
+                        let _ = replies.send(Msg::Listed(listed));
                     });
                 }
             }
