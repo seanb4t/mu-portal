@@ -10,7 +10,7 @@ The client SHALL read `client.toml` at the top level of the configuration direct
 #### Scenario: A file that sets the echo
 - **GIVEN** `<dir>/client.toml` holds `echo = "show"`, and a server with the fake world `alpha/aria`
 - **WHEN** the user starts `mu client --config <dir>`, types `hello` and presses Enter
-- **THEN** the screen shows `> hello` in the default style
+- **THEN** the screen shows `> hello`, and its cells are not dim
 
 #### Scenario: No file
 - **GIVEN** `<dir>` holds no `client.toml`, and a server with the fake world `alpha/aria`
@@ -34,7 +34,7 @@ A bad file is one that the client cannot read or parse, or that holds an unknown
 - **AND** the exit status is 1
 
 #### Scenario: A file that cannot be read
-- **GIVEN** `<dir>/client.toml` exists, and the user cannot read it
+- **GIVEN** the test runs as a user that is not root, and `<dir>/client.toml` exists with mode 000
 - **WHEN** the user starts `mu client --config <dir>`
 - **THEN** stderr names `client.toml`
 - **AND** the exit status is 1
@@ -108,7 +108,7 @@ A binding of `[keys]` SHALL stop the client as a bad file in each of these cases
 - **AND** the exit status is 1
 
 ### Requirement: The echo field sets the echo line
-The field `echo` SHALL be one of `show`, `dim` and `hide`, and its default SHALL be `dim`. With `show`, the client SHALL show the echo line of a send in the default style. With `dim`, it SHALL show it with the dim attribute. With `hide`, it SHALL NOT show it.
+The field `echo` SHALL be one of `show`, `dim` and `hide`, and its default SHALL be `dim`. With `show`, the client SHALL show the echo line of a send with no dim attribute. With `dim`, it SHALL show it with the dim attribute. With `hide`, it SHALL NOT show it.
 
 #### Scenario: The default dims
 - **GIVEN** `<dir>` holds no `client.toml`, and the world in focus is the fake world `alpha/aria`

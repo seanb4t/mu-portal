@@ -51,7 +51,7 @@ If the user presses Enter, the client SHALL send the whole text of the editor to
 - **AND** the editor still holds `one` and `two` on 2 rows
 
 ### Requirement: A refused text stops the sends after it
-If the server refuses a text, the client SHALL send none of the texts that wait for the same world. A send with no reply in time counts as a refusal. The requirement "A send with no reply is refused" gives the time. The client SHALL put the refused text alone in the editor, with the cursor at its start. It SHALL put each text that waited behind it, and then the text that the editor held, into the input history of that world. Up SHALL then give them in that order. It SHALL show the reason as a line with the prefix `-- `, and the count of the texts in the history. A key that sends after that SHALL send at once. If the event stream ends, or the server resets, the client SHALL take back each text that waits behind the text with the server. The first of them, in the order of the worlds, SHALL go alone in the editor, with the cursor at its start. Each other one SHALL go into the input history of its world. The text that the editor held SHALL go into the history of the world in focus. During a walk of the history, the text that the editor held is the draft that the walk saved, not the entry on screen. The client SHALL show a line with the prefix `-- ` that holds their count and the count of each world. The text with the server SHALL stay, and its reply SHALL act on it alone.
+If the server refuses a text, the client SHALL send none of the texts that wait for the same world. A send with no reply in time counts as a refusal. The requirement "A send with no reply is refused" gives the time. The client SHALL put the refused text alone in the editor, with the cursor at its start. It SHALL put each text that waited behind it, and then the text that the editor held, into the input history of that world. Up SHALL then give them in that order. It SHALL show the reason as a line with the prefix `-- `. If texts went into the history, the line SHALL also hold their count. A key that sends after that SHALL send at once. If the event stream ends, or the server resets, the client SHALL take back each text that waits behind the text with the server. The first of them, in the order of the worlds, SHALL go alone in the editor, with the cursor at its start. Each other one SHALL go into the input history of its world. The text that the editor held SHALL go into the history of the world in focus. During a walk of the history, the text that the editor held is the draft that the walk saved, not the entry on screen. The client SHALL show a line with the prefix `-- ` that holds their count and the count of each world. The text with the server SHALL stay, and its reply SHALL act on it alone.
 
 #### Scenario: A line that the server refuses
 - **GIVEN** the editor holds the lines `one`, `two` and `three`, and a test server that accepts `one` and refuses `two`
@@ -145,6 +145,16 @@ The client SHALL keep an input history for each world, in memory. Each key that 
 - **THEN** the editor holds `one`
 - **AND** after a third Up the editor still holds `one`
 
+#### Scenario: An escaped slash in the history
+- **GIVEN** the world in focus is the fake world `alpha/aria`
+- **WHEN** the user sends `//me waves`, then presses Up and Enter
+- **THEN** the server records the player event `/me waves` twice for `alpha/aria`
+
+#### Scenario: Down with no walk
+- **GIVEN** the world in focus is the fake world `alpha/aria`, and its history holds `one`
+- **WHEN** the user types `draft` and presses Down
+- **THEN** the editor holds `draft`
+
 ### Requirement: Up and Down walk the history
 A line here is a line between line breaks, not a wrapped row. If the cursor is on the first line of the editor, Up SHALL replace the text with the next older entry of the world in focus. If the cursor is on the last line, Down SHALL replace it with the next newer entry. Past the newest entry, Down SHALL bring back the text that the editor held before the first Up. On other lines, Up and Down SHALL move the cursor. With no older entry, Up SHALL NOT change the text.
 
@@ -206,7 +216,7 @@ The client SHALL split the echo line of a send at each `line_break` of its world
 - **AND** the screen shows no row that holds `one%rtwo` and starts with `> `
 
 ### Requirement: The top row shows the first list
-The client SHALL open the screen before its first list of the worlds. Until that list ends, the top row SHALL show `listing worlds`. Keys typed in that time SHALL edit the editor, and a key that sends SHALL show that no world is in focus.
+The client SHALL open the screen before its first list of the worlds. Until that list ends, the top row SHALL show `listing worlds`, and no world SHALL have the focus, also if events of a world arrive. Keys typed in that time SHALL edit the editor, and a key that sends SHALL show that no world is in focus.
 
 #### Scenario: Before the first list
 - **GIVEN** the client opened the screen, and its first list of the worlds did not end yet
@@ -221,8 +231,14 @@ The client SHALL open the screen before its first list of the worlds. Until that
 - **THEN** the screen shows a line that starts with `-- ` and contains `no world`
 - **AND** the client sends no text, and the editor holds `hi`
 
+#### Scenario: An event before the first list
+- **GIVEN** the client opened the screen, and its first list of the worlds did not end yet
+- **WHEN** an event of `alpha/aria` arrives, and the user types `hi` and presses Enter
+- **THEN** the screen shows a line that starts with `-- ` and contains `no world`
+- **AND** the client sends no text
+
 #### Scenario: The first list fails
 - **GIVEN** the client opened the screen, and its first list of the worlds did not end yet
-- **WHEN** the list fails
+- **WHEN** the reply to the list is the error `boom`
 - **THEN** the top row shows `no worlds`, not `listing worlds`
-- **AND** the screen shows a line that starts with `-- ` and names the failure
+- **AND** the screen shows a line that starts with `-- ` and contains `boom`

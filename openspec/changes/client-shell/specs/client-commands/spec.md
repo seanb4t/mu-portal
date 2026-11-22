@@ -90,6 +90,12 @@ A bad command names no entry, or an entry that does not run as a command. It can
 - **THEN** the server reports `beta/bryn` as disconnected
 - **AND** `alpha/aria` is still connected
 
+#### Scenario: A key bound to connect with no world in focus
+- **GIVEN** `<dir>/client.toml` holds `[keys]` with `"alt+c" = "connect"`, and a server with no world
+- **WHEN** the user starts `mu client --config <dir>` and presses Alt+C
+- **THEN** the screen shows a line that starts with `-- ` and contains `no world`
+- **AND** the client is still running
+
 #### Scenario: Connect with no world in focus
 - **GIVEN** a server with no world
 - **WHEN** the user types `/connect` and presses Enter
@@ -116,7 +122,7 @@ A bad command names no entry, or an entry that does not run as a command. It can
 - **THEN** the top row shows `[beta/bryn]`
 
 ### Requirement: Quit by command
-`/quit` SHALL do what Ctrl+C does, under the requirement "Ctrl+C quits the client only". If a `/quit` armed the quit because texts wait, the keys that type the next command SHALL NOT cancel the arm. A second `/quit` SHALL then quit. Any other send or command SHALL cancel the arm.
+`/quit` SHALL do what Ctrl+C does, under the requirement "Ctrl+C quits the client only". If a `/quit` armed the quit because texts wait, the keys that type the next command SHALL NOT cancel the arm. A second `/quit` SHALL then quit. Any other send or command, also a bad command, SHALL cancel the arm.
 
 #### Scenario: Quit
 - **GIVEN** no text of a world waits for the server
@@ -130,6 +136,12 @@ A bad command names no entry, or an entry that does not run as a command. It can
 - **THEN** the screen shows a line that starts with `-- ` and holds the count of the texts that wait
 - **WHEN** the user types `/quit` and presses Enter again
 - **THEN** the client exits with status 0
+
+#### Scenario: Another command cancels the quit
+- **GIVEN** a text of `alpha/aria` waits for the server
+- **WHEN** the user types `/quit` and presses Enter, then types `/fly` and presses Enter, then types `/quit` and presses Enter
+- **THEN** the client is still running
+- **AND** the screen shows the count of the texts that wait a second time
 
 #### Scenario: A command with no world in focus
 - **GIVEN** a server with no world
