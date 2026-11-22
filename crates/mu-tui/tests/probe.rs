@@ -423,19 +423,6 @@ fn queries_ask_for_the_keyboard_flags_before_da1() {
 
 // A bracketed paste during the probe.
 
-/// The text of each paste event of `framing`, joined, and the other events.
-fn pasted(events: &[Event]) -> (String, Vec<Event>) {
-    let mut text = String::new();
-    let mut other = Vec::new();
-    for event in events {
-        match event {
-            Event::Paste(part) => text.push_str(part),
-            event => other.push(event.clone()),
-        }
-    }
-    (text, other)
-}
-
 #[test]
 fn paste_is_one_paste_event() {
     let framing = framed(&[b"\x1b[200~one\rtwo\x1b[201~x"]);
@@ -463,7 +450,7 @@ fn paste_longer_than_the_cap_goes_through() {
     let bytes = [b"\x1b[200~", text.as_bytes(), b"\x1b[201~"].concat();
     let reads: Vec<&[u8]> = bytes.chunks(1000).collect();
     let framing = framed(&reads);
-    assert_eq!(pasted(&framing.events), (text, vec![]));
+    assert_eq!(framing.events, [Event::Paste(text)]);
     assert_eq!((framing.pending, framing.skip), (vec![], Skip::Nothing));
 }
 
@@ -484,8 +471,8 @@ proptest! {
         }
         let framing = framed(&reads);
         prop_assert_eq!(
-            pasted(&framing.events),
-            (text, vec![key('z', Modifiers::NONE)])
+            framing.events,
+            vec![Event::Paste(text), key('z', Modifiers::NONE)]
         );
     }
 }
