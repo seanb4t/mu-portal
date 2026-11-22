@@ -66,10 +66,12 @@ pub struct Model {
     pub(crate) notices: Vec<String>,
     /// True if a late answer gave mode 2027 as set before the probe.
     pub(crate) keeps_grapheme_mode: bool,
-    /// True after a Quit with sends that wait, until the next key. A second Quit then leaves.
+    /// True after a Quit while a send has no reply yet, the send with the server included,
+    /// until the next key that is not Quit. A second Quit then leaves.
     pub(crate) quit_armed: bool,
-    /// Whether a list of the worlds is with the server.
     pub(crate) listing: Listing,
+    /// The reason of the last list of the worlds, if it failed.
+    pub(crate) list_failure: Option<String>,
 }
 
 /// Whether a list of the worlds is with the server, so a second one does not go.
@@ -126,6 +128,7 @@ impl Model {
             keeps_grapheme_mode: false,
             quit_armed: false,
             listing: Listing::Idle,
+            list_failure: None,
         };
         for id in worlds {
             model.world(&id);

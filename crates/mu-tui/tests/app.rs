@@ -936,6 +936,16 @@ fn alt_r() -> KeyEvent {
     KeyEvent::new(KeyCode::Char('r'), Modifiers::ALT)
 }
 
+/// True if the screen shows `text`, also across a wrap. The rows join with a space.
+fn shows(app: &mut Model, text: &str) -> bool {
+    screen(app)
+        .iter()
+        .map(|row| row.trim_end())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .contains(text)
+}
+
 /// True if a row of the screen is a notice that holds `text`.
 fn has_notice(app: &mut Model, text: &str) -> bool {
     screen(app)
@@ -1258,7 +1268,8 @@ fn quit_with_no_waiting_send_leaves_at_once() {
     assert_eq!(press(&mut app, ctrl('c')), [Effect::Quit]);
 }
 
-// The line break of a world that the first list did not hold.
+// Lists of the worlds and the line break, then more cases of the sends that wait, the quit
+// and a paste during the probe.
 
 /// A client whose first list failed, with `alpha/aria` from its first event.
 fn unlisted_world() -> Model {
@@ -1353,7 +1364,8 @@ fn quit_with_only_the_line_with_the_server_asks_again() {
 
 #[test]
 fn lost_server_puts_back_the_lines_in_the_order_of_the_worlds() {
-    // Each model has its own map of sends, so the runs cover several orders of a hash map.
+    // Each model has its own map of sends, so the 32 runs very likely see both orders of a hash
+    // map.
     for _ in 0..32 {
         let mut app = two_worlds();
         press(&mut app, ctrl('n'));
@@ -1364,6 +1376,7 @@ fn lost_server_puts_back_the_lines_in_the_order_of_the_worlds() {
         assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "a1")]);
         on_event(&mut app, ClientEvent::Lost);
         assert_eq!(app.input(), "a2\nb2");
+        assert!(shows(&mut app, "1 line of alpha/aria, 1 line of beta/bryn"));
     }
 }
 
@@ -1376,7 +1389,8 @@ fn notice_of_the_returned_lines_does_not_come_back_after_a_reset() {
         instance_id: "i".to_owned(),
     };
     on_event(&mut app, reset);
-    // The reset puts back nothing more, so no line about returned lines is on the screen.
+    // The reset clears the pane and does not bring hints back, and nothing waits any more, so no
+    // line about returned lines is on the screen.
     assert!(!has_notice(&mut app, "lines that waited"));
 }
 
@@ -1390,4 +1404,33 @@ fn reset_during_a_list_asks_again_after_its_reply() {
     on_event(&mut app, reset);
     let after = update(&mut app, Msg::Listed(Err("old server".to_owned())));
     assert_eq!(after, [Effect::ListWorlds]);
+}
+
+#[test]
+fn failed_list_names_its_reason_at_alt_r() {
+    let mut app = unlisted_world();
+    assert_eq!(
+        update(
+            &mut app,
+            Msg::Listed(Err("unavailable: no server".to_owned()))
+        ),
+        []
+    );
+    type_lines(&mut app, &["one", "two"]);
+    assert_eq!(press(&mut app, alt_r()), [Effect::ListWorlds]);
+    assert!(shows(
+        &mut app,
+        "the last list of the worlds failed (unavailable: no server)"
+    ));
+}
+
+#[test]
+fn list_adds_a_world_that_the_client_did_not_hold() {
+    let mut app = failed_listing();
+    let beta = World {
+        id: "beta/bryn".to_owned(),
+        ..Default::default()
+    };
+    assert_eq!(update(&mut app, Msg::Listed(Ok(vec![beta]))), []);
+    assert!(top(&mut app).contains("beta/bryn"));
 }

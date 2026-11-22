@@ -116,11 +116,12 @@ pub const fn is_csi_body(b: u8) -> bool {
     matches!(b, 0x20..=0x3f)
 }
 
-/// The most bytes that [`frame`] holds for an open sequence.
+/// The most bytes that [`frame`] holds for an open sequence. An open bracketed paste has no
+/// such limit.
 pub const PENDING_MAX: usize = 4096;
 
-/// What the framer drops at the start of the next read: the rest of a sequence that passed
-/// [`PENDING_MAX`] and was dropped.
+/// What the framer does with the start of the next read: drop the rest of a sequence that passed
+/// [`PENDING_MAX`], or collect the text of an open bracketed paste.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Skip {
     /// Nothing: the next read starts a frame.
@@ -133,7 +134,8 @@ pub enum Skip {
     /// The rest of an APC after an ESC at the end of the last read. A `\` ends it.
     ApcEsc,
     /// The text of a bracketed paste, up to [`PASTE_END`]. The framer holds the whole text in
-    /// `pending` and gives it as one paste event, so a paste of any length is one edit.
+    /// `pending` and gives it as one paste event, so a paste of any length that ends while the
+    /// framer reads is one edit.
     Paste,
 }
 
@@ -146,7 +148,8 @@ pub const PASTE_END: &[u8] = b"\x1b[201~";
 /// Adds `read` to `pending` and frames the bytes of `pending` that make whole frames. A frame is
 /// a complete CSI, an APC, a broken sequence, or a run of other bytes. A CSI or APC with no end,
 /// an ESC with at most one byte after it, and the first bytes of a UTF-8 character stay in
-/// `pending` for the next read. `pending` holds at most [`PENDING_MAX`] bytes. If an open CSI or
+/// `pending` for the next read. `pending` holds at most [`PENDING_MAX`] bytes, except for the text of an open bracketed
+/// paste. If an open CSI or
 /// APC grows past that limit, the framer drops its bytes, and `skip` makes it drop each byte of
 /// the later reads up to the end of that sequence.
 ///
@@ -155,6 +158,8 @@ pub const PASTE_END: &[u8] = b"\x1b[201~";
 /// - An APC is the graphics answer, or it is dropped.
 /// - An ESC inside an open CSI or APC, or a byte outside the bytes of a CSI, ends the sequence
 ///   as broken. The keys of its bytes are input, and a new frame starts after them.
+/// - [`PASTE_START`] starts a paste. Its text stays in `pending` up to [`PASTE_END`], and then
+///   it is one paste event.
 /// - Other bytes go to a Termina parser.
 pub fn frame(pending: &mut Vec<u8>, skip: &mut Skip, read: &[u8]) -> Framed {
     let read = &read[skipped(skip, read, pending)..];
@@ -547,12 +552,15 @@ fn write_and_read(
     read_answers(|buf| Ok(rustix::io::read(fd, buf)?), Instant::now, wait)
 }
 
-/// Reads with `read` and frames the bytes until DA1 or the time `wait` after the start. A read
+/// Reads with `read` and frames the bytes until DA1 or the time `wait` after the start. While a
+/// bracketed paste is open, it reads on to the end of the paste, for at most `wait` more. A read
 /// starts only if it can end by then, so the last tick can stay unread. `now` is the clock.
 /// Returns what the answers give, and the input that is not an answer, as events.
 ///
-/// If DA1 did not come, an open CSI or a lone ESC at the end is in [`Outcome::open`]. Every other
-/// byte that the framer still holds is input.
+/// The text of a paste that is still open at the end is one paste event. The first bytes of a
+/// cut end mark or of a cut UTF-8 character at its end are dropped, and the rest of the paste
+/// reaches the event reader as keys. Else, if DA1 did not come, an open CSI or a lone ESC at the
+/// end is in [`Outcome::open`]. Every other byte that the framer still holds is input.
 ///
 /// # Errors
 ///
@@ -583,8 +591,8 @@ pub fn read_answers(
     }
     let mut outcome = Outcome::learn(&answers);
     if skip == Skip::Paste {
-        // The rest of a paste that did not end in time reaches the event reader as keys. A cut
-        // end mark or a cut UTF-8 character at the end is not text of the paste.
+        // The rest of a paste that did not end in time reaches the event reader as keys. The
+        // first bytes of a cut end mark or of a cut UTF-8 character are dropped (#158).
         let text = &pending[..pending.len() - held_for_paste(&pending)];
         if !text.is_empty() {
             events.push(Event::Paste(String::from_utf8_lossy(text).into_owned()));

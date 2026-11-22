@@ -119,7 +119,7 @@ async fn event_loop(
                             client
                                 .send(&world, &text)
                                 .await
-                                .map_err(|error| error.message)
+                                .map_err(|error| error.to_string())
                         };
                         let answer = reply_of(call, world.clone(), text.clone(), CALL_LIMIT).await;
                         Msg::Reply(answer)
@@ -128,8 +128,12 @@ async fn event_loop(
                 Effect::ListWorlds => {
                     let client = client.clone();
                     spawn_reply(&replies, async move {
-                        let call =
-                            async { client.list_worlds().await.map_err(|error| error.message) };
+                        let call = async {
+                            client
+                                .list_worlds()
+                                .await
+                                .map_err(|error| error.to_string())
+                        };
                         Msg::Listed(within(call, CALL_LIMIT, "").await)
                     });
                 }
@@ -138,9 +142,10 @@ async fn event_loop(
     }
 }
 
-/// The longest time that the client waits for the reply of a send or a list of the worlds. It
-/// is above the limits of the server for a connect and for a write to a game, so the server's
-/// own answer comes first when the game is slow.
+/// The longest time that the client waits for the reply of a send or a list of the worlds. A
+/// send waits on the server for at most two writes to the game, of `WRITE_TIMEOUT` (10 s) each
+/// in `mu_core::session`. The limit is above that, so the server's own answer comes first when
+/// the game is slow.
 pub const CALL_LIMIT: Duration = Duration::from_secs(30);
 
 /// Runs `call` on a task, and gives its message to the loop.

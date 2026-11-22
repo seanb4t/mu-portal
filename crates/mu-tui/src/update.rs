@@ -157,9 +157,14 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
         Msg::Listed(listed) => {
             let again = model.listing == Listing::AskedBeforeReset;
             model.listing = Listing::Idle;
-            // A failed list changes nothing: a later new world or Alt+R asks again.
-            if let Ok(worlds) = listed {
-                model.learn(worlds);
+            // A failed list keeps its reason for Alt+R. A later new world, a reset, or Alt+R on
+            // a world that no list held asks again.
+            match listed {
+                Ok(worlds) => {
+                    model.list_failure = None;
+                    model.learn(worlds);
+                }
+                Err(reason) => model.list_failure = Some(reason),
             }
             if again {
                 list_worlds(model).into_iter().collect()
@@ -464,7 +469,8 @@ fn submit_lines(model: &mut Model) -> Option<Effect> {
 
 /// Replaces each line break of the pose editor with the line break of the world in focus. The
 /// edit goes through the text area, so two undos bring the lines back: one for the joined text,
-/// and one for the lines.
+/// and one for the lines. If no list held the world in focus yet, the editor stays as it is, and
+/// the client asks for the list of the worlds.
 fn join_lines(model: &mut Model) -> Option<Effect> {
     let Some(world) = model.focused_world() else {
         model.hint("no world has the focus, so no line break joins the lines");
@@ -472,7 +478,15 @@ fn join_lines(model: &mut Model) -> Option<Effect> {
     };
     let (listed, line_break) = (world.listed, world.line_break.clone());
     if !listed {
-        model.hint("the client does not know the line break of the world in focus yet, try again");
+        let hint = match &model.list_failure {
+            Some(reason) => format!(
+                "the client does not know the line break of the world in focus: the last list of \
+                 the worlds failed ({reason}), so it asks again"
+            ),
+            None => "the client does not know the line break of the world in focus yet, try again"
+                .to_owned(),
+        };
+        model.hint(&hint);
         return list_worlds(model);
     }
     let Some(line_break) = line_break else {
@@ -634,21 +648,31 @@ fn put_back(model: &mut Model, mut lines: Vec<String>) {
 }
 
 /// Puts the sends that wait behind the send with the server back in the pose editor, in the
-/// order of the worlds, with a notice that names `why`. The send with the server stays, so its
-/// reply still moves on or puts back only that send.
+/// order of the worlds, with a hint that names `why` and the count of each world. The send with
+/// the server stays, so its reply still moves on or puts back only that send.
 fn return_waiting(model: &mut Model, why: &str) {
     let mut lines = Vec::new();
+    let mut counts = Vec::new();
     for world in &model.worlds {
         if let Some(queue) = model.sends.get_mut(&world.id) {
+            let before = lines.len();
             lines.extend(queue.drain(1..));
+            if lines.len() > before {
+                counts.push(format!(
+                    "{} of {}",
+                    line_count(lines.len() - before),
+                    world.id
+                ));
+            }
         }
     }
     if lines.is_empty() {
         return;
     }
     model.hint(&format!(
-        "{why}, so {} that waited went back to the editor",
-        line_count(lines.len())
+        "{why}, so {} that waited went back to the editor: {}",
+        line_count(lines.len()),
+        counts.join(", ")
     ));
     put_back(model, lines);
 }
