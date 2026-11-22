@@ -1,10 +1,10 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-22T11:35:30+00:00
-head: 7a572527c39b3877b6a968867f0901368c8b1dc7
-round: 7
-next_id: 95
+reviewed_at: 2026-11-22T12:00:52+00:00
+head: 91413f0c190c35beb256d788387140dbdf447237
+round: 8
+next_id: 98
 lenses:
   spec-lint: not-applicable
   approach: ok
@@ -20,16 +20,9 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-85 | test-coverage | should-fix | in-change | delta scenario 'A refused line after more text' has no matrix row | review > absent-row — "A refused line after more text" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-86 | test-coverage | should-fix | in-change | delta scenario 'Back and forward' has no matrix row | review > absent-row — "Back and forward" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-87 | test-coverage | should-fix | in-change | delta scenario 'A new line while scrolled back' has no matrix row | review > absent-row — "A new line while scrolled back" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-88 | test-coverage | should-fix | in-change | delta scenario 'Enter returns to the bottom' has no matrix row | review > absent-row — "Enter returns to the bottom" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-89 | test-coverage | should-fix | in-change | delta scenario 'The mouse wheel' has no matrix row | review > absent-row — "The mouse wheel" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-90 | test-coverage | should-fix | in-change | delta scenario 'A pane of one row' has no matrix row | review > absent-row — "A pane of one row" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-91 | test-coverage | should-fix | in-change | delta scenario 'A pane of no rows' has no matrix row | review > absent-row — "A pane of no rows" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-92 | test-coverage | should-fix | in-change | delta scenario 'A late answer' has no matrix row | review > absent-row — "A late answer" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-93 | test-coverage | should-fix | in-change | delta scenario 'A send of each line while a send waits' has no matrix row | review > absent-row — "A send of each line while a send waits" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-94 | test-coverage | should-fix | in-change | delta scenario 'A line break that the editor cannot hold' has no matrix row | review > absent-row — "A line break that the editor cannot hold" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-95 | test-coverage | should-fix | in-change | delta scenario 'Two sends of Enter' has no matrix row | review > absent-row — "Two sends of Enter" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-96 | test-coverage | should-fix | in-change | delta scenario 'A send to another world' has no matrix row | review > absent-row — "A send to another world" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-97 | test-coverage | should-fix | in-change | delta scenario 'A refused send of Enter with a send after it' has no matrix row | review > absent-row — "A refused send of Enter with a send after it" | add the row with its covering task or test |  |  | unmet-requirement |
 
 ## Repeats
 
@@ -40,8 +33,18 @@ lenses:
 | R-80 | test-coverage | should-fix | covered row 'An empty line' has no verification run | review > not-run — "An empty line" |
 | R-81 | test-coverage | should-fix | covered row 'Each line is a command' has no verification run | review > not-run — "Each line is a command" |
 | R-82 | test-coverage | should-fix | covered row 'A world that waits to reconnect' has no verification run | review > not-run — "A world that waits to reconnect" |
+| R-85 | test-coverage | should-fix | delta scenario 'A refused line after more text' has no matrix row | review > absent-row — "A refused line after more text" |
+| R-86 | test-coverage | should-fix | delta scenario 'Back and forward' has no matrix row | review > absent-row — "Back and forward" |
+| R-87 | test-coverage | should-fix | delta scenario 'A new line while scrolled back' has no matrix row | review > absent-row — "A new line while scrolled back" |
+| R-88 | test-coverage | should-fix | delta scenario 'Enter returns to the bottom' has no matrix row | review > absent-row — "Enter returns to the bottom" |
+| R-89 | test-coverage | should-fix | delta scenario 'The mouse wheel' has no matrix row | review > absent-row — "The mouse wheel" |
+| R-90 | test-coverage | should-fix | delta scenario 'A pane of one row' has no matrix row | review > absent-row — "A pane of one row" |
+| R-91 | test-coverage | should-fix | delta scenario 'A pane of no rows' has no matrix row | review > absent-row — "A pane of no rows" |
+| R-92 | test-coverage | should-fix | delta scenario 'A late answer' has no matrix row | review > absent-row — "A late answer" |
 | R-83 | test-coverage | should-fix | delta scenario 'A send while lines wait' has no matrix row | review > absent-row — "A send while lines wait" |
+| R-93 | test-coverage | should-fix | delta scenario 'A send of each line while a send waits' has no matrix row | review > absent-row — "A send of each line while a send waits" |
 | R-84 | test-coverage | should-fix | delta scenario 'The last line is refused' has no matrix row | review > absent-row — "The last line is refused" |
+| R-94 | test-coverage | should-fix | delta scenario 'A line break that the editor cannot hold' has no matrix row | review > absent-row — "A line break that the editor cannot hold" |
 
 ## Out of bound
 
@@ -61,6 +64,9 @@ None.
 | R-92 | should-fix | accepted | Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. | https://github.com/seanb4t/mu-portal/issues/150 |
 | R-93 | should-fix | accepted | Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. | https://github.com/seanb4t/mu-portal/issues/150 |
 | R-94 | should-fix | accepted | Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. | https://github.com/seanb4t/mu-portal/issues/150 |
+| R-95 | should-fix | accepted | Each scenario has a test in crates/mu-tui/tests/app.rs, and each test ran and passed at the head. The coverage table is carried from round 5, and a follow-up round does not rebuild it. Same case as issue 150. | https://github.com/seanb4t/mu-portal/issues/152 |
+| R-96 | should-fix | accepted | Each scenario has a test in crates/mu-tui/tests/app.rs, and each test ran and passed at the head. The coverage table is carried from round 5, and a follow-up round does not rebuild it. Same case as issue 150. | https://github.com/seanb4t/mu-portal/issues/152 |
+| R-97 | should-fix | accepted | Each scenario has a test in crates/mu-tui/tests/app.rs, and each test ran and passed at the head. The coverage table is carried from round 5, and a follow-up round does not rebuild it. Same case as issue 150. | https://github.com/seanb4t/mu-portal/issues/152 |
 
 ## Rounds
 
@@ -73,6 +79,7 @@ None.
 | 5 | implementation | full | 1e283cd9eed30835f5cdca9cd37f29a4b1f51c9a | 43802f79263b59f8367004c232f37b37886658fa20c9a37b1d6f521985416bbf | changes-requested | 20 | 0 | 0 | 0 | 0 |  |
 | 6 | implementation | follow-up | e2c754f69328bbb4acadb6c9c1a3d6aac3408c94 | 7e9fc30b47a3102a544d760591c74b0d34d85a08717ff6deb514e06bcc4ad610 | approve-with-notes | 2 | 5 | 4 | 12 | 0 |  |
 | 7 | implementation | follow-up | 7a572527c39b3877b6a968867f0901368c8b1dc7 | 7a1a91a3b9fbe94ec431984c415c6b13bd215b18909bdb7df526b2b42ce479ed | approve-with-notes | 10 | 7 | 0 | 4 | 0 |  |
+| 8 | implementation | follow-up | 91413f0c190c35beb256d788387140dbdf447237 | c8dd2a2d5696fb093c33fb5ba93c7e471cb7c811d75634c9a42597bda4697442 | approve-with-notes | 3 | 17 | 0 | 0 | 0 |  |
 
 ## Judge
 
@@ -275,10 +282,13 @@ None.
 
 ## Lens notes
 
-- verify: R-65, R-66 and R-70 share one fix. world_for_a_send refuses every send while model.queue is Some. submit_lines refuses a send of each line while a plain send to the same world waits. on_reply moves the queue only for a Sent reply that matches no plain send and matches queue.world and queue.sent. So at most one line of a queue is in flight, and no line of another send goes between two lines of a queue.
-- verify: The fix makes the client refuse every send while a queue line waits for its reply. If a Send call never returns, the client sends nothing until the restart. run.rs turns each answer of client.send into a Reply, and an RPC error gives Reply::Refused. No reading found a path that drops the reply, so this is no finding.
-- verify: cursor_stays_at_a_grapheme_boundary picks keys from plain moves, Ctrl+Left/Right (WordBack/WordForward in the fork at 462cce4), Ctrl+W, Ctrl+K, Ctrl+U, Ctrl+Z and Ctrl+Shift+Z. It does not use Top, Bottom, the paragraph moves (Ctrl+Alt+Up/Down and Alt+Up/Down in the fork) or a mouse Jump. These moves also go through move_cursor_with_shift, the one place where patch 1 snaps the cursor.
-- verify: The other ranges of diff-hunks.txt were read: keymap.rs docs, model.rs from_listing filter, probe.rs, screen.rs pop, text.rs doc, mu-cli server.rs LineBreak::new, check.rs check_line_break, deny.toml, the app.rs refused_line_goes_before_the_typed_text test and editor.rs line 20. None of them has a regression.
+- verify: prior.json has no row with the disposition fixed, so fixes is empty and no fix_hunks range was read.
+- verify: The hunks of crates/mu-tui/src/update.rs (enqueue, submit, submit_lines, on_reply, next_send) keep at most one send of a world in flight: enqueue returns Effect::Send only when the queue of the world was empty, and next_send moves the queue on only for a Sent whose text is the front.
+- verify: on_reply removes the whole queue of a world on a Refused whose text is the front, and puts the texts back before the typed text with set_input, as D13 and the requirement 'A refused text stops the sends after it' state.
+- verify: run.rs builds Reply::Sent and Reply::Refused from the world and text of the Effect::Send, so the reply of a world always names the front of its queue.
+- verify: The hunks of crates/mu-tui/tests/app.rs (sends_to_a_world_go_one_at_a_time, send_goes_after_the_lines_that_wait, lines_go_after_a_send_with_the_same_text, send_to_another_world_does_not_wait, refused_send_stops_the_sends_after_it) match the code of update.rs.
+- verify: The Cargo.lock hunks change only the version and checksum of form_urlencoded and url; the controller's locked build covers them.
+- verify: The review.md hunks were not read, as the agent file forbids.
 
 ## Ledger
 
@@ -361,29 +371,32 @@ None.
 | R-75 | 5 | 6 | suggestion | in-change |  | ["path","crates/mu-tui/src/editor.rs",54] | resolved | resolved in round 6 from fixed 064a081061aaf4a039f9d178db451be781a71810 |  | scope? beyond-scope 0.66; severity? should-fix 0.83 | EditorState does not hold its caps, as PaneState does and as D3 says. Each set_text call must pass the caps of the model, where PaneState::clear keeps its own. |
 | R-76 | 5 | 6 | suggestion | in-change |  | ["path","crates/mu-tui/src/view.rs",88] | resolved | resolved in round 6 from fixed 064a081061aaf4a039f9d178db451be781a71810 |  | severity? should-fix 0.64 | Size::Editor in a horizontal split wraps the text at the height of the split and sets the width of the editor to a row count. #101 puts an editor in a pane that the player arranges, so it must change this sizing, though D4 says it needs no new shape of Size. |
 | R-77 | 5 | 7 | suggestion | in-change | unmet-requirement | ["artifact",["design.md","What enforces each rule"],"The tests of patch 1 in the fork, and the scenarios of \\"The cursor moves by grapheme\\""] | resolved | resolved in round 7 from fixed 307d52c8638f8e7e341a8e2b82f2acd047cb345f |  | severity? should-fix 0.65 | The cursor of the editor stops only at a grapheme boundary after any sequence of moves and edits. That is a rule over every text and every key sequence, and its tests are fixed examples: four graphemes in the fork, and five scenarios in editor.rs. A move kind that the fork misses, such as a word move or an undo that restores a cursor, has no test. |
-| R-78 | 5 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A terminal that adds code point widths"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'A terminal that adds code point widths' has no verification run |
-| R-79 | 5 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Control characters in a paste"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'Control characters in a paste' has no verification run |
-| R-80 | 5 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"An empty line"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'An empty line' has no verification run |
-| R-81 | 5 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Each line is a command"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'Each line is a command' has no verification run |
-| R-82 | 5 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A world that waits to reconnect"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'A world that waits to reconnect' has no verification run |
-| R-83 | 6 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A send while lines wait"] | refuted | tasks.md names a test for each scenario in task 5.6: send_waits_for_the_lines_of_a_send_of_each_line and refused_last_line_goes_before_the_typed_text. Both tests ran and passed in mise run check at the fix commit. The matrix is carried from round 5, and a follow-up round does not rebuild it. |  |  | delta scenario 'A send while lines wait' has no matrix row |
-| R-84 | 6 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The last line is refused"] | refuted | tasks.md names a test for each scenario in task 5.6: send_waits_for_the_lines_of_a_send_of_each_line and refused_last_line_goes_before_the_typed_text. Both tests ran and passed in mise run check at the fix commit. The matrix is carried from round 5, and a follow-up round does not rebuild it. |  |  | delta scenario 'The last line is refused' has no matrix row |
-| R-85 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A refused line after more text"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'A refused line after more text' has no matrix row |
-| R-86 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Back and forward"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'Back and forward' has no matrix row |
-| R-87 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A new line while scrolled back"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'A new line while scrolled back' has no matrix row |
-| R-88 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Enter returns to the bottom"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'Enter returns to the bottom' has no matrix row |
-| R-89 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The mouse wheel"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'The mouse wheel' has no matrix row |
-| R-90 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A pane of one row"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'A pane of one row' has no matrix row |
-| R-91 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A pane of no rows"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'A pane of no rows' has no matrix row |
-| R-92 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A late answer"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'A late answer' has no matrix row |
-| R-93 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A send of each line while a send waits"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'A send of each line while a send waits' has no matrix row |
-| R-94 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A line break that the editor cannot hold"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'A line break that the editor cannot hold' has no matrix row |
+| R-78 | 5 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A terminal that adds code point widths"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'A terminal that adds code point widths' has no verification run |
+| R-79 | 5 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Control characters in a paste"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'Control characters in a paste' has no verification run |
+| R-80 | 5 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"An empty line"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'An empty line' has no verification run |
+| R-81 | 5 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Each line is a command"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'Each line is a command' has no verification run |
+| R-82 | 5 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A world that waits to reconnect"] | refuted | Both covering tests of each row ran at the head of the round and passed. verification-runs.txt holds one line with exit code 0 for each of the two tests. The merge matches a row to one run, and each of these rows names two tests in two crates. |  |  | covered row 'A world that waits to reconnect' has no verification run |
+| R-83 | 6 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A send while lines wait"] | refuted | tasks.md names a test for each scenario in task 5.6: send_waits_for_the_lines_of_a_send_of_each_line and refused_last_line_goes_before_the_typed_text. Both tests ran and passed in mise run check at the fix commit. The matrix is carried from round 5, and a follow-up round does not rebuild it. |  |  | delta scenario 'A send while lines wait' has no matrix row |
+| R-84 | 6 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The last line is refused"] | refuted | tasks.md names a test for each scenario in task 5.6: send_waits_for_the_lines_of_a_send_of_each_line and refused_last_line_goes_before_the_typed_text. Both tests ran and passed in mise run check at the fix commit. The matrix is carried from round 5, and a follow-up round does not rebuild it. |  |  | delta scenario 'The last line is refused' has no matrix row |
+| R-85 | 7 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A refused line after more text"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'A refused line after more text' has no matrix row |
+| R-86 | 7 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Back and forward"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'Back and forward' has no matrix row |
+| R-87 | 7 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A new line while scrolled back"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'A new line while scrolled back' has no matrix row |
+| R-88 | 7 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Enter returns to the bottom"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'Enter returns to the bottom' has no matrix row |
+| R-89 | 7 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The mouse wheel"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'The mouse wheel' has no matrix row |
+| R-90 | 7 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A pane of one row"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'A pane of one row' has no matrix row |
+| R-91 | 7 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A pane of no rows"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'A pane of no rows' has no matrix row |
+| R-92 | 7 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A late answer"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'A late answer' has no matrix row |
+| R-93 | 7 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A send of each line while a send waits"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'A send of each line while a send waits' has no matrix row |
+| R-94 | 7 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A line break that the editor cannot hold"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/150; reason: Each scenario has a test, and each test ran and passed at the head. The coverage table is carried from round 5, a follow-up round does not rebuild it, and the merge matches a row to one run only. |  |  | delta scenario 'A line break that the editor cannot hold' has no matrix row |
+| R-95 | 8 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Two sends of Enter"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/152; reason: Each scenario has a test in crates/mu-tui/tests/app.rs, and each test ran and passed at the head. The coverage table is carried from round 5, and a follow-up round does not rebuild it. Same case as issue 150. |  |  | delta scenario 'Two sends of Enter' has no matrix row |
+| R-96 | 8 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A send to another world"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/152; reason: Each scenario has a test in crates/mu-tui/tests/app.rs, and each test ran and passed at the head. The coverage table is carried from round 5, and a follow-up round does not rebuild it. Same case as issue 150. |  |  | delta scenario 'A send to another world' has no matrix row |
+| R-97 | 8 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A refused send of Enter with a send after it"] | accepted | ticket: https://github.com/seanb4t/mu-portal/issues/152; reason: Each scenario has a test in crates/mu-tui/tests/app.rs, and each test ran and passed at the head. The coverage table is carried from round 5, and a follow-up round does not rebuild it. Same case as issue 150. |  |  | delta scenario 'A refused send of Enter with a send after it' has no matrix row |
 
 ## Reviewed files
 
 | path | content |
 |---|---|
-| Cargo.lock | ae12d6ee0d8d3f78423cd967de551b6b8bf019a7 |
+| Cargo.lock | ad975554b915f53a6d0f559befae29a4efc7cd0d |
 | Cargo.toml | 8c6e01906f5d4c1d13721712f30516a9bf1f0dd0 |
 | architecture/model.c4 | 9e58b2c5e5fe4128ed96bc5f170a49e69b1a5edc |
 | architecture/views.c4 | 72e18fec89464e14629f95a155f7f2a503cdcd57 |
@@ -420,14 +433,14 @@ None.
 | crates/mu-tui/src/keymap.rs | b9b030d0d4846fbdc526058b035bf499b18332f3 |
 | crates/mu-tui/src/layout.rs | a733e998b83f74af03cc745990fa789a56fafad7 |
 | crates/mu-tui/src/lib.rs | f537f4780b2d6befe77c20fc8186da2f8be12fb4 |
-| crates/mu-tui/src/model.rs | 0d46964f3f425b4cf87ae26735cdc1a49f17ecfd |
+| crates/mu-tui/src/model.rs | d6cf1e643a4a56c19cdf61192a51613becc03e6f |
 | crates/mu-tui/src/probe.rs | 3d9f7dab5ea2f5d9e476c76ca00ac8e6a59c5474 |
 | crates/mu-tui/src/run.rs | 5ff60fced916fb261a99a1cd0076fce5f7fe41cd |
 | crates/mu-tui/src/screen.rs | f86002546de3af3d3ea63bc1dc096c2f78e947eb |
 | crates/mu-tui/src/text.rs | 4b3ff78698c7fa24822353e0abc5156a81318cdd |
-| crates/mu-tui/src/update.rs | 8fa188ef959747ecc29482545e68590701e03a98 |
+| crates/mu-tui/src/update.rs | 7de93aa82013755a13a6b43d8319d72d0358c615 |
 | crates/mu-tui/src/view.rs | 926cbffca7516b83317dd63b06f7af6bd05a9b28 |
-| crates/mu-tui/tests/app.rs | b04ef36aedba4e0858df624256e07bed084f1dd3 |
+| crates/mu-tui/tests/app.rs | 7cc50f31a8c127aa1c09aff3b2d8f48e532e87c0 |
 | crates/mu-tui/tests/data/pose-4096.txt | c6433795dec0a1a12252e94772813e0fa9d85c42 |
 | crates/mu-tui/tests/editor.rs | 973e3329bd84d0f8d9abade9dc8e3131e09d1bcd |
 | crates/mu-tui/tests/probe.rs | 70e02261e628a96534d3ba314c5664ba7e884c29 |
@@ -440,13 +453,13 @@ None.
 | docs/src/content/docs/guides/configuration.md | e79b09b090a962865543e3c3a01d0c47ee77501f |
 | docs/src/content/docs/guides/first-run.md | e75bc2ef2f61bfa018f6910eb6f0cddc2f2061d9 |
 | openspec/changes/pose-editor/.openspec.yaml | 5274a13b087156d95ab9dc0d0657588a63841492 |
-| openspec/changes/pose-editor/design.md | ee4c3c2ed1439d15d5a862c960bdc2fd42460a95 |
-| openspec/changes/pose-editor/proposal.md | 9b911e9f4cd34aba0bea4ecc091c1ef42faa8014 |
+| openspec/changes/pose-editor/design.md | e1a7543c88d374728d7c4cc3c0c90abc55b9cad0 |
+| openspec/changes/pose-editor/proposal.md | 70693c86ef1c4dc42dc3ddf77f56a508091ff2f3 |
 | openspec/changes/pose-editor/specs/input-editor/spec.md | 93d59ed60bede447652e7528067b3934106c85de |
-| openspec/changes/pose-editor/specs/terminal-client/spec.md | 6872cbe65b8e6541d2eeae7305cf5ce11633d8c0 |
+| openspec/changes/pose-editor/specs/terminal-client/spec.md | 6608f36e77384cdaf7b54c235b525779774cf315 |
 | openspec/changes/pose-editor/specs/world-config/spec.md | 2eeb164fcf41e83a3abffe9bea12526962651288 |
 | openspec/changes/pose-editor/specs/world-sessions/spec.md | 9e742df53f7a26c80022063a2c3c8b9de7099fc8 |
-| openspec/changes/pose-editor/tasks.md | sha256:7df733b1a5a3580614c2e9e8ffa0fbf099f444cc570a0a2c12bbd0768e485628 |
+| openspec/changes/pose-editor/tasks.md | sha256:0c7bd485b1a6097708166258506fbcd13208b856efb676bad4f08287a7c70861 |
 | openspec/review.json | absent |
 | renovate.json | 672ea39af9d44dc1b02542067e1cdb821e7fdc3d |
 
