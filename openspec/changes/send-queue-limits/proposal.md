@@ -8,7 +8,7 @@ The change is tracked by issue #147. It also fixes #148 and #149.
 
 ## What Changes
 
-- A send waits at most 10 seconds for its reply. After that, the client counts it as refused: the notice says that the game can have the line or not, and the line and each line behind it go back to the editor.
+- A send waits at most 30 seconds for its reply. After that, the client counts it as refused: the notice says that the game can have the line or not, and the line and each line behind it go back to the editor.
 - A lost event stream and a reset of the server put the lines that wait back in the editor, with a notice. The line that is with the server stays, so its reply still decides what happens to it.
 - The top row shows how many lines of each world wait behind the line that is with the server.
 - If lines wait, Ctrl+C shows a notice and does not quit. A second Ctrl+C quits. Any other key cancels the second one.
@@ -18,12 +18,14 @@ The change is tracked by issue #147. It also fixes #148 and #149.
 
 ## Choices the owner will notice
 
-- The limit of a send is 10 seconds, fixed. No configuration changes it.
+- The limit of a send is 30 seconds, fixed. No configuration changes it. The server gives up on a connect or a write to a game after 10 seconds, so its own answer comes first when a game is slow.
+- A list of the worlds has the same limit of 30 seconds. A list with no answer counts as failed.
 - A send that hits the limit goes back to the editor although the game can have it. A second send of it can repeat it in the game. The notice says so.
 - The count shows as `(2 waiting)` after the world in the top row. The line that is with the server is not in the count, so a single send shows no count.
 - The second Ctrl+C has no time limit. Only another key cancels it.
 - The notice of Ctrl+C counts the line that is with the server too: `3 lines not sent yet, quit again to leave and drop them`.
 - A failed list of the worlds shows no notice. The next new world, reset or Alt+R asks again.
+- Alt+R with no world in focus still shows a line about the line break, and asks for no list.
 - Alt+R on a world with an unknown line break shows `the client does not know the line break of the world in focus yet, try again`. The user presses Alt+R again after the list comes.
 - During the probe, a paste has no size limit. A paste that is still open after the extra 500 ms becomes one edit of its first part, and its rest arrives as keys.
 - No test runs a paste in a real terminal during the probe, and no test runs a server that never answers. The tests drive `update`, `view`, the probe framer and the reply function.
