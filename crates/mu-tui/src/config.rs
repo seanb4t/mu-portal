@@ -117,9 +117,10 @@ impl ClientConfig {
             } else {
                 EntryId::named(value).ok_or_else(|| error(format!("no entry is named {value}")))?
             };
-            if entry.entry().arg.is_some_and(|arg| arg.required) {
+            if let Some(arg) = entry.entry().arg.filter(|arg| arg.required) {
                 return Err(error(format!(
-                    "{value} needs a world, so a key cannot run it"
+                    "{value} needs a {}, so a key cannot run it",
+                    arg.kind.word()
                 )));
             }
             keymap.bind(chord, entry);

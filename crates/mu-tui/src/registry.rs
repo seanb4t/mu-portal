@@ -11,6 +11,16 @@ pub enum ArgKind {
     World,
 }
 
+impl ArgKind {
+    /// The word for a value of this kind in help and in hints, such as `world`.
+    #[must_use]
+    pub const fn word(self) -> &'static str {
+        match self {
+            Self::World => "world",
+        }
+    }
+}
+
 /// The argument of an entry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Arg {

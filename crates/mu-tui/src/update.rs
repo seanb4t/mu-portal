@@ -460,7 +460,7 @@ fn world_arg(model: &Model, arg: Option<String>, name: &str) -> Result<String, S
         None => model
             .focused()
             .map(str::to_owned)
-            .ok_or_else(|| no_world(&format!("{name} needs a world"))),
+            .ok_or_else(|| no_world(&format!("{name} needs a {}", ArgKind::World.word()))),
         Some(world) if candidates(model, ArgKind::World).contains(&world) => Ok(world),
         Some(world) => Err(format!("no world is named {world}")),
     }
@@ -529,9 +529,7 @@ fn check_command(model: &Model, parse: Parse<'_>) -> Result<(EntryId, Option<Str
 fn arity(entry: EntryId, given: Option<String>, shown: &str) -> Result<Option<String>, String> {
     match (entry.entry().arg, given) {
         (None, Some(_)) => Err(format!("{shown} takes no argument")),
-        (Some(arg), None) if arg.required => Err(match arg.kind {
-            ArgKind::World => format!("{shown} needs a world"),
-        }),
+        (Some(arg), None) if arg.required => Err(format!("{shown} needs a {}", arg.kind.word())),
         (_, given) => Ok(given),
     }
 }
@@ -711,9 +709,7 @@ fn help(model: &mut Model) {
         let arg = match entry.arg {
             None => String::new(),
             Some(arg) => {
-                let kind = match arg.kind {
-                    ArgKind::World => "world",
-                };
+                let kind = arg.kind.word();
                 if arg.required {
                     format!(" <{kind}>")
                 } else {
