@@ -118,26 +118,25 @@ pub fn run(args: &ClientArgs) -> ExitCode {
     };
     runtime.block_on(async {
         let client = PortalClient::unix(&socket);
+        // A client that started a server still compares, because another client can start
+        // its own server on the socket at the same time and win.
         let first = async {
             match listener(&socket).await {
-                Ok(Found::Nothing) => start_and_wait(&client, &socket, dir, named, wait)
-                    .await
-                    .map(|()| None),
-                Ok(Found::Listener) => {
-                    match tokio::time::timeout(wait, client.config_dir()).await {
-                        Ok(Ok(server)) => {
-                            let own = config.as_deref().map(shown_dir);
-                            Ok(other_dir(&socket, server.as_deref(), own.as_deref()))
-                        }
-                        Ok(Err(error)) => Err(format!("{}: {error}", socket.display())),
-                        Err(_) => Err(format!(
-                            "the server on {} did not answer within {}",
-                            socket.display(),
-                            shown(wait)
-                        )),
-                    }
+                Ok(Found::Nothing) => start_and_wait(&client, &socket, dir, named, wait).await?,
+                Ok(Found::Listener) => {}
+                Err(error) => return Err(format!("{}: {error}", socket.display())),
+            }
+            match tokio::time::timeout(wait, client.config_dir()).await {
+                Ok(Ok(server)) => {
+                    let own = config.as_deref().map(shown_dir);
+                    Ok(other_dir(&socket, server.as_deref(), own.as_deref()))
                 }
-                Err(error) => Err(format!("{}: {error}", socket.display())),
+                Ok(Err(error)) => Err(format!("{}: {error}", socket.display())),
+                Err(_) => Err(format!(
+                    "the server on {} did not answer within {}",
+                    socket.display(),
+                    shown(wait)
+                )),
             }
         };
         let notices = match first.await {

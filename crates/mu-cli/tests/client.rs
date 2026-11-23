@@ -72,6 +72,36 @@ async fn two_clients_start_one_server() {
 }
 
 #[tokio::test]
+async fn two_clients_with_other_directories_start_at_once() {
+    let dir = private_tempdir();
+    let run = dir.path().join("run");
+    let _reaper = Reaper(run.join("server.log"));
+    let socket = run.join("mu.sock");
+    let start = |name: &str| {
+        let own = dir.path().join(name);
+        std::fs::create_dir(&own).unwrap();
+        PtyClient::start_args(
+            &socket,
+            dir.path(),
+            Answers::Default,
+            &["--config".as_ref(), own.as_os_str()],
+            &[],
+        )
+    };
+    let clients = [start("a"), start("b")];
+    let mut noted = 0;
+    for client in &clients {
+        client
+            .wait_top("no worlds", |top| top.trim() == "no worlds")
+            .await;
+        let screen: String = client.contents().split_whitespace().collect();
+        noted += usize::from(screen.contains("readsitsworldsfrom"));
+    }
+    // The one server has the directory of one client, so only the other client notes it.
+    assert_eq!(noted, 1);
+}
+
+#[tokio::test]
 async fn client_gives_up_after_five_seconds() {
     let dir = private_tempdir();
     let socket = dir.path().join("s.sock");
@@ -1424,8 +1454,8 @@ async fn a_key_bound_to_connect_with_no_world_in_focus() {
 /// A server with the fake world `alpha/aria` and `--config <dir>/a`, and a client on it with
 /// `--config <dir>/<client>`, after the top row shows the world. `<dir>/link` is a symbolic
 /// link to `<dir>/a`. The screen with no whitespace, because a wrap drops spaces, and the
-/// resolved path of `<dir>/a`.
-async fn other_server(client: &str) -> (String, String) {
+/// resolved paths of `<dir>/a` and `<dir>/b`.
+async fn other_server(client: &str) -> (String, String, String) {
     let dir = private_tempdir();
     let real = dir.path().join("a");
     std::fs::create_dir(&real).unwrap();
@@ -1449,26 +1479,24 @@ async fn other_server(client: &str) -> (String, String) {
     client
         .wait_top("the world", |top| top.contains("alpha/aria"))
         .await;
-    let real = std::fs::canonicalize(&real).unwrap();
+    let shown = |path: &Path| std::fs::canonicalize(path).unwrap().display().to_string();
     let screen = client.contents();
     (
         screen.split_whitespace().collect(),
-        real.display().to_string(),
+        shown(&real),
+        shown(&dir.path().join("b")),
     )
 }
 
 #[tokio::test]
 async fn a_server_with_another_directory() {
-    let (screen, real) = other_server("b").await;
-    let notice = "readsitsworldsfrom";
-    assert!(screen.contains(notice), "{screen}");
-    let at = screen.find(notice).unwrap();
-    assert!(screen[at..].contains(&real), "{screen}");
-    assert!(screen[at..].contains("/b"), "{screen}");
+    let (screen, real, own) = other_server("b").await;
+    let notice = format!("readsitsworldsfrom{real},notfrom{own}");
+    assert!(screen.contains(&notice), "{screen}");
 }
 
 #[tokio::test]
 async fn a_server_with_the_same_directory() {
-    let (screen, _) = other_server("link").await;
+    let (screen, _, _) = other_server("link").await;
     assert!(!screen.contains("readsitsworldsfrom"), "{screen}");
 }
