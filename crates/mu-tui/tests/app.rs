@@ -1440,6 +1440,8 @@ fn lines_of_two_worlds_wait() {
         on_event(&mut app, ClientEvent::Lost);
         assert_eq!(app.input(), "a2");
         assert!(shows(&mut app, "1 line of alpha/aria, 1 line of beta/bryn"));
+        // Each editor was empty, and nothing went into history, so the hint has no count.
+        assert!(!shows(&mut app, "in history"), "{:?}", screen(&mut app));
         press(&mut app, ctrl('n'));
         assert_eq!(app.input(), "b2");
     }
@@ -1741,6 +1743,7 @@ fn no_repeat() {
     for text in ["one", "one", "two"] {
         send_and_take(&mut app, "alpha/aria", text);
     }
+    assert_eq!(app.history("alpha/aria"), Some(vec!["one", "two"]));
     up(&mut app);
     up(&mut app);
     assert_eq!(app.input(), "one");
@@ -2159,7 +2162,7 @@ fn an_echo_with_no_line_break() {
 proptest! {
     #[test]
     fn echo_rows_join_back(
-        text in any::<String>(),
+        text in prop_oneof![any::<String>(), "[a-z \\t\\x01\\x1b\\x7f\\u{10EEEE}é]{0,40}"],
         line_break in "[^\\p{Cc}]{1,16}",
     ) {
         let rows = mu_tui::echo_rows(&text, Some(&line_break));
@@ -2169,8 +2172,17 @@ proptest! {
             .enumerate()
             .map(|(index, row)| row.strip_prefix(if index == 0 { "> " } else { "  " }).unwrap())
             .collect();
-        let cleaned = mu_tui::echo_rows(&text, None).remove(0);
-        prop_assert_eq!(parts.join(&line_break), cleaned.strip_prefix("> ").unwrap());
+        // The screen shows a tab as a space, and each other control character as U+FFFD.
+        let cleaned: String = text
+            .chars()
+            .map(|c| match c {
+                '\t' => ' ',
+                '\u{10EEEE}' => '\u{FFFD}',
+                c if c.is_control() => '\u{FFFD}',
+                c => c,
+            })
+            .collect();
+        prop_assert_eq!(parts.join(&line_break), cleaned);
     }
 }
 

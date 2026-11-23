@@ -390,7 +390,7 @@ fn world_candidates_follow_the_top_row() {
     let model = Model::new(["beta/bryn".to_owned(), "alpha/aria".to_owned()]);
     assert_eq!(
         mu_tui::candidates(&model, mu_tui::ArgKind::World),
-        model.world_ids()
+        ["alpha/aria", "beta/bryn"]
     );
 }
 
