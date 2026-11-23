@@ -55,7 +55,7 @@ Test files: `crates/mu-tui/tests/app.rs` holds the tests of `update` and `view` 
 
 ## 8. Review and integration
 
-- [ ] 8.1 Run `/sb:openspec-review client-shell implementation`. Make sure that the verdict is not changes-requested.
+- [x] 8.1 Run `/sb:openspec-review client-shell implementation`. Make sure that the verdict is not changes-requested.
 - [ ] 8.2 Run `/sb:suite-review` on the branch, and fix or triage each blocker and major finding. Make sure that `mise run check` passes on Linux and macOS in CI.
 
 ## Workflow follow-up
