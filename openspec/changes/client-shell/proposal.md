@@ -27,6 +27,8 @@ This change is the first of two that #101 splits into. It gives the client a con
 - `/connect` and `/disconnect` with no world act on the world in focus. A trailing space is no argument.
 - A second `/quit` confirms a quit while texts wait. Typing it does not cancel the first one.
 - The echo default is `dim`. Before this change it was `show`.
+- The table `[server]` of `client.toml` holds `connect_wait_seconds`, the longest time that `mu client` waits for a server to answer, 5 s by default. Before this change the first list had no limit, and the wait for a started server was a fixed 5 s.
+- `mu client` starts a server only if nothing listens on its socket. Any other error of its first list stops the client with that error. Before this change any error started a second server.
 - History is per world, kept in memory only, at most 1000 sends for each world. It does not keep an empty send or a send equal to the one before it. Quitting the client loses it.
 - Up and Down recall history only from the first and the last line of the editor. On other lines they move the cursor.
 - A bad `client.toml` stops the client. The client does not start with the defaults and a warning. A `--config` directory that does not exist is not an error: the client warns on stderr and starts with the defaults.
@@ -71,7 +73,7 @@ This change is the first of two that #101 splits into. It gives the client a con
 ## Impact
 
 - `crates/mu-tui`: the registry, the keymap from configuration, commands, history, echo, the return path of `update.rs`, and the startup in `run.rs`. It gains `serde` for the configuration types.
-- `crates/mu-cli`: `mu client --config`, which it also passes to a server that it starts, and the read of `client.toml` with `mu_core::world::parse_toml`, as `server.toml` is read. The first list of the worlds gets the limit of 5 s.
+- `crates/mu-cli`: `mu client --config`, which it also passes to a server that it starts, and the read of `client.toml` with `mu_core::world::parse_toml`, as `server.toml` is read. The first list of the worlds gets the wait of `[server] connect_wait_seconds`, and `--config` reaches a started server only if the user named a directory.
 - `crates/mu-core`: the world resolver (`world/dir.rs`) accepts `client.toml` beside `server.toml`.
 - `crates/mu-cli/tests/workspace_boundary.rs`: `serde` joins the allowed crates of `mu-tui`.
 - Docs: the terminal client page, a page for `client.toml`, and the configuration guide, which names the top-level files.
