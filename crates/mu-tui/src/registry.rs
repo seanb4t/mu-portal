@@ -96,35 +96,28 @@ macro_rules! focus_place {
     };
 }
 
-/// Every entry, in the order that the help lists them.
+/// An entry that takes a world, the world in focus if `required` is false and no world is given.
+const fn on_world(
+    name: &'static str,
+    description: &'static str,
+    required: bool,
+    build: fn(Option<String>) -> Action,
+) -> Entry {
+    Entry {
+        name,
+        description,
+        arg: Some(Arg {
+            kind: ArgKind::World,
+            required,
+        }),
+        edits: false,
+        build,
+    }
+}
+
+/// Every entry, in the order that the help lists them. The entries that the player uses most
+/// come last, so the end of the help, next to the editor, shows them.
 pub static ENTRIES: &[Entry] = &[
-    plain(
-        "quit",
-        "leave the client; a second quit drops the lines not sent yet",
-        false,
-        |_| Action::Quit,
-    ),
-    plain(
-        "focus-next",
-        "give the focus to the next world",
-        false,
-        |_| Action::FocusNext,
-    ),
-    plain(
-        "focus-prev",
-        "give the focus to the previous world",
-        false,
-        |_| Action::FocusPrev,
-    ),
-    focus_place!(1),
-    focus_place!(2),
-    focus_place!(3),
-    focus_place!(4),
-    focus_place!(5),
-    focus_place!(6),
-    focus_place!(7),
-    focus_place!(8),
-    focus_place!(9),
     plain(
         "send",
         "send the text of the editor as one line",
@@ -193,6 +186,51 @@ pub static ENTRIES: &[Entry] = &[
         "return the pane to the bottom",
         false,
         |_| Action::ScrollBottom,
+    ),
+    focus_place!(1),
+    focus_place!(2),
+    focus_place!(3),
+    focus_place!(4),
+    focus_place!(5),
+    focus_place!(6),
+    focus_place!(7),
+    focus_place!(8),
+    focus_place!(9),
+    plain(
+        "focus-next",
+        "give the focus to the next world",
+        false,
+        |_| Action::FocusNext,
+    ),
+    plain(
+        "focus-prev",
+        "give the focus to the previous world",
+        false,
+        |_| Action::FocusPrev,
+    ),
+    on_world("focus", "give the focus to a world", true, |world| {
+        Action::Focus(world.unwrap_or_default())
+    }),
+    on_world(
+        "connect",
+        "connect a world, the world in focus by default",
+        false,
+        Action::Connect,
+    ),
+    on_world(
+        "disconnect",
+        "disconnect a world, the world in focus by default",
+        false,
+        Action::Disconnect,
+    ),
+    plain("help", "show one line for each entry", false, |_| {
+        Action::Help
+    }),
+    plain(
+        "quit",
+        "leave the client; a second quit drops the lines not sent yet",
+        false,
+        |_| Action::Quit,
     ),
 ];
 

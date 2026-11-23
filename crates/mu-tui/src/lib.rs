@@ -30,6 +30,6 @@ pub use layout::{Leaf, Node, Size};
 pub use model::{Model, PaneId};
 pub use pane::{Caps, OutputPane, PaneState, Position};
 pub use registry::{Arg, ArgKind, ENTRIES, Entry, EntryId, candidates};
-pub use run::{CALL_LIMIT, reply_of, run, within};
+pub use run::{CALL_LIMIT, control_of, reply_of, run, within};
 pub use update::{Action, Effect, Msg, Reply, update};
 pub use view::view;

@@ -293,13 +293,14 @@ impl ServerProcess {
     }
 }
 
-/// A relay of a Unix socket. It can cut each open connection, and hold, which refuses each
-/// new connection until the test releases it.
+/// A relay of a Unix socket. It can cut each open connection, hold, which refuses each new
+/// connection until the test releases it, and stall, which forwards no byte from then on.
 #[derive(Clone)]
 pub struct Relay {
     front: PathBuf,
     live: Arc<Mutex<JoinSet<()>>>,
     held: Arc<watch::Sender<bool>>,
+    stalled: Arc<watch::Sender<bool>>,
 }
 
 impl Relay {
@@ -310,20 +311,27 @@ impl Relay {
             front: front.to_owned(),
             live: Arc::default(),
             held: Arc::new(watch::channel(false).0),
+            stalled: Arc::new(watch::channel(false).0),
         };
         let back = back.to_owned();
         let task = relay.clone();
         tokio::spawn(async move {
-            while let Ok((mut client, _)) = listener.accept().await {
+            while let Ok((client, _)) = listener.accept().await {
                 if *task.held.borrow() {
                     continue;
                 }
                 let back = back.clone();
+                let stalled = task.stalled.subscribe();
                 task.live.lock().unwrap().spawn(async move {
-                    let Ok(mut server) = UnixStream::connect(&back).await else {
+                    let Ok(server) = UnixStream::connect(&back).await else {
                         return;
                     };
-                    let _ = tokio::io::copy_bidirectional(&mut client, &mut server).await;
+                    let (client_read, client_write) = client.into_split();
+                    let (server_read, server_write) = server.into_split();
+                    tokio::join!(
+                        forward(client_read, server_write, stalled.clone()),
+                        forward(server_read, client_write, stalled),
+                    );
                 });
             }
         });
@@ -352,6 +360,35 @@ impl Relay {
     pub fn release(&self) {
         self.held.send_replace(false);
     }
+
+    /// Forwards no byte on any connection from now on. A call through the relay then gets no
+    /// answer.
+    pub fn stall(&self) {
+        self.stalled.send_replace(true);
+    }
+}
+
+/// Copies `from` to `to` until either one closes. A read waits while `stalled` is true before
+/// it goes on.
+async fn forward(
+    mut from: impl tokio::io::AsyncRead + Unpin,
+    mut to: impl tokio::io::AsyncWrite + Unpin,
+    mut stalled: watch::Receiver<bool>,
+) {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let mut buffer = vec![0; 8192];
+    loop {
+        let read = match from.read(&mut buffer).await {
+            Ok(0) | Err(_) => break,
+            Ok(read) => read,
+        };
+        if stalled.wait_for(|stalled| !*stalled).await.is_err()
+            || to.write_all(&buffer[..read]).await.is_err()
+        {
+            return;
+        }
+    }
+    let _ = to.shutdown().await;
 }
 
 /// The one stream of [`mu_on_pty`] that gets the pseudo-terminal.

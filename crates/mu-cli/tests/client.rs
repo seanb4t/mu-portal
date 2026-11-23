@@ -7,8 +7,8 @@ use mu_proto::{EventKind, WorldState};
 
 use mu_fake_server::{Listening, Script, ScriptedGame};
 use support::process::{
-    Answers, BOUND, PtyClient, PtyOn, Reaper, Relay, SERVING, ServerBuilder, Session, TWO_WORLDS,
-    mu_on_pty, private_tempdir,
+    Answers, BOUND, PtyClient, PtyOn, Reaper, Relay, SERVING, ServerBuilder, ServerProcess,
+    Session, TWO_WORLDS, mu_on_pty, private_tempdir,
 };
 use support::{ConfigDir, mode, stderr};
 
@@ -715,4 +715,202 @@ async fn late_kitty_keyboard_answer() {
         .wait_output("the exit from the alternate screen", b"\x1b[?1049l")
         .await;
     assert!(!holds(&client.output(), PUSH_FLAG));
+}
+
+// Client commands on the built binary.
+
+/// True if the server of `session` reports `world` as connected.
+async fn connected(session: &Session, world: &str) -> bool {
+    session
+        .client
+        .list_worlds()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|each| each.id == world)
+        .expect("the world exists")
+        .state
+        == WorldState::WORLD_STATE_CONNECTED
+}
+
+/// The client of [`attached`] after a test disconnected `alpha/aria` through the API.
+async fn alpha_disconnected() -> (Session, PtyClient) {
+    let (mut session, client) = attached().await;
+    session.client.disconnect("alpha/aria").await.unwrap();
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    (session, client)
+}
+
+/// Sends `text` and Enter to `client`, and waits until the server connects `alpha/aria` and
+/// the screen shows its greeting twice.
+async fn connects_alpha(text: &[u8]) {
+    let (mut session, mut client) = alpha_disconnected().await;
+    let after = session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await
+        .seq;
+    client.send(text);
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_CONNECTED, after)
+        .await;
+    client
+        .wait_rows("the greeting after the disconnect", |rows| {
+            rows.iter()
+                .filter(|row| row.trim() == "Welcome, aria.")
+                .count()
+                == 2
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn connect_the_world_in_focus() {
+    connects_alpha(b"/connect\r").await;
+}
+
+#[tokio::test]
+async fn a_trailing_space_is_no_argument() {
+    connects_alpha(b"/connect \r").await;
+}
+
+#[tokio::test]
+async fn disconnect_a_named_world() {
+    let (mut session, mut client) = attached().await;
+    client.send(b"/disconnect beta/bryn\r");
+    session
+        .kind("beta/bryn", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    assert_eq!(
+        (
+            connected(&session, "beta/bryn").await,
+            connected(&session, "alpha/aria").await
+        ),
+        (false, true)
+    );
+}
+
+#[tokio::test]
+async fn disconnect_an_unknown_world() {
+    let (session, mut client) = attached().await;
+    client.send(b"/disconnect gamma/gil\r");
+    client
+        .wait_rows("a hint that names the world", |rows| {
+            rows.iter()
+                .any(|row| row.starts_with("-- ") && row.contains("gamma/gil"))
+        })
+        .await;
+    assert!(connected(&session, "alpha/aria").await);
+}
+
+#[tokio::test]
+async fn a_key_and_a_command_give_the_same_focus() {
+    for input in [&b"\x0e"[..], b"/focus-next\r"] {
+        let (_session, mut client) = attached().await;
+        client.send(input);
+        client
+            .wait_top("the focus on beta/bryn", |top| top.contains("[beta/bryn]"))
+            .await;
+    }
+}
+
+#[tokio::test]
+async fn quit_by_command() {
+    let (session, mut client) = attached().await;
+    client.send(b"/quit\r");
+    let status = client.exit_within(BOUND).await.expect("the client exits");
+    assert!(status.success(), "{status:?}");
+    assert_eq!(session.client.list_worlds().await.unwrap().len(), 2);
+}
+
+/// A client on a relay that stalls after the greeting, with the text `hi` of `alpha/aria`
+/// waiting for the server.
+async fn a_text_waits() -> (ServerProcess, Relay, PtyClient) {
+    let server = ServerBuilder::new().fake_worlds(TWO_WORLDS).start().await;
+    let relay = Relay::start(&server.dir().path().join("relay.sock"), server.socket());
+    let mut client = PtyClient::start(relay.socket(), server.dir().path());
+    client.wait_greeting().await;
+    relay.stall();
+    client.send(b"hi\r");
+    client
+        .wait_top("the text that waits", |top| top.contains("alpha/aria"))
+        .await;
+    (server, relay, client)
+}
+
+#[tokio::test]
+async fn quit_twice_while_a_text_waits() {
+    let (_server, _relay, mut client) = a_text_waits().await;
+    client.send(b"/quit\r");
+    client
+        .wait_rows("the quit hint", |rows| {
+            rows.iter()
+                .any(|row| row.starts_with("-- ") && row.contains("1 line not sent yet"))
+        })
+        .await;
+    client.send(b"/quit\r");
+    let status = client.exit_within(BOUND).await.expect("the client exits");
+    assert!(status.success(), "{status:?}");
+}
+
+/// True if the last hint of `rows` holds `text`.
+fn last_hint_holds(rows: &[String], text: &str) -> bool {
+    rows.iter()
+        .rev()
+        .find(|row| row.starts_with("-- "))
+        .is_some_and(|row| row.contains(text))
+}
+
+/// Sends `/quit`, then `between`, waits until `settled` holds, clears the editor with Ctrl+U,
+/// and sends `/quit` again. Then waits for the hint `waiting` after the last Enter: a client
+/// that quit would show no new hint.
+async fn quit_cancelled_by(between: &[u8], settled: impl Fn(&[String]) -> bool, waiting: &str) {
+    let (_server, _relay, mut client) = a_text_waits().await;
+    client.send(b"/quit\r");
+    client
+        .wait_rows("the first quit hint", |rows| {
+            last_hint_holds(rows, "1 line not sent yet")
+        })
+        .await;
+    client.send(between);
+    client
+        .wait_rows("the text between the quits", settled)
+        .await;
+    client.send(b"\x15/quit\r");
+    client
+        .wait_rows("the quit hint after the last Enter", |rows| {
+            last_hint_holds(rows, waiting)
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn another_command_cancels_the_quit() {
+    quit_cancelled_by(
+        b"/fly\r",
+        |rows| last_hint_holds(rows, "unknown command"),
+        "1 line not sent yet",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_game_text_cancels_the_quit() {
+    quit_cancelled_by(
+        b"hello\r",
+        |rows| rows.last().is_some_and(|row| row.trim().is_empty()),
+        "2 lines not sent yet",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_good_command_cancels_the_quit() {
+    quit_cancelled_by(
+        b"/focus-next\r",
+        |rows| rows[0].contains("[beta/bryn]"),
+        "1 line not sent yet",
+    )
+    .await;
 }

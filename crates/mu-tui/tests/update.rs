@@ -417,3 +417,99 @@ fn parse_knows_the_place_of_the_cursor() {
         )
     );
 }
+
+// The parse of a command and its checks.
+
+/// The editor text, the effects and the last row of the screen after `command` and Enter.
+fn command(text: &str) -> (String, Vec<Effect>, String) {
+    let mut model = model();
+    type_text(&mut model, text);
+    let effects = press(&mut model, KeyCode::Enter, Modifiers::NONE);
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("a test terminal");
+    terminal
+        .draw(|frame| view(&mut model, frame))
+        .expect("a frame");
+    let rows: Vec<String> = terminal
+        .backend()
+        .buffer()
+        .content()
+        .chunks(80)
+        .map(|row| row.iter().map(ratatui::buffer::Cell::symbol).collect())
+        .collect();
+    let notice = rows
+        .iter()
+        .rev()
+        .find(|row| row.starts_with("-- "))
+        .map_or_else(String::new, |row| row.trim_end().to_owned());
+    (model.input(), effects, notice)
+}
+
+#[test]
+fn connect_with_a_trailing_space_takes_the_world_in_focus() {
+    let (input, effects, _) = command("/connect ");
+    assert_eq!(
+        (input.as_str(), effects),
+        (
+            "",
+            vec![Effect::Connect {
+                world: "alpha/aria".to_owned()
+            }]
+        )
+    );
+}
+
+#[test]
+fn a_slash_alone_is_an_unknown_command() {
+    let (input, effects, notice) = command("/");
+    assert_eq!(
+        (input.as_str(), effects, notice.contains("unknown command")),
+        ("/", vec![], true)
+    );
+}
+
+#[test]
+fn a_space_after_the_slash_is_an_unknown_command() {
+    let (input, effects, notice) = command("/ focus");
+    assert_eq!(
+        (input.as_str(), effects, notice.contains("unknown command")),
+        ("/ focus", vec![], true)
+    );
+}
+
+#[test]
+fn quit_with_an_argument_is_a_bad_command() {
+    let (input, effects, notice) = command("/quit now");
+    assert_eq!(
+        (
+            input.as_str(),
+            effects,
+            notice.contains("takes no argument")
+        ),
+        ("/quit now", vec![], true)
+    );
+}
+
+#[test]
+fn ignore_is_not_a_command() {
+    let (input, effects, notice) = command("/ignore");
+    assert_eq!(
+        (input.as_str(), effects, notice.contains("not a command")),
+        ("/ignore", vec![], true)
+    );
+}
+
+proptest::proptest! {
+    #[test]
+    fn trailing_spaces_are_no_argument(spaces in 0usize..8, world in proptest::bool::ANY) {
+        let (text, expected) = if world {
+            (format!("/disconnect beta/bryn{}", " ".repeat(spaces)), "beta/bryn")
+        } else {
+            (format!("/disconnect{}", " ".repeat(spaces)), "alpha/aria")
+        };
+        let (input, effects, _) = command(&text);
+        proptest::prop_assert_eq!(
+            (input.as_str(), effects),
+            ("", vec![Effect::Disconnect { world: expected.to_owned() }])
+        );
+    }
+}

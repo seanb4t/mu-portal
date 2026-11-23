@@ -15,12 +15,13 @@ use termina::event::{
     KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 
+use crate::command::{self, Parse};
 use crate::convert::convert;
 use crate::keymap::Wheel;
-use crate::model::{Late, Listing, Model, PaneId};
+use crate::model::{Late, Listing, Model, PaneId, QuitArm};
 use crate::pane::{Caps, PaneState};
 use crate::probe::{self, Outcome};
-use crate::registry::EntryId;
+use crate::registry::{ArgKind, EntryId, candidates};
 use crate::store::Image;
 use crate::text::{clean, clean_paste, line};
 
@@ -48,6 +49,13 @@ pub enum Msg {
     Reply(Reply),
     /// The list of the worlds after an [`Effect::ListWorlds`], or the reason that it failed.
     Listed(Result<Vec<ProtoWorld>, String>),
+    /// The result of an [`Effect::Connect`] or an [`Effect::Disconnect`].
+    Control {
+        /// The world of the call.
+        world: String,
+        /// `Ok` if the server took the call, else the reason that it refused.
+        result: Result<(), String>,
+    },
 }
 
 /// What an entry of the registry does. Only [`Entry::build`](crate::registry::Entry) makes one.
@@ -92,6 +100,14 @@ pub enum Action {
     ScrollTop,
     /// Return the pane in focus to the bottom.
     ScrollBottom,
+    /// Ask the server to connect this world, or the world in focus for `None`.
+    Connect(Option<String>),
+    /// Ask the server to disconnect this world, or the world in focus for `None`.
+    Disconnect(Option<String>),
+    /// Give the focus to this world.
+    Focus(String),
+    /// Show one line for each entry of the registry.
+    Help,
 }
 
 /// What the loop must do after an update.
@@ -108,6 +124,16 @@ pub enum Effect {
     Quit,
     /// Ask the server for the list of the worlds, and give it back as a [`Msg::Listed`].
     ListWorlds,
+    /// Ask the server to connect `world`, and give the result back as a [`Msg::Control`].
+    Connect {
+        /// The world to connect.
+        world: String,
+    },
+    /// Ask the server to disconnect `world`, and give the result back as a [`Msg::Control`].
+    Disconnect {
+        /// The world to disconnect.
+        world: String,
+    },
     /// Write `text` to the clipboard of the terminal.
     ClipboardWrite(String),
     /// Send the PNG `png` to the terminal as `image`, with a virtual placement of its size,
@@ -197,6 +223,12 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
             Vec::new()
         }
         Msg::Reply(reply) => on_reply(model, reply),
+        Msg::Control { world, result } => {
+            if let Err(reason) = result {
+                model.hint(&format!("{world}: {reason}"));
+            }
+            Vec::new()
+        }
     }
 }
 
@@ -317,7 +349,9 @@ fn on_input_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
     if let Some(entry) = model.keymap.get(&key) {
         run_entry(model, entry, None)
     } else {
-        model.quit_armed = false;
+        if model.quit_arm == Some(QuitArm::Key) {
+            model.quit_arm = None;
+        }
         model.pose().textarea().input(input_key(key));
         Vec::new()
     }
@@ -364,24 +398,106 @@ fn wheel(model: &mut Model, step: Wheel) -> Vec<Effect> {
     }
 }
 
-/// Builds the action of `entry` with `arg` and runs it. Every action but a quit disarms an
-/// armed quit.
+/// Builds the action of `entry` with `arg` and runs it. Every action but a quit cancels a quit
+/// that a key armed.
 fn run_entry(model: &mut Model, entry: EntryId, arg: Option<String>) -> Vec<Effect> {
     let action = (entry.entry().build)(arg);
-    if action != Action::Quit {
-        model.quit_armed = false;
+    if action != Action::Quit && model.quit_arm == Some(QuitArm::Key) {
+        model.quit_arm = None;
     }
     act(model, &action)
+}
+
+/// The text `no world has the focus, so <what>`.
+fn no_world(what: &str) -> String {
+    format!("no world has the focus, so {what}")
+}
+
+/// The world that an argument names, or the world in focus for `None`. `name` is the entry,
+/// for the text of a refusal.
+///
+/// # Errors
+///
+/// The text of a hint if no world has the focus, or if the client holds no world `world`.
+fn world_arg(model: &Model, arg: Option<String>, name: &str) -> Result<String, String> {
+    match arg {
+        None => model
+            .focused()
+            .map(str::to_owned)
+            .ok_or_else(|| no_world(&format!("{name} needs a world"))),
+        Some(world) if candidates(model, ArgKind::World).contains(&world) => Ok(world),
+        Some(world) => Err(format!("no world is named {world}")),
+    }
+}
+
+/// Runs the command `parse`. A bad command leaves the editor as it is and adds a hint. A good
+/// command clears the editor before it runs. Any command but `/quit` cancels an armed quit.
+fn run_command(model: &mut Model, parse: Parse<'_>) -> Vec<Effect> {
+    let name = parse.name;
+    let checked = check_command(model, parse);
+    let entry = match checked {
+        Ok((entry, _)) => Some(entry),
+        Err(_) => None,
+    };
+    if entry.is_none_or(|entry| entry.entry().name != "quit") {
+        model.quit_arm = None;
+    }
+    match checked {
+        Err(reason) => {
+            model.hint(&reason);
+            Vec::new()
+        }
+        Ok((entry, arg)) => {
+            model.set_input("");
+            let effects = run_entry(model, entry, arg);
+            if name == "quit" && model.quit_arm.is_some() {
+                model.quit_arm = Some(QuitArm::Command);
+            }
+            effects
+        }
+    }
+}
+
+/// The entry and the argument of the command `parse`, after the checks of a command.
+///
+/// # Errors
+///
+/// The text of a hint that says why the command is bad.
+fn check_command(model: &Model, parse: Parse<'_>) -> Result<(EntryId, Option<String>), String> {
+    let name = parse.name;
+    let Some(id) = EntryId::named(name) else {
+        return Err(format!("unknown command /{name}"));
+    };
+    let entry = id.entry();
+    if entry.edits {
+        return Err(format!(
+            "/{name} is not a command, because it edits the text"
+        ));
+    }
+    let given = parse.arg.map(str::to_owned);
+    let arg = match (entry.arg, given) {
+        (None, None) => None,
+        (None, Some(_)) => return Err(format!("/{name} takes no argument")),
+        (Some(arg), None) if arg.required => {
+            return Err(match arg.kind {
+                ArgKind::World => format!("/{name} needs a world"),
+            });
+        }
+        (Some(arg), given) => match arg.kind {
+            ArgKind::World => Some(world_arg(model, given, &format!("/{name}"))?),
+        },
+    };
+    Ok((id, arg))
 }
 
 fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
     match *action {
         Action::Quit => {
             let waiting: usize = model.sends.values().map(VecDeque::len).sum();
-            if waiting == 0 || model.quit_armed {
+            if waiting == 0 || model.quit_arm.is_some() {
                 return vec![Effect::Quit];
             }
-            model.quit_armed = true;
+            model.quit_arm = Some(QuitArm::Key);
             model.hint(&format!(
                 "{} not sent yet, quit again to leave and drop them",
                 line_count(waiting)
@@ -397,15 +513,11 @@ fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
             Vec::new()
         }
         Action::Submit | Action::SubmitLines => {
-            let effects = if *action == Action::Submit {
-                submit(model)
-            } else {
-                submit_lines(model)
-            };
+            let effects = submit(model, *action == Action::SubmitLines);
             if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
                 state.to_bottom();
             }
-            effects.into_iter().collect()
+            effects
         }
         Action::Newline => {
             model.pose().textarea().insert_newline();
@@ -429,18 +541,8 @@ fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
             Vec::new()
         }
         Action::Ignore => Vec::new(),
-        Action::ScrollPage(pages) => {
-            if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
-                state.scroll_pages(pages);
-            }
-            Vec::new()
-        }
-        Action::ScrollRows(rows) => {
-            if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
-                state.scroll_rows(rows);
-            }
-            Vec::new()
-        }
+        Action::ScrollPage(pages) => in_pane(model, |state| state.scroll_pages(pages)),
+        Action::ScrollRows(rows) => in_pane(model, |state| state.scroll_rows(rows)),
         Action::FocusIndex(place) => {
             if let Some(index) = usize::from(place).checked_sub(1)
                 && index < model.worlds.len()
@@ -449,18 +551,55 @@ fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
             }
             Vec::new()
         }
-        Action::ScrollTop => {
-            if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
-                state.to_top();
+        Action::ScrollTop => in_pane(model, PaneState::to_top),
+        Action::ScrollBottom => in_pane(model, PaneState::to_bottom),
+        Action::Connect(ref world) => control(model, world.clone(), true),
+        Action::Disconnect(ref world) => control(model, world.clone(), false),
+        Action::Focus(ref world) => {
+            match model.worlds.iter().position(|each| each.id == *world) {
+                Some(index) => focus_on(model, index),
+                None => model.hint(&format!("no world is named {world}")),
             }
             Vec::new()
         }
-        Action::ScrollBottom => {
-            if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
-                state.to_bottom();
-            }
+        Action::Help => {
+            help(model);
             Vec::new()
         }
+    }
+}
+
+/// Runs `change` on the state of the pane in focus.
+fn in_pane(model: &mut Model, change: impl FnOnce(&mut PaneState)) -> Vec<Effect> {
+    if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
+        change(state);
+    }
+    Vec::new()
+}
+
+/// The effect that connects `world`, or for `connect` false disconnects it. `None` is the world
+/// in focus. With no such world, a hint and no effect.
+fn control(model: &mut Model, world: Option<String>, connect: bool) -> Vec<Effect> {
+    let name = if connect { "connect" } else { "disconnect" };
+    match world_arg(model, world, name) {
+        Ok(world) if connect => vec![Effect::Connect { world }],
+        Ok(world) => vec![Effect::Disconnect { world }],
+        Err(reason) => {
+            model.hint(&reason);
+            Vec::new()
+        }
+    }
+}
+
+/// Adds one hint for each entry of the registry: its name, its argument and its description.
+fn help(model: &mut Model) {
+    for entry in crate::registry::ENTRIES {
+        let arg = match entry.arg {
+            None => "",
+            Some(arg) if arg.required => " <world>",
+            Some(_) => " [world]",
+        };
+        model.hint(&format!("{}{arg}: {}", entry.name, entry.description));
     }
 }
 
@@ -470,7 +609,7 @@ fn world_to_send_to(model: &mut Model) -> Option<String> {
     if world.is_none() {
         model.push(
             PaneId::NOTICES,
-            "-- no world has the focus, so the line goes nowhere",
+            &format!("-- {}", no_world("the line goes nowhere")),
         );
     }
     world
@@ -491,21 +630,30 @@ fn enqueue(
     Some(Effect::Send { world, text })
 }
 
-/// Sends the text of the pose editor as one line to the world in focus.
-fn submit(model: &mut Model) -> Option<Effect> {
-    let world = world_to_send_to(model)?;
+/// Runs the text of the pose editor as a command, or sends it to the world in focus: as one
+/// line, or for `lines` as one line for each line of the text. A text of one line that starts
+/// with `//` goes without its first `/`. Each line goes to the world that has the focus now,
+/// also if the focus moves before the last line goes.
+fn submit(model: &mut Model, lines: bool) -> Vec<Effect> {
     let text = model.input();
+    if let Some(parse) = command::parse(&text, text.len()) {
+        return run_command(model, parse);
+    }
+    model.quit_arm = None;
+    let Some(world) = world_to_send_to(model) else {
+        return Vec::new();
+    };
     model.set_input("");
-    enqueue(model, world, [text])
-}
-
-/// Sends each line of the pose editor as its own line. Each line goes to the world in focus
-/// now, also if the focus moves before the last line goes.
-fn submit_lines(model: &mut Model) -> Option<Effect> {
-    let world = world_to_send_to(model)?;
-    let text = model.input();
-    model.set_input("");
-    enqueue(model, world, text.split('\n').map(str::to_owned))
+    let text = match text.strip_prefix('/') {
+        Some(rest) if rest.starts_with('/') && !text.contains('\n') => rest.to_owned(),
+        _ => text,
+    };
+    let effect = if lines {
+        enqueue(model, world, text.split('\n').map(str::to_owned))
+    } else {
+        enqueue(model, world, [text])
+    };
+    effect.into_iter().collect()
 }
 
 /// Replaces each line break of the pose editor with the line break of the world in focus. The

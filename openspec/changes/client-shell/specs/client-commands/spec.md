@@ -144,7 +144,7 @@ A bad command names no entry, or an entry that does not run as a command. It can
 
 #### Scenario: Another command cancels the quit
 - **GIVEN** a text of `alpha/aria` waits for the server
-- **WHEN** the user types `/quit` and presses Enter, then types `/fly` and presses Enter, then types `/quit` and presses Enter
+- **WHEN** the user types `/quit` and presses Enter, then types `/fly` and presses Enter, presses Ctrl+U to clear the editor, then types `/quit` and presses Enter
 - **THEN** the client is still running
 - **AND** after the last Enter the screen shows a line that starts with `-- ` and holds `1 line not sent yet`
 

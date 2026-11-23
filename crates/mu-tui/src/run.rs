@@ -125,6 +125,30 @@ async fn event_loop(
                         Msg::Reply(answer)
                     });
                 }
+                Effect::Connect { world } => {
+                    let client = client.clone();
+                    spawn_reply(&replies, async move {
+                        let call = async {
+                            client
+                                .connect(&world)
+                                .await
+                                .map_err(|error| error.to_string())
+                        };
+                        control_of(call, world.clone(), CALL_LIMIT).await
+                    });
+                }
+                Effect::Disconnect { world } => {
+                    let client = client.clone();
+                    spawn_reply(&replies, async move {
+                        let call = async {
+                            client
+                                .disconnect(&world)
+                                .await
+                                .map_err(|error| error.to_string())
+                        };
+                        control_of(call, world.clone(), CALL_LIMIT).await
+                    });
+                }
                 Effect::ListWorlds => {
                     let client = client.clone();
                     spawn_reply(&replies, async move {
@@ -195,4 +219,15 @@ pub async fn reply_of<T>(
             reason,
         },
     }
+}
+
+/// The [`Msg::Control`] of a connect or a disconnect of `world` that `call` makes. A call with
+/// no answer within `limit` gives its reason as a refusal.
+pub async fn control_of(
+    call: impl Future<Output = Result<(), String>>,
+    world: String,
+    limit: Duration,
+) -> Msg {
+    let result = within(call, limit, "").await;
+    Msg::Control { world, result }
 }

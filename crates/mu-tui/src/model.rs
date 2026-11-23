@@ -43,6 +43,16 @@ fn order(id: &str) -> (&str, &str) {
     id.split_once('/').unwrap_or((id, ""))
 }
 
+/// What set the arm of a quit, which decides what cancels it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum QuitArm {
+    /// A key. The next action that is not a quit cancels it.
+    Key,
+    /// The command `/quit`. No key cancels it by itself. The next submitted text decides: a
+    /// `/quit` leaves, and any other text or command cancels it.
+    Command,
+}
+
 /// The state of the terminal client.
 #[derive(Debug)]
 pub struct Model {
@@ -66,9 +76,9 @@ pub struct Model {
     pub(crate) notices: Vec<String>,
     /// True if a late answer gave mode 2027 as set before the probe.
     pub(crate) keeps_grapheme_mode: bool,
-    /// True after a Quit while a send has no reply yet, the send with the server included,
-    /// until the next key that is not Quit. A second Quit then leaves.
-    pub(crate) quit_armed: bool,
+    /// Set by a Quit while a send has no reply yet, the send with the server included. A second
+    /// Quit then leaves.
+    pub(crate) quit_arm: Option<QuitArm>,
     pub(crate) listing: Listing,
     /// The reason of the last list of the worlds, if it failed.
     pub(crate) list_failure: Option<String>,
@@ -126,7 +136,7 @@ impl Model {
             late: Late::None,
             notices: Vec::new(),
             keeps_grapheme_mode: false,
-            quit_armed: false,
+            quit_arm: None,
             listing: Listing::Idle,
             list_failure: None,
         };
@@ -179,6 +189,13 @@ impl Model {
             "a cut answer starts with ESC, and a longer one with ESC [: {bytes:?}"
         );
         self.late = Late::Csi(bytes);
+    }
+
+    /// This model with `keymap` in place of its keymap.
+    #[must_use]
+    pub fn with_keymap(mut self, keymap: Keymap) -> Self {
+        self.keymap = keymap;
+        self
     }
 
     /// The world in focus.

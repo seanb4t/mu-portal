@@ -1474,3 +1474,153 @@ fn top_and_bottom() {
         ("1", "40")
     );
 }
+
+// Client commands: a text of one line that starts with `/`.
+
+/// Types `text` and presses Enter.
+fn enter(app: &mut Model, text: &str) -> Vec<Effect> {
+    type_text(app, text);
+    press(app, key(KeyCode::Enter))
+}
+
+#[test]
+fn a_command_does_not_reach_the_game() {
+    let mut app = two_worlds();
+    assert_eq!(enter(&mut app, "/focus-next"), []);
+    assert_eq!(app.input(), "");
+}
+
+#[test]
+fn several_lines_are_not_a_command() {
+    let mut app = two_worlds();
+    type_lines(&mut app, &["/quit", "two"]);
+    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "/quit")]);
+    assert_eq!(
+        sent(&mut app, "alpha/aria", "/quit"),
+        [send("alpha/aria", "two")]
+    );
+}
+
+#[test]
+fn an_escaped_slash() {
+    let mut app = two_worlds();
+    assert_eq!(
+        enter(&mut app, "//me waves"),
+        [send("alpha/aria", "/me waves")]
+    );
+}
+
+/// The editor text and whether a notice holds `text`, after `command` and Enter.
+fn bad_command(app: &mut Model, command: &str, text: &str) -> (String, bool) {
+    let effects = enter(app, command);
+    assert_eq!(effects, []);
+    (app.input(), has_notice(app, text))
+}
+
+#[test]
+fn an_unknown_command() {
+    let mut app = two_worlds();
+    assert_eq!(
+        bad_command(&mut app, "/fly", "unknown command"),
+        ("/fly".to_owned(), true)
+    );
+}
+
+#[test]
+fn a_missing_world() {
+    let mut app = two_worlds();
+    assert_eq!(
+        bad_command(&mut app, "/focus", "needs a world"),
+        ("/focus".to_owned(), true)
+    );
+}
+
+#[test]
+fn an_unknown_world() {
+    let mut app = two_worlds();
+    assert_eq!(
+        bad_command(&mut app, "/focus gamma/gil", "gamma/gil"),
+        ("/focus gamma/gil".to_owned(), true)
+    );
+}
+
+#[test]
+fn an_argument_to_an_entry_that_takes_none() {
+    let mut app = two_worlds();
+    assert_eq!(
+        bad_command(&mut app, "/quit now", "takes no argument"),
+        ("/quit now".to_owned(), true)
+    );
+}
+
+#[test]
+fn an_editing_entry_is_not_a_command() {
+    let mut app = two_worlds();
+    assert_eq!(
+        bad_command(&mut app, "/undo", "not a command"),
+        ("/undo".to_owned(), true)
+    );
+}
+
+#[test]
+fn connect_with_no_world_in_focus() {
+    let mut app = app(&[]);
+    assert_eq!(
+        bad_command(&mut app, "/connect", "no world"),
+        ("/connect".to_owned(), true)
+    );
+}
+
+#[test]
+fn a_command_with_no_world_in_focus() {
+    let mut app = app(&[]);
+    assert_eq!(enter(&mut app, "/help"), []);
+    assert!(
+        screen(&mut app)
+            .iter()
+            .any(|row| row.starts_with("-- ") && row.contains("connect"))
+    );
+}
+
+#[test]
+fn focus_by_name() {
+    let mut app = two_worlds();
+    enter(&mut app, "/focus beta/bryn");
+    assert_eq!(top(&mut app), "alpha/aria [beta/bryn]");
+}
+
+#[test]
+fn a_world_with_a_trailing_space() {
+    let mut app = two_worlds();
+    enter(&mut app, "/focus beta/bryn ");
+    assert_eq!(top(&mut app), "alpha/aria [beta/bryn]");
+}
+
+#[test]
+fn help_lists_the_entries() {
+    let mut app = two_worlds();
+    assert_eq!(enter(&mut app, "/help"), []);
+    let rows = screen(&mut app);
+    let notice = |name: &str| {
+        rows.iter()
+            .any(|row| row.starts_with("-- ") && row.contains(name))
+    };
+    assert_eq!((notice("connect"), notice("focus-next")), (true, true));
+}
+
+#[test]
+fn a_key_runs_connect_on_the_world_in_focus() {
+    let app = two_worlds();
+    let mut keymap = mu_tui::Keymap::default();
+    keymap.bind(
+        mu_tui::Chord::with(KeyCode::Char('c'), Modifiers::ALT),
+        mu_tui::EntryId::named("connect").unwrap(),
+    );
+    let mut app = app.with_keymap(keymap);
+    assert_eq!(
+        press(&mut app, alt(KeyCode::Char('c'))),
+        [Effect::Connect {
+            world: "alpha/aria".to_owned()
+        }]
+    );
+}
