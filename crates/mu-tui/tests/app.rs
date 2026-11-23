@@ -1270,6 +1270,7 @@ fn the_stream_ends_while_lines_wait() {
     on_event(&mut app, ClientEvent::Lost);
     assert_eq!(app.input(), "two");
     assert!(has_notice(&mut app, "2 lines that waited went back"));
+    assert!(screen(&mut app).join(" ").contains("(2 in history)"));
     up(&mut app);
     assert_eq!(app.input(), "three");
     up(&mut app);
@@ -2322,4 +2323,17 @@ fn an_entry_that_needs_a_world_runs_with_none() {
         "{:?}",
         screen(&mut app)
     );
+}
+
+#[test]
+fn the_hint_of_returned_lines_counts_what_history_kept() {
+    let mut app = two_worlds();
+    type_lines(&mut app, &["x", "y", "y"]);
+    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "x")]);
+    type_text(&mut app, "y");
+    on_event(&mut app, ClientEvent::Lost);
+    // The held `y` goes into history, and the second returned `y` equals it, so Up has one.
+    assert!(has_notice(&mut app, "2 lines that waited"));
+    let joined = screen(&mut app).join(" ");
+    assert!(joined.contains("(1 in history)"), "{joined}");
 }

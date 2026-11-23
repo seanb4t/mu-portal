@@ -967,7 +967,8 @@ fn put_back(model: &mut Model, world: &str, texts: Vec<String>) -> usize {
 }
 
 /// Gives the sends that wait behind the send with the server back to their worlds, in the
-/// order of the worlds, with a hint that names `why` and the count of each world. The send with
+/// order of the worlds, with a hint that names `why`, the count of each world, and the count of
+/// the entries that the histories kept. The send with
 /// the server stays, so its reply still moves on or puts back only that send.
 fn return_waiting(model: &mut Model, why: &str) {
     let mut returned = Vec::new();
@@ -987,14 +988,19 @@ fn return_waiting(model: &mut Model, why: &str) {
         .iter()
         .map(|(world, texts)| format!("{} of {world}", line_count(texts.len())))
         .collect();
-    model.hint(&format!(
-        "{why}, so {} that waited went back to the editor: {}, Up recalls the rest",
+    let kept: usize = returned
+        .into_iter()
+        .map(|(world, texts)| put_back(model, &world, texts))
+        .sum();
+    let mut hint = format!(
+        "{why}, so {} that waited went back to the editor: {}",
         line_count(total),
         counts.join(", ")
-    ));
-    for (world, texts) in returned {
-        put_back(model, &world, texts);
+    );
+    if kept > 0 {
+        hint.push_str(&format!(" ({kept} in history)"));
     }
+    model.hint(&hint);
 }
 
 /// The next send of `world`, after the server took `text`. Only the reply of the first send
