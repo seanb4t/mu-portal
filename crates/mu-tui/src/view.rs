@@ -17,6 +17,8 @@ struct Parts<'a> {
     worlds: &'a [World],
     focus: Option<usize>,
     lost: bool,
+    /// True until the first list of the worlds ends.
+    first_list: bool,
     sends: &'a HashMap<String, VecDeque<String>>,
     editors: &'a mut HashMap<EditorId, EditorState>,
     /// The pose editor of the world in focus, or the loose editor.
@@ -39,6 +41,7 @@ pub fn view(model: &mut Model, frame: &mut Frame) {
         lost,
         layout,
         sends,
+        first_list,
         ..
     } = model;
     let pose = match focus.and_then(|index| worlds.get(index)) {
@@ -49,6 +52,7 @@ pub fn view(model: &mut Model, frame: &mut Frame) {
         worlds,
         focus: *focus,
         lost: *lost,
+        first_list: *first_list,
         sends,
         editors,
         pose,
@@ -134,7 +138,9 @@ fn render_pane(pane: PaneId, area: Rect, frame: &mut Frame, parts: &mut Parts) {
 }
 
 fn top_row(parts: &Parts) -> String {
-    let mut row = if parts.worlds.is_empty() {
+    let mut row = if parts.first_list {
+        "listing worlds".to_owned()
+    } else if parts.worlds.is_empty() {
         "no worlds".to_owned()
     } else {
         parts

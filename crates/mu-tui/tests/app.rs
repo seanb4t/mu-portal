@@ -21,6 +21,18 @@ fn app(worlds: &[&str]) -> Model {
     Model::new(worlds.iter().map(|world| (*world).to_owned()))
 }
 
+/// A model of `run`, before its first list of the worlds ends.
+fn starting() -> Model {
+    Model::starting(mu_tui::Settings::default())
+}
+
+/// A model of `run` after its first list of the worlds ends with `listed`.
+fn after_list(listed: Result<Vec<World>, String>) -> Model {
+    let mut app = starting();
+    assert_eq!(update(&mut app, Msg::Listed(listed)), []);
+    app
+}
+
 /// An 80 by 24 screen.
 fn draw(app: &mut Model) -> Buffer {
     draw_sized(app, 24)
@@ -194,14 +206,14 @@ fn listed_worlds_are_the_worlds() {
         id: id.to_owned(),
         ..Default::default()
     });
-    let mut app = Model::from_listing(Ok(worlds.to_vec()));
+    let mut app = after_list(Ok(worlds.to_vec()));
     assert_eq!(top(&mut app), "[alpha/aria] beta/bryn");
 }
 
 const LIST_FAILED: &str = "-- could not list the worlds: unavailable: no server";
 
 fn failed_listing() -> Model {
-    Model::from_listing(Err("unavailable: no server".to_owned()))
+    after_list(Err("unavailable: no server".to_owned()))
 }
 
 #[test]
@@ -1181,7 +1193,7 @@ fn line_break_that_the_editor_cannot_hold_is_no_line_break() {
             line_break: Some(line_break.to_owned()),
             ..Default::default()
         };
-        let mut app = Model::from_listing(Ok(vec![world]));
+        let mut app = after_list(Ok(vec![world]));
         type_lines(&mut app, &["one", "two"]);
         press(&mut app, alt_r());
         assert_eq!(app.input(), "one\ntwo", "{line_break:?}");
@@ -1196,7 +1208,7 @@ fn listed() -> Model {
         line_break: line_break.map(str::to_owned),
         ..Default::default()
     };
-    Model::from_listing(Ok(vec![
+    after_list(Ok(vec![
         world("alpha/aria", Some("%r")),
         world("beta/bryn", None),
     ]))
@@ -2160,4 +2172,125 @@ proptest! {
         let cleaned = mu_tui::echo_rows(&text, None).remove(0);
         prop_assert_eq!(parts.join(&line_break), cleaned.strip_prefix("> ").unwrap());
     }
+}
+
+// The first list of the worlds.
+
+fn world_of(id: &str) -> World {
+    World {
+        id: id.to_owned(),
+        ..Default::default()
+    }
+}
+
+fn list_ends(app: &mut Model, listed: Result<Vec<World>, String>) {
+    assert_eq!(update(app, Msg::Listed(listed)), []);
+}
+
+#[test]
+fn before_the_first_list() {
+    let mut app = starting();
+    assert_eq!(top(&mut app), "listing worlds");
+    list_ends(&mut app, Ok(vec![world_of("alpha/aria")]));
+    assert_eq!(top(&mut app), "[alpha/aria]");
+}
+
+#[test]
+fn a_send_before_the_first_list() {
+    let mut app = starting();
+    type_text(&mut app, "hi");
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    assert!(has_notice(&mut app, "no world"), "{:?}", rows(&mut app));
+    assert_eq!(app.input(), "hi");
+}
+
+#[test]
+fn text_typed_before_the_first_list() {
+    let mut app = starting();
+    type_text(&mut app, "hi");
+    list_ends(&mut app, Ok(vec![world_of("alpha/aria")]));
+    assert_eq!(app.input(), "hi");
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [Effect::Send {
+            world: "alpha/aria".to_owned(),
+            text: "hi".to_owned()
+        }]
+    );
+}
+
+#[test]
+fn up_before_the_first_list() {
+    let mut app = starting();
+    type_text(&mut app, "hi");
+    press(&mut app, key(KeyCode::Up));
+    press(&mut app, key(KeyCode::Down));
+    assert_eq!(app.input(), "hi");
+}
+
+#[test]
+fn an_event_before_the_first_list() {
+    let mut app = starting();
+    on_event(&mut app, game("alpha/aria", "Welcome, aria."));
+    assert_eq!(top(&mut app), "listing worlds");
+    type_text(&mut app, "hi");
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    assert!(has_notice(&mut app, "no world"), "{:?}", rows(&mut app));
+}
+
+#[test]
+fn a_focus_key_before_the_first_list() {
+    let mut app = starting();
+    on_event(&mut app, game("alpha/aria", "Welcome, aria."));
+    press(&mut app, alt(KeyCode::Char('1')));
+    type_text(&mut app, "hi");
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    assert!(has_notice(&mut app, "no world"), "{:?}", rows(&mut app));
+}
+
+#[test]
+fn a_failed_first_list_after_an_event() {
+    let mut app = starting();
+    on_event(&mut app, game("alpha/aria", "Welcome, aria."));
+    list_ends(&mut app, Err("boom".to_owned()));
+    assert_eq!(top(&mut app), "[alpha/aria]");
+}
+
+#[test]
+fn a_notice_before_the_first_list() {
+    let mut app = starting();
+    let outcome = mu_tui::probe::Outcome {
+        complete: true,
+        ..Default::default()
+    };
+    assert_eq!(update(&mut app, Msg::Probe(outcome)), []);
+    list_ends(&mut app, Ok(vec![world_of("alpha/aria")]));
+    assert_eq!(top(&mut app), "[alpha/aria]");
+    assert!(
+        has_notice(&mut app, "the terminal gave no character widths"),
+        "{:?}",
+        rows(&mut app)
+    );
+}
+
+#[test]
+fn the_first_list_fails() {
+    let mut app = starting();
+    list_ends(&mut app, Err("boom".to_owned()));
+    assert_eq!(top(&mut app), "no worlds");
+    assert!(has_notice(&mut app, "boom"), "{:?}", rows(&mut app));
+}
+
+#[test]
+fn a_reset_during_the_first_list() {
+    let mut app = starting();
+    let reset = ClientEvent::Reset {
+        instance_id: "i".to_owned(),
+    };
+    assert_eq!(update(&mut app, Msg::Client(reset)), []);
+    let alpha = || Ok(vec![world_of("alpha/aria")]);
+    assert_eq!(update(&mut app, Msg::Listed(alpha())), [Effect::ListWorlds]);
+    assert_eq!(top(&mut app), "listing worlds");
+    list_ends(&mut app, alpha());
+    assert_eq!(top(&mut app), "[alpha/aria]");
 }

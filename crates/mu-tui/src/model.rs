@@ -91,6 +91,8 @@ pub struct Model {
     /// Quit then leaves.
     pub(crate) quit_arm: Option<QuitArm>,
     pub(crate) listing: Listing,
+    /// True until the first list of the worlds ends. While it is set, no world gets the focus.
+    pub(crate) first_list: bool,
     /// How the echo line of a send shows.
     pub(crate) echo: Echo,
     /// The reason of the last list of the worlds, if it failed.
@@ -154,6 +156,7 @@ impl Model {
             quit_arm: None,
             listing: Listing::Idle,
             list_failure: None,
+            first_list: false,
             echo: Echo::default(),
         };
         for id in worlds {
@@ -165,12 +168,25 @@ impl Model {
         model
     }
 
-    /// A model with no world, and the keymap and the echo of `settings`.
+    /// A model with no world, and the keymap and the echo of `settings`, that waits for its
+    /// first list of the worlds. The caller asks for that list. Until its reply, the top row
+    /// shows `listing worlds` and no world gets the focus.
     #[must_use]
     pub fn starting(settings: Settings) -> Self {
-        Self::new([])
+        let mut model = Self::new([])
             .with_keymap(settings.keymap)
-            .with_echo(settings.echo)
+            .with_echo(settings.echo);
+        model.listing = Listing::Asked;
+        model.first_list = true;
+        model
+    }
+
+    /// Ends the first list of the worlds: the first world, if there is one, gets the focus.
+    pub(crate) fn end_first_list(&mut self) {
+        self.first_list = false;
+        if !self.worlds.is_empty() {
+            self.set_focus(0);
+        }
     }
 
     /// The model with `echo` as the style of the echo line of a send.
@@ -178,24 +194,6 @@ impl Model {
     pub const fn with_echo(mut self, echo: Echo) -> Self {
         self.echo = echo;
         self
-    }
-
-    /// A model with the worlds of a list of worlds. A failed list gives no worlds and a notice
-    /// with its error. The events of each world add the world later.
-    #[must_use]
-    pub fn from_listing(listed: Result<Vec<ProtoWorld>, String>) -> Self {
-        match listed {
-            Ok(worlds) => {
-                let mut model = Self::new(worlds.iter().map(|world| world.id.clone()));
-                model.learn(worlds);
-                model
-            }
-            Err(error) => {
-                let mut model = Self::new([]);
-                model.notice(&format!("could not list the worlds: {error}"));
-                model
-            }
-        }
     }
 
     /// True if a late answer gave mode 2027 as set before the probe, so the client leaves the
@@ -318,8 +316,11 @@ impl Model {
 
     /// Gives the focus to the world at `index` and clears its unseen mark. If no world had the
     /// focus, the text of the loose editor moves into the editor of that world, and the kept
-    /// notices go into its pane.
+    /// notices go into its pane. Until the first list ends, it does nothing.
     pub(crate) fn set_focus(&mut self, index: usize) {
+        if self.first_list {
+            return;
+        }
         let had_focus = self.focus.is_some();
         self.focus = Some(index);
         let world = &mut self.worlds[index];

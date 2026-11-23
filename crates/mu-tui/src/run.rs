@@ -28,20 +28,7 @@ use crate::view::view;
 ///
 /// An I/O error of the terminal.
 pub async fn run(client: PortalClient, settings: Settings) -> io::Result<()> {
-    let listed = within(
-        async {
-            client
-                .list_worlds()
-                .await
-                .map_err(|error| error.to_string())
-        },
-        CALL_LIMIT,
-        "",
-    )
-    .await;
-    let mut model = Model::from_listing(listed)
-        .with_keymap(settings.keymap)
-        .with_echo(settings.echo);
+    let mut model = Model::starting(settings);
     // The probe sets mode 2027, so a panic before its replies turns the mode off.
     let restore = Arc::new(Restore::default());
     restore.set_grapheme_mode(true);
@@ -87,6 +74,8 @@ async fn event_loop(
     let mut terminal_events = EventStream::new(reader, |_| true);
     let mut events = Box::pin(client.events());
     let (replies, mut reply) = mpsc::unbounded_channel();
+    // The first list of the worlds, which `Model::starting` asked for.
+    spawn_reply(&replies, listed_of(client.clone()));
     loop {
         // No frame is drawn while an early message waits.
         let msg = if let Some(msg) = early.pop_front() {
@@ -153,18 +142,7 @@ async fn event_loop(
                         control_of(call, world.clone(), CALL_LIMIT).await
                     });
                 }
-                Effect::ListWorlds => {
-                    let client = client.clone();
-                    spawn_reply(&replies, async move {
-                        let call = async {
-                            client
-                                .list_worlds()
-                                .await
-                                .map_err(|error| error.to_string())
-                        };
-                        Msg::Listed(within(call, CALL_LIMIT, "").await)
-                    });
-                }
+                Effect::ListWorlds => spawn_reply(&replies, listed_of(client.clone())),
             }
         }
     }
@@ -175,6 +153,17 @@ async fn event_loop(
 /// in `mu_core::session`. The limit is above that, so the server's own answer comes first when
 /// the game is slow.
 pub const CALL_LIMIT: Duration = Duration::from_secs(30);
+
+/// The list of the worlds of `client`, within [`CALL_LIMIT`].
+async fn listed_of(client: PortalClient) -> Msg {
+    let call = async {
+        client
+            .list_worlds()
+            .await
+            .map_err(|error| error.to_string())
+    };
+    Msg::Listed(within(call, CALL_LIMIT, "").await)
+}
 
 /// Runs `call` on a task, and gives its message to the loop.
 fn spawn_reply(

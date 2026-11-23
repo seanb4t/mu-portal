@@ -212,11 +212,21 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
                     model.list_failure = None;
                     model.learn(worlds);
                 }
-                Err(reason) => model.list_failure = Some(reason),
+                Err(reason) => {
+                    if model.first_list && !again {
+                        model.notice(&format!("could not list the worlds: {reason}"));
+                    }
+                    model.list_failure = Some(reason);
+                }
             }
             if again {
+                // The reply can be of the server before the reset, so it does not end the first
+                // list.
                 list_worlds(model).into_iter().collect()
             } else {
+                if model.first_list {
+                    model.end_first_list();
+                }
                 Vec::new()
             }
         }
