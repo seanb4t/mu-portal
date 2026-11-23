@@ -27,6 +27,12 @@ At the start, `mu server` SHALL read and check each file under `clients/` in the
 - **THEN** stderr holds one line that contains `clients/devices/Laptop.toml`
 - **AND** an API call on `<dir>/s.sock` succeeds
 
+#### Scenario: A link to nothing under clients
+- **GIVEN** `<dir>/clients/devices/laptop.toml` is a symbolic link to a file that does not exist
+- **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
+- **THEN** stderr holds one line that contains `clients/devices/laptop.toml`
+- **AND** an API call on `<dir>/s.sock` succeeds
+
 #### Scenario: A layer for an unknown kind
 - **GIVEN** `<dir>/clients/kinds/tiu.toml` holds `echo = "show"`
 - **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
@@ -169,6 +175,12 @@ After a reload, the server SHALL tell each attached client whose configuration h
 #### Scenario: A reload while the stream is down
 - **GIVEN** `mu client` runs with the device `laptop` on a server with the fake worlds `alpha/aria` and `beta/bryn`, reads the stream through a relay, and the top row shows `[alpha/aria]`
 - **WHEN** the relay cuts the connection and holds, the user writes `[keys]` with `"alt+n" = "focus-next"` to `clients/devices/laptop.toml` and runs `mu config reload`, and then the relay releases
+- **AND** the top row no longer shows `disconnected`, and the user presses Alt+N
+- **THEN** the top row shows `[beta/bryn]`
+
+#### Scenario: A reload across a server restart
+- **GIVEN** `mu client` runs with the device `laptop` on a server with the fake worlds `alpha/aria` and `beta/bryn`, and the top row shows `[alpha/aria]`
+- **WHEN** the server stops, the user writes `[keys]` with `"alt+n" = "focus-next"` to `clients/devices/laptop.toml`, and a new server starts on the same socket with the same directory
 - **AND** the top row no longer shows `disconnected`, and the user presses Alt+N
 - **THEN** the top row shows `[beta/bryn]`
 

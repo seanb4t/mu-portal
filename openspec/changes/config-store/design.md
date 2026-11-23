@@ -37,7 +37,7 @@ See proposal.md for the motivation. The facts that shape the design:
 
 It has no `termina` type and no TOML parser. A key name parses to a neutral value of modifiers and one key, and that value prints back as one canonical name. `mu-tui` maps the value to a `termina` chord. The server and `mu-cli` both check names with `mu-config`, so the device rule exists once.
 
-The crate edges become: `mu-config` depends on no member. `mu-server`, `mu-tui` and `mu-cli` can depend on it. Its only allowed third-party crate is `serde`. The property test `key_names_read_back` moves with the grammar, with `proptest` as a dev-dependency.
+The crate edges become: `mu-config` depends on no member. `mu-server`, `mu-tui` and `mu-cli` can depend on it. Its only allowed third-party crate is `serde`. The property test `key_names_read_back` moves with the grammar, with `proptest` as a dev-dependency. The row of `mu-config` in `ALLOWED_CRATES` names `serde` and `proptest`, because that check also reads dev-dependencies.
 
 `ClientConfig` and its binding check leave `mu-tui`. The client gets its keymap from the reply of `GetClientConfig`, which the server checked.
 
@@ -51,7 +51,7 @@ The entry table in `mu-config` and the registry in `mu-tui` name the same entrie
 
 ### D2. The store lives in `mu-server` and keeps a snapshot
 
-The directory is read once for each start and each reload. `mu-core` gets a snapshot type, `DirSnapshot`. It walks the directory with the walk and the top-file rule of `TomlDirSource`, and keeps each relative path with its bytes. `DirSnapshot` implements `LayerSource`, and `TomlDirSource` becomes a snapshot followed by its layers. So the store resolves the worlds with `mu_core::world::resolve` from the same bytes that it keeps.
+The directory is read once for each start and each reload. `mu-core` gets a snapshot type, `DirSnapshot`. It walks the directory with the walk and the top-file rule of `TomlDirSource`, and keeps each relative path with its bytes. It keeps the files under `clients/` too. The walk stops today at the first entry that it cannot read or stat. In the snapshot, such an entry under `clients/` is kept as an unreadable file with its error, so it becomes a bad client layer. Outside `clients/`, the error still stops the read, as today. `DirSnapshot` implements `LayerSource`, and `TomlDirSource` becomes a snapshot followed by its layers. So the store resolves the worlds with `mu_core::world::resolve` from the same bytes that it keeps.
 
 The store parses each file under `clients/` with `mu_core::world::parse_toml` into the types of `mu-config`, so the line of an error and the rule never to quote a value come from one parser. Then it checks the `[keys]` table with `mu-config`. A good client layer keeps its parsed fields. A bad client layer keeps a reason that names the file, the field or the binding, and the line when there is one.
 
@@ -106,7 +106,7 @@ SubscribeResponse.config_changed {}     (not in the journal, no sequence number)
 
 After a reload that changes any client layer, the server sends `config_changed` on every stream. Each client calls `GetClientConfig` again and applies the result if the revision differs. The server does not track the kind, OS and device of each stream. A broadcast costs one small call for each client, and the client keeps the comparison.
 
-`config_changed` is not in the journal, so a client can miss it: between its first `GetClientConfig` and its first stream, while its stream is down, or across a restart of the server. So the client also calls `GetClientConfig` on each `Hello`: the first one, each resume (`ClientEvent::Resumed`) and each reset (`ClientEvent::Reset`). A `Hello` starts every stream, so after any gap the client compares its revision again.
+`config_changed` is not in the journal, so a client can miss it: between its first `GetClientConfig` and its first stream, while its stream is down, or across a restart of the server. So the client also calls `GetClientConfig` after each `Hello`. Today `mu-client` reports a `Hello` only as `Reset` or `Resumed`, and it reports no event for the quiet `Hello` of the stream that it opens again from event 1 after a reset. So the change adds `ClientEvent::Opened`, which `mu-client` sends for every `Hello`, the quiet one too. `Reset` and `Resumed` keep their meaning. At `Hello` the stream is already open, so a change after the fetch arrives on the stream, and a change before it is in the reply.
 
 `GetClientConfig` checks the kind, the OS and the device name with `mu-config`, and refuses a bad name with an error that names it.
 
@@ -136,7 +136,7 @@ The order becomes:
 
 ### D8. A live change in the client
 
-`mu-tui` gets a message for `config_changed`, and the same effect runs on each `Hello` (D5). The effect calls `GetClientConfig`. The result replaces the keymap and the echo setting of the model, and each new notice shows once. A key that is held during the swap uses the old or the new keymap, never a mix.
+`mu-tui` gets a message for `config_changed`, and the same effect runs on each `ClientEvent::Opened` (D5). The effect calls `GetClientConfig`. The result replaces the keymap and the echo setting of the model, and each new notice shows once. A key that is held during the swap uses the old or the new keymap, never a mix.
 
 ## Enforcement
 
