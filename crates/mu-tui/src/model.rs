@@ -291,16 +291,14 @@ impl Model {
     /// does not hold.
     #[must_use]
     pub fn history(&self, world: &str) -> Option<Vec<&str>> {
-        self.worlds
-            .iter()
-            .find(|each| each.id == world)
-            .map(|each| each.history.iter().collect())
+        self.find(world)
+            .map(|index| self.worlds[index].history.iter().collect())
     }
 
     /// The place of the open walk of `world` in its history, and the length of that history.
     #[must_use]
     pub fn walk(&self, world: &str) -> Option<(usize, usize)> {
-        let world = self.worlds.iter().find(|each| each.id == world)?;
+        let world = &self.worlds[self.find(world)?];
         world
             .history
             .walk_place()
@@ -350,14 +348,25 @@ impl Model {
         }
     }
 
+    /// The index of `id`, or `None` if the model does not hold that world.
+    pub(crate) fn find(&self, id: &str) -> Option<usize> {
+        // The order key of `a` and `a/` is the same, so the id itself decides.
+        self.search(id)
+            .ok()
+            .filter(|&index| self.worlds[index].id == id)
+    }
+
+    /// The index of `id` in the sorted worlds, or the index where it goes.
+    fn search(&self, id: &str) -> Result<usize, usize> {
+        self.worlds
+            .binary_search_by(|world| order(&world.id).cmp(&order(id)))
+    }
+
     /// The index of `id`, which this adds in its order, with a new pane, if it is new. A new
     /// world takes the focus when no world has it, with the notices in its pane, and the focus
     /// stays on its world.
     pub(crate) fn world(&mut self, id: &str) -> usize {
-        match self
-            .worlds
-            .binary_search_by(|world| order(&world.id).cmp(&order(id)))
-        {
+        match self.search(id) {
             Ok(index) => index,
             Err(index) => {
                 let pane = PaneId(self.next_pane);

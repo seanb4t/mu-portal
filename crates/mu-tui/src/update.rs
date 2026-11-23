@@ -606,7 +606,7 @@ fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
             }
             match world_arg(model, Some(world.clone()), "/focus") {
                 Ok(world) => {
-                    if let Some(index) = model.worlds.iter().position(|each| each.id == world) {
+                    if let Some(index) = model.find(&world) {
                         model.set_focus(index);
                     }
                 }
@@ -936,10 +936,8 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
     let kept = put_back(model, &world, lines);
     let notice = format!("-- {}{}", clean(&reason), in_history(kept));
     let pane = model
-        .worlds
-        .iter()
-        .find(|each| each.id == world)
-        .map_or(PaneId::NOTICES, |world| world.pane);
+        .find(&world)
+        .map_or(PaneId::NOTICES, |index| model.worlds[index].pane);
     model.push(pane, &notice);
     Vec::new()
 }
@@ -959,7 +957,7 @@ fn line_count(count: usize) -> String {
 /// the walk. A world out of focus gets its unseen mark. Returns the count of entries that the
 /// history kept.
 fn put_back(model: &mut Model, world: &str, texts: Vec<String>) -> usize {
-    let Some(index) = model.worlds.iter().position(|each| each.id == world) else {
+    let Some(index) = model.find(world) else {
         return 0;
     };
     let mut texts = texts.into_iter();
