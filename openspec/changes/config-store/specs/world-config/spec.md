@@ -113,6 +113,12 @@ The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml`
 - **THEN** stdout holds the line `alpha/aria`
 - **AND** the exit status is 0
 
+#### Scenario: A game named clients
+- **GIVEN** a directory with `games/clients.toml` and `characters/clients/aria.toml`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stdout holds the line `clients/aria`
+- **AND** the exit status is 0
+
 #### Scenario: A bad client layer does not stop the worlds
 - **GIVEN** a directory with `games/alpha.toml`, `characters/alpha/aria.toml` and `clients/global.toml` that holds `echo = "loud"`
 - **WHEN** the user runs `mu world list --config <dir>`

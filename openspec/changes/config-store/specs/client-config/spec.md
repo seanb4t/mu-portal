@@ -141,7 +141,7 @@ The field `echo` SHALL be one of `show`, `dim` and `hide`, and its default SHALL
 ## REMOVED Requirements
 
 ### Requirement: The client reads client.toml
-**Reason**: The server owns the client configuration (#169). A local file brings back drift between the clients of one server.
+**Reason**: **BREAKING** The server owns the client configuration (#169). A local file brings back drift between the clients of one server.
 **Migration**: Move the content of `client.toml` to `clients/global.toml` in the configuration directory of the server, without the table `[server]`.
 
 ### Requirement: A bad client.toml stops the client
@@ -153,5 +153,5 @@ The field `echo` SHALL be one of `show`, `dim` and `hide`, and its default SHALL
 **Migration**: None.
 
 ### Requirement: The server table sets the wait for a server
-**Reason**: The client needs the wait before a server answers, so it cannot come from the server.
+**Reason**: **BREAKING** The client needs the wait before a server answers, so it cannot come from the server.
 **Migration**: Use the option `connect_wait` of the server URL, such as `--server "unix:///path/s.sock?connect_wait=2"`.

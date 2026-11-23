@@ -21,6 +21,12 @@ At the start, `mu server` SHALL read and check each file under `clients/` in the
 - **THEN** stderr holds one line that contains `clients/extra.toml`
 - **AND** an API call on `<dir>/s.sock` succeeds
 
+#### Scenario: A device file with a bad name
+- **GIVEN** `<dir>/clients/devices/Laptop.toml` holds `echo = "show"`
+- **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
+- **THEN** stderr holds one line that contains `clients/devices/Laptop.toml`
+- **AND** an API call on `<dir>/s.sock` succeeds
+
 #### Scenario: A layer for an unknown kind
 - **GIVEN** `<dir>/clients/kinds/tiu.toml` holds `echo = "show"`
 - **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
@@ -80,6 +86,11 @@ The call `GetClientConfig` SHALL take a kind, an OS and a device name. It SHALL 
 - **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
 - **THEN** stderr holds one line that contains `clients/devices/laptop.toml` and `echo`
 - **AND** the exit status is 0
+
+#### Scenario: A bad device name in a call
+- **GIVEN** a server serves `<dir>` on `<dir>/s.sock`
+- **WHEN** a client calls `GetClientConfig` with the kind `tui`, the OS `linux` and the device `My Laptop`
+- **THEN** the call fails, and its error contains `My Laptop`
 
 #### Scenario: No notice for a bad layer of another device
 - **GIVEN** `clients/devices/laptop.toml` holds `echo = "loud"`, and a server serves that directory on `<dir>/s.sock`
@@ -148,11 +159,17 @@ The revision SHALL be a text. A change to the content of a layer that applies to
 - **AND** an API call on `<dir>/s.sock` still lists `alpha/aria`
 
 ### Requirement: An attached client gets a new configuration
-After a reload, the server SHALL tell each attached client whose configuration has a new revision. The client SHALL then apply the new configuration without a restart. If a layer that applies to the client is bad after the reload, the client SHALL show one notice for it.
+After a reload, the server SHALL tell each attached client whose configuration has a new revision. The client SHALL then apply the new configuration without a restart. After a gap in its stream, the client SHALL also get its configuration again. If a layer that applies to the client is bad after the reload, the client SHALL show one notice for it.
 
 #### Scenario: A new binding works without a restart
 - **GIVEN** `mu client` runs with the device `laptop` on a server with the fake worlds `alpha/aria` and `beta/bryn`, and the top row shows `[alpha/aria]`
 - **WHEN** the user writes `[keys]` with `"alt+n" = "focus-next"` to `clients/devices/laptop.toml`, runs `mu config reload`, and presses Alt+N in the client
+- **THEN** the top row shows `[beta/bryn]`
+
+#### Scenario: A reload while the stream is down
+- **GIVEN** `mu client` runs with the device `laptop` on a server with the fake worlds `alpha/aria` and `beta/bryn`, reads the stream through a relay, and the top row shows `[alpha/aria]`
+- **WHEN** the relay cuts the connection and holds, the user writes `[keys]` with `"alt+n" = "focus-next"` to `clients/devices/laptop.toml` and runs `mu config reload`, and then the relay releases
+- **AND** the top row no longer shows `disconnected`, and the user presses Alt+N
 - **THEN** the top row shows `[beta/bryn]`
 
 #### Scenario: A bad layer after a reload

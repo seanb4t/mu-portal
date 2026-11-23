@@ -21,16 +21,25 @@ See proposal.md for the motivation. The facts that shape the design:
 
 **Non-Goals:**
 
-- A general merge engine shared with the world layers. The client layers have two fields. The world merge has rules that the client layers do not need, such as `extends`, `disable` and arrays that accumulate.
+- The world rules `extends`, `disable` and arrays that accumulate, for the client layers. The client layers reuse the merge library of the world layers, not the world rules.
 - A change to how `mu world list` and `mu world show` read the directory. They still read the files directly.
 
 ## Decisions
 
 ### D1. A new crate, `mu-config`, holds the client fields and the key grammar
 
-`mu-config` holds the serde types of a client layer and the grammar of a key name. It also holds the table of entry names, with the entries that need an argument. It has no `termina` type. A key name parses to a neutral value of modifiers and one key. `mu-tui` maps that value to a `termina` chord.
+`mu-config` holds these parts:
 
-The crate edges become: `mu-config` depends on no member. `mu-server`, `mu-tui` and `mu-cli` can depend on it. Its allowed third-party crates are `serde` and `toml`.
+- The serde types of a client layer.
+- The grammar of a key name, and the check of a `[keys]` table.
+- The table of entry names, each with the flag that says whether it needs an argument.
+- The names of a client: the kind, the OS, and the device name with its rule of 1 to 64 characters.
+
+It has no `termina` type and no TOML parser. A key name parses to a neutral value of modifiers and one key, and that value prints back as one canonical name. `mu-tui` maps the value to a `termina` chord. The server and `mu-cli` both check names with `mu-config`, so the device rule exists once.
+
+The crate edges become: `mu-config` depends on no member. `mu-server`, `mu-tui` and `mu-cli` can depend on it. Its only allowed third-party crate is `serde`. The property test `key_names_read_back` moves with the grammar, with `proptest` as a dev-dependency.
+
+`ClientConfig` and its binding check leave `mu-tui`. The client gets its keymap from the reply of `GetClientConfig`, which the server checked.
 
 Alternatives:
 
@@ -38,13 +47,17 @@ Alternatives:
 - The grammar goes in `mu-proto`. Rejected: `mu-proto` holds the wire format only.
 - `mu-server` depends on `mu-tui`. Rejected: the crate rules forbid it, and the server then pulls in the terminal code.
 
-The entry table in `mu-config` and the registry in `mu-tui` name the same entries. A test in `mu-tui` compares the two lists and fails on any difference.
+The entry table in `mu-config` and the registry in `mu-tui` name the same entries with the same argument flag. A test in `mu-tui` compares the name and the flag of each entry and fails on any difference.
 
 ### D2. The store lives in `mu-server` and keeps a snapshot
 
-At the start, the store reads every `.toml` file under the configuration directory into a snapshot: each relative path with its bytes. From the snapshot it resolves the worlds with `mu_core::world::resolve`, as `mu-cli` does today. It parses and checks each file under `clients/` with `mu-config`. A good client layer keeps its parsed fields. A bad client layer keeps a reason that names the file, the field or the binding, and the line when there is one.
+The directory is read once for each start and each reload. `mu-core` gets a snapshot type, `DirSnapshot`. It walks the directory with the walk and the top-file rule of `TomlDirSource`, and keeps each relative path with its bytes. `DirSnapshot` implements `LayerSource`, and `TomlDirSource` becomes a snapshot followed by its layers. So the store resolves the worlds with `mu_core::world::resolve` from the same bytes that it keeps.
 
-`server.toml` stays parsed in `mu-cli`, because the telemetry export must start before the server. The store keeps its bytes only, to see a change at reload.
+The store parses each file under `clients/` with `mu_core::world::parse_toml` into the types of `mu-config`, so the line of an error and the rule never to quote a value come from one parser. Then it checks the `[keys]` table with `mu-config`. A good client layer keeps its parsed fields. A bad client layer keeps a reason that names the file, the field or the binding, and the line when there is one.
+
+The merge of the client layers uses `figment2`, as the world merge does. Each layer is a `Named` provider, the merge is `Figment::merge`, and the source of a field is `find_metadata`. A nested table merges key by key in `figment2`, so `[keys]` gets its rule from the library. Before the merge, each key name becomes its canonical name, so two names of one key in two layers meet as one key.
+
+`server.toml` stays parsed in `mu-cli`, because the telemetry export must start before the server. `mu-cli` gives the store a check function for it, `server_config::check`, which takes the bytes and returns the error of the file. The store calls that function at each reload, so a bad `server.toml` is reported.
 
 A reload builds a new snapshot and compares it with the current one:
 
@@ -54,15 +67,26 @@ A reload builds a new snapshot and compares it with the current one:
 
 One mutex serializes reloads. A reload swaps the client part as one value, so a `GetClientConfig` call sees the old or the new layers, never a mix.
 
-Alternative: keep `mu-cli` as the reader and pass a callback to the server for reloads. Rejected: the reader and the reload then live in two crates, and #173 needs one owner.
+Alternative: keep `mu-cli` as the reader and pass a callback to the server for reloads. Rejected: the reader and the reload then live in two crates, and #173 needs one owner. The `server.toml` check is the one callback, because its types belong to the telemetry code of `mu-cli`.
+
+Alternative: a hand-written merge of the client layers. Rejected: `figment2` already merges the world layers with a source for each field, and #172 adds fields to the client layers.
 
 ### D3. The world scan skips `clients/` and rejects `client.toml`
 
-`crates/mu-core/src/world/dir.rs` drops `client.toml` from the top-level files and skips the directory `clients`. A leftover `client.toml` becomes a stray file, and its error says to move the content to `clients/global.toml`. This uses the existing stray-file rule, so no new error path is needed.
+`crates/mu-core/src/world/dir.rs` drops `client.toml` from the top-level files. It skips the directory `clients` at the top level only, so `characters/clients/<character>.toml` is still the world of a game named `clients`.
+
+A leftover `client.toml` becomes a stray file. The stray-file error today lists the layer files, so the change adds one branch: for `client.toml` at the top level, the error says to move its content to `clients/global.toml`.
 
 ### D4. The revision is a hash of the layers that apply
 
-The revision of one client is a SHA-256 hash. Its input is the sorted list of the layer files that exist for the kind, the OS and the device of the client, each path with its bytes. A bad layer counts too, so a layer that turns bad changes the revision. The text form is the first 16 hex digits.
+The revision of one client is a SHA-256 hash. Its input is the sorted list of the layer files that exist for the kind, the OS and the device of the client. Each entry is framed, so no two lists give the same input:
+
+- the length of the path as 8 bytes, big-endian, then the path
+- one tag byte: 0 for a file that was read, 1 for a file that the server cannot read
+- for tag 0, the length of the bytes as 8 bytes, big-endian, then the bytes
+- for tag 1, the kind of the read error as text, with its length first
+
+A bad layer counts too, so a layer that turns bad changes the revision, and a layer that turns unreadable is not the same as an empty one. The text form is the first 16 hex digits.
 
 A hash keeps the revision the same across a restart, which a counter does not. A later write can also compare a revision with the files on disk after an edit by hand (#173).
 
@@ -82,17 +106,23 @@ SubscribeResponse.config_changed {}     (not in the journal, no sequence number)
 
 After a reload that changes any client layer, the server sends `config_changed` on every stream. Each client calls `GetClientConfig` again and applies the result if the revision differs. The server does not track the kind, OS and device of each stream. A broadcast costs one small call for each client, and the client keeps the comparison.
 
+`config_changed` is not in the journal, so a client can miss it: between its first `GetClientConfig` and its first stream, while its stream is down, or across a restart of the server. So the client also calls `GetClientConfig` on each `Hello`: the first one, each resume (`ClientEvent::Resumed`) and each reset (`ClientEvent::Reset`). A `Hello` starts every stream, so after any gap the client compares its revision again.
+
+`GetClientConfig` checks the kind, the OS and the device name with `mu-config`, and refuses a bad name with an error that names it.
+
 `ListWorlds.config_dir` stays. `mu config show` does not need it, but a remote client or an MCP server can use it to name the directory.
 
 Alternative: put the configuration in `Hello`. Rejected: a reload then needs a new stream, and `Hello` gets data that has nothing to do with the journal.
 
 ### D6. The bootstrap values
 
-The URL parser is the `url` crate, which already is in `Cargo.lock` through other crates. The path is percent-decoded. The command refuses a URL before any connection in these cases: a scheme that is not `unix`, a host, a user, a password, a fragment, or a path that is not absolute.
+The URL parser is the `url` crate, which already is in `Cargo.lock` through other crates. The change adds it to `[workspace.dependencies]` and to the `mu-cli` row of `ALLOWED_CRATES`. The path is percent-decoded. The command refuses a URL before any connection in these cases: a scheme that is not `unix`, no `//` after the scheme, a host, a user, a password, a fragment, or a path that is not absolute.
+
+`sha2` and `figment2` enter the `mu-server` row of `ALLOWED_CRATES`, and `sha2` enters `[workspace.dependencies]`.
 
 The host name comes from `rustix::system::uname().nodename()`. `rustix` is already a workspace dependency, and the change adds its `system` feature. A host name that is not a valid device name after the change to lowercase stops the command, and the message says to set `--device`.
 
-`mu config show` and `mu config reload` take the same `--server` and `--device` flags, and never start a server.
+`mu config show` and `mu config reload` take the same `--server` and `--device` flags, and never start a server. Each waits for the answer of its call at most the time of `connect_wait`. A message about a server that did not answer names the URL and that time, as for `mu client`.
 
 ### D7. The start of `mu client`
 
@@ -106,14 +136,16 @@ The order becomes:
 
 ### D8. A live change in the client
 
-`mu-tui` gets a message for `config_changed`. Its effect calls `GetClientConfig`. The result replaces the keymap and the echo setting of the model, and each new notice shows once. A key that is held during the swap uses the old or the new keymap, never a mix.
+`mu-tui` gets a message for `config_changed`, and the same effect runs on each `Hello` (D5). The effect calls `GetClientConfig`. The result replaces the keymap and the echo setting of the model, and each new notice shows once. A key that is held during the swap uses the old or the new keymap, never a mix.
 
 ## Enforcement
 
 | Rule | Enforced by |
 |---|---|
 | `mu-server` and `mu-tui` reach the key grammar only through `mu-config` | `workspace_boundary.rs`, in CI |
-| The entry table of `mu-config` matches the registry of `mu-tui` | A test in `mu-tui`, in CI |
+| The entry table of `mu-config` matches the registry of `mu-tui`, names and argument flags | A test in `mu-tui`, in CI |
+| `sha2`, `figment2` and `url` enter only the crates that D2 and D6 name | `workspace_boundary.rs`, in CI |
+| A client never keeps an old revision after a gap in its stream | The tests of D5: `a_reload_while_the_stream_is_down` and the unit tests of each `Hello` |
 | A bad client layer never stops the server | The tests of the scenarios of the `config-store` spec |
 | A reload never applies a world change | The test of "A reload does not apply a world change" |
 | The client reads no configuration file | The test of "The client takes the flag", and review |
@@ -139,3 +171,4 @@ These facts are not checked against current documentation yet. A task reads the 
 - How the `url` crate parses `unix:///path`, `unix:path` and `unix://host/path`, and how it exposes the percent-encoded path.
 - That `rustix::system::uname` needs the `system` feature, and what `nodename` returns on macOS and Linux.
 - The `sha2` API for hashing several byte slices.
+- That `figment2` merges a nested table key by key, and that `find_metadata` names the provider of a key inside `[keys]`.

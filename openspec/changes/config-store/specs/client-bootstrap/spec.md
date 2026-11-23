@@ -45,6 +45,10 @@ A server URL SHALL be `unix://`, then an absolute path, then an optional query. 
 - **WHEN** the user runs `mu config show --server unix://host/tmp/s.sock --device laptop`
 - **THEN** the exit status is 1, and stderr contains `unix://host/tmp/s.sock`
 
+#### Scenario: No double slash
+- **WHEN** the user runs `mu config show --server unix:/tmp/s.sock --device laptop`
+- **THEN** the exit status is 1, and stderr contains `unix:/tmp/s.sock`
+
 #### Scenario: A relative path
 - **WHEN** the user runs `mu config show --server unix:s.sock --device laptop`
 - **THEN** the exit status is 1, and stderr contains `unix:s.sock`
@@ -59,6 +63,10 @@ The query option `connect_wait` SHALL be the longest time, in seconds, that a cl
 #### Scenario: An unknown option
 - **WHEN** the user runs `mu config show --server "unix://<dir>/s.sock?colour=red" --device laptop`
 - **THEN** the exit status is 1, and stderr contains `colour`
+
+#### Scenario: An option twice
+- **WHEN** the user runs `mu config show --server "unix://<dir>/s.sock?connect_wait=1&connect_wait=2" --device laptop`
+- **THEN** the exit status is 1, and stderr contains `connect_wait`
 
 #### Scenario: A short wait
 - **GIVEN** a test listens on `<dir>/s.sock`, accepts each connection and never answers
@@ -89,6 +97,20 @@ The query option `connect_wait` SHALL be the longest time, in seconds, that a cl
 - **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device "my laptop"`
 - **THEN** the exit status is 1, and stderr contains `my laptop`
 
+#### Scenario: A name of 64 characters
+- **GIVEN** a server serves `<dir>` on `<dir>/s.sock`, and `<name>` is 64 times the letter `a`
+- **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device <name>`
+- **THEN** the exit status is 0
+
+#### Scenario: A name of 65 characters
+- **GIVEN** `<name>` is 65 times the letter `a`
+- **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device <name>`
+- **THEN** the exit status is 1, and stderr contains `<name>`
+
+#### Scenario: An empty device flag
+- **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device ""`
+- **THEN** the exit status is 1, and stderr contains `device`
+
 ### Requirement: The client names itself to the server
 `mu client` SHALL ask the server for the configuration of the kind `tui`, the OS of the machine, and its device name. The OS SHALL be `macos` on macOS and `linux` on Linux.
 
@@ -96,3 +118,11 @@ The query option `connect_wait` SHALL be the longest time, in seconds, that a cl
 - **GIVEN** `clients/os/<os>.toml` for the OS of the test holds `echo = "hide"`, and a server serves that directory with the fake world `alpha/aria`
 - **WHEN** the user starts `mu client --device laptop`, types `hello` and presses Enter
 - **THEN** the screen shows no row that starts with `> `
+
+### Requirement: mu client refuses the old socket flag
+**BREAKING** `mu client` SHALL NOT take `--socket`. The flag SHALL be a usage error with exit status 2, and stderr SHALL name `--socket`.
+
+#### Scenario: The socket flag
+- **WHEN** the user runs `mu client --socket <dir>/s.sock` in a terminal
+- **THEN** the exit status is 2, and stderr contains `--socket`
+- **AND** no file `<dir>/s.sock` exists

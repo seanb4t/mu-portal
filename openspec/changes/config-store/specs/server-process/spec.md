@@ -66,5 +66,5 @@ If stdin or stdout of `mu client` is not a terminal, the client SHALL start no s
 ## REMOVED Requirements
 
 ### Requirement: The client notes a server with another directory
-**Reason**: The client has no configuration directory, so it has nothing to compare with the directory of the server (#169).
+**Reason**: **BREAKING** The client has no configuration directory, so it has nothing to compare with the directory of the server (#169).
 **Migration**: None. `mu config show` names the source file of each field of the client configuration.
