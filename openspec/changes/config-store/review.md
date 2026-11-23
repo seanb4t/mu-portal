@@ -1,10 +1,10 @@
 ---
-verdict: approve-with-notes
+verdict: changes-requested
 phase: plan
-reviewed_at: 2026-11-23T17:55:49+00:00
-head: fa7bcb23a3adf12bfe8cbf119449d5f4810ca2a6
-round: 4
-next_id: 82
+reviewed_at: 2026-11-23T18:06:22+00:00
+head: bbed9d1bb7fbdf6b054ac27885070e56e2c5ea08
+round: 5
+next_id: 100
 lenses:
   spec-lint: ok
   approach: ok
@@ -12,7 +12,7 @@ lenses:
   test-coverage: ok
   test-honesty: not-applicable
   invariants: ok
-  verify: ok
+  verify: not-applicable
 ---
 # Review
 
@@ -20,27 +20,24 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-62 | test-coverage | should-fix | in-change | delta scenario 'The server flag wins' has no matrix row | review > absent-row — "The server flag wins" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-63 | test-coverage | should-fix | in-change | delta scenario 'The server variable' has no matrix row | review > absent-row — "The server variable" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-64 | test-coverage | should-fix | in-change | delta scenario 'An empty server variable' has no matrix row | review > absent-row — "An empty server variable" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-65 | test-coverage | should-fix | in-change | delta scenario 'A user' has no matrix row | review > absent-row — "A user" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-66 | test-coverage | should-fix | in-change | delta scenario 'A password' has no matrix row | review > absent-row — "A password" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-67 | test-coverage | should-fix | in-change | delta scenario 'A fragment' has no matrix row | review > absent-row — "A fragment" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-68 | test-coverage | should-fix | in-change | delta scenario 'A negative wait' has no matrix row | review > absent-row — "A negative wait" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-69 | test-coverage | should-fix | in-change | delta scenario 'A wait that is not a number' has no matrix row | review > absent-row — "A wait that is not a number" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-70 | test-coverage | should-fix | in-change | delta scenario 'An infinite wait' has no matrix row | review > absent-row — "An infinite wait" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-71 | test-coverage | should-fix | in-change | delta scenario 'A wait under one nanosecond' has no matrix row | review > absent-row — "A wait under one nanosecond" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-72 | test-coverage | should-fix | in-change | delta scenario 'The device variable' has no matrix row | review > absent-row — "The device variable" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-73 | test-coverage | should-fix | in-change | delta scenario 'The device flag wins' has no matrix row | review > absent-row — "The device flag wins" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-74 | test-coverage | should-fix | in-change | delta scenario 'An empty device variable' has no matrix row | review > absent-row — "An empty device variable" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-75 | test-coverage | should-fix | in-change | delta scenario 'An unlistable clients directory' has no matrix row | review > absent-row — "An unlistable clients directory" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-76 | test-coverage | should-fix | in-change | delta scenario 'A control character in a layer name' has no matrix row | review > absent-row — "A control character in a layer name" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-77 | test-coverage | should-fix | in-change | delta scenario 'A bad kind in a call' has no matrix row | review > absent-row — "A bad kind in a call" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-78 | test-coverage | should-fix | in-change | delta scenario 'A bad OS in a call' has no matrix row | review > absent-row — "A bad OS in a call" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-79 | test-coverage | should-fix | in-change | delta scenario 'An unknown OS flag' has no matrix row | review > absent-row — "An unknown OS flag" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-80 | test-coverage | should-fix | in-change | delta scenario 'A reload with a link to nothing in games' has no matrix row | review > absent-row — "A reload with a link to nothing in games" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-81 | test-coverage | should-fix | in-change | delta scenario 'An unreadable server file leaves world list' has no matrix row | review > absent-row — "An unreadable server file leaves world list" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-60 | verify | suggestion | in-change | PARTIAL: the fix cd948b212f17afd387a0e0119bb305c81e031977 of R-60 did not hold. D4 says the framing gives two different layer lists two different inputs. That rule covers every list, but task 4.4 tests one hand-made pair. | tasks.md > 4. The store — "which generates two different lists of paths and bytes and asserts two different framed inputs." | fix it again | regression | severity? should-fix 0.63 | false-test |
+| R-82 | approach | blocker | in-change | The reload must list a changed server.toml as applying at restart, but D2 builds the snapshot with the top-file rule, which drops server.toml, and says the snapshot does not read its bytes. No decision keeps the server.toml content of the start for the reload to compare. | specs/config-store/spec.md > Requirement: mu config reload reads the directory again — "It SHALL NOT apply a change to a world or to `server.toml`. For each such changed file, the command SHALL print one line" | State in D2 that the snapshot keeps the bytes (or the read error) of server.toml as an entry that the world resolve skips, and that the reload compares that entry with the one of the start; or state that the store keeps the server.toml bytes read at start. |  |  | unmet-requirement |
+| R-83 | approach,invariants | blocker | in-change | app-2: The requirement makes any file under clients/ that is not a layer file a bad layer, but D2 reuses the walk of TomlDirSource, which keeps only names that end in .toml, so clients/notes.txt or clients/global.toml~ is never reported.; inv-3: The spec makes any file under clients/ that is not a layer file a bad layer. The snapshot reuses the walk of TomlDirSource, which keeps only names that end in .toml. So clients/global.toml~ or clients/notes.txt is never reported. | specs/config-store/spec.md > Requirement: The server checks every client layer at start — "So is a file under `clients/` that is not one of the layer files." | app-2: Either limit the requirement to files whose name ends in .toml, as the world-config requirement does for world files, or state in D2 that the snapshot keeps every file under clients/.; inv-3: Either narrow the requirement to a file whose name ends in .toml, as the world-config spec says for stray files, or make D2 and task 3.1 keep every file under clients/. Then add a test with clients/notes.txt that asserts the chosen result. |  | severity? should-fix 0.83 | unmet-requirement |
+| R-84 | fit | should-fix | in-change | D8 fetches GetClientConfig on every Opened and ConfigChanged with no in-flight guard. The closest pattern, the Listing state of the world list, keeps one call with the server and asks again after a reset; D8 names neither it nor a reason, so two crossing replies can apply the older revision. | design.md > D8. A live change in the client — "The effect calls `GetClientConfig`. The result replaces the keymap and the echo setting of the model, and each new notic" | In D8, follow the Listing pattern for the configuration fetch: one GetClientConfig with the server at a time, and one more after it when an Opened or ConfigChanged arrives while it is out. Name a unit test in task 7.1 where two triggers cross. |  |  | wrong-behaviour |
+| R-85 | fit | should-fix | in-change | The change adds MU_SERVER and MU_DEVICE as inputs of mu client and mu config, but no task adds them to test_env, the helper that removes MU_SOCKET so the developer's socket never reaches a test. A developer's MU_SERVER then reaches every test that gives no --server, such as The default. | crates/mu-cli/tests/support/mod.rs:22 — "/// `MU_SOCKET` and point `MU_CONFIG` at an empty directory, so that the socket and the" | In task 5.2, remove MU_SERVER and MU_DEVICE in test_env of crates/mu-cli/tests/support/mod.rs, beside MU_SOCKET, and update its doc comment. |  |  | false-test |
+| R-86 | invariants | should-fix | in-change | The walk that DirSnapshot reuses follows links and recurses. Today the first error stops it, which bounds a link loop. D2 lets the snapshot keep each error and go on, so two links to . under clients/ make the walk exponential, and the start and each reload hang. | design.md > D2. The store lives in `mu-server` and keeps a snapshot — "The walk stops today at the first entry that it cannot read, stat or list. The snapshot does not stop." | Bound the walk in D2 and task 3.1: do not follow a link to a directory, or keep a set of visited (device, inode) pairs. Add the test a_link_loop_under_clients, with clients/a and clients/b as links to ., and assert that the start ends with one notice. |  | severity? blocker 0.75 | wrong-behaviour |
+| R-87 | invariants | should-fix | in-change | D2 sends the notices of show and reload through warn, which turns control characters into U+FFFD. The restart lines of a reload name a changed file too, and go to stdout, and no decision sends them through the same filter. A new file name with ESC outside clients/ then reaches the terminal. | design.md > D2. The store lives in `mu-server` and keeps a snapshot — "`mu config show` and `mu config reload` print the notices of their reply through `warn` too." | Say in D2 and task 5.3 that each restart line goes through the same control-character filter. Add the test a_control_character_in_a_restart_line with a new games file whose name holds ESC. |  |  | wrong-behaviour |
+| R-88 | invariants | should-fix | in-change | In figment2 a None field serializes as Empty, and a merge takes the later value even when it is Empty. The world types skip None for this reason. No decision or task makes the client layer types do the same, so a device layer without echo can reset the echo that global sets. | crates/mu-core/src/world/resolve.rs:210 — "figment = figment.merge(Named::new(name, Serialized::defaults(&layer.fields)));" | In D1 and task 2.1, say that each optional field of a client layer skips None when it serializes, as the world types do. Add the unit test a_later_layer_without_echo_keeps_it to task 4.3: global sets echo and [keys], the device layer sets neither, and the result keeps both with the source clients/global.toml. |  |  | wrong-behaviour |
+| R-89 | invariants | should-fix | in-change | The top-file rule of the scan ignores case and compares files, but D3 does not say whether the skip of clients does. If the scan skips Clients/ and the store reads only clients/, Clients/global.toml on macOS is silently ignored. No test passes Clients/. | design.md > D3. The world scan skips `clients/` and rejects `client.toml` — "It skips the directory `clients` at the top level only, so `characters/clients/<character>.toml` is still the world of a" | State in D3 that the skip and the store use the same case rule. Add the test a_clients_directory_in_another_case to world_config.rs or config_store.rs: Clients/global.toml either becomes a client layer or is reported, never neither. |  |  | wrong-behaviour |
+| R-90 | invariants | should-fix | in-change | D2 makes an unlistable clients/ or clients/devices/ a bad client layer, but the revision input of D4 lists only layer files. For a client with no file there, the input is empty before and after, so the revision stays and a live client that compares revisions shows no notice. | design.md > D2. The store lives in `mu-server` and keeps a snapshot — "Under `clients/`, the directory `clients/` itself included, the entry is a bad client layer." | Add to D4 an entry for each unlistable directory under clients/ that a client reads, with tag 1 and its error. Add the unit test an_unlistable_devices_directory_changes_the_revision to task 4.4. |  |  | unmet-requirement |
+| R-91 | invariants | should-fix | in-change | D5 relies on a stream receiving every config_changed sent after its Hello. The Hello is the head of the stream, and no decision or task says that the stream registers for config_changed before it sends the Hello. A receiver made after it loses a reload in between. | design.md > D5. The API — "At `Hello` the stream is already open. So a change after the fetch arrives on the stream." | Say in D5 and task 5.1 that subscribe creates the config_changed receiver before it returns the stream, as it takes the journal subscription. Name a unit test in mu-server that sends a reload after subscribe returns and before the stream is polled, and asserts config_changed after the Hello. |  |  | wrong-behaviour |
+| R-92 | invariants | should-fix | in-change | config_changed is useful only if it goes out after the new client part is visible to GetClientConfig. No named test fetches on config_changed and asserts the new revision, so a broadcast before the swap passes a_reload_sends_config_changed and races in the PTY tests. | design.md > D5. The API — "After a reload that changes any client layer, the server sends `config_changed` on every stream." | Make a_reload_sends_config_changed call GetClientConfig as soon as config_changed arrives, and assert the new revision. |  |  | wrong-behaviour |
+| R-93 | invariants | should-fix | in-change | mu config reload must never start a server, but only mu config show has a test with no server. A reload that shares the start path of mu client passes every named test. | design.md > D6. The bootstrap values — "`mu config show` and `mu config reload` take the same `--server` and `--device` flags, and never start a server." | Add the test reload_with_no_server to config_store.rs in task 5.3: nothing serves the socket, the exit status is 1, stderr names the URL, and no socket file exists. |  |  | wrong-behaviour |
+| R-94 | invariants | should-fix | in-change | D2 compares a reload with the current snapshot and does not replace its world part, so each reload lists a world change again until a restart. Only one reload is tested. A store that replaces the whole snapshot reports nothing on the second reload while the running worlds differ. | design.md > D2. The store lives in `mu-server` and keeps a snapshot — "A changed world file or `server.toml` is listed as "applies at restart" and does not replace anything." | Extend a_reload_does_not_apply_a_world_change, or add a_second_reload_still_lists_the_world, so that a second reload also prints the characters/beta/bryn.toml restart line. |  |  | wrong-behaviour |
+| R-95 | spec-lint | should-fix | in-change | The WHEN of 'A reload does not apply a world change' names the world beta/bryn but no file content and no game file, so a test cannot know what to write. | specs/config-store/spec.md > Requirement: mu config reload reads the directory again — "the user adds the world `beta/bryn` to `<dir>` and runs `mu config reload`" | Name the bytes of characters/beta/bryn.toml and the game file games/beta.toml that the WHEN adds, so the THEN line about characters/beta/bryn.toml and restart has one input. |  |  | false-test |
+| R-96 | test-coverage | should-fix | in-change | The BREAKING removal of 'The client notes a server with another directory' has no scenario for the removal; task 6.1 only says its tests are gone. | specs/server-process/spec.md > Requirement: The client notes a server with another directory — "**Reason**: **BREAKING** The client has no configuration directory, so it has nothing to compare with the directory of t" | Add a scenario to server-process (client against a server with another directory prints no directory note) and name its test in task 6.1 in client.rs. |  |  | unmet-requirement |
+| R-97 | approach | suggestion | in-change | D2 says parse_toml brings the rule never to quote a value. At head the parser never quotes the line; it drops a serde message, which can quote the value, only for a hidden table or Hidden::All. D2 names no Hidden value for the client layers. | design.md > D2. The store lives in `mu-server` and keeps a snapshot — "So the line of an error and the rule never to quote a value come from one parser." | Say in D2 that the parser keeps the rule never to quote the line, and name the Hidden value that the store passes for a client layer. |  | severity? should-fix 0.72 |  |
+| R-98 | approach | suggestion | in-change | The Enforcement table puts a property test of the revision framing in mu-server, but the mu-server row of ALLOWED_CRATES has no proptest, and D6 and task 4.1 add only sha2 and mu-config to that row. The boundary test then refuses the dev-dependency. | design.md > Enforcement — "\| Two different layer lists give two different revision inputs \| A property test of the framing in `mu-server` \|" | Add proptest to the mu-server row in D6 and task 4.1, as D1 does for mu-config. |  | severity? should-fix 0.72 |  |
+| R-99 | invariants | suggestion | in-change | D1 allows mu-config one third-party crate, serde, and proptest only for tests. ALLOWED_CRATES applies to any dependency table, so proptest in [dependencies] passes workspace_boundary. | design.md > D1. A new crate, `mu-config`, holds the client fields and the key grammar — "Its only allowed third-party crate is `serde`." | Add an ALLOWED_DEV_CRATES table, like ALLOWED_DEV_EDGES, and put proptest of mu-config there. |  |  |  |
 
 ## Repeats
 
@@ -65,28 +62,40 @@ None.
 | 2 | plan | follow-up | 5cbf017513e9ae12df877428ff4d90c1dc61b993 | 1388d98570750bcc4098ddf6edab3aefbc494dd56f7ce6a9dc12248d5696f2c1 | changes-requested | 10 | 0 | 5 | 24 | 0 |  |
 | 3 | plan | full | b50eb43641ff49cb15e6b753d2890a31dc64dbc1 | 97ab398377b3f8615fb16eead2f9c6064308a922f648cf1e647d26efa5df8a8c | changes-requested | 19 | 0 | 0 | 0 | 0 | new scenarios from rounds 1 and 2 need coverage matrix rows (R-33 to R-42) |
 | 4 | plan | follow-up | fa7bcb23a3adf12bfe8cbf119449d5f4810ca2a6 | a89e0842f57fda193535b426370b97a26f5a2e39b65523018c521173c0578fa6 | approve-with-notes | 20 | 0 | 1 | 19 | 0 |  |
+| 5 | plan | full | bbed9d1bb7fbdf6b054ac27885070e56e2c5ea08 | 440bc848ad092d9105842c541cc1dfa60e5c196e07f5edf35f0ab32e1874d968 | changes-requested | 18 | 0 | 0 | 0 | 0 | the 20 scenarios added in round 3 need coverage matrix rows (R-62 to R-81) |
 
 ## Judge
 
-judge: 2 questions, 0.000 USD
+judge: 36 questions, 0.002 USD
 
 ## Coverage matrix
 
 | scenario | covered by | status | verified |
 |---|---|---|---|
-| The flag wins | 5.2 | covered |  |
-| The variable | 5.2 | covered |  |
+| The server flag wins | 5.2 | covered |  |
+| The server variable | 5.2 | covered |  |
+| An empty server variable | 5.2 | covered |  |
 | The default | 5.2 | covered |  |
 | MU_SOCKET does not count | 5.2 | covered |  |
 | A path with a space | 5.2 | covered |  |
 | Another scheme | 5.2 | covered |  |
 | A host | 5.2 | covered |  |
+| A user | 5.2 | covered |  |
+| A password | 5.2 | covered |  |
+| A fragment | 5.2 | covered |  |
 | No double slash | 5.2 | covered |  |
 | A relative path | 5.2 | covered |  |
 | A wait of zero | 5.2 | covered |  |
+| A negative wait | 5.2 | covered |  |
+| A wait that is not a number | 5.2 | covered |  |
+| An infinite wait | 5.2 | covered |  |
+| A wait under one nanosecond | 5.2 | covered |  |
 | An unknown option | 5.2 | covered |  |
 | An option twice | 5.2 | covered |  |
 | A short wait | 5.2 | covered |  |
+| The device variable | 5.2 | covered |  |
+| The device flag wins | 5.2 | covered |  |
+| An empty device variable | 5.2 | covered |  |
 | The host name | 5.2 | covered |  |
 | A bad name | 5.2 | covered |  |
 | A name of 64 characters | 5.2 | covered |  |
@@ -127,6 +136,8 @@ judge: 2 questions, 0.000 USD
 | A device file with a bad name | 4.2 | covered |  |
 | A link to nothing under clients | 4.2 | covered |  |
 | A binding of a dot | 5.3 | covered |  |
+| An unlistable clients directory | 4.2 | covered |  |
+| A control character in a layer name | 4.2 | covered |  |
 | A layer for an unknown kind | 4.2 | covered |  |
 | No clients directory | 5.3 | covered |  |
 | A device with no file | 5.3 | covered |  |
@@ -136,16 +147,21 @@ judge: 2 questions, 0.000 USD
 | One bad binding skips its whole layer | 5.3 | covered |  |
 | A notice for a bad layer that applies | 5.3 | covered |  |
 | A bad device name in a call | 5.1 | covered |  |
+| A bad kind in a call | 5.1 | covered |  |
+| A bad OS in a call | 5.1 | covered |  |
 | No notice for a bad layer of another device | 5.3 | covered |  |
 | The same files give the same revision | 5.3 | covered |  |
 | A changed layer gives a new revision | 5.3 | covered |  |
 | A layer of another device leaves the revision | 5.3 | covered |  |
 | No server | 5.3 | covered |  |
 | Another OS | 5.3 | covered |  |
+| An unknown OS flag | 5.3 | covered |  |
+| Show filters a control character in a notice | 5.3 | covered |  |
 | A reload applies a client layer | 5.3 | covered |  |
 | A reload with a bad layer | 5.3 | covered |  |
 | A reload does not apply a world change | 5.3 | covered |  |
 | A reload with a bad world file | 5.3 | covered |  |
+| A reload with a link to nothing in games | 4.5 | covered |  |
 | A new binding works without a restart | 7.1 | covered |  |
 | A reload while the stream is down | 7.1 | covered |  |
 | A reload across a server restart | 7.1 | covered |  |
@@ -186,6 +202,7 @@ judge: 2 questions, 0.000 USD
 | The file of the server | 3.3 | covered |  |
 | A character named server | 3.3 | covered |  |
 | The file of the client | 3.2 | covered |  |
+| An unreadable server file leaves world list | 4.2 | covered |  |
 | A game named clients | 3.2 | covered |  |
 | A bad client layer does not stop the worlds | 3.2 | covered |  |
 | A leftover client.toml | 3.2 | covered |  |
@@ -204,11 +221,45 @@ None.
 
 ## Lens notes
 
-- verify: The fix of R-44 put the scenario 'An unknown OS flag' (mu config show --os windows) under the requirement 'mu config reload reads the directory again' (config-store spec line 167), whose text says nothing about --os; it belongs under 'mu config show prints one client configuration'.
-- verify: D2 says a file name under clients/ cannot send an escape sequence to the terminal because mu-cli writes the store notices through warn. That covers the start only: task 5.3 does not say that mu config show and mu config reload print the notices of the API reply through report or warn.
-- verify: R-60 is partial: the property test of task 4.4 generates lists of paths and bytes only, so an entry with tag 1 (an unreadable file with its error text) is covered by the one unit test an_unreadable_layer_changes_the_revision. An implementation without the tag byte collides a readable file whose bytes equal an error text with that unreadable file, and every named test still passes.
-- verify: The R-61 fact is checked: figment2 0.11.5 is in Cargo.lock, and its src/coalesce.rs merges two dicts recursively under Order::Merge.
-- verify: The existing connect_wait of crates/mu-cli/src/client.rs refuses NaN, infinity, 0 and below, and under 1 ns with an Err, so the reuse of R-58 agrees with the connect_wait requirement.
+- approach: Verified at head: the crate edges and rows of workspace_boundary.rs, config_file::read into mu-tui ClientConfig, the walk of dir.rs that stops at the first error, the stray-file message of key_of, the figment2 block of world() in resolve.rs, Value::coalesce in figment2 0.11.5 src/coalesce.rs, the dot split of key paths in figment2, parse_toml, warn and report in mu-cli, connect_wait and shown in client.rs, ClientEvent Reset and Resumed with the quiet Hello in mu-client, rustix 1.1.6 system::uname with the system feature, url 2.5.9 and sha2 0.10.9 in Cargo.lock, the docs and LikeC4 paths of D9.
+- approach: No rejected alternative has a reason that the code contradicts.
+- approach: Every requirement other than those of app-1 and app-2 has a decision that produces it.
+- fit: The repository rows of the library-preference table come from openspec/config.yaml context; the test-helper row names crates/mu-cli/tests/support/mod.rs.
+- fit: url and sha2 are already in Cargo.lock, and rustix is a workspace dependency, so D6 and D4 take existing crates rather than new code.
+- fit: R-10 and R-12 (fixed) are no longer present: D2 reuses the figment2 merge through one mu-core helper and makes TomlDirSource a DirSnapshot.
+- fit: telemetry::export was not read again; R-47 about server_config::check is resolved.
+- invariants: I1: A device name is 1 to 64 characters of a-z, 0-9, -, _ and . \| enforced at the client names of mu-config (task 2.3) \| boundary test a_device_name_of_64, a_device_name_of_65, an_empty_device_name, a_name_of_64_characters, a_name_of_65_characters, an_empty_device_flag
+- invariants: I2: connect_wait is finite and at least 1 ns \| enforced at connect_wait in crates/mu-cli/src/client.rs:56 \| boundary test the unit test at client.rs:265-269 (0, -1, 1e-10, 0.9e-9, NaN, inf, f64::MAX refused; 1e-9 accepted), and the wait scenarios of bootstrap.rs
+- invariants: I3: A server URL has no host, user, password, port or fragment, and an absolute path \| enforced at the parser of task 5.2; url 2.5.9 parser.rs:947 refuses a port with an empty host and :841 a user with an empty host \| boundary test a_host, a_user, a_password, a_fragment, no_double_slash, a_relative_path
+- invariants: I4: The query holds only connect_wait, at most once \| enforced at the parser of task 5.2 \| boundary test an_unknown_option, an_option_twice
+- invariants: I5: No canonical key name holds a dot \| enforced at the canonical name of mu-config; figment2 0.11.5 value.rs:153 splits a path at '.' only \| boundary test key_names_read_back (task 2.2), whose generator already yields '.'
+- invariants: I6: Two names of one key are one key, in any modifier order \| enforced at the canonical name before the merge (task 4.3) \| boundary test key_names_read_back with prop_shuffle (crates/mu-tui/tests/keymap.rs:262), two_names_across_layers_are_one_key
+- invariants: I7: A field takes its value from the last layer that sets it \| enforced at none for the client types (inv-2) \| boundary test none for a later layer without the field
+- invariants: I8: Two different layer lists give two revision inputs \| enforced at the framing of D4 \| boundary test two_layer_lists_give_two_inputs (property), the_revision_frames_each_layer
+- invariants: I9: A layer that turns bad changes the revision \| enforced at tag 1 of D4 for a file \| boundary test an_unreadable_layer_changes_the_revision; none for an unlistable directory (inv-5)
+- invariants: I10: The revision stays the same across a restart \| enforced at the SHA-256 of the sorted framed list \| boundary test the_same_files_give_the_same_revision
+- invariants: I11: The directory walk terminates \| enforced today by the stop at the first error (dir.rs:150-159); none after D2 (inv-1) \| boundary test none
+- invariants: I12: Every file under clients/ is a layer or reported \| enforced at the name check of task 4.2 after the .toml filter of the walk \| boundary test a_file_that_is_not_a_layer; none for a non-.toml file (inv-3) or Clients/ (inv-4)
+- invariants: I13: A bad client layer never stops the server \| enforced at the store, which returns notices \| boundary test the config-store start scenarios, an_unlistable_clients_directory, a_link_to_nothing_under_clients
+- invariants: I14: A GetClientConfig call sees the old or the new layers, never a mix \| enforced at one swap of the client part under one mutex (D2) \| boundary test none; structural
+- invariants: I15: config_changed goes out after the swap is visible \| enforced at the order of D5 \| boundary test none (inv-7)
+- invariants: I16: A stream gets every config_changed after its Hello \| enforced at none (inv-6) \| boundary test none
+- invariants: I17: A reload never applies a world change, and lists it on each reload \| enforced at D2 \| boundary test a_reload_does_not_apply_a_world_change; none for a second reload (inv-9)
+- invariants: I18: The start and the reload refuse the same server.toml \| enforced at server_config::check \| boundary test a_reload_reports_a_bad_server_file
+- invariants: I19: mu config show and reload never start a server \| enforced at task 5.3 \| boundary test no_server for show only (inv-8)
+- invariants: I20: No control character of a file name reaches the terminal \| enforced at warn of mu-cli \| boundary test a_control_character_in_a_layer_name, show_filters_a_control_character_in_a_notice; none for restart lines (inv-10)
+- invariants: I21: The entry table of mu-config matches the registry of mu-tui \| enforced at the_entry_table_matches_the_registry \| boundary test that test, which task 2.4 makes fail on a difference
+- invariants: I22: mu-config depends on no member and only on serde \| enforced at ALLOWED_EDGES and ALLOWED_CRATES of workspace_boundary.rs \| boundary test the fixture tests of workspace_boundary.rs; proptest passes in any table (inv-11)
+- invariants: I23: An empty MU_SERVER or MU_DEVICE counts as unset \| enforced at the bootstrap of task 5.2 \| boundary test an_empty_server_variable, an_empty_device_variable
+- invariants: Probe: walk.py in the probe directory of the handoff directory mirrors the walk of dir.rs over clients/a -> . and clients/b -> . on this machine. Stop at the first error: it stops at once with errno 62 (ELOOP). Keep each error and go on: still walking after 2,000,000 entries in 61 s, at depth 34.
+- invariants: No property-candidate: the two unbounded invariants, the framing and the key names, already have property tests in tasks 2.2 and 4.4.
+- spec-lint: Every requirement of the seven delta specs has at least one scenario, and every scenario has a WHEN or GIVEN and a THEN.
+- spec-lint: No untasked requirement found: each heading has a task line with two distinctive words, including 'The requirement The configuration directory' in task 3.3.
+- spec-lint: BREAKING markers agree: the proposal has three, and the delta specs carry them in client-bootstrap, client-config and server-process.
+- spec-lint: Build targets in tasks.md exist: mise run check and docs:check in mise.toml, pnpm model:check in docs/package.json, mu-server and mu-core crates, workspace_boundary test, openspec/config.yaml one-test command.
+- spec-lint: design.md has no open-questions section; the 'Third-party facts to check' list is paired with tasks 1.1 to 1.4 that run before the dependent work, so no assumed-answer finding.
+- spec-lint: Scenario 'A stray file' GIVEN says 'one of' four paths. It names concrete paths, so no finding was raised, but it reads as four scenarios.
+- test-coverage: Coverage grades rely on tasks naming each test plus the one-test command that tasks.md line 3 says is in openspec/config.yaml; design.md was not read.
 
 ## Ledger
 
@@ -295,3 +346,21 @@ None.
 | R-79 | 4 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"An unknown OS flag"] | fixed | cd948b212f17afd387a0e0119bb305c81e031977 | 4 |  |  | delta scenario 'An unknown OS flag' has no matrix row |
 | R-80 | 4 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A reload with a link to nothing in games"] | fixed | cd948b212f17afd387a0e0119bb305c81e031977 | 4 |  |  | delta scenario 'A reload with a link to nothing in games' has no matrix row |
 | R-81 | 4 | 4 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"An unreadable server file leaves world list"] | fixed | cd948b212f17afd387a0e0119bb305c81e031977 | 4 |  |  | delta scenario 'An unreadable server file leaves world list' has no matrix row |
+| R-82 | 5 | 5 | blocker | in-change | unmet-requirement | ["artifact",["specs/config-store/spec.md","Requirement: mu config reload reads the directory again"],"It SHALL NOT apply a change to a world or to `server.toml`. For each such changed file, the command SHALL print one line that says that the change applies at restart."] |  |  |  |  |  | The reload must list a changed server.toml as applying at restart, but D2 builds the snapshot with the top-file rule, which drops server.toml, and says the snapshot does not read its bytes. No decision keeps the server.toml content of the start for the reload to compare. |
+| R-83 | 5 | 5 | blocker | in-change | unmet-requirement | ["artifact",["specs/config-store/spec.md","Requirement: The server checks every client layer at start"],"So is a file under `clients/` that is not one of the layer files."] |  |  |  |  | severity? should-fix 0.83 | app-2: The requirement makes any file under clients/ that is not a layer file a bad layer, but D2 reuses the walk of TomlDirSource, which keeps only names that end in .toml, so clients/notes.txt or clients/global.toml~ is never reported.; inv-3: The spec makes any file under clients/ that is not a layer file a bad layer. The snapshot reuses the walk of TomlDirSource, which keeps only names that end in .toml. So clients/global.toml~ or clients/notes.txt is never reported. |
+| R-84 | 5 | 5 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D8. A live change in the client"],"The effect calls `GetClientConfig`. The result replaces the keymap and the echo setting of the model, and each new notice shows once."] |  |  |  |  |  | D8 fetches GetClientConfig on every Opened and ConfigChanged with no in-flight guard. The closest pattern, the Listing state of the world list, keeps one call with the server and asks again after a reset; D8 names neither it nor a reason, so two crossing replies can apply the older revision. |
+| R-85 | 5 | 5 | should-fix | in-change | false-test | ["path","crates/mu-cli/tests/support/mod.rs",22] |  |  |  |  |  | The change adds MU_SERVER and MU_DEVICE as inputs of mu client and mu config, but no task adds them to test_env, the helper that removes MU_SOCKET so the developer's socket never reaches a test. A developer's MU_SERVER then reaches every test that gives no --server, such as The default. |
+| R-86 | 5 | 5 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D2. The store lives in `mu-server` and keeps a snapshot"],"The walk stops today at the first entry that it cannot read, stat or list. The snapshot does not stop."] |  |  |  |  | severity? blocker 0.75 | The walk that DirSnapshot reuses follows links and recurses. Today the first error stops it, which bounds a link loop. D2 lets the snapshot keep each error and go on, so two links to . under clients/ make the walk exponential, and the start and each reload hang. |
+| R-87 | 5 | 5 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D2. The store lives in `mu-server` and keeps a snapshot"],"`mu config show` and `mu config reload` print the notices of their reply through `warn` too."] |  |  |  |  |  | D2 sends the notices of show and reload through warn, which turns control characters into U+FFFD. The restart lines of a reload name a changed file too, and go to stdout, and no decision sends them through the same filter. A new file name with ESC outside clients/ then reaches the terminal. |
+| R-88 | 5 | 5 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-core/src/world/resolve.rs",210] |  |  |  |  |  | In figment2 a None field serializes as Empty, and a merge takes the later value even when it is Empty. The world types skip None for this reason. No decision or task makes the client layer types do the same, so a device layer without echo can reset the echo that global sets. |
+| R-89 | 5 | 5 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D3. The world scan skips `clients/` and rejects `client.toml`"],"It skips the directory `clients` at the top level only, so `characters/clients/<character>.toml` is still the world of a game named `clients`."] |  |  |  |  |  | The top-file rule of the scan ignores case and compares files, but D3 does not say whether the skip of clients does. If the scan skips Clients/ and the store reads only clients/, Clients/global.toml on macOS is silently ignored. No test passes Clients/. |
+| R-90 | 5 | 5 | should-fix | in-change | unmet-requirement | ["artifact",["design.md","D2. The store lives in `mu-server` and keeps a snapshot"],"Under `clients/`, the directory `clients/` itself included, the entry is a bad client layer."] |  |  |  |  |  | D2 makes an unlistable clients/ or clients/devices/ a bad client layer, but the revision input of D4 lists only layer files. For a client with no file there, the input is empty before and after, so the revision stays and a live client that compares revisions shows no notice. |
+| R-91 | 5 | 5 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D5. The API"],"At `Hello` the stream is already open. So a change after the fetch arrives on the stream."] |  |  |  |  |  | D5 relies on a stream receiving every config_changed sent after its Hello. The Hello is the head of the stream, and no decision or task says that the stream registers for config_changed before it sends the Hello. A receiver made after it loses a reload in between. |
+| R-92 | 5 | 5 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D5. The API"],"After a reload that changes any client layer, the server sends `config_changed` on every stream."] |  |  |  |  |  | config_changed is useful only if it goes out after the new client part is visible to GetClientConfig. No named test fetches on config_changed and asserts the new revision, so a broadcast before the swap passes a_reload_sends_config_changed and races in the PTY tests. |
+| R-93 | 5 | 5 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D6. The bootstrap values"],"`mu config show` and `mu config reload` take the same `--server` and `--device` flags, and never start a server."] |  |  |  |  |  | mu config reload must never start a server, but only mu config show has a test with no server. A reload that shares the start path of mu client passes every named test. |
+| R-94 | 5 | 5 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D2. The store lives in `mu-server` and keeps a snapshot"],"A changed world file or `server.toml` is listed as \\"applies at restart\\" and does not replace anything."] |  |  |  |  |  | D2 compares a reload with the current snapshot and does not replace its world part, so each reload lists a world change again until a restart. Only one reload is tested. A store that replaces the whole snapshot reports nothing on the second reload while the running worlds differ. |
+| R-95 | 5 | 5 | should-fix | in-change | false-test | ["artifact",["specs/config-store/spec.md","Requirement: mu config reload reads the directory again"],"the user adds the world `beta/bryn` to `<dir>` and runs `mu config reload`"] |  |  |  |  |  | The WHEN of 'A reload does not apply a world change' names the world beta/bryn but no file content and no game file, so a test cannot know what to write. |
+| R-96 | 5 | 5 | should-fix | in-change | unmet-requirement | ["artifact",["specs/server-process/spec.md","Requirement: The client notes a server with another directory"],"**Reason**: **BREAKING** The client has no configuration directory, so it has nothing to compare with the directory of the server (#169)."] |  |  |  |  |  | The BREAKING removal of 'The client notes a server with another directory' has no scenario for the removal; task 6.1 only says its tests are gone. |
+| R-97 | 5 | 5 | suggestion | in-change |  | ["artifact",["design.md","D2. The store lives in `mu-server` and keeps a snapshot"],"So the line of an error and the rule never to quote a value come from one parser."] |  |  |  |  | severity? should-fix 0.72 | D2 says parse_toml brings the rule never to quote a value. At head the parser never quotes the line; it drops a serde message, which can quote the value, only for a hidden table or Hidden::All. D2 names no Hidden value for the client layers. |
+| R-98 | 5 | 5 | suggestion | in-change |  | ["artifact",["design.md","Enforcement"],"\| Two different layer lists give two different revision inputs \| A property test of the framing in `mu-server` \|"] |  |  |  |  | severity? should-fix 0.72 | The Enforcement table puts a property test of the revision framing in mu-server, but the mu-server row of ALLOWED_CRATES has no proptest, and D6 and task 4.1 add only sha2 and mu-config to that row. The boundary test then refuses the dev-dependency. |
+| R-99 | 5 | 5 | suggestion | in-change |  | ["artifact",["design.md","D1. A new crate, `mu-config`, holds the client fields and the key grammar"],"Its only allowed third-party crate is `serde`."] |  |  |  |  |  | D1 allows mu-config one third-party crate, serde, and proptest only for tests. ALLOWED_CRATES applies to any dependency table, so proptest in [dependencies] passes workspace_boundary. |

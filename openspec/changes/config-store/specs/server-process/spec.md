@@ -45,6 +45,12 @@ If nothing listens on the socket of the server URL of `mu client`, the client SH
 - **WHEN** the user runs `mu client --server unix://<dir>/run/s.sock` in a terminal
 - **THEN** the top row shows `alpha/aria`
 
+#### Scenario: No notice about another directory
+- **GIVEN** `MU_CONFIG` is `<dir>/a`, and a server started with `--config <dir>/b` serves `<dir>/s.sock` with the fake world `alpha/aria`
+- **WHEN** the user runs `mu client --server unix://<dir>/s.sock` in a terminal
+- **THEN** the top row shows `alpha/aria`
+- **AND** the screen shows no notice that contains `<dir>/b`
+
 ### Requirement: The client needs a terminal
 If stdin or stdout of `mu client` is not a terminal, the client SHALL start no server. It SHALL write an error to stderr that contains the text `terminal`, and exit with status 1.
 

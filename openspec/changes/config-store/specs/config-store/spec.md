@@ -49,6 +49,23 @@ At the start, `mu server` SHALL read and check each file under `clients/` in the
 - **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
 - **THEN** stderr holds no ESC character, and holds the character U+FFFD
 
+#### Scenario: A file that is not TOML
+- **GIVEN** `<dir>/clients/notes.txt` exists
+- **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
+- **THEN** stderr holds one line that contains `clients/notes.txt`
+- **AND** an API call on `<dir>/s.sock` succeeds
+
+#### Scenario: A loop of links under clients
+- **GIVEN** `<dir>/clients/devices/a` and `<dir>/clients/devices/b` are symbolic links to `<dir>/clients/devices`
+- **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
+- **THEN** stderr holds a line that contains `clients/devices/a`
+- **AND** an API call on `<dir>/s.sock` succeeds
+
+#### Scenario: A clients directory in another case
+- **GIVEN** the file system of `<dir>` ignores case, and `<dir>/Clients/global.toml` holds `echo = "hide"`
+- **WHEN** a server serves `<dir>` on `<dir>/s.sock`, and the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
+- **THEN** stdout holds `echo = "hide"`
+
 #### Scenario: A layer for an unknown kind
 - **GIVEN** `<dir>/clients/kinds/tiu.toml` holds `echo = "show"`
 - **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
@@ -90,6 +107,11 @@ The client configuration of a kind, an OS and a device SHALL merge in this order
 - **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
 - **THEN** stdout binds one key, Ctrl+Shift+Z, to `none` with the source `clients/devices/laptop.toml`
 - **AND** stderr is empty
+
+#### Scenario: A layer without echo keeps the earlier echo
+- **GIVEN** `clients/global.toml` holds `echo = "hide"`, `clients/devices/laptop.toml` holds `[keys]` with `"alt+n" = "focus-next"`, and a server serves that directory on `<dir>/s.sock`
+- **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
+- **THEN** stdout holds `echo = "hide"` with the source `clients/global.toml`
 
 ### Requirement: A bad layer is skipped as a whole
 The resolution SHALL skip each bad layer, as for a layer with no file. It SHALL use each good layer. No field or binding of a bad layer SHALL apply.
@@ -188,7 +210,7 @@ The revision SHALL be a text. A change to the content of a layer that applies to
 
 #### Scenario: A reload does not apply a world change
 - **GIVEN** a server serves `<dir>` with the world `alpha/aria` on `<dir>/s.sock`
-- **WHEN** the user adds the world `beta/bryn` to `<dir>` and runs `mu config reload --server unix://<dir>/s.sock`
+- **WHEN** the user writes `host = "localhost"` and `port = 4201` to `<dir>/games/beta.toml`, writes an empty `<dir>/characters/beta/bryn.toml`, and runs `mu config reload --server unix://<dir>/s.sock`
 - **THEN** stdout holds a line that contains `characters/beta/bryn.toml` and `restart`
 - **AND** an API call on `<dir>/s.sock` lists `alpha/aria` and not `beta/bryn`
 
@@ -205,8 +227,24 @@ The revision SHALL be a text. A change to the content of a layer that applies to
 - **THEN** stderr contains `games/ghost.toml`, and the exit status is 1
 - **AND** `mu config show --server unix://<dir>/s.sock --device laptop` prints `echo = "hide"`
 
+#### Scenario: A reload lists a changed server file
+- **GIVEN** a server serves `<dir>` on `<dir>/s.sock`, and `<dir>/server.toml` is empty
+- **WHEN** the user writes `[telemetry]` to `<dir>/server.toml` and runs `mu config reload --server unix://<dir>/s.sock`
+- **THEN** stdout holds a line that contains `server.toml` and `restart`
+
+#### Scenario: A second reload lists the world change again
+- **GIVEN** the scenario "A reload does not apply a world change" ran
+- **WHEN** the user runs `mu config reload --server unix://<dir>/s.sock` again
+- **THEN** stdout holds a line that contains `characters/beta/bryn.toml` and `restart`
+
+#### Scenario: A reload with no server
+- **GIVEN** nothing serves `<dir>/s.sock`
+- **WHEN** the user runs `mu config reload --server unix://<dir>/s.sock`
+- **THEN** the exit status is 1, and stderr contains `<dir>/s.sock`
+- **AND** no file `<dir>/server.log` exists
+
 ### Requirement: An attached client gets a new configuration
-After a reload, the server SHALL tell each attached client whose configuration has a new revision. The client SHALL then apply the new configuration without a restart. After a gap in its stream, the client SHALL also get its configuration again. If a layer that applies to the client is bad after the reload, the client SHALL show one notice for it.
+After a reload that changes `clients/`, the server SHALL send a new store hash to each watching client. The server SHALL keep no state about a client. A client SHALL fetch its configuration when the hash differs, and SHALL apply a new revision without a restart. After a gap in its watch stream, the client SHALL compare the hash again. If a layer that applies to the client is bad after the reload, the client SHALL show one notice for it.
 
 #### Scenario: A new binding works without a restart
 - **GIVEN** `mu client` runs with the device `laptop` on a server with the fake worlds `alpha/aria` and `beta/bryn`, and the top row shows `[alpha/aria]`
@@ -214,7 +252,7 @@ After a reload, the server SHALL tell each attached client whose configuration h
 - **THEN** the top row shows `[beta/bryn]`
 
 #### Scenario: A reload while the stream is down
-- **GIVEN** `mu client` runs with the device `laptop` on a server with the fake worlds `alpha/aria` and `beta/bryn`, reads the stream through a relay, and the top row shows `[alpha/aria]`
+- **GIVEN** `mu client` runs with the device `laptop` on a server with the fake worlds `alpha/aria` and `beta/bryn`, connects through a relay, and the top row shows `[alpha/aria]`
 - **WHEN** the relay cuts the connection and holds, the user writes `[keys]` with `"alt+n" = "focus-next"` to `clients/devices/laptop.toml` and runs `mu config reload`, and then the relay releases
 - **AND** the top row no longer shows `disconnected`, and the user presses Alt+N
 - **THEN** the top row shows `[beta/bryn]`
@@ -230,6 +268,11 @@ After a reload, the server SHALL tell each attached client whose configuration h
 - **WHEN** the user writes `echo = "loud"` to that file and runs `mu config reload`
 - **THEN** the screen shows a notice with `clients/devices/laptop.toml` and `echo`
 - **AND** after the user types `hello` and presses Enter, the cells of `> hello` are dim
+
+#### Scenario: A clients directory that turns unlistable
+- **GIVEN** the test runs as a user that is not root, and `mu client` runs with the device `laptop` on a server that serves `<dir>`
+- **WHEN** the user sets the mode of `<dir>/clients` to 000 and runs `mu config reload`
+- **THEN** the screen shows a notice that contains `clients`
 
 ### Requirement: A client gets the notices of its bad layers at attach
 When `mu client` attaches, it SHALL show one notice for each bad layer that applies to it, and SHALL run with the good layers.
