@@ -51,7 +51,7 @@ If the user presses Enter, the client SHALL send the whole text of the editor to
 - **AND** the editor still holds `one` and `two` on 2 rows
 
 ### Requirement: A refused text stops the sends after it
-If the server refuses a text, the client SHALL send none of the texts that wait for the same world. A send with no reply in time counts as a refusal. The requirement "A send with no reply is refused" gives the time. The client SHALL put the refused text alone in the editor, with the cursor at its start. It SHALL put each text that waited behind it, and then the text that the editor held, into the input history of that world. Up SHALL then give them in that order. It SHALL show the reason as a line with the prefix `-- `. If texts went into the history, the line SHALL also hold their count, as `(<n> in history)`. A key that sends after that SHALL send at once. If the event stream ends, or the server resets, the client SHALL take back each text that waits behind the text with the server. The first of them, in the order of the worlds, SHALL go alone in the editor, with the cursor at its start. Each other one SHALL go into the input history of its world. The text that the editor held SHALL go into the history of the world in focus. During a walk of the history, the text that the editor held is the draft that the walk saved, not the entry on screen. The client SHALL show a line with the prefix `-- ` that holds their count and the count of each world. The text with the server SHALL stay, and its reply SHALL act on it alone.
+If the server refuses a text, the client SHALL send none of the texts that wait for the same world. A send with no reply in time counts as a refusal. The requirement "A send with no reply is refused" gives the time. The client SHALL put the refused text alone in the editor, with the cursor at its start. It SHALL put each text that waited behind it into the input history of that world, and then the text that the editor held into the history of the world in focus. Up in that world SHALL then give them in that order. It SHALL show the reason as a line with the prefix `-- `. If texts went into the history, the line SHALL also hold their count, as `(<n> in history)`. A key that sends after that SHALL send at once. If the event stream ends, or the server resets, the client SHALL take back each text that waits behind the text with the server. The first of them, in the order of the worlds, SHALL go alone in the editor, with the cursor at its start. Each other one SHALL go into the input history of its world. The text that the editor held SHALL go into the history of the world in focus. During a walk of the history, the text that the editor held is the draft that the walk saved, not the entry on screen. The client SHALL show a line with the prefix `-- ` that holds their count and the count of each world. The text with the server SHALL stay, and its reply SHALL act on it alone.
 
 #### Scenario: A line that the server refuses
 - **GIVEN** the editor holds the lines `one`, `two` and `three`, and a test server that accepts `one` and refuses `two`
@@ -87,14 +87,14 @@ If the server refuses a text, the client SHALL send none of the texts that wait 
 - **AND** the screen shows a line that starts with `-- ` and contains `2 lines that waited`
 - **AND** after Up the editor holds `three`, and after a second Up it holds `later`
 - **WHEN** the server answers `one`
-- **THEN** the client sends no text
+- **THEN** the server records no player event after `one`
 
 #### Scenario: Lines of two worlds wait
-- **GIVEN** lines wait behind a send in `beta/bryn`, and after that behind a send in `alpha/aria`
+- **GIVEN** the line `b2` waits behind the send `b1` in `beta/bryn`, and after that the line `a2` waits behind the send `a1` in `alpha/aria`
 - **WHEN** the event stream ends
-- **THEN** the editor holds the line of `alpha/aria`
+- **THEN** the editor holds `a2`
 - **AND** the screen shows `1 line of alpha/aria, 1 line of beta/bryn`
-- **AND** after Ctrl+N to `beta/bryn` and Up, the editor holds the line of `beta/bryn`
+- **AND** after Ctrl+N to `beta/bryn` and Up, the editor holds `b2`
 
 #### Scenario: The server resets while lines wait
 - **GIVEN** the user pressed Alt+Enter on the lines `one`, `two` and `three`, and the server did not answer `one` yet
@@ -223,7 +223,7 @@ The client SHALL split the echo line of a send at each `line_break` of its world
 - **AND** the screen shows no row that holds `one%rtwo` and starts with `> `
 
 ### Requirement: The top row shows the first list
-The client SHALL open the screen before its first list of the worlds. Until that list ends, the top row SHALL show `listing worlds`, and no world SHALL have the focus, also if events of a world arrive. Keys typed in that time SHALL edit the editor, and a key that sends SHALL show that no world is in focus.
+The client SHALL open the screen before its first list of the worlds for the screen. `mu client` can list the worlds once before, within its limit of 5 s, to decide whether to start a server. Until that list ends, the top row SHALL show `listing worlds`, and no world SHALL have the focus, also if events of a world arrive. Keys typed in that time SHALL edit the editor, and a key that sends SHALL show that no world is in focus.
 
 #### Scenario: Before the first list
 - **GIVEN** the client opened the screen, and its first list of the worlds did not end yet
@@ -236,13 +236,13 @@ The client SHALL open the screen before its first list of the worlds. Until that
 - **GIVEN** the client opened the screen, and its first list of the worlds did not end yet
 - **WHEN** the user types `hi` and presses Enter
 - **THEN** the screen shows a line that starts with `-- ` and contains `no world`
-- **AND** the client sends no text, and the editor holds `hi`
+- **AND** the server records no player event, and the editor holds `hi`
 
 #### Scenario: An event before the first list
 - **GIVEN** the client opened the screen, and its first list of the worlds did not end yet
 - **WHEN** an event of `alpha/aria` arrives, and the user types `hi` and presses Enter
 - **THEN** the screen shows a line that starts with `-- ` and contains `no world`
-- **AND** the client sends no text
+- **AND** the server records no player event for `alpha/aria`
 
 #### Scenario: A focus key before the first list
 - **GIVEN** the client opened the screen, its first list of the worlds did not end yet, and an event of `alpha/aria` arrived

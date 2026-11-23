@@ -14,7 +14,7 @@ This change is the first of two that #101 splits into. It gives the client a con
 - One registry names each thing that the player can ask the client to do. Each entry has a name, a description and its argument. The keymap, the client commands and the later palette all read the registry.
 - The `[keys]` table of `client.toml` binds a key to a registry entry, or unbinds it with `"none"`. The bindings change the default keymap. They do not replace it.
 - A one-line text that starts with `/` is a client command. The commands are `/connect [world]`, `/disconnect [world]`, `/focus <world>`, `/quit` and `/help`. A text that starts with `//` goes to the game with one `/` removed. An unknown command shows a line with the prefix `-- `, and its text stays in the editor.
-- Each world has its own input history in memory. Up on the first row of the editor recalls the older send, and Down on the last row the newer one.
+- Each world has its own input history in memory. Up on the first line of the editor recalls the older send, and Down on the last line the newer one.
 - Alt+1 to Alt+9 give the focus to the world at that place in the top row. Alt+Home and Alt+End scroll the pane to its first and last line.
 - The echo line of a send (#140) follows `echo` in `client.toml`: `show`, `dim` or `hide`. The default is `dim`. A joined pose shows as one row for each of its lines, split at the `line_break` of its world.
 - A change to existing behavior (no release yet): after a refusal, a timeout, a stream end or a reset, only the first returned send goes back in the editor. The other returned sends and the text of the editor go into the history of their world. Up then recalls them one at a time (#151). A notice says how many wait there.
@@ -28,7 +28,7 @@ This change is the first of two that #101 splits into. It gives the client a con
 - A second `/quit` confirms a quit while texts wait. Typing it does not cancel the first one.
 - The echo default is `dim`. Before this change it was `show`.
 - History is per world, kept in memory only, at most 1000 sends for each world. It does not keep an empty send or a send equal to the one before it. Quitting the client loses it.
-- Up and Down recall history only from the first and the last row of the editor. On other rows they move the cursor.
+- Up and Down recall history only from the first and the last line of the editor. On other lines they move the cursor.
 - A bad `client.toml` stops the client. The client does not start with the defaults and a warning.
 - After a refusal, the editor gets one send back, not all of them. The rest wait in history.
 - The key names of `[keys]` are lowercase and joined with `+`, for example `alt+enter` and `ctrl+shift+z`. The `+` key is `plus`. `"none"` makes a key do nothing.
