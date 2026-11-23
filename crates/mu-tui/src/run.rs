@@ -119,28 +119,10 @@ async fn event_loop(
                     });
                 }
                 Effect::Connect { world } => {
-                    let client = client.clone();
-                    spawn_reply(&replies, async move {
-                        let call = async {
-                            client
-                                .connect(&world)
-                                .await
-                                .map_err(|error| error.to_string())
-                        };
-                        control_of(call, world.clone(), CALL_LIMIT).await
-                    });
+                    spawn_reply(&replies, control(client.clone(), world, true));
                 }
                 Effect::Disconnect { world } => {
-                    let client = client.clone();
-                    spawn_reply(&replies, async move {
-                        let call = async {
-                            client
-                                .disconnect(&world)
-                                .await
-                                .map_err(|error| error.to_string())
-                        };
-                        control_of(call, world.clone(), CALL_LIMIT).await
-                    });
+                    spawn_reply(&replies, control(client.clone(), world, false));
                 }
                 Effect::ListWorlds => spawn_reply(&replies, listed_of(client.clone())),
             }
@@ -153,6 +135,20 @@ async fn event_loop(
 /// in `mu_core::session`. The limit is above that, so the server's own answer comes first when
 /// the game is slow.
 pub const CALL_LIMIT: Duration = Duration::from_secs(30);
+
+/// The [`Msg::Control`] of a connect of `world` if `connect` is true, else of a disconnect,
+/// within [`CALL_LIMIT`].
+async fn control(client: PortalClient, world: String, connect: bool) -> Msg {
+    let call = async {
+        let result = if connect {
+            client.connect(&world).await
+        } else {
+            client.disconnect(&world).await
+        };
+        result.map_err(|error| error.to_string())
+    };
+    control_of(call, world.clone(), CALL_LIMIT).await
+}
 
 /// The list of the worlds of `client`, within [`CALL_LIMIT`].
 async fn listed_of(client: PortalClient) -> Msg {

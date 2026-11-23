@@ -205,12 +205,6 @@ fn key_code(key: &str) -> Result<KeyCode, String> {
     }
 }
 
-/// The entries that Alt+1 to Alt+9 run, in the order of the digits.
-const FOCUS_PLACES: [&str; 9] = [
-    "focus-1", "focus-2", "focus-3", "focus-4", "focus-5", "focus-6", "focus-7", "focus-8",
-    "focus-9",
-];
-
 /// The entries that a key with modifiers never takes from the same key with no modifier. So
 /// Shift+Up and Ctrl+Up reach the editor, and only plain Up and Down walk the history.
 const NO_FALLBACK: [&str; 2] = ["history-prev", "history-next"];
@@ -349,10 +343,10 @@ impl Default for Keymap {
             Chord::plain(KeyCode::PageDown),
             EntryId::of("scroll-page-down"),
         );
-        for (digit, name) in ('1'..='9').zip(FOCUS_PLACES) {
+        for digit in '1'..='9' {
             keymap.bind(
                 Chord::with(KeyCode::Char(digit), Modifiers::ALT),
-                EntryId::of(name),
+                EntryId::of(&format!("focus-{digit}")),
             );
         }
         keymap.bind(

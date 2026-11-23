@@ -435,6 +435,15 @@ fn run_entry(model: &mut Model, entry: EntryId, arg: Option<String>) -> Vec<Effe
     act(model, &action)
 }
 
+/// The text ` (<kept> in history)`, or nothing if the history kept no entry.
+fn in_history(kept: usize) -> String {
+    if kept > 0 {
+        format!(" ({kept} in history)")
+    } else {
+        String::new()
+    }
+}
+
 /// The text `no world has the focus, so <what>`.
 fn no_world(what: &str) -> String {
     format!("no world has the focus, so {what}")
@@ -597,9 +606,13 @@ fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
                 model.hint("the worlds are not listed yet, so the focus does not move");
                 return Vec::new();
             }
-            match model.worlds.iter().position(|each| each.id == *world) {
-                Some(index) => model.set_focus(index),
-                None => model.hint(&format!("no world is named {world}")),
+            match world_arg(model, Some(world.clone()), "/focus") {
+                Ok(world) => {
+                    if let Some(index) = model.worlds.iter().position(|each| each.id == world) {
+                        model.set_focus(index);
+                    }
+                }
+                Err(reason) => model.hint(&reason),
             }
             Vec::new()
         }
@@ -925,11 +938,7 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
         vec![text]
     };
     let kept = put_back(model, &world, lines);
-    let notice = if kept > 0 {
-        format!("-- {} ({kept} in history)", clean(&reason))
-    } else {
-        format!("-- {}", clean(&reason))
-    };
+    let notice = format!("-- {}{}", clean(&reason), in_history(kept));
     let pane = model
         .worlds
         .iter()
@@ -1004,15 +1013,11 @@ fn return_waiting(model: &mut Model, why: &str) {
         .into_iter()
         .map(|(world, texts)| put_back(model, &world, texts))
         .sum();
-    let in_history = if kept > 0 {
-        format!(" ({kept} in history)")
-    } else {
-        String::new()
-    };
     model.hint(&format!(
-        "{why}, so {} that waited went back to the editor: {}{in_history}",
+        "{why}, so {} that waited went back to the editor: {}{}",
         line_count(total),
-        counts.join(", ")
+        counts.join(", "),
+        in_history(kept)
     ));
 }
 

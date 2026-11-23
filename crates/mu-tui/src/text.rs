@@ -98,11 +98,11 @@ pub fn echo_rows(text: &str, line_break: Option<&str>) -> Vec<String> {
         .collect()
 }
 
-/// The text of an event on the screen with its control characters replaced: a player line
-/// after `> `, a line of the system or a credential after `-- `, and any other line alone.
+/// The text of an event on the screen with its control characters replaced: a line of the
+/// system or a credential after `-- `, and any other line alone. [`echo_rows`] gives the rows of
+/// a player line.
 pub(crate) fn line(event: &Event) -> String {
     match event.source.as_known() {
-        Some(Source::SOURCE_PLAYER) => format!("> {}", clean(&event.text)),
         Some(Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => {
             format!("-- {}", clean(&event.text))
         }

@@ -266,14 +266,8 @@ impl Model {
 
     /// The pose editor of the world in focus, or the loose editor when no world has the focus.
     pub(crate) fn pose(&mut self) -> &mut EditorState {
-        let world = self.focus.and_then(|index| self.worlds.get(index));
-        match world {
-            Some(world) => {
-                let caps = &self.caps;
-                self.pose_editors
-                    .entry(world.id.clone())
-                    .or_insert_with(|| EditorState::with_caps(Arc::clone(caps)))
-            }
+        match self.focused().map(str::to_owned) {
+            Some(world) => self.pose_of(&world),
             None => &mut self.loose,
         }
     }
@@ -382,10 +376,7 @@ impl Model {
                         history: History::default(),
                     },
                 );
-                self.pose_editors.insert(
-                    id.to_owned(),
-                    EditorState::with_caps(Arc::clone(&self.caps)),
-                );
+                self.pose_of(id);
                 match self.focus {
                     Some(focus) if focus >= index => self.focus = Some(focus + 1),
                     None => self.set_focus(index),
