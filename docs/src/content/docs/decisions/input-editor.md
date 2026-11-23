@@ -7,7 +7,7 @@ sidebar:
 
 ## Decision
 
-The pose editor and each other input of the terminal client use `ratatui-textarea`. The project does not write its own editor.
+The pose editor and each other input of the terminal client use `ratatui-textarea`. The project does not write its own editor. Each world has its own pose editor, so the text of a world stays when the focus moves.
 
 The project patches `ratatui-textarea` in three places and offers each patch upstream:
 
@@ -36,6 +36,7 @@ The keys of the editor are entries of the keymap:
 | Alt+R | Replaces each line break with the line break of the world in focus. |
 | Ctrl+U | Deletes to the start of the line, as readline does. |
 | Ctrl+Z, Ctrl+Shift+Z | Undo, and redo. Redo needs a terminal that reports Shift. |
+| Up, Down | On the first line, Up puts the previous entry of the history in the editor. On the last line, Down puts the next entry, or the text from before the first Up. |
 
 Ctrl+R does nothing, so a later change can give it to a search of the history. Each other editing key is a key of the library, and those keys follow readline.
 

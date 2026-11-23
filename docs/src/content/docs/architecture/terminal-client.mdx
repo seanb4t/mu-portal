@@ -11,8 +11,22 @@ The terminal client follows the Elm architecture. The event loop turns each inpu
 
 <LikeC4View viewId="terminalClient" />
 
+## The registry
+
+The registry is one table of the entries that the player can run. An entry has a name, such as `focus-next`, a line of help, and an optional argument. A key of the keymap and a client command both choose an entry, and `update` builds the action of that entry. So a key and a command that name the same entry do the same thing.
+
+A client command is a send whose text starts with `/`, such as `/focus beta/bryn`. `update` reads the name and the argument of the command, and runs its entry. A text that starts with `//` goes to the game with one `/`. An entry that edits the text of the pose editor, such as `send`, is not a command.
+
+The file `client.toml` can bind a key to any entry that needs no argument. The guide [The client file](/guides/client/) describes it.
+
+## The editors and the history
+
+Each world has its own pose editor and its own input history. The editor of the world in focus is on the screen. When the focus moves, the text of each world stays in its editor. Before any world has the focus, the client uses one editor of no world. The first world that gets the focus takes its text.
+
+Each send and each command goes into the history of the world in focus. Up and Down walk through that history. A text that the server refused comes back into the editor of its world, and the texts after it go into the history.
+
 ## One key press
 
-When the player presses Enter, the keymap gives the action Submit. `update` clears the pose editor, returns the pane to the bottom and returns the effect Send. The event loop sends the line to the API and draws a frame.
+When the player presses Enter, the keymap gives the entry `send`. `update` clears the pose editor, returns the pane to the bottom and returns the effect Send. The event loop sends the line to the API and draws a frame.
 
 <LikeC4View viewId="keyPress" />
