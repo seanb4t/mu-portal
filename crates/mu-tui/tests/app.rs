@@ -2294,3 +2294,32 @@ fn a_reset_during_the_first_list() {
     list_ends(&mut app, alpha());
     assert_eq!(top(&mut app), "[alpha/aria]");
 }
+
+#[test]
+fn an_entry_that_needs_a_world_runs_with_none() {
+    let mut app = two_worlds();
+    let focus = mu_tui::EntryId::named("focus").unwrap();
+    assert_eq!(
+        update(
+            &mut app,
+            Msg::Run {
+                entry: focus,
+                arg: None
+            }
+        ),
+        []
+    );
+    assert!(
+        has_notice(&mut app, "focus needs a world"),
+        "{:?}",
+        screen(&mut app)
+    );
+    let next = mu_tui::EntryId::named("focus-next").unwrap();
+    let arg = Some("beta/bryn".to_owned());
+    assert_eq!(update(&mut app, Msg::Run { entry: next, arg }), []);
+    assert!(
+        has_notice(&mut app, "focus-next takes no argument"),
+        "{:?}",
+        screen(&mut app)
+    );
+}

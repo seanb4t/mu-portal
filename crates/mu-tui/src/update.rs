@@ -416,9 +416,18 @@ fn wheel(model: &mut Model, step: Wheel) -> Vec<Effect> {
     }
 }
 
-/// Builds the action of `entry` with `arg` and runs it. Every action but a quit cancels a quit
-/// that a key armed.
+/// Builds the action of `entry` with `arg` and runs it. An entry that needs an argument and has
+/// none, or that takes none and has one, runs nothing and gives a hint. Every action but a quit
+/// cancels a quit that a key armed.
 fn run_entry(model: &mut Model, entry: EntryId, arg: Option<String>) -> Vec<Effect> {
+    let name = entry.entry().name;
+    let arg = match arity(entry, arg, name) {
+        Ok(arg) => arg,
+        Err(reason) => {
+            model.hint(&reason);
+            return Vec::new();
+        }
+    };
     let action = (entry.entry().build)(arg);
     if action != Action::Quit && model.quit_arm == Some(QuitArm::Key) {
         model.quit_arm = None;
@@ -493,20 +502,29 @@ fn check_command(model: &Model, parse: Parse<'_>) -> Result<(EntryId, Option<Str
             "/{name} is not a command, because it edits the text"
         ));
     }
-    let given = parse.arg.map(str::to_owned);
-    let arg = match (entry.arg, given) {
-        (None, None) => None,
-        (None, Some(_)) => return Err(format!("/{name} takes no argument")),
-        (Some(arg), None) if arg.required => {
-            return Err(match arg.kind {
-                ArgKind::World => format!("/{name} needs a world"),
-            });
-        }
+    let shown = format!("/{name}");
+    let arg = match (entry.arg, arity(id, parse.arg.map(str::to_owned), &shown)?) {
         (Some(arg), given) => match arg.kind {
-            ArgKind::World => Some(world_arg(model, given, &format!("/{name}"))?),
+            ArgKind::World => Some(world_arg(model, given, &shown)?),
         },
+        (None, given) => given,
     };
     Ok((id, arg))
+}
+
+/// `given`, if it fits the argument of `entry`. `shown` names the entry in the text of a hint.
+///
+/// # Errors
+///
+/// The text of a hint if `entry` takes no argument and has one, or needs one and has none.
+fn arity(entry: EntryId, given: Option<String>, shown: &str) -> Result<Option<String>, String> {
+    match (entry.entry().arg, given) {
+        (None, Some(_)) => Err(format!("{shown} takes no argument")),
+        (Some(arg), None) if arg.required => Err(match arg.kind {
+            ArgKind::World => format!("{shown} needs a world"),
+        }),
+        (_, given) => Ok(given),
+    }
 }
 
 fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
