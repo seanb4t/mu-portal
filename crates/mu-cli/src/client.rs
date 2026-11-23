@@ -52,13 +52,12 @@ fn settings(dir: Option<&Path>) -> Result<FileSettings, String> {
     Ok(FileSettings { settings, wait })
 }
 
-/// The wait of `seconds`, or the reason that it is no wait. A value that rounds to no time,
-/// such as `1e-10`, is no wait.
+/// The wait of `seconds`, or the reason that it is no wait. A value under 1 ns is no wait.
 fn connect_wait(seconds: f64) -> Result<Duration, String> {
-    Duration::try_from_secs_f64(seconds)
-        .ok()
-        .filter(|wait| !wait.is_zero())
-        .ok_or_else(|| format!("{seconds} is not a finite number of seconds above 0"))
+    Some(seconds)
+        .filter(|seconds| *seconds >= 1e-9)
+        .and_then(|seconds| Duration::try_from_secs_f64(seconds).ok())
+        .ok_or_else(|| format!("{seconds} is not a finite number of seconds of 1 ns or more"))
 }
 
 /// The wait as the messages print it, such as `5 s` or `0.2 s`.
@@ -227,10 +226,11 @@ mod tests {
 
     #[test]
     fn a_wait_that_is_no_time_is_refused() {
-        for seconds in [0.0, -1.0, 1e-10, f64::NAN, f64::INFINITY, f64::MAX] {
+        for seconds in [0.0, -1.0, 1e-10, 0.9e-9, f64::NAN, f64::INFINITY, f64::MAX] {
             assert!(connect_wait(seconds).is_err(), "{seconds}");
         }
         assert_eq!(connect_wait(0.2), Ok(Duration::from_millis(200)));
+        assert_eq!(connect_wait(1e-9), Ok(Duration::from_nanos(1)));
     }
 
     #[test]

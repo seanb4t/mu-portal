@@ -1081,13 +1081,14 @@ async fn a_started_server_takes_a_directory_that_starts_with_a_dash() {
     let run = dir.path().join("run");
     let _reaper = Reaper(run.join("server.log"));
     let socket = run.join("mu.sock");
-    // A relative MU_CONFIG, read from the directory where the client starts.
+    // A relative directory, read from the directory where the client starts. MU_CONFIG is
+    // unset, so the server can find the directory only through the flag.
     let client = PtyClient::start_args(
         &socket,
         dir.path(),
         Answers::Default,
-        &[],
-        &[("MU_CONFIG", Some("-conf".as_ref()))],
+        &["--config=-conf".as_ref()],
+        &[("MU_CONFIG", None)],
     );
     client
         .wait_top("the world of the directory", |top| {
