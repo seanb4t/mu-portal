@@ -176,7 +176,10 @@ fn start_server(socket: &Path, log: &Path, config: Option<&Path>) -> io::Result<
     let mut command = Command::new(std::env::current_exe()?);
     command.arg("server").arg("--socket").arg(socket);
     if let Some(config) = config {
-        command.arg("--config").arg(config);
+        // One argument, so a path that starts with `-` stays a value.
+        let mut flag = std::ffi::OsString::from("--config=");
+        flag.push(config);
+        command.arg(flag);
     }
     command
         .process_group(0)
