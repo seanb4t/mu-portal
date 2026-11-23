@@ -82,6 +82,17 @@ At the start, `mu server` SHALL read and check each file under `clients/` in the
 - **WHEN** a server serves `<dir>` on `<dir>/s.sock`, and the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
 - **THEN** stdout holds `echo = "hide"`
 
+#### Scenario: A layer for an unknown OS
+- **GIVEN** `<dir>/clients/os/windows.toml` holds `echo = "show"`
+- **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
+- **THEN** stderr holds one line that contains `clients/os/windows.toml` and `windows`
+
+#### Scenario: A FIFO under clients
+- **GIVEN** `<dir>/clients/devices/laptop.toml` is a FIFO with no writer
+- **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
+- **THEN** stderr holds one line that contains `clients/devices/laptop.toml`
+- **AND** an API call on `<dir>/s.sock` succeeds
+
 #### Scenario: A layer for an unknown kind
 - **GIVEN** `<dir>/clients/kinds/tiu.toml` holds `echo = "show"`
 - **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
@@ -228,12 +239,25 @@ The revision SHALL be a text. A change to the content of a layer that applies to
 - **GIVEN** a server serves `<dir>` with the world `alpha/aria` on `<dir>/s.sock`
 - **WHEN** the user writes `extends = "tinymux"`, `host = "localhost"` and `port = 4201` to `<dir>/games/beta.toml`, writes an empty `<dir>/characters/beta/bryn.toml`, and runs `mu config reload --server unix://<dir>/s.sock`
 - **THEN** stdout holds a line that contains `characters/beta/bryn.toml` and `restart`
+- **AND** the exit status is 0
 - **AND** an API call on `<dir>/s.sock` lists `alpha/aria` and not `beta/bryn`
 
 #### Scenario: A reload with two bad world files
 - **GIVEN** a server serves `<dir>` with the worlds `alpha/aria` and `beta/bryn` on `<dir>/s.sock`
 - **WHEN** the user writes `port = 0` to `<dir>/characters/alpha/aria.toml` and to `<dir>/characters/beta/bryn.toml`, and runs `mu config reload --server unix://<dir>/s.sock`
 - **THEN** stderr holds a line that contains `characters/alpha/aria.toml` and a line that contains `characters/beta/bryn.toml`
+- **AND** the exit status is 1
+
+#### Scenario: A reload with a bad game of two worlds
+- **GIVEN** a server serves `<dir>` with the worlds `alpha/aria` and `alpha/ann` on `<dir>/s.sock`, both of the game `alpha`
+- **WHEN** the user writes `port = 0` to `<dir>/games/alpha.toml` and runs `mu config reload --server unix://<dir>/s.sock`
+- **THEN** stderr holds exactly one line that contains `games/alpha.toml`
+- **AND** the exit status is 1
+
+#### Scenario: A reload with two stray files
+- **GIVEN** a server serves `<dir>` with the world `alpha/aria` on `<dir>/s.sock`
+- **WHEN** the user creates `<dir>/worlds.toml` and `<dir>/games/Beta.toml`, and runs `mu config reload --server unix://<dir>/s.sock`
+- **THEN** stderr holds a line that contains `worlds.toml` and a line that contains `games/Beta.toml`
 - **AND** the exit status is 1
 
 #### Scenario: A reload with a bad world file
@@ -253,6 +277,7 @@ The revision SHALL be a text. A change to the content of a layer that applies to
 - **GIVEN** a server serves `<dir>` on `<dir>/s.sock`, and `<dir>/server.toml` is empty
 - **WHEN** the user writes `[telemetry]` to `<dir>/server.toml` and runs `mu config reload --server unix://<dir>/s.sock`
 - **THEN** stdout holds a line that contains `server.toml` and `restart`
+- **AND** the exit status is 0
 
 #### Scenario: A second reload lists the world change again
 - **GIVEN** a server serves `<dir>` with the world `alpha/aria` on `<dir>/s.sock`
