@@ -50,10 +50,10 @@ fn order(id: &str) -> (&str, &str) {
 /// What set the arm of a quit, which decides what cancels it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum QuitArm {
-    /// A key. The next action that is not a quit cancels it.
+    /// A key. The next key or action that is not a quit cancels it.
     Key,
-    /// The command `/quit`. No key cancels it by itself. The next submitted text decides: a
-    /// `/quit` leaves, and any other text or command cancels it.
+    /// The command `/quit`. A `/quit` or a quit key leaves. Any other submitted text or command
+    /// cancels it, and another key does not.
     Command,
 }
 
@@ -167,8 +167,8 @@ impl Model {
     }
 
     /// A model with no world, and the keymap and the echo of `settings`, that waits for its
-    /// first list of the worlds. The caller asks for that list. Until its reply, the top row
-    /// shows `listing worlds` and no world gets the focus.
+    /// first list of the worlds. The caller asks for that list. Until the first list ends, the top
+    /// row shows `listing worlds` and no world gets the focus.
     #[must_use]
     pub fn starting(settings: Settings) -> Self {
         let mut model = Self::new([])
@@ -293,7 +293,8 @@ impl Model {
         self.pose_editors.get(world).map(EditorState::text)
     }
 
-    /// The input history of `world`, the oldest entry first.
+    /// The input history of `world`, the oldest entry first. `None` for a world that the model
+    /// does not hold.
     #[must_use]
     pub fn history(&self, world: &str) -> Option<Vec<&str>> {
         self.worlds

@@ -115,8 +115,7 @@ const fn on_world(
     }
 }
 
-/// Every entry, in the order that the help lists them. The entries that the player uses most
-/// come last, so the end of the help, next to the editor, shows them.
+/// Every entry, in the order that the help lists them.
 pub static ENTRIES: &[Entry] = &[
     plain(
         "send",

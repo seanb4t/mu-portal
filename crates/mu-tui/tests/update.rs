@@ -383,7 +383,7 @@ fn mode_reply_with_no_late_wait_changes_nothing() {
     assert!(!model.keeps_grapheme_mode());
 }
 
-// The seams for completion: the candidates of an argument and the place of the cursor.
+// The candidates of an argument and the place of the cursor in a command.
 
 #[test]
 fn world_candidates_follow_the_top_row() {

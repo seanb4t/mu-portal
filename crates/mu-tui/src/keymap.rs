@@ -40,7 +40,8 @@ impl Chord {
     /// joined with `+`. A key is one character that is not an uppercase letter, a control
     /// character or `+`, the name `plus`, or the name of a special key. `shift+tab` is
     /// [`KeyCode::BackTab`] with Shift, and `shift` and a letter is the lowercase letter with
-    /// Shift.
+    /// Shift. `shift` with any other character is an error, because the terminal sends the
+    /// shifted character.
     ///
     /// # Errors
     ///
@@ -80,7 +81,8 @@ impl Chord {
         Ok(Self { code, modifiers })
     }
 
-    /// The key name of the chord, which [`Self::parse`] reads back: the modifiers in the order
+    /// The key name of the chord, which [`Self::parse`] reads back for a chord that it made: the
+    /// modifiers in the order
     /// `ctrl`, `alt`, `shift`, `super`, then the key. None for a key that has no name.
     #[must_use]
     pub fn name(self) -> Option<String> {
@@ -251,7 +253,7 @@ impl Keymap {
             .map(|(_, entry)| *entry)
     }
 
-    /// Each chord and wheel step with its entry, the chords first.
+    /// The entry of each chord and each wheel step, the chords first.
     pub fn bindings(&self) -> impl Iterator<Item = EntryId> + '_ {
         self.entries
             .iter()
@@ -288,8 +290,8 @@ impl Keymap {
 
 impl Default for Keymap {
     /// Ctrl+C quits, Ctrl+N and Ctrl+P move the focus, and Alt+1 to Alt+9 give it to the world
-    /// at that place. Alt+Home and Alt+End scroll the pane to its ends. The page keys scroll one page, and
-    /// each step of the mouse wheel scrolls three rows.
+    /// at that place. Alt+Home and Alt+End scroll the pane to its ends. The page keys scroll one
+    /// page, and each step of the mouse wheel scrolls three rows.
     ///
     /// Enter and Ctrl+M send the text of the pose editor as one command. Alt+Enter and
     /// Ctrl+Enter send each line as its own command. Shift+Enter and Ctrl+J insert a line

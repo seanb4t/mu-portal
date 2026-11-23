@@ -13,7 +13,8 @@ use super::parse::{LAYER_HIDDEN, parse};
 /// The layers of a configuration directory.
 ///
 /// The directory holds `global.toml`, `types/<name>.toml`, `games/<game>.toml` and
-/// `characters/<game>/<character>.toml`, and [`SERVER_FILE`] and [`CLIENT_FILE`] at the top, which hold no layer.
+/// `characters/<game>/<character>.toml`, and [`SERVER_FILE`] and [`CLIENT_FILE`] at the top,
+/// which hold no layer.
 /// Any other file whose name ends in `.toml`, in any case, is an error. So is an entry that
 /// cannot be read, such as a link to nothing.
 /// A missing directory holds no layers.
@@ -108,7 +109,7 @@ pub const CLIENT_FILE: &str = "client.toml";
 const TOP_FILES: [&str; 2] = [SERVER_FILE, CLIENT_FILE];
 
 /// Whether the top-level entry `name` is one of [`TOP_FILES`]: the same name in any case, and
-/// the same file. The exact name is that file with no compare, so an unreadable `server.toml` is
+/// the same file. The exact name is that file with no compare, so an unreadable top file is
 /// left to the program that reads it, which reports the read error. On a file system that
 /// ignores case, `Server.toml` is that file. When the file does not exist, another name is not
 /// that file, but an entry of that name that cannot be opened is still an error.

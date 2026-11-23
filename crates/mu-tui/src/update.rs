@@ -31,8 +31,7 @@ use crate::text::{clean, clean_paste, echo_rows, line};
 pub enum Msg {
     /// An event of the terminal.
     Terminal(TermEvent),
-    /// Run an entry of the registry with its argument. A key, a command and a picker each give
-    /// this message, so each runs an entry the same way.
+    /// Run an entry of the registry with its argument.
     Run {
         /// The entry to run.
         entry: EntryId,
@@ -54,12 +53,14 @@ pub enum Msg {
     Control {
         /// The world of the call.
         world: String,
-        /// `Ok` if the server took the call, else the reason that it refused.
+        /// `Ok` if the server took the call, else the reason that it failed: a refusal, an error
+        /// of the connection, or no answer in time.
         result: Result<(), String>,
     },
 }
 
-/// What an entry of the registry does. Only [`Entry::build`](crate::registry::Entry) makes one.
+/// What an entry of the registry does. [`Entry::build`](crate::registry::Entry::build) of each
+/// entry makes the action of that entry.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Action {
     /// Leave the client.
@@ -105,7 +106,7 @@ pub enum Action {
     Connect(Option<String>),
     /// Ask the server to disconnect this world, or the world in focus for `None`.
     Disconnect(Option<String>),
-    /// Give the focus to this world.
+    /// Give the focus to this world. For a world that the model does not hold, add a hint.
     Focus(String),
     /// Show one line for each entry of the registry.
     Help,

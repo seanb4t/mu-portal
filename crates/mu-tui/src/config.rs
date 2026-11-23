@@ -87,7 +87,8 @@ impl std::fmt::Display for KeyError {
 
 impl std::error::Error for KeyError {}
 
-/// The value of a binding that removes the key.
+/// The value of a binding that makes the key do nothing: it binds the key to `ignore`, so the
+/// key does not fall back to the key with no modifier.
 const NONE: &str = "none";
 
 impl ClientConfig {

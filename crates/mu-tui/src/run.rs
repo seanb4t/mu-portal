@@ -74,7 +74,7 @@ async fn event_loop(
     let mut terminal_events = EventStream::new(reader, |_| true);
     let mut events = Box::pin(client.events());
     let (replies, mut reply) = mpsc::unbounded_channel();
-    // The first list of the worlds, which `Model::starting` asked for.
+    // The first list of the worlds, which `Model::starting` marks as asked.
     spawn_reply(&replies, listed_of(client.clone()));
     loop {
         // No frame is drawn while an early message waits.
@@ -215,7 +215,7 @@ pub async fn reply_of<T>(
 }
 
 /// The [`Msg::Control`] of a connect or a disconnect of `world` that `call` makes. A call with
-/// no answer within `limit` gives its reason as a refusal.
+/// no answer within `limit` gives that as its reason.
 pub async fn control_of(
     call: impl Future<Output = Result<(), String>>,
     world: String,
