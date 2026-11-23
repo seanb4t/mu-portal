@@ -1,9 +1,9 @@
 ---
 verdict: approve
 phase: plan
-reviewed_at: 2026-11-23T02:13:41+00:00
-head: 662c14c418afd9f5272f5e40564bd4bb42a4493c
-round: 13
+reviewed_at: 2026-11-23T02:16:09+00:00
+head: 4b1a72f74a568163ca7369da4134df092b37a019
+round: 14
 next_id: 155
 lenses:
   spec-lint: ok
@@ -20,7 +20,6 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-154 | verify | suggestion | in-change | PARTIAL: the fix 882e0254a993bceba3a95f46f10b25695870b5e9 of R-154 did not hold. A key edits only the editor of the world in focus, and a focus change changes no editor text. That holds over any run of typing, sends, refusals and focus changes, but only the example a_focus_change_keeps_each_editor tests it. | tasks.md > 4. Input history — "after each step the editor text of each world out of focus is unchanged, unless a `put_back` of that world ran in the st" | fix it again | regression | severity? should-fix 0.61 | false-test |
 
 ## Repeats
 
@@ -54,10 +53,11 @@ None.
 | 11 | plan | follow-up | d4e2273fb97303757ceb064999c94fc10cd2ada7 | d155389c6dd9637865283a87d9c4ef198c60e59af3c5bd748be91d99d5caa5c1 | approve-with-notes | 1 | 0 | 0 | 2 | 0 |  |
 | 12 | plan | full | adb7ef9d45bd8d7f221e824fefe213f7a69a316f | 717676bdfe6a7c46a6f743aa7b43adee44b311a201cf97ec3e18000fa308e6af | changes-requested | 12 | 0 | 0 | 0 | 0 | The owner chose a pose editor for each world, which rewrites D5 and D6 and adds and replaces scenarios |
 | 13 | plan | follow-up | 662c14c418afd9f5272f5e40564bd4bb42a4493c | 0267b079207336632636ada23ccb88ff247bf939a1a83507356762e4b2bccf23 | approve | 0 | 0 | 1 | 12 | 0 |  |
+| 14 | plan | follow-up | 4b1a72f74a568163ca7369da4134df092b37a019 | bae8b166475602911b08e66a59c847eff7cf6ba6f285df8794204fe49b9d479e | approve | 0 | 0 | 0 | 1 | 0 |  |
 
 ## Judge
 
-judge: 2 questions, 0.000 USD
+judge: 0 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -184,10 +184,10 @@ None.
 
 ## Lens notes
 
-- verify: R-154 is PARTIAL: the property test history_keeps_its_invariants now checks that a step leaves the editor of each world out of focus unchanged. In a focus-change step, the world that takes the focus is in focus after the step, so the check does not cover it. A focus change that rewrites the editor of the world that takes the focus passes the property. Only the example a_focus_change_keeps_each_editor still covers that half of the rule 'A change of the focus SHALL NOT change the text of an editor'. The fix: compare every editor in a focus-change step.
-- verify: R-146: D5 routes the render of an editor leaf and the row count of Size::Editor through the Model method editor_state. view.rs splits the model into Parts so that the walk can borrow pane states mutably while it reads the layout tree from the model, so a Model method with &mut self cannot be called inside that walk. The build must take the layout out of the model or give Parts the resolver; D5 does not say which. No wrong behaviour follows, so this is no finding.
-- verify: Task 5.1 a_refusal_out_of_focus asserts (1 in history). If the test sends b1 and b2 with two Enters, the history already ends with b2, the push of the returned b2 is dropped as equal to the newest entry, and by D6 the line holds no count. The assertion holds only if b1 and b2 are sent as lines of one Alt+Enter. The task does not name the setup.
-- verify: R-153: the issue #165 that design.md and tasks.md now name was not checked to exist; this agent has no gh access.
+- verify: R-154: task 4.1 now has the property test history_keeps_its_invariants check after each step of random sends, refusals, focus changes, Up and Down that each world's editor text is unchanged, except in the world that had the focus before the step or a world where put_back ran. So the editor invariant is now checked over random runs, not only by the example a_focus_change_keeps_each_editor.
+- verify: Task 4.1 wording: the exception says 'the step typed into the world that had the focus', but the step list has no typing step, and Up, Down and a send change the focused editor without typing. 'A focus change is such a step' can also be read as exempting the world that had the focus before. In that reading a focus change that alters the old world's editor goes unchecked. The intended reading checks both worlds, and the example a_focus_change_keeps_each_editor covers that case. A plainer wording would remove the doubt.
+- verify: The D5 text at design.md line 110 says each world editor and loose get the capabilities of the terminal. That matches head: Model::set_caps already updates every editor, and Model::world builds a new pane with the current caps (crates/mu-tui/src/model.rs 249, 277-283).
+- verify: The ranges of review.md in diff-hunks.txt were not read: this agent never reads the change's review.md.
 
 ## Ledger
 
@@ -346,4 +346,4 @@ None.
 | R-151 | 12 | 13 | should-fix | in-change | unmet-requirement | ["artifact",["specs/terminal-client/spec.md","Scenario: A notice before the first list"],"**THEN** the pane of `alpha/aria` shows the notice of the probe"] | resolved | resolved in round 13 from fixed 882e0254a993bceba3a95f46f10b25695870b5e9 |  |  | The THEN step of 'A notice before the first list' names the notice only as 'the notice of the probe', with no text, value or cell that a test can compare. |
 | R-152 | 12 | 13 | suggestion | in-change |  | ["artifact",["design.md","D4. Commands are parsed in `update` at a send"],"At head the block that spawns a call, bounds it with `within` and sends back a message is in three places in `run.rs`."] | resolved | resolved in round 13 from fixed 882e0254a993bceba3a95f46f10b25695870b5e9 |  | severity? should-fix 0.77 | D4 says that at head the block that spawns a call, bounds it with within and sends back a message is in three places in run.rs. At head the first list is awaited inline before the screen opens. It spawns nothing and sends no message, so the block is in two places. The spawn and the send-back are also already one helper, spawn_reply, which D4 does not name. |
 | R-153 | 12 | 13 | suggestion | in-change |  | ["artifact",["design.md","Risks / Trade-offs"],"[History in memory only] A crash loses it. \\u2192 History on disk is a later change, beside #156."] | resolved | resolved in round 13 from fixed 882e0254a993bceba3a95f46f10b25695870b5e9 |  | severity? should-fix 0.73 | The mitigation of the risk 'History in memory only' is a later change beside #156. No task and no follow-up line of tasks.md names that change, so the mitigation names nothing that the plan does. |
-| R-154 | 12 | 13 | suggestion | in-change | false-test | ["artifact",["specs/terminal-client/spec.md","Requirement: Each world keeps its own editor"],"A change of the focus SHALL NOT change the text of an editor, and SHALL NOT end a walk."] | fixed | b5e655971c09b67b2f92eacc5f4fec0a6cd61577 |  | severity? should-fix 0.61 | A key edits only the editor of the world in focus, and a focus change changes no editor text. That holds over any run of typing, sends, refusals and focus changes, but only the example a_focus_change_keeps_each_editor tests it. |
+| R-154 | 12 | 14 | suggestion | in-change | false-test | ["artifact",["specs/terminal-client/spec.md","Requirement: Each world keeps its own editor"],"A change of the focus SHALL NOT change the text of an editor, and SHALL NOT end a walk."] | resolved | resolved in round 14 from fixed b5e655971c09b67b2f92eacc5f4fec0a6cd61577 |  | severity? should-fix 0.61 | A key edits only the editor of the world in focus, and a focus change changes no editor text. That holds over any run of typing, sends, refusals and focus changes, but only the example a_focus_change_keeps_each_editor tests it. |
