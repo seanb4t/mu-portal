@@ -33,6 +33,11 @@ At the start, `mu server` SHALL read and check each file under `clients/` in the
 - **THEN** stderr holds one line that contains `clients/devices/laptop.toml`
 - **AND** an API call on `<dir>/s.sock` succeeds
 
+#### Scenario: A binding of a dot
+- **GIVEN** `clients/global.toml` holds `[keys]` with `"alt+." = "quit"`, and a server serves that directory on `<dir>/s.sock`
+- **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
+- **THEN** stdout holds `"alt+period" = "quit"` with the source `clients/global.toml`
+
 #### Scenario: A layer for an unknown kind
 - **GIVEN** `<dir>/clients/kinds/tiu.toml` holds `echo = "show"`
 - **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`

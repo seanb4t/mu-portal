@@ -86,7 +86,7 @@ The terminal reports Shift and such a character as the shifted character, such a
 ## MODIFIED Requirements
 
 ### Requirement: The keys table binds a key to an entry
-The table `[keys]` of a client layer SHALL map a key to the name of an entry of the registry, or to `"none"`. A key SHALL be modifiers from `ctrl`, `alt`, `shift` and `super`, then one key, joined with `+`. A key is one character that is not an uppercase letter, not a control character and not `+`, the name `plus`, or a name of a special key. Each binding SHALL replace the default binding of that key. A key bound to `"none"` SHALL do nothing. The keys that no layer names SHALL keep their defaults.
+The table `[keys]` of a client layer SHALL map a key to the name of an entry of the registry, or to `"none"`. A key SHALL be modifiers from `ctrl`, `alt`, `shift` and `super`, then one key, joined with `+`. A key is one character that is not an uppercase letter, not a control character and not `+`, the name `plus`, the name `period`, or a name of a special key. The names `.` and `period` SHALL be one key. Each binding SHALL replace the default binding of that key. A key bound to `"none"` SHALL do nothing. The keys that no layer names SHALL keep their defaults.
 
 #### Scenario: A new binding
 - **GIVEN** `clients/global.toml` holds `[keys]` with `"alt+n" = "focus-next"`, and a server serves that directory with the fake worlds `alpha/aria` and `beta/bryn`
