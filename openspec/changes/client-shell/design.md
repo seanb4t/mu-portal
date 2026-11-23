@@ -120,13 +120,15 @@ Enforced by: the spec tests of the history requirements, and a property test tha
 
 ### D6. Returned sends go to history (#151)
 
-`put_back` changes, for a refusal and for `return_waiting` alike:
+`put_back` changes, for a refusal of the world in focus and for `return_waiting` alike:
 
 1. It ends a walk first, but it does not push the draft. The saved draft becomes the held text, not the entry on screen, and step 3 pushes it once. So the count of the refusal line includes the draft.
 2. The first returned text goes alone into the editor, with the cursor at the start of its first line. So the next Up recalls history at once.
-3. The other returned texts, and then the held text, go into the history of their world. They are pushed in reverse order, so the first Up gives the next one. A stream end or a reset puts the held text into the history of the world in focus. A refusal of a world out of focus does the same: the other returned texts go into the history of the refused world, and the held text into the history of the world in focus, because the player typed it there. The refusal line names the refused world.
+3. The other returned texts, and then the held text, go into the history of their world. They are pushed in reverse order, so the first Up gives the next one. A stream end or a reset puts the held text into the history of the world in focus.
 
-The line of a refusal in `on_reply` stays a push to the pane of the refused world, as at head. It holds the reason. If texts went into history, it also holds their count, as `(<n> in history)`. If they went into two histories, after a refusal of a world out of focus, it holds the count of each world, as `(<n> in beta/bryn, <m> in alpha/aria)`. So Up in each world gives exactly the count that the line shows for it. The count is of the entries that the push kept, because Up gives only those. A returned text equal to the newest entry is not counted. With none, it holds the reason alone. The line of `return_waiting` stays a hint, as at head. It keeps its count of each world and adds `Up recalls the rest`.
+A refusal of a world out of focus does not touch the editor, its text or a walk. The refused text and the texts that waited behind it all go into the history of the refused world, pushed in reverse order, so the first Up in that world gives the refused text. So a plain Enter cannot send the refused text to the world in focus, and all the returned texts are in one history.
+
+The line of a refusal in `on_reply` stays a push to the pane of the refused world, as at head. It holds the reason. If texts went into history, it also holds their count, as `(<n> in history)`. The line is in the pane of the refused world, and the count is of the history of that world, so Up in that world gives exactly that count. The count is of the entries that the push kept, because Up gives only those. A returned text equal to the newest entry is not counted. With none, it holds the reason alone. The line of `return_waiting` stays a hint, as at head. It keeps its count of each world and adds `Up recalls the rest`.
 
 The alternative was a marker line between the texts in the editor. #151 says that the client has no line that it keeps in the editor but does not send, and that an empty line does not work, because Alt+Enter sends it as an empty command. A marker would need such a line, so this change keeps the texts apart in history instead.
 

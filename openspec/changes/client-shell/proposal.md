@@ -31,6 +31,7 @@ This change is the first of two that #101 splits into. It gives the client a con
 - Up and Down recall history only from the first and the last line of the editor. On other lines they move the cursor.
 - A bad `client.toml` stops the client. The client does not start with the defaults and a warning.
 - After a refusal, the editor gets one send back, not all of them. The rest wait in history.
+- A refusal from a world out of focus leaves the editor alone. Its texts all wait in the history of that world.
 - The key names of `[keys]` are lowercase and joined with `+`, for example `alt+enter` and `ctrl+shift+z`. The `+` key is `plus`. `"none"` makes a key do nothing.
 - A key in `[keys]` cannot run an entry that needs a world, such as `focus`. A control character is not a key name.
 - Shift+Up, Ctrl+Up and Shift+Down keep their editor moves. Only plain Up and Down recall history.
