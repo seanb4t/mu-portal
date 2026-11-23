@@ -19,14 +19,25 @@ pub use client::ClientArgs;
 pub use server::ServerArgs;
 
 /// Writes `line` and a newline to stderr in one write, so servers that share a log append whole
-/// lines.
+/// lines. Each control character but a line break and a tab becomes U+FFFD, so a value from a
+/// file cannot send an escape sequence to the terminal.
 fn report(line: &std::fmt::Arguments<'_>) {
     // A closed stderr leaves nothing to report to.
     let _ = report_to(&mut std::io::stderr(), line);
 }
 
 fn report_to(out: &mut impl Write, line: &std::fmt::Arguments<'_>) -> std::io::Result<()> {
-    out.write_all(format!("{line}\n").as_bytes())
+    let text: String = format!("{line}")
+        .chars()
+        .map(|c| {
+            if c.is_control() && c != '\n' && c != '\t' {
+                char::REPLACEMENT_CHARACTER
+            } else {
+                c
+            }
+        })
+        .collect();
+    out.write_all(format!("{text}\n").as_bytes())
 }
 
 /// Writes `mu <verb>: <error>` to stderr and returns the status 1.
@@ -144,6 +155,17 @@ mod tests {
         let (verb, error) = ("server", "no such file");
         report_to(&mut out, &format_args!("mu {verb}: {error}")).unwrap();
         assert_eq!(out.0, [b"mu server: no such file\n".to_vec()]);
+    }
+
+    #[test]
+    fn report_replaces_control_characters() {
+        let mut out = Writes::default();
+        let key = "a\x1b]0;title\x07b\rc\u{9b}d";
+        report_to(&mut out, &format_args!("mu client: {key}\n\tnext")).unwrap();
+        assert_eq!(
+            String::from_utf8(out.0.concat()).unwrap(),
+            "mu client: a\u{fffd}]0;title\u{fffd}b\u{fffd}c\u{fffd}d\n\tnext\n"
+        );
     }
 
     #[test]
