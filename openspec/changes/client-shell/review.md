@@ -1,35 +1,45 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-23T14:24:45+00:00
-head: 518e8a5b0a7075488e2a37d495fba82867aa98ae
-round: 21
-next_id: 178
+reviewed_at: 2026-11-23T14:55:45+00:00
+head: be93e0fa97b328b69bbce3b5c7dc4aa6e962a716
+round: 22
+next_id: 186
 lenses:
   spec-lint: not-applicable
   approach: ok
   fit: ok
-  test-coverage: ok
+  test-coverage: partial
   test-honesty: ok
   invariants: ok
-  verify: ok
+  verify: not-applicable
 ---
 # Review
+
+## Incomplete lenses
+
+- test-coverage: partial, gaps: 2
+  - Assertions read in full only for the command, quit and key-binding tests; the rest are graded by test name plus task text, not by reading each THEN assertion.
+  - Tests were not run, by rule.
+
+The verdict covers only what the lenses checked. While the `ctl-lens` row of an incomplete lens is open, the verdict cannot be `approve`.
 
 ## Findings
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-175 | test-coverage | should-fix | in-change | delta scenario 'The server names its directory' has no matrix row | review > absent-row — "The server names its directory" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-176 | test-coverage | should-fix | in-change | delta scenario 'A server with another directory' has no matrix row | review > absent-row — "A server with another directory" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-177 | test-coverage | should-fix | in-change | delta scenario 'A server with the same directory' has no matrix row | review > absent-row — "A server with the same directory" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-174 | verify | should-fix | in-change | A client that finds nothing on the socket never compares config_dir. If two clients with other directories start at once, the second one's server loses the lock and exits, and that client attaches to the first client's server, which it did not start, with no notice. | crates/mu-cli/src/client.rs:123 — "Ok(Found::Nothing) => start_and_wait(&client, &socket, dir, named, wait)" | After start_and_wait, read config_dir too and pass it through other_dir, as the Listener arm does. A server that the client started inherits its directory, so the normal start gives no notice. |  |  | unmet-requirement |
+| R-178 | fit | should-fix | in-change | PortalClient::config_dir repeats the body of PortalClient::list_worlds: the same ListWorlds request and call, keeping the other half of one response. Two methods of one RPC can change apart, and mu client makes the call twice after a start. | crates/mu-client/src/lib.rs:95 — "pub async fn list_worlds(&self) -> Result<Vec<proto::World>, ClientError> {" | Give mu-client one method that makes the ListWorlds call and returns the whole reply (worlds and config_dir); make list_worlds and config_dir project it, or drop config_dir and read config_dir from that reply in mu-cli. |  |  | drift |
+| R-179 | fit | should-fix | in-change | The word for an argument kind is written in three places: help and arity each match ArgKind to 'world', and ClientConfig::keymap writes 'needs a world' for any required argument without reading its kind. | crates/mu-tui/src/update.rs:533 — "ArgKind::World => format!("{shown} needs a world")," | Add one ArgKind method in registry.rs that gives the noun of a kind, and build the help text, the arity hint and the keymap refusal from it. |  |  | drift |
+| R-180 | fit | should-fix | in-change | The change adds five linear scans that find a world by its id (Model::history, Model::walk, the Focus arm, on_reply, put_back), beside the sorted binary search of Model::world. No one lookup without insert exists, so each copy keeps its own match rule. | crates/mu-tui/src/model.rs:296 — ".find(\|each\| each.id == world)" | Add Model::index_of(id) -> Option<usize> over the binary search that Model::world uses, let Model::world call it, and replace the five scans with it. |  |  | drift |
+| R-181 | invariants | should-fix | in-change | put_back pushes the held text first and then each returned text, so with 1000 or more texts behind a refused one the pushes drop the held draft and the last returned line, and the count overstates what Up gives. | crates/mu-tui/src/update.rs:980 — "let mut kept = usize::from(entry.history.push(&held));" | Keep the held text and the count true at the limit: cap the returned texts that go to history at HISTORY_LIMIT - 1 (or count the entries left after the pushes), and add a test that refuses the first of 1001 lines sent with Alt+Enter and asserts the draft and the count. |  |  | wrong-behaviour |
+| R-185 | test-coverage | should-fix | in-change | lens test-coverage reported partial, gaps: 2 | review > lens-status — "test-coverage partial" | rerun the lens or accept the gap in the review |  |  | unmet-requirement |
+| R-182 | test-honesty | should-fix | in-change | history_keeps_its_invariants never checks the 1000-entry cap that task 4.1 says it checks, and 60 steps cannot reach 1000 entries, so a broken cap passes it. | crates/mu-tui/tests/app.rs:2059 — "prop_assert!(history.iter().all(\|entry\| !entry.is_empty()));" | Add a len() <= 1000 assert in the loop, or change task 4.1 to say that history_drops_the_oldest_past_1000 alone covers the cap. |  |  | false-test |
+| R-183 | approach | suggestion | in-change | D8 compares config_dir only on an attach to a server that the client did not start. At head mu client compares after every first list, also after it started a server itself, and design.md records no deviation. | design.md > D8. The screen opens before the first list — "On an attach to a server that it did not start, `mu client` resolves its own directory the same way and compares." | Change the D8 sentence: mu client compares after each first list, also after it started a server, because a concurrent client can start the server that wins the lock. |  | severity? should-fix 0.75 |  |
+| R-184 | approach | suggestion | in-change | D8 says the list before run decides whether to start a server. At head a bare UnixStream connect decides, and the list comes after it; design.md does not name the probe. | design.md > D8. The screen opens before the first list — "The list that `mu-cli` makes before `run` decides whether to start a server." | Record in D8 that a connect to the socket decides whether to start a server, and that the list with the wait follows it. |  | severity? should-fix 0.71 |  |
 
 ## Repeats
 
-| id | lens | severity | claim | evidence |
-|---|---|---|---|---|
-| R-173 | test-coverage | should-fix | covered row 'The default dims' has no verification run | review > not-run — "The default dims" |
+None.
 
 ## Out of bound
 
@@ -68,10 +78,11 @@ None.
 | 19 | implementation | follow-up | 2790b3cac0e01bae2b24ccc58cd327c3ef88f6c8 | cc60356d45d236c9b474b7b592f08ffb8cd87a1907e5094fc7f4de1c49e662da | approve-with-notes | 0 | 1 | 1 | 17 | 0 |  |
 | 20 | implementation | follow-up | 65a9a51fb21f2fdbd08291585c663f1adbb7dfa8 | cc60356d45d236c9b474b7b592f08ffb8cd87a1907e5094fc7f4de1c49e662da | approve-with-notes | 0 | 1 | 0 | 1 | 0 |  |
 | 21 | implementation | follow-up | 518e8a5b0a7075488e2a37d495fba82867aa98ae | 9856775cf557a23f9b7f7a5f272c3ba19e8daf6bcd3b318a3e296909c6130fad | approve-with-notes | 4 | 1 | 0 | 0 | 0 |  |
+| 22 | implementation | full | be93e0fa97b328b69bbce3b5c7dc4aa6e962a716 | da066dd74257ac9dbcd42d84b302b7ed3c023f2c1bf0d36f68ea2a9269daef07 | approve-with-notes | 8 | 0 | 0 | 0 | 0 | new scenarios for the notice about another server directory need coverage rows |
 
 ## Judge
 
-judge: 2 questions, 0.000 USD
+judge: 14 questions, 0.001 USD
 
 ## Coverage matrix
 
@@ -121,7 +132,7 @@ judge: 2 questions, 0.000 USD
 | An unknown key name | crates/mu-cli/tests/client.rs: an_unknown_key_name | covered | pass |
 | An entry that needs an argument | crates/mu-cli/tests/client.rs: an_entry_that_needs_an_argument | covered | pass |
 | A wait of zero | crates/mu-cli/tests/client.rs: a_wait_of_zero | covered | pass |
-| The default dims | crates/mu-tui/tests/app.rs: the_default_dims; crates/mu-cli/tests/client.rs: the_client_with_no_directory | covered | not-run |
+| The default dims | crates/mu-tui/tests/app.rs: the_default_dims | covered | pass |
 | Hide | crates/mu-tui/tests/app.rs: hide | covered | pass |
 | A client with no server starts one | crates/mu-cli/tests/client.rs: client_starts_a_server | covered | pass |
 | No server answers in time | crates/mu-cli/tests/client.rs: client_gives_up_after_five_seconds | covered | pass |
@@ -129,6 +140,10 @@ judge: 2 questions, 0.000 USD
 | A server that closes the connection | crates/mu-cli/tests/client.rs: a_server_that_closes_the_connection | covered | pass |
 | A server that does not answer | crates/mu-cli/tests/client.rs: a_server_that_does_not_answer | covered | pass |
 | The started server finds the default directory | crates/mu-cli/tests/client.rs: the_started_server_finds_the_default_directory | covered | pass |
+| The server names its directory | crates/mu-cli/tests/server.rs: the_server_names_its_directory | covered | pass |
+| A server with another directory | crates/mu-cli/tests/client.rs: a_server_with_another_directory | covered | pass |
+| A server with the same directory | crates/mu-cli/tests/client.rs: a_server_with_the_same_directory | covered | pass |
+| Two clients with other directories start at once | crates/mu-cli/tests/client.rs: two_clients_with_other_directories_start_at_once | covered | pass |
 | A line goes to the world in focus | crates/mu-tui/tests/app.rs: a_line_goes_to_the_world_in_focus | covered | pass |
 | An empty line | crates/mu-tui/tests/app.rs: an_empty_line | covered | pass |
 | Enter with no world | crates/mu-tui/tests/app.rs: enter_with_no_world | covered | pass |
@@ -193,124 +208,127 @@ judge: 2 questions, 0.000 USD
 
 ### Not run
 
-- The default dims: no verification run names this row
+None.
 
 ## Verification runs
 
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=help_lists_the_entries)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_key_and_a_command_give_the_same_focus)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_editing_entry_is_not_a_command)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_command_does_not_reach_the_game)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=several_lines_are_not_a_command)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_escaped_slash)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_unknown_command)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_missing_world)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_argument_to_an_entry_that_takes_none)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_unknown_world)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=connect_the_world_in_focus)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=disconnect_a_named_world)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_key_bound_to_connect_with_no_world_in_focus)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=connect_with_no_world_in_focus)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_trailing_space_is_no_argument)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=disconnect_an_unknown_world)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=focus_by_name)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_world_with_a_trailing_space)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=quit_by_command)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=quit_twice_while_a_text_waits)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=another_command_cancels_the_quit)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_command_with_no_world_in_focus)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_file_that_sets_the_echo)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_file_that_sets_dim)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=no_file)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_unknown_key)'`
 - exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_bad_echo_value)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_file_that_cannot_be_read)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=not_toml)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_new_binding)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_default_keys_stay)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_removed_binding)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_binding_replaces_a_default)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=none_on_a_key_with_a_modifier)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=two_names_of_one_key)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_binding_of_shift_tab)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_uppercase_key)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_control_character)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=shift_with_a_digit)'`
 - exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_binding_of_ctrl_shift_z)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_unknown_entry)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_unknown_key_name)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_entry_that_needs_an_argument)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_wait_of_zero)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_default_dims)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_client_with_no_directory)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=hide)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=client_starts_a_server)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=client_gives_up_after_five_seconds)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=two_clients_start_one_server)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_binding_of_shift_tab)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_binding_replaces_a_default)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_control_character)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_file_that_cannot_be_read)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_file_that_sets_dim)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_file_that_sets_the_echo)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_key_and_a_command_give_the_same_focus)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_key_bound_to_connect_with_no_world_in_focus)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_line_break_that_the_world_refuses)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_new_binding)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_pose_of_two_lines)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_removed_binding)'`
 - exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_server_that_closes_the_connection)'`
 - exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_server_that_does_not_answer)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_server_with_another_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_server_with_the_same_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_trailing_space_is_no_argument)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_wait_of_zero)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_entry_that_needs_an_argument)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_unknown_entry)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_unknown_key)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_unknown_key_name)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_uppercase_key)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=another_command_cancels_the_quit)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=client_gives_up_after_five_seconds)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=client_starts_a_server)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=connect_the_world_in_focus)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=disconnect_a_named_world)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=disconnect_an_unknown_world)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=no_file)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=none_on_a_key_with_a_modifier)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=not_toml)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=quit_by_command)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=quit_twice_while_a_text_waits)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=shift_with_a_digit)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_client_takes_the_flag)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_client_warns_of_a_missing_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_default_keys_stay)'`
 - exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_started_server_finds_the_default_directory)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_line_goes_to_the_world_in_focus)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_empty_line)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=enter_with_no_world)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refused_line)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refused_line_after_more_text)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=ctrl_m_sends)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_pose_of_two_lines)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_line_break_that_the_world_refuses)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_line_that_the_server_refuses)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_last_line_is_refused)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refused_send_of_enter_with_a_send_after_it)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_sends_stay_apart)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_stream_ends_while_lines_wait)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=lines_of_two_worlds_wait)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refusal_out_of_focus)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_server_resets_while_lines_wait)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refusal_during_a_walk_of_the_history)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refusal_after_the_stream_ended)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_send_enters_the_history)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_pose_is_one_entry)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=no_empty_entry)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=each_world_has_its_own_history)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=no_repeat)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_escaped_slash_in_the_history)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=down_with_no_walk)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=back_to_the_draft)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=up_inside_a_pose_moves_the_cursor)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_send_during_a_walk)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_focus_change_keeps_each_editor)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_walk_stays_with_its_world)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_second_world)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=no_world_at_that_place)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=back_to_the_first_world)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=top_and_bottom)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_echo_of_a_pose_of_two_lines)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=before_the_first_list)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_send_before_the_first_list)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=text_typed_before_the_first_list)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_event_before_the_first_list)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_focus_key_before_the_first_list)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_failed_first_list_after_an_event)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_notice_before_the_first_list)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_first_list_fails)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=flag_wins_over_the_environment)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=two_clients_start_one_server)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=two_clients_with_other_directories_start_at_once)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=two_names_of_one_key)'`
+- exit 0: `cargo nextest run -p mu-cli --test server --locked -E 'test(=the_server_names_its_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=character_named_server_is_a_world)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=character_with_no_game)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=default_directory)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=directory_under_home)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=empty_mu_config)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=relative_xdg_config_home)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=no_home_directory)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=missing_directory)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_client_warns_of_a_missing_directory)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=missing_default_directory_is_quiet)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_client_takes_the_flag)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=worlds_from_character_files)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=character_with_no_game)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=file_name_outside_the_id_rule)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=stray_file)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=flag_wins_over_the_environment)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=link_to_nothing_is_an_error)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=missing_default_directory_is_quiet)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=missing_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=no_home_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=relative_xdg_config_home)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=server_file_makes_no_world)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=character_named_server_is_a_world)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=stray_file)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=the_file_of_the_client)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=worlds_from_character_files)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_command_does_not_reach_the_game)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_command_with_no_world_in_focus)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_failed_first_list_after_an_event)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_focus_change_keeps_each_editor)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_focus_key_before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_line_goes_to_the_world_in_focus)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_line_that_the_server_refuses)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_missing_world)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_notice_before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_pose_is_one_entry)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refusal_after_the_stream_ended)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refusal_during_a_walk_of_the_history)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refusal_out_of_focus)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refused_line)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refused_line_after_more_text)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refused_send_of_enter_with_a_send_after_it)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_send_before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_send_during_a_walk)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_send_enters_the_history)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_walk_stays_with_its_world)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_world_with_a_trailing_space)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_argument_to_an_entry_that_takes_none)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_editing_entry_is_not_a_command)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_empty_line)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_escaped_slash)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_escaped_slash_in_the_history)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_event_before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_unknown_command)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_unknown_world)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=back_to_the_draft)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=back_to_the_first_world)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=connect_with_no_world_in_focus)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=ctrl_m_sends)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=down_with_no_walk)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=each_world_has_its_own_history)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=enter_with_no_world)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=focus_by_name)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=help_lists_the_entries)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=hide)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=lines_of_two_worlds_wait)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=no_empty_entry)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=no_repeat)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=no_world_at_that_place)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=several_lines_are_not_a_command)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=text_typed_before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_default_dims)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_echo_of_a_pose_of_two_lines)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_first_list_fails)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_last_line_is_refused)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_second_world)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_sends_stay_apart)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_server_resets_while_lines_wait)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_stream_ends_while_lines_wait)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=top_and_bottom)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=up_inside_a_pose_moves_the_cursor)'`
 
 ## Dropped
 
@@ -318,9 +336,40 @@ None.
 
 ## Lens notes
 
-- verify: prior.json has no fixed row, so fixes is empty.
-- verify: a_server_with_another_directory checks only that the text after the notice holds /b, not the resolved path of <dir>/b. On macOS the temp path under /var/folders/<two chars>/ can itself hold /b, so the check can pass on the server path alone (crates/mu-cli/tests/client.rs:1467). This is a question for the test-honesty lens.
-- verify: The diff since 65a9a51 was read at head: client.rs, config.rs shown_dir, server.rs, mu-client config_dir, the proto field, serve.rs, service.rs, run.rs, the new tests and wait_line. The Listener path, the timeout message and the error path keep the earlier behaviour.
+- approach: Each requirement of the five delta specs has a decision that produces it: D1 and D4 for client-commands, D2, D3 and D7 for client-config, D8 for server-process, D5 to D8 for terminal-client, D2 and D11 for world-config.
+- approach: Decisions D1 to D11 were read against the code at head. The registry, keymap and key names, run_entry and Msg::Run, the command check and quit arm, History and its walk, set_focus and replay_notices, put_back and return_waiting, echo_rows, the first list, config_file::read, warn_missing and the resolver list of top files match their decisions.
+- approach: The fixed row R-174 no longer holds at head: mu client now compares config_dir after it starts a server too. app-1 records that D8 still says otherwise.
+- approach: The facts of the Context section are stated as of e96b221, not head, so they were not judged as stale citations.
+- approach: The Migration Plan has no deployed configuration, so no rollback step is needed.
+- fit: The prompt names no path for repository library-preference rows; only the generic rows of the rulebook were applied.
+- fit: Keymap::bind and Keymap::bind_wheel, and Keymap::find and Keymap::wheel, are two pairs of the same upsert and lookup over two lists; the pairs were there before the change, which only changed their value type, so no finding is raised.
+- fit: The Tab-with-Shift-to-BackTab rule is written in Chord::parse and Chord::of_key; D3 names both sides and shift_tab_matches_back_tab covers them, so no finding is raised.
+- fit: Earlier fit rows (spawn_reply, config_file::read, replay_notices, pose_of, in_history, focus_place!, cells_of, echo_rows) were checked at head and hold.
+- invariants: I1: A history holds at most 1000 entries, none empty, none equal to the one before it \| enforced at crates/mu-tui/src/history.rs:20 History::push \| boundary test crates/mu-tui/tests/history.rs history_drops_the_oldest_past_1000 (1000 and 1001)
+- invariants: I2: The place of an open walk is always the place of an entry \| enforced at history.rs:21, every push clears the walk, and push is the one change of the entries \| boundary test app.rs history_keeps_its_invariants (place < len) and tests/history.rs
+- invariants: I3: After a refusal, Up gives the returned texts in order and then the held text, and the count equals the entries Up gives \| enforced at crates/mu-tui/src/update.rs:965 put_back, but not at the history limit (inv-1) \| boundary test none: returned_texts_come_back_in_order draws 2 to 5 texts
+- invariants: I4: connect_wait_seconds is finite and at least 1 ns \| enforced at crates/mu-cli/src/client.rs:56 connect_wait \| boundary test client.rs a_wait_that_is_no_time_is_refused (0, -1, 1e-10, 0.9e-9, NaN, inf, f64::MAX refused; 1e-9 gives 1 ns)
+- invariants: I5: A key name is modifiers from ctrl, alt, shift, super once each, then one key that is not uppercase, not a control character and not +; shift goes only with a lowercase character or a special key \| enforced at crates/mu-tui/src/keymap.rs:49 Chord::parse \| boundary test tests/keymap.rs bad_key_names_are_refused_with_the_name (f0, f01, f13, empty, +, ctrl+, alt+DEL) and f1_and_f12_are_read, property key_names_read_back
+- invariants: I6: Two names of one key, an unknown entry and an entry with a required argument stop the client \| enforced at crates/mu-tui/src/config.rs:102 ClientConfig::keymap \| boundary test client.rs (mu-cli unit) a_binding_error_starts_with_the_file_and_the_key and the client.rs scenario tests
+- invariants: I7: client.toml has no unknown key at the top or in [server] \| enforced at crates/mu-tui/src/config.rs:26 and :50 deny_unknown_fields \| boundary test an_unknown_key (top level); no test of an unknown key inside [server], but serde enforces it
+- invariants: I8: No message carries an Action, so each front end goes through run_entry \| enforced at crates/mu-tui/src/update.rs:31 Msg (compiler) \| boundary test not applicable
+- invariants: I9: Entry names are unique and kebab case \| enforced at registry.rs ENTRIES (static) \| boundary test tests/keymap.rs entry_names_are_unique_and_kebab
+- invariants: I10: A command is one line that starts with / and not //, and an argument of only spaces is no argument \| enforced at crates/mu-tui/src/command.rs:29 parse \| boundary test update.rs parser tests for /, /connect with a space, / focus, and property trailing_spaces_are_no_argument
+- invariants: I11: FocusIndex outside 1 to the count of worlds does nothing \| enforced at update.rs:593 checked_sub and index < len \| boundary test app.rs no_world_at_that_place (Alt+3 with two worlds)
+- invariants: I12: The focus index follows its world when a world is inserted before it \| enforced at crates/mu-tui/src/model.rs:381 \| boundary test app.rs a_world_added_during_a_walk
+- invariants: I13: set_focus does nothing while the first list is open \| enforced at model.rs:314 \| boundary test app.rs a_focus_key_before_the_first_list
+- invariants: I14: client.toml and server.toml make no world, in any case only as the same file \| enforced at crates/mu-core/src/world/dir.rs is_top_file \| boundary test world_config.rs tests of another case, unreadable and hard link
+- invariants: I15: The client and the server resolve the directory the same way before the compare \| enforced at crates/mu-cli/src/config.rs:15 shown_dir, used by server.rs and client.rs \| boundary test mu-cli unit a_missing_directory_is_named_no_directory (None on each side and both), client.rs a_server_with_the_same_directory (symlink)
+- invariants: I16: A client that started a server still compares config_dir (R-174) \| enforced at crates/mu-cli/src/client.rs:129, after start_and_wait \| boundary test client.rs two_clients_with_other_directories_start_at_once. R-174 holds at head, so it is not raised again.
+- invariants: I17: The echo rows joined with the line break give the cleaned text \| enforced at crates/mu-tui/src/text.rs:85 echo_rows, and model.rs:346 drops an empty line break or one with a control character \| property test echo_rows_join_back
+- invariants: Probe: a Python model of History::push and put_back at head, inv-probe/put_back.py under the handoff directory, gives for 999 texts behind kept=1000 with the draft kept, for 1000 behind kept=1001 with 1000 entries and the draft gone, and for 1001 behind kept=1002 with the draft and the last line gone.
+- invariants: tasks.md 4.1 says that history_keeps_its_invariants checks at most 1000 entries, but its loop asserts no length and runs at most 60 steps. The bound itself is tested at 1000 and 1001 in tests/history.rs.
+- invariants: The enforcement points are Rust code, not scripts, so no other probe ran. No repository test ran.
+- test-coverage: Every delta scenario heading maps to a named test; no missing or partial rows found among those read.
+- test-honesty: a_file_that_cannot_be_read (client.rs) and unreadable_server_file_in_another_case_names_the_error (world_config.rs) return early with a pass when the user can read a mode 0o000 file, such as root. The tasks name this skip, so it is not raised as disabled; a CI container that runs as root skips both silently.
+- test-honesty: The quit-cancel tests (client.rs 900-948) were checked: each ends with a wait on a hint that a client that quit would not show, and the hint of the first quit sits in another pane or is replaced, so they can fail.
+- test-honesty gap: crates/mu-tui/tests/editor.rs, tests/history.rs, tests/support/process.rs and the remaining tests of app.rs before line 1504 were not read in full.
+- test-honesty gap: Tests of mu-core dir.rs and mu-server were not read.
 
 ## Ledger
 
@@ -503,6 +552,14 @@ None.
 | R-175 | 21 | 21 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The server names its directory"] | fixed | 518e8a5b0a7075488e2a37d495fba82867aa98ae | 21 |  |  | delta scenario 'The server names its directory' has no matrix row |
 | R-176 | 21 | 21 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A server with another directory"] | fixed | 518e8a5b0a7075488e2a37d495fba82867aa98ae | 21 |  |  | delta scenario 'A server with another directory' has no matrix row |
 | R-177 | 21 | 21 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A server with the same directory"] | fixed | 518e8a5b0a7075488e2a37d495fba82867aa98ae | 21 |  |  | delta scenario 'A server with the same directory' has no matrix row |
+| R-178 | 22 | 22 | should-fix | in-change | drift | ["path","crates/mu-client/src/lib.rs",95] |  |  |  |  |  | PortalClient::config_dir repeats the body of PortalClient::list_worlds: the same ListWorlds request and call, keeping the other half of one response. Two methods of one RPC can change apart, and mu client makes the call twice after a start. |
+| R-179 | 22 | 22 | should-fix | in-change | drift | ["path","crates/mu-tui/src/update.rs",533] |  |  |  |  |  | The word for an argument kind is written in three places: help and arity each match ArgKind to 'world', and ClientConfig::keymap writes 'needs a world' for any required argument without reading its kind. |
+| R-180 | 22 | 22 | should-fix | in-change | drift | ["path","crates/mu-tui/src/model.rs",296] |  |  |  |  |  | The change adds five linear scans that find a world by its id (Model::history, Model::walk, the Focus arm, on_reply, put_back), beside the sorted binary search of Model::world. No one lookup without insert exists, so each copy keeps its own match rule. |
+| R-181 | 22 | 22 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-tui/src/update.rs",980] |  |  |  |  |  | put_back pushes the held text first and then each returned text, so with 1000 or more texts behind a refused one the pushes drop the held draft and the last returned line, and the count overstates what Up gives. |
+| R-182 | 22 | 22 | should-fix | in-change | false-test | ["path","crates/mu-tui/tests/app.rs",2059] |  |  |  |  |  | history_keeps_its_invariants never checks the 1000-entry cap that task 4.1 says it checks, and 60 steps cannot reach 1000 entries, so a broken cap passes it. |
+| R-183 | 22 | 22 | suggestion | in-change |  | ["artifact",["design.md","D8. The screen opens before the first list"],"On an attach to a server that it did not start, `mu client` resolves its own directory the same way and compares."] |  |  |  |  | severity? should-fix 0.75 | D8 compares config_dir only on an attach to a server that the client did not start. At head mu client compares after every first list, also after it started a server itself, and design.md records no deviation. |
+| R-184 | 22 | 22 | suggestion | in-change |  | ["artifact",["design.md","D8. The screen opens before the first list"],"The list that `mu-cli` makes before `run` decides whether to start a server."] |  |  |  |  | severity? should-fix 0.71 | D8 says the list before run decides whether to start a server. At head a bare UnixStream connect decides, and the list comes after it; design.md does not name the probe. |
+| R-185 | 22 | 22 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-coverage partial"] |  |  |  |  |  | lens test-coverage reported partial, gaps: 2 |
 
 ## Reviewed files
 
@@ -511,13 +568,13 @@ None.
 | Cargo.lock | f0935658614fed31bdee0876a5ec6fc0dc240d8a |
 | architecture/model.c4 | de0d8250e2b32b9f8eb4830106a16eec74dbe4c9 |
 | architecture/views.c4 | 717d223162471a4c7ff60f04983b37862ecca58d |
-| crates/mu-cli/src/client.rs | 5a61a9f686491e130586eb2374c4b14833d442ed |
+| crates/mu-cli/src/client.rs | 59a861b213e8a91a572d0e1b97eeae61f20b97af |
 | crates/mu-cli/src/config.rs | c2100c2eefbfae7e6240c2eea48c38a021672aa0 |
 | crates/mu-cli/src/config_file.rs | 0cdf1cf8be27ec0ffa7a2e515da1103aba0ff2cd |
 | crates/mu-cli/src/lib.rs | b95c38ec64b888cbc94cec8c70ad33855955dd6a |
 | crates/mu-cli/src/server.rs | fbd7a47ce318b43296252f9e90cdd19d95d6a06a |
 | crates/mu-cli/src/server_config.rs | bbe084932305de93217609b7f9ecfe648df3855f |
-| crates/mu-cli/tests/client.rs | b903d815c173a332214bca4372e6b0cccdf49435 |
+| crates/mu-cli/tests/client.rs | 7f78a1ad98f089aaf648016ccc6a8328a80ab3af |
 | crates/mu-cli/tests/server.rs | 3097ddf730abbad92668e4d4d3e6c8496d3fd188 |
 | crates/mu-cli/tests/support/process.rs | 9506e59932cb92fd0c929999d2508a30bdb151af |
 | crates/mu-cli/tests/workspace_boundary.rs | 72318b1b01439268d6978870625c59517efc3a81 |
@@ -560,10 +617,10 @@ None.
 | openspec/changes/client-shell/proposal.md | 8af63d31dc6cf1916c5a3c23825548c35b170618 |
 | openspec/changes/client-shell/specs/client-commands/spec.md | e0930b8d51ba76cf8bd3326d22807f042e1b849b |
 | openspec/changes/client-shell/specs/client-config/spec.md | 7914965008639b9e2ed35fac6f4f85e857badd5d |
-| openspec/changes/client-shell/specs/server-process/spec.md | f7dba345acccf6ed1943279f4a4d9dab3328f65f |
+| openspec/changes/client-shell/specs/server-process/spec.md | 2b2e2bc879bc948702ba016c8bf786d4b7a1d70f |
 | openspec/changes/client-shell/specs/terminal-client/spec.md | 097fce94a330389b7caf6525769286ba67da51a6 |
 | openspec/changes/client-shell/specs/world-config/spec.md | 515b84297760374f211078b26da0c4ce297e435c |
-| openspec/changes/client-shell/tasks.md | sha256:840f7e92d60c5f5d2c0bb5a9278ad2a872beb6715e6dd6766b851ae373d88173 |
+| openspec/changes/client-shell/tasks.md | sha256:6b7aa8b6d0e898f8f3e852f39b7523f06c833be2d7c7efcd968fecbfee9a9b58 |
 | openspec/review.json | absent |
 
 ## Plan review (2026-11-23)
