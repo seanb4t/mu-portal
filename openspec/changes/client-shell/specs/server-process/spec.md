@@ -37,3 +37,28 @@ If nothing listens on the socket of `mu client`, the client SHALL start `mu serv
 - **GIVEN** `XDG_CONFIG_HOME` is `<dir>/xdg`, `<dir>/xdg/mu` does not exist, neither `MU_CONFIG` nor `--config` is given, and nothing serves `<dir>/run/s.sock`
 - **WHEN** the user runs `mu client --socket <dir>/run/s.sock` in a terminal and then quits the client
 - **THEN** `<dir>/run/server.log` holds no line that contains `<dir>/xdg`
+
+## ADDED Requirements
+
+### Requirement: The server reports its configuration directory
+`ListWorlds` SHALL return `config_dir`: the configuration directory that the server read its worlds from, as an absolute path with each symbolic link resolved. A server with no directory SHALL return no value.
+
+#### Scenario: The server names its directory
+- **GIVEN** `<dir>/link` is a symbolic link to `<dir>/a`, and `mu server --config <dir>/link --socket <dir>/s.sock` serves the worlds of `<dir>/a`
+- **WHEN** a client calls `ListWorlds`
+- **THEN** `config_dir` is the absolute path of `<dir>/a`
+
+### Requirement: The client notes a server with another directory
+If `mu client` attaches to a server that it did not start, and the `config_dir` of that server differs from the directory of the client, resolved the same way, the client SHALL still attach and SHALL show a notice line on the screen. The notice SHALL name the socket and both directories, or `no directory` for a side that has none.
+
+#### Scenario: A server with another directory
+- **GIVEN** `mu server --config <dir>/a --socket <dir>/s.sock --fake-world alpha/aria=env:PW` serves
+- **WHEN** the user runs `mu client --config <dir>/b --socket <dir>/s.sock` in a terminal
+- **THEN** the top row shows `alpha/aria`
+- **AND** the screen shows a notice with `reads its worlds from`, the resolved path of `<dir>/a` and `<dir>/b`
+
+#### Scenario: A server with the same directory
+- **GIVEN** `mu server --config <dir>/a --socket <dir>/s.sock --fake-world alpha/aria=env:PW` serves, and `<dir>/link` is a symbolic link to `<dir>/a`
+- **WHEN** the user runs `mu client --config <dir>/link --socket <dir>/s.sock` in a terminal
+- **THEN** the top row shows `alpha/aria`
+- **AND** the screen shows no notice with `reads its worlds from`

@@ -28,6 +28,7 @@ This change is the first of two that #101 splits into. It gives the client a con
 - A second `/quit` confirms a quit while texts wait. Typing it does not cancel the first one.
 - The echo default is `dim`. Before this change it was `show`.
 - The table `[server]` of `client.toml` holds `connect_wait_seconds`, the longest time that `mu client` waits for a server to answer, 5 s by default. Before this change the first list had no limit, and the wait for a started server was a fixed 5 s.
+- `mu client` shows a notice if it attaches to a running server that read its worlds from another configuration directory. It still attaches.
 - `mu client` starts a server only if nothing listens on its socket. Any other error of its first list stops the client with that error. Before this change any error started a second server.
 - History is per world, kept in memory only, at most 1000 sends for each world. It does not keep an empty send or a send equal to the one before it. Quitting the client loses it.
 - Up and Down recall history only from the first and the last line of the editor. On other lines they move the cursor.
@@ -77,4 +78,4 @@ This change is the first of two that #101 splits into. It gives the client a con
 - `crates/mu-core`: the world resolver (`world/dir.rs`) accepts `client.toml` beside `server.toml`.
 - `crates/mu-cli/tests/workspace_boundary.rs`: `serde` joins the allowed crates of `mu-tui`.
 - Docs: the terminal client page, a page for `client.toml`, and the configuration guide, which names the top-level files.
-- No change to the API or the server.
+- `crates/mu-proto`, `crates/mu-server`: `ListWorldsResponse` gains `config_dir`, the directory that the server read its worlds from.
