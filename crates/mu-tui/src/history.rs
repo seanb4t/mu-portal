@@ -54,7 +54,7 @@ impl History {
 
     /// The entry before the one of the open walk, or the newest entry if no walk is open. The
     /// first step opens a walk with the text of `draft`. With no such entry, nothing changes.
-    pub fn prev(&mut self, draft: impl FnOnce() -> String) -> Option<&str> {
+    pub fn older(&mut self, draft: impl FnOnce() -> String) -> Option<&str> {
         let place = match &self.walk {
             Some(walk) => walk.place.checked_sub(1)?,
             None => self.entries.len().checked_sub(1)?,
@@ -73,7 +73,7 @@ impl History {
 
     /// The entry after the one of the open walk, or after the newest entry the draft, which ends
     /// the walk. `None` if no walk is open.
-    pub fn next(&mut self) -> Option<String> {
+    pub fn newer(&mut self) -> Option<String> {
         let walk = self.walk.as_mut()?;
         if walk.place + 1 < self.entries.len() {
             walk.place += 1;

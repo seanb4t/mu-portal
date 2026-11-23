@@ -609,7 +609,7 @@ fn history_prev(model: &mut Model) {
     let draft = model.input();
     let Some(text) = model.worlds[index]
         .history
-        .prev(|| draft)
+        .older(|| draft)
         .map(str::to_owned)
     else {
         return;
@@ -628,7 +628,7 @@ fn history_next(model: &mut Model) {
     let Some(index) = model.focus else {
         return;
     };
-    let Some(text) = model.worlds[index].history.next() else {
+    let Some(text) = model.worlds[index].history.newer() else {
         return;
     };
     model.pose().set_text(&text);
