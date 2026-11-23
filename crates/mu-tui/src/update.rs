@@ -992,15 +992,16 @@ fn return_waiting(model: &mut Model, why: &str) {
         .into_iter()
         .map(|(world, texts)| put_back(model, &world, texts))
         .sum();
-    let mut hint = format!(
-        "{why}, so {} that waited went back to the editor: {}",
+    let in_history = if kept > 0 {
+        format!(" ({kept} in history)")
+    } else {
+        String::new()
+    };
+    model.hint(&format!(
+        "{why}, so {} that waited went back to the editor: {}{in_history}",
         line_count(total),
         counts.join(", ")
-    );
-    if kept > 0 {
-        hint.push_str(&format!(" ({kept} in history)"));
-    }
-    model.hint(&hint);
+    ));
 }
 
 /// The next send of `world`, after the server took `text`. Only the reply of the first send
