@@ -1,13 +1,13 @@
 ---
 verdict: changes-requested
 phase: plan
-reviewed_at: 2026-11-22T22:44:45+00:00
-head: 3d30709e6a6becbd7982e1636251721ac15741ea
-round: 5
-next_id: 110
+reviewed_at: 2026-11-22T23:15:34+00:00
+head: b1628e7f5b7c6fcaba52b69e13606093397ac2cd
+round: 6
+next_id: 126
 lenses:
   spec-lint: ok
-  approach: ok
+  approach: partial
   fit: ok
   test-coverage: ok
   test-honesty: not-applicable
@@ -16,30 +16,34 @@ lenses:
 ---
 # Review
 
+## Incomplete lenses
+
+- approach: partial, gaps: 2
+  - The D3 claim that crokey parses only into crossterm types is not checked: the crate is not in the local registry.
+  - The D6 reason that #151 rejects a marker line is not read in the issue.
+
+The verdict covers only what the lenses checked. While the `ctl-lens` row of an incomplete lens is open, the verdict cannot be `approve`.
+
 ## Findings
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-91 | approach | blocker | in-change | D3 parses shift+tab as Tab with SHIFT, but Termina gives Shift+Tab as KeyCode::BackTab in both the legacy and the kitty path, so a [keys] binding of shift+tab never fires. No decision maps it. | specs/client-config/spec.md > Requirement: The keys table binds a key to an entry — "Each binding SHALL replace the default binding of that key." | In D3, make the parse of shift+tab give the chord KeyCode::BackTab with SHIFT, or refuse shift+tab as shift+1 is refused. Add the case to the parser tests of task 6.4. |  | severity? should-fix 0.67 | unmet-requirement |
-| R-92 | approach | blocker | in-change | At head the world that takes an empty focus gets the kept notices in its pane. D8 gives no focus during the first list, and set_focus does not copy the notices. Msg::Probe always runs before Msg::Listed, so the width notice stays in the notices pane, which is hidden once a world has the focus. | design.md > D8. The screen opens before the first list — "While the flag is set, the focus stays empty: `Model::world` adds the world and gives it no focus." | In D8, say that the end of the first list pushes the kept notices into the pane of the world that gets the focus, as Model::world does at head. Add that to the TestBackend tests of task 7.2. |  | severity? should-fix 0.81 | wrong-behaviour |
-| R-93 | invariants | blocker | in-change | D8 gives no focus while the first list runs, and set_focus does not copy the notices, so the first world's pane never shows a notice added before the list ends, such as the width notice of the probe. | crates/mu-tui/src/model.rs:237 — "world takes the focus when no world has it, with the notices in its pane, and the focus" | In D8, make the end of the first list copy model.notices into the pane of the world that gets the focus, as Model::world does now, and name probe_with_no_answer in task 7.2 as a test that must still pass. |  | severity? should-fix 0.77 | wrong-behaviour |
-| R-94 | approach | should-fix | in-change | The Context says is_server_file takes the same file by another name. At head it compares only a name equal to server.toml in any case, and a hard link under another name is an error. | design.md > Context — "`is_server_file` also takes that name in another case, and the same file by another name." | Say that is_server_file takes the name in another case only when it is the same file, and that a hard link under another name stays an error. Give that direction to the hard-link test of client.toml in task 6.3. |  |  | unmet-requirement |
-| R-69 | fit | should-fix | in-change | Model::world keeps its own path that gives the focus to a new world, and it copies the kept notices into that pane. D5 names set_focus as the one focus setter but leaves that arm and Model::new out, and set_focus does not copy the notices, so the first world after the first list (D8) lacks them. | crates/mu-tui/src/model.rs:263 — "None => {" | Make set_focus a Model method that also copies the notices when no world had the focus, and have the None arm of Model::world and Model::new call it; name both callers in D5. | new-evidence |  | drift |
-| R-95 | fit | should-fix | in-change | D2 has mu client write the warning of ConfigArgs::worlds, but that warning is fused into worlds(), which also resolves every world. mu client resolves no world, so it must copy the missing-directory check and its text, or resolve worlds only to get the warning. | design.md > D2. `mu-cli` reads the file, `mu-tui` owns the type — "`mu client` writes the warning of `ConfigArgs::worlds` on stderr before the screen opens, with the verb `client`, and go" | Name in D2 a method ConfigArgs::warn_missing(verb) in config.rs, split out of worlds(); worlds() and client::run both call it. |  |  | drift |
-| R-96 | fit | should-fix | in-change | D4 resolves an omitted world twice: step 4 of the command check, and act for a key. Two copies of a rule that the front-end requirement keeps the same for each front end can change apart. | design.md > D4. Commands are parsed in `update` at a send — "4. For `ArgKind::World`, an omitted optional world becomes the world in focus. With no world in focus, the command is ba" | Name one function in update.rs, such as world_arg(model, Option<String>) -> Result<String, Refusal>, that step 4 and act both call; the command check only adds that the text stays. |  | repeat? R-74 0.58 | drift |
-| R-97 | invariants | should-fix | in-change | The echo split has a null case: a world with no known line_break gives one row. Task 7.1 passes only alpha/aria with %r, so a split on a missing or unlisted line_break is untested. | specs/terminal-client/spec.md > Requirement: The echo line shows each line of a pose — "A world with no known `line_break` SHALL show the text in one row." | Add an app.rs test to task 7.1: a player event of one%rtwo in a world that no list held, and in a listed world with no line_break, shows one row that starts with > . |  |  | unmet-requirement |
-| R-98 | invariants | should-fix | in-change | Only Model::world keeps the focus empty during the first list. focus-1 to focus-9 and /focus call set_focus on worlds that events added, so Alt+1 gives a world the focus before the list ends. | specs/terminal-client/spec.md > Requirement: The top row shows the first list — "no world SHALL have the focus, also if events of a world arrive." | Make set_focus do nothing while first_list is set, except for the end of the list, and add a test: an event of alpha/aria before the first list, Alt+1 and /focus alpha/aria, then Enter shows no world. |  |  | unmet-requirement |
-| R-99 | invariants | should-fix | in-change | An event can add a world during the first list, and the list can then fail. D8 gives the focus only 'at the end of the list', and Model::world gives it only to a new world, so that world can stay without focus forever. | crates/mu-tui/src/model.rs:50 — "/// An index into `worlds`. None if and only if there is no world." | State in D8 that each end of the first list, a failure and the 30 s limit included, gives the focus to the first world if the model holds one. Add a test: an event of alpha/aria, then the error boom, then the top row shows [alpha/aria]. |  |  | wrong-behaviour |
-| R-100 | invariants | should-fix | in-change | Termina gives Shift+Tab as KeyCode::BackTab, in the legacy and the kitty path. D3 parses shift+tab to Tab with SHIFT, a chord that never arrives, so a binding of shift+tab never fires and nothing refuses it. | design.md > D3. Key names — "The special keys are `enter`, `tab`, `backspace`, `esc` and `space`." | Make D3 parse shift+tab to the chord BackTab with SHIFT, and have the lookup and default_keymap_leaves_tab_free use that chord. Add a keymap.rs test that a KeyEvent of BackTab with SHIFT matches shift+tab. |  |  | wrong-behaviour |
-| R-101 | invariants | should-fix | in-change | The only test of the cap is history_drops_the_oldest_past_1000. No test checks that 1000 entries keep the oldest, so a cap of 999 passes the test. | specs/terminal-client/spec.md > Requirement: Each world keeps an input history — "A history SHALL keep at most 1000 entries, and drop the oldest first." | In task 4.3, assert both sides: after 1000 distinct pushes the history holds 1000 entries and the first push is still the oldest. After 1001 it holds 1000 and the first push is gone. |  |  | false-test |
-| R-102 | invariants | should-fix | in-change | A send during a walk ends the walk, but D5 does not say where the saved draft goes then. The only draft property test has no send, so a draft typed before Up and then a send of the recalled entry can be lost. | design.md > D5. History is a state of each world — "A send ends the walk." | In D5, say that a send or a command during a walk pushes the saved draft into the history of the walk's world, and in what order with the sent text. Add an app.rs test: send one, type draft, Up, Enter, then Up twice gives one and draft. |  |  | wrong-behaviour |
-| R-103 | invariants | should-fix | in-change | Each waiting text already entered history at its own send, so the push of a returned text is often dropped as equal to the newest entry. The count of the refusal line is undefined then, and no test asserts it. | specs/terminal-client/spec.md > Requirement: A refused text stops the sends after it — "If texts went into the history, the line SHALL also hold their count." | State in D6 whether the count is of the returned texts or of the entries that the push kept, and assert the count in the_sends_stay_apart, where the returned c equals the newest entry. |  |  | unmet-requirement |
-| R-104 | invariants | should-fix | in-change | D4 trims only an argument of only spaces. A given world keeps its trailing spaces, so `/focus beta/bryn ` is an unknown world, and no test passes a world with a trailing space. | design.md > D4. Commands are parsed in `update` at a send — "The text after `/` is split at the first run of spaces into a name and an argument. An argument of only spaces is no arg" | Say in D4 that trailing spaces of the argument are dropped before the candidates check, and extend trailing_spaces_are_no_argument to a world followed by spaces. |  |  | wrong-behaviour |
-| R-105 | spec-lint | should-fix | in-change | The requirement 'Each front end runs an entry the same way' has no task line with two of its distinctive words. Task 2.1 names only 'Entry', and task 3.4 names only 'same' from the heading. | specs/client-commands/spec.md > Requirement: Each front end runs an entry the same way — "A key and a command SHALL only choose an entry and its argument." | Name the requirement's subject in a task line with two of its distinctive words, such as 'front end' and 'entry', or state in 3.4 that it covers the requirement 'Each front end runs an entry the same way'. |  |  | unmet-requirement |
-| R-106 | approach | suggestion | in-change | D3 says that on the kitty path Shift+Z arrives as Char('z') with SHIFT. The client pushes only DISAMBIGUATE_ESCAPE_CODES, so Shift and a letter alone come as text, and Termina gives Char('Z') with SHIFT. Only chords with Ctrl, Alt or Super carry the unshifted letter. The lookup fix covers both cases. | design.md > D3. Key names — "In the kitty path, Termina keeps the unshifted letter, so Shift+Z arrives as `Char('z')` with `SHIFT`." | Limit the sentence to chords with another modifier, such as Ctrl+Shift+Z, and say that Shift and a letter alone arrive as the uppercase letter with SHIFT. |  | severity? should-fix 0.62 |  |
-| R-107 | approach | suggestion | in-change | D3 says that task 1.3 checks the Shift reports in Ghostty and Terminal.app, but task 1.3 checks only Alt+digit, Alt+Home and Alt+End. | design.md > D3. Key names — "Task 1.3 checks these reports in Ghostty and Terminal.app." | Add Shift with a letter, Ctrl+Shift+Z and Shift+Tab to the keys that task 1.3 checks. |  | scope? deviates-design 0.69; severity? should-fix 0.82 |  |
-| R-108 | fit | suggestion | in-change | The refusal for no world in focus already has two texts of one form, and D4 adds the bare hint `no world` twice more. The texts vary on purpose only in what does not happen. | crates/mu-tui/src/update.rs:432 — ""-- no world has the focus, so the line goes nowhere"," | Give one helper the parameter `what`, for `no world has the focus, so <what>`, and use it for the send, the join, the key and the command. |  |  |  |
-| R-109 | invariants | suggestion | in-change | The return order holds for any count of returned texts and any held text: successive Ups give them in order. The tests pass only one to three texts, and history_keeps_its_invariants checks no order. | specs/terminal-client/spec.md > Requirement: A refused text stops the sends after it — "Up SHALL then give them in that order." | Add a proptest in crates/mu-tui/tests/app.rs, beside the block at line 478: random distinct waiting texts and a held text, a refusal of the first, then Ups give the rest in order and then the held text. |  |  |  |
+| R-110 | approach | blocker | in-change | No decision carries the parsed ClientConfig (its echo and the keymap built from [keys]) from mu-cli into mu_tui::run or the Model. At head run takes only the PortalClient and Model::new always uses Keymap::default, and the model fields are pub(crate), so neither mu client nor the app.rs tests can set the echo or the keymap. | design.md > D2. `mu-cli` reads the file, `mu-tui` owns the type — "`mu-cli` reads `client.toml` as it reads `server.toml`." | State in D2 how the value reaches the client: for example mu_tui::run takes the ClientConfig (or its Keymap and Echo), and Model gets a public constructor or setter for both, which the app.rs tests of echo and keys use. |  |  | unmet-requirement |
+| R-111 | approach | blocker | in-change | For a refusal during a walk, put_back first ends the walk, and the walk end pushes the draft. The later push of the held text (the same draft) is then dropped as equal to the newest entry, so by D6 it is not counted. The draft did go into the history, but the refusal line omits it from its count, against the requirement. | design.md > D6. Returned sends go to history (#151) — "It ends a walk first. The text that the editor held is then the saved draft, not the entry on screen." | Say in D6 that the walk end inside put_back takes the draft as the held text and does not push it itself, or that the count includes the draft that the walk end pushed. Assert the count in a_refusal_during_a_walk_of_the_history. |  | severity? should-fix 0.72 | unmet-requirement |
+| R-112 | approach | blocker | in-change | The front-end requirement says a key can run every entry, but D2 refuses a binding to an entry whose argument is required, and the client-config spec makes such a binding a bad file. No decision lets a key run focus, so the requirement as written cannot hold. | specs/client-commands/spec.md > Requirement: Each front end runs an entry the same way — "A key can run every entry." | Narrow the requirement to what D2 builds, for example: a key can run every entry with no required argument, an editing entry included. |  |  | unmet-requirement |
+| R-125 | approach | should-fix | in-change | lens approach reported partial, gaps: 2 | review > lens-status — "approach partial" | rerun the lens or accept the gap in the review |  |  | unmet-requirement |
+| R-113 | fit | should-fix | in-change | The change adds default keys to Keymap::default (Alt+1 to Alt+9, Alt+Home, Alt+End, Up and Down for history), but no task updates the hand copies of the default keys in first-run.md and input-editor.md, so both pages miss the new keys. | proposal.md > What Changes — "Alt+1 to Alt+9 give the focus to the world at that place in the top row. Alt+Home and Alt+End scroll the pane to its fir" | Add a task that keeps one table of the default keys in first-run.md, adds the new keys to it, and makes input-editor.md and the client.toml page link to it. |  |  | drift |
+| R-114 | invariants | should-fix | in-change | D5 binds plain Up and Down to the history, and Keymap::get gives a modified chord with no entry the plain entry, so Shift+Up, Ctrl+Up and Shift+Down walk the history instead of their editor moves. | design.md > D5. History is a state of each world — "`HistoryPrev` and `HistoryNext` are bound to Up and Down. Up acts only on the first logical line of the pose editor, and" | State in D5 that only the plain Up and Down chords walk the history: keep the modified arrows out of the plain-key fallback, or bind them so they reach the editor. Add a test in app.rs: Shift+Up on the second row of a wrapped first line selects and recalls nothing. |  |  | wrong-behaviour |
+| R-115 | invariants | should-fix | in-change | The key grammar admits any one character that is not uppercase and not +, so a control character such as a tab, CR or DEL parses to a Char chord that Termina never sends; the binding never fires and nothing refuses it. | design.md > D3. Key names — "A key is one character that is not an uppercase letter and not `+`, the name `plus` for the `+` key, or a name of a spec" | Make D3 and the keys requirement refuse a control character as the key (char::is_control), and add the names "\\t" and "\\u007f" to the refused names of the keymap.rs parser tests of task 6.4. |  |  | wrong-behaviour |
+| R-116 | invariants | should-fix | in-change | During a walk, the walk end of put_back pushes the draft, so the held-text push of D6 then drops it as equal to the newest entry; the count of kept entries is 0, the spec asks for a count, and no task asserts it. | design.md > D5. History is a state of each world — "When a walk ends, the editor keeps its text, and the draft goes into the history of the world of the walk." | Say in D6 whether the walk end inside put_back pushes the draft or leaves it to the held-text push, so the draft is counted once. Assert the count of the refusal line (1) in a_refusal_during_a_walk_of_the_history. |  |  | unmet-requirement |
+| R-117 | invariants | should-fix | in-change | The walk state holds the world of the walk, but Model::world shifts world indices when an event adds a world that sorts before it; if the walk keeps an index, the draft lands in another world. No test adds a world during a walk. | design.md > D5. History is a state of each world — "It holds the world of the walk, the place in the history, and the draft that the first Up saved." | Fix in D5 that the walk holds the world id, not an index. Add a test in app.rs: during a walk on beta/bryn an event of a new world that sorts first arrives, then Ctrl+N ends the walk, and the draft is in the history of beta/bryn. |  |  | wrong-behaviour |
+| R-118 | invariants | should-fix | in-change | Of the three echo values, only show and hide are parsed from a file; dim is reached only as the default with no file, so a file with echo = "dim" is never read by a test. | specs/client-config/spec.md > Requirement: The echo field sets the echo line — "The field `echo` SHALL be one of `show`, `dim` and `hide`, and its default SHALL be `dim`." | Add a unit test that ClientConfig parses echo = "dim" to Echo::Dim, beside a_file_that_sets_the_echo, so each of the three names is read once. |  |  | wrong-behaviour |
+| R-119 | invariants | should-fix | in-change | D5 routes every focus change through set_focus, which does nothing during the first list, but Model::new writes the focus directly; D8 has tests build Model::new and then give Msg::Listed, so a model built with worlds has a focus while first_list is set. | crates/mu-tui/src/model.rs:138 — "model.focus = (!model.worlds.is_empty()).then_some(0);" | Say in D8 whether Model::new still takes worlds and sets first_list. If it does, route its focus through set_focus so the first-list tests start with no focus, as run.rs does. |  |  | false-test |
+| R-120 | spec-lint | should-fix | in-change | The THEN step of 'Another command cancels the quit' names the count of the waiting texts without any value, so no test can check the line. | specs/client-commands/spec.md > Scenario: Another command cancels the quit — "**AND** the screen shows the count of the texts that wait a second time" | Name the expected count and the line format, for example the line `-- 1 line of alpha/aria` after the second /quit. |  |  | unmet-requirement |
+| R-121 | spec-lint | should-fix | in-change | The THEN step of 'Quit twice while a text waits' names a line that holds the count of waiting texts, but states no count value or format. | specs/client-commands/spec.md > Scenario: Quit twice while a text waits — "**THEN** the screen shows a line that starts with `-- ` and holds the count of the texts that wait" | Name the expected count and its line text for one waiting alpha/aria text, as the stream-end scenario does with `2 lines that waited`. |  |  | unmet-requirement |
+| R-122 | test-coverage | should-fix | in-change | Task 3.3 cancels the quit arm with a game text and /focus-next, but the scenario cancels it with a bad command (/fly); that path has no named test. | tasks.md > 3. Client commands — "The last test also sends a game text and `/focus-next` between two `/quit` commands, and asserts that the client still r" | In 3.3, add a step to another_command_cancels_the_quit in crates/mu-cli/tests/client.rs: send the bad command /fly between two /quit commands, and assert the client runs and the count of waiting texts shows a second time. |  |  | false-test |
+| R-123 | fit | suggestion | in-change | The nine rows focus-1 to focus-9 of the registry differ only in a number that sets the name, the description and the FocusIndex value, so a row written by hand can carry a name and an index that disagree. | design.md > D1. The registry is a table of entries, and the keymap binds entries — "Names that take a number become one entry for each value" | Make the focus rows from one place parameter (a const fn or a macro over 1 to 9), and test that each name focus-N builds FocusIndex(N). |  | severity? should-fix 0.74 |  |
+| R-124 | invariants | suggestion | in-change | The walk place must stay inside the history of the walk world under any mix of Up, Down, sends, refusals and focus changes, but history_keeps_its_invariants draws no Up or Down, so no generated run has a walk open at a push. | tasks.md > 4. Input history — "The second property test runs random sends, refusals and focus changes, and checks in each history at most 1000 entries" | Add Up and Down to the operations of history_keeps_its_invariants in crates/mu-tui/tests/app.rs (proptest, as in the proptest! block at app.rs:874), and assert after each step that no recall panics and the editor holds an entry of the walk world or the draft. |  | severity? should-fix 0.62 |  |
 
 ## Repeats
 
@@ -66,10 +70,11 @@ None.
 | 3 | plan | full | 4bc3384056bc7da30e7d21fd73db25dd1a2bba18 | 93a87287460d2a735e6b2510440b10d48c5950b7056af635108e28d4c94664d7 | changes-requested | 23 | 0 | 1 | 0 | 0 | round 1 added 18 scenarios that have no coverage matrix rows; the owner wants them checked, not accepted |
 | 4 | plan | follow-up | 5f99bebdc25626b6b0e0fbdcc8f6d9a9e6ceaade | 126ba40dc35f91b67a41add84ab405309af36f117c815bfe2ee6e8e10e4d0616 | approve-with-notes | 6 | 0 | 1 | 42 | 0 |  |
 | 5 | plan | full | 3d30709e6a6becbd7982e1636251721ac15741ea | ce8df9d75a010006686fd27a11d766243c8ff64a6a6ca600e628fdc584811b9c | changes-requested | 19 | 0 | 0 | 0 | 0 | rounds 3 and 4 added scenarios with no coverage matrix rows; the owner wants them checked, not accepted |
+| 6 | plan | full | b1628e7f5b7c6fcaba52b69e13606093397ac2cd | 979bd7b0ea4485a85d60b1cdf745ee153b0e53089ac004530786e3ec76389611 | changes-requested | 16 | 0 | 0 | 0 | 0 | round 5 fixes added scenarios that need coverage rows; seanb4t/dotfiles#256 tracks the loop |
 
 ## Judge
 
-judge: 42 questions, 0.002 USD
+judge: 30 questions, 0.001 USD
 
 ## Coverage matrix
 
@@ -89,12 +94,13 @@ judge: 42 questions, 0.002 USD
 | Disconnect a named world | 3.2 | covered |  |
 | A key bound to connect with no world in focus | 3.2 | covered |  |
 | Connect with no world in focus | 3.1 | covered |  |
-| A trailing space is no argument | 3.1, 3.2 | covered |  |
+| A trailing space is no argument | 3.2 | covered |  |
 | Disconnect an unknown world | 3.2 | covered |  |
 | Focus by name | 3.1 | covered |  |
+| A world with a trailing space | 3.4 | covered |  |
 | Quit | 3.3 | covered |  |
 | Quit twice while a text waits | 3.3 | covered |  |
-| Another command cancels the quit | 3.3 | covered |  |
+| Another command cancels the quit | 3.3 | partial |  |
 | A command with no world in focus | 3.1 | covered |  |
 | A file that sets the echo | 6.2 | covered |  |
 | No file | 6.2 | covered |  |
@@ -108,6 +114,7 @@ judge: 42 questions, 0.002 USD
 | A binding replaces a default | 6.4 | covered |  |
 | None on a key with a modifier | 6.4 | covered |  |
 | Two names of one key | 6.4 | covered |  |
+| A binding of Shift+Tab | 6.4 | covered |  |
 | An uppercase key | 6.4 | covered |  |
 | Shift with a digit | 6.4 | covered |  |
 | A binding of Ctrl+Shift+Z | 6.4 | covered |  |
@@ -119,7 +126,7 @@ judge: 42 questions, 0.002 USD
 | A line goes to the world in focus | 2.2 | covered |  |
 | An empty line | 2.2 | covered |  |
 | Enter with no world | 2.2 | covered |  |
-| A refused line | 2.2, 5.1 | covered |  |
+| A refused line | 2.2 | covered |  |
 | A refused line after more text | 5.1 | covered |  |
 | Ctrl+M sends | 2.2 | covered |  |
 | A pose of two lines | 2.2 | covered |  |
@@ -142,6 +149,7 @@ judge: 42 questions, 0.002 USD
 | Down with no walk | 4.2 | covered |  |
 | Back to the draft | 4.2 | covered |  |
 | Up inside a pose moves the cursor | 4.2 | covered |  |
+| A send during a walk | 4.3 | covered |  |
 | A focus change ends a walk | 4.2 | covered |  |
 | The second world | 2.3 | covered |  |
 | No world at that place | 2.3 | covered |  |
@@ -151,6 +159,9 @@ judge: 42 questions, 0.002 USD
 | Before the first list | 7.2 | covered |  |
 | A send before the first list | 7.2 | covered |  |
 | An event before the first list | 7.2 | covered |  |
+| A focus key before the first list | 7.2 | covered |  |
+| A failed first list after an event | 7.2 | covered |  |
+| A notice before the first list | 7.2 | covered |  |
 | The first list fails | 7.2 | covered |  |
 | The flag wins over the environment | 6.3 | covered |  |
 | The default directory | 6.3 | covered |  |
@@ -158,7 +169,7 @@ judge: 42 questions, 0.002 USD
 | An empty MU_CONFIG | 6.3 | covered |  |
 | A relative XDG_CONFIG_HOME | 6.3 | covered |  |
 | No home directory | 6.3 | covered |  |
-| A missing directory | 6.2, 6.3 | covered |  |
+| A missing directory | 6.3 | covered |  |
 | A missing default directory | 6.3 | covered |  |
 | The client takes the flag | 6.2 | covered |  |
 | Worlds from character files | 6.3 | covered |  |
@@ -184,46 +195,48 @@ None.
 
 ## Lens notes
 
-- approach: R-66 (fixed): D3 now changes an uppercase letter into its lowercase letter with SHIFT before the lookup, so shift+z matches in the legacy and the kitty path. The defect of R-66 is gone. app-4 is a smaller wording fault, not R-66 again.
-- approach: R-85 (fixed): D6 now keeps the refusal line as a push to the pane of the refused world, as on_reply does at head (update.rs 612-618). The defect of R-85 is gone.
-- approach: D2 says mu client writes the warning of ConfigArgs::worlds. At head that warning is inside worlds(), which also resolves every world file. The design does not say whether the client calls worlds() or splits the warning out, or what it does with a world error.
-- approach: Facts checked and found true at head: Action has 13 variants; the first list_worlds in client.rs has no limit; start_server passes only --socket; parse_toml is mu_core::world::parse as parse_toml with Hidden::Tables; mu-tui has no serde or toml; mu-client has connect and disconnect; return_waiting uses Model::hint.
-- fit: The reader of client.toml repeats server_config::read; that is R-40, deferred, and no new evidence raises it again.
-- fit: D4 runs Effect::Connect and Effect::Disconnect with the same 30 s limit as a send; run.rs already has spawn_reply, within and CALL_LIMIT for that, and the implementation should call them.
-- fit: architecture/model.c4 line 40 labels the edge keymap -> update as 'an Action'; under D1 the keymap gives an entry, so task 2.5 should relabel that edge as well as add the registry part.
-- fit: D3 names crokey and task 1.2 as the library search for key names; termina 0.3.3 has no key-name parser, so the bespoke parser is justified as written.
-- fit: D11 reuses is_server_file and same_file for client.toml with no second copy; CLIENT_FILE must also join the re-export in crates/mu-core/src/world/mod.rs line 23.
-- invariants: I1: Each registry name is unique and kebab-case \| enforced at registry.rs table (planned) \| boundary test entry_names_are_unique_and_kebab
-- invariants: I2: No message carries an Action from outside the registry \| enforced at Msg enum (compiler) \| boundary test none needed
-- invariants: I3: A default binding never names an entry with a required argument \| enforced at Keymap::default \| boundary test default_keymap_binds_entries_with_no_required_argument
-- invariants: I4: A [keys] binding never names an unknown entry or one with a required argument \| enforced at ClientConfig::keymap \| boundary test an_unknown_entry, an_entry_that_needs_an_argument
-- invariants: I5: Two names never give one chord \| enforced at ClientConfig::keymap \| boundary test two_names_of_one_key
-- invariants: I6: Each accepted key name reads back and names a key that arrives \| enforced at the keymap.rs parser \| boundary test key_names_read_back, shift_and_a_letter_match_the_key; BackTab not covered (inv-4)
-- invariants: I7: A history holds at most 1000 entries \| enforced at History push \| boundary test history_drops_the_oldest_past_1000, 1000 side missing (inv-5)
-- invariants: I8: A history holds no empty entry and no entry equal to the one before \| enforced at History push \| boundary test no_empty_entry, no_repeat, history_keeps_its_invariants
-- invariants: I9: A draft is never lost \| enforced at walk end on focus change and put_back \| boundary test history_walk_returns_the_draft, a_focus_change_ends_a_walk; send during a walk none (inv-6)
-- invariants: I10: No world has the focus until the first list ends \| enforced at Model::world only \| boundary test an_event_before_the_first_list; set_focus paths none (inv-2)
-- invariants: I11: Focus is None only with no world \| enforced at Model::world and the end of the first list \| boundary test none for an event before a failed first list (inv-3)
-- invariants: I12: A notice shows in the pane of the first world \| enforced at Model::world today, dropped by D8 \| boundary test probe_with_no_answer in mu-cli/tests/client.rs (inv-1)
-- invariants: I13: Only a one-line text that starts with / and not // is a command \| enforced at the D4 parse \| boundary test several_lines_are_not_a_command, an_escaped_slash, parser tests for / and / focus
-- invariants: I14: An argument of only spaces is no argument \| enforced at the D4 split \| boundary test trailing_spaces_are_no_argument; a world with trailing spaces none (inv-8)
-- invariants: I15: The by-command quit arm is cleared only by the parse of a send \| enforced at on_input_key and the D4 check \| boundary test quit_twice_while_a_text_waits, another_command_cancels_the_quit
-- invariants: I16: Returned texts come back by Up in order \| enforced at put_back \| boundary test the D6 scenarios with 1 to 3 texts (inv-9); refusal count at 0, 1, 2 in task 5.1, count under dedupe none (inv-7)
-- invariants: I18: A world with no known line_break echoes in one row \| enforced at text::line (planned) and Model::learn, which drops an empty line_break \| boundary test none (inv-10)
-- invariants: I17: client.toml makes no world, in any case and as the same file \| enforced at dir.rs is_server_file over a list (D11) \| boundary test the D11 tests of world_config.rs
-- invariants: Probes: the enforcement points are Rust code, not scripts, so no edge input was run.
-- invariants: Alt+1 on the world already in focus calls set_focus and ends a walk, though the spec ends a walk only at a change of the focus. Not raised as a finding.
-- invariants: A one-character key name that is a control character, such as a literal tab, parses to a Char chord that Termina never gives. Not raised as a finding.
-- invariants: inv-2 hits the same invariant as R-64 (resolved), but at other places: the set_focus callers, not Model::world.
-- spec-lint: No BREAKING marker in proposal.md or in any delta spec: consistent, no breaking-mismatch finding.
-- spec-lint: Build targets in tasks.md exist: mise run check and mise run docs:check (mise.toml); cargo test targets workspace_boundary and world_config exist in crates/mu-cli/tests.
-- spec-lint: Every requirement of the four delta specs has at least one scenario, and every scenario has WHEN or GIVEN and a THEN: no malformed-scenario finding.
-- spec-lint: No WHEN, GIVEN or THEN step was found to name no observable or no concrete input: no unverifiable finding.
-- spec-lint: Design open question on registry description text changes no spec or task: no assumed-answer finding.
-- spec-lint: Prior rows R-31 and R-32 are not raised again: the proposal and the specs no longer carry the defect they named.
-- test-coverage: Test names in tasks 2.1 to 7.2 carry no cargo nextest line each; R-43 is deferred and is not raised again.
-- test-coverage: a_reset_during_the_first_list in task 7.2 has no scenario heading; task 7.2 explains it.
-- test-coverage gap: Scenario bodies were matched to task test names by name; THEN steps were not compared one by one.
+- approach: D1 says that at a key the loop builds the Action and that each front end sends Msg::Run, while at head the keymap lookup runs inside update (on_input_key) after the late-answer handling of the probe. If the lookup moved to the loop, bound keys would skip that handling and the quit-arm clear; the text should say that update does the lookup.
+- approach: The Context facts of the code (Action of 13 variants, the keymap fallback, the first list with no limit, start_server with only --socket, the two kinds of -- line, is_server_file and its same-file rule, parse_toml with Hidden) hold at head.
+- approach: The fixed rows R-66, R-69, R-85, R-91 to R-100, R-102 to R-104, R-106 to R-108 are checked against design.md and show no remaining defect in this lens.
+- approach: Termina 0.3.3 gives Shift+Tab as KeyCode::BackTab with SHIFT in both the legacy and the kitty path, and the client pushes only DISAMBIGUATE_ESCAPE_CODES, as D3 says.
+- fit: R-40 (the client.toml reader repeats server_config::read) is deferred and closed. D2 now names the server.toml read as its pattern, and no new evidence raises it again.
+- fit: D9 adds the part registry and the edge update -> registry, but architecture/model.c4 line 24 still describes the keymap as a table to an Action, and line 40 labels the edge keymap -> update 'an Action'. Under D1 the keymap gives an EntryId and Msg::Action goes away, so D9 should also say these labels change.
+- fit: D10 candidates(model, World) gives the worlds in the order of the top row. Model::world_ids already gives that list (model.rs line 197), and view.rs top_row reads the same model.worlds. The implementation should call it rather than build a second list.
+- fit: The registry (D1), the keymap from [keys] (D3, with crokey named and refused), the client.toml read through mu_core::world::parse_toml (D2), the resolver list of top-level files (D11), the connect and disconnect effects through spawn_reply and CALL_LIMIT (D4), set_focus (D5) and world_arg (D4) each follow the closest existing pattern or name their alternative.
+- invariants: I1: Each registry name is unique and matches ^[a-z]+(-[a-z0-9]+)*$ \| enforced at entry_names_are_unique_and_kebab (task 2.1) \| boundary test the same unit test
+- invariants: I2: No key binds an entry with a required argument \| enforced at ClientConfig::keymap() refusal and default_keymap_binds_entries_with_no_required_argument \| boundary test an_entry_that_needs_an_argument
+- invariants: I3: A command never runs an entry with edits set \| enforced at D4 step 1 \| boundary test an_editing_entry_is_not_a_command, /ignore parser test
+- invariants: I4: An argument of only spaces is no argument, and a given world loses its end spaces \| enforced at the D4 trim \| boundary test a_trailing_space_is_no_argument, a_world_with_a_trailing_space, property trailing_spaces_are_no_argument
+- invariants: I5: A history holds at most 1000 entries, no empty entry, no entry equal to the one before \| enforced at the one History push (D5) \| boundary test history_drops_the_oldest_past_1000 (1000 and 1001), no_empty_entry, no_repeat, history_keeps_its_invariants
+- invariants: I6: No world has the focus while first_list is set \| enforced at set_focus and Model::world (D5, D8); Model::new writes focus directly (inv-7) \| boundary test a_focus_key_before_the_first_list, an_event_before_the_first_list
+- invariants: I7: Every end of the first list clears first_list, the empty list included \| enforced at Msg::Listed (D8) \| boundary test the_first_list_fails; the empty reply is covered by client_starts_a_server in crates/mu-cli/tests/client.rs, which waits for the top row no worlds
+- invariants: I8: Alt+n gives the focus only to an existing place \| enforced at set_focus index check \| boundary test no_world_at_that_place (Alt+3 of two), back_to_the_first_world (Alt+1)
+- invariants: I9: Two names of one chord are refused \| enforced at ClientConfig::keymap() (D3) \| boundary test two_names_of_one_key
+- invariants: I10: Every accepted key name fires on a key that Termina sends \| enforced at none for control characters (inv-2); shift+tab maps to BackTab (D3) \| boundary test shift_tab_matches_back_tab
+- invariants: I11: A world line_break is never empty, so the echo split is finite \| enforced at Model::learn filter (crates/mu-tui/src/model.rs:231) and check_line_break in mu-core \| boundary test an_echo_with_no_line_break
+- invariants: I12: The quit arm set by a command survives keys and is cleared by any other send or command \| enforced at the parse of D4 \| boundary test quit_twice_while_a_text_waits, another_command_cancels_the_quit
+- invariants: I13: A walk index stays valid because every push ends the walk first (D5, D6 step 1) \| enforced at put_back and the send path \| boundary test none with a walk open at a push (inv-6)
+- invariants: I14: The refusal count is the count of kept entries \| enforced at on_reply (D6) \| boundary test 0, 1, 2 and the equal case in the_sends_stay_apart; the walk case is open (inv-3)
+- invariants: A refusal of a world out of focus during a walk pushes the draft into the walk world (D5 walk end) and, as the held text, into the refused world (spec); the draft then sits in two histories. Noted, not raised.
+- invariants: A /focus <world> before the first list ends passes step 4 of D4 (the world is in candidates from an event), clears the editor, and set_focus then does nothing, so the command is lost with no line. Noted, not raised.
+- invariants: D3 says the key_names_read_back property covers every set of modifiers and every key, but shift with a character that is not a letter is refused, so the generator must leave those pairs out. Noted, not raised.
+- invariants: I15: The flag of mu client wins over an inherited MU_CONFIG in the server it starts \| enforced at start_server passing the directory (D8) \| boundary test the_client_takes_the_flag, which sets both
+- invariants: I16: An unreadable client.toml is a bad file, and the resolver takes the exact name without a compare \| enforced at the read of D2 and is_server_file at crates/mu-core/src/world/dir.rs:117 \| boundary test a_file_that_cannot_be_read and the unreadable test of world_config.rs
+- invariants: No enforcement point of this plan is a script, so no edge probe was run; the enforcement points are Rust code that the plan only describes.
+- invariants: Prior fixed rows R-66, R-69, R-85 to R-109 were checked against the artifacts at head; each defect is gone, so none is raised again.
+- spec-lint: BREAKING: the proposal no longer carries a BREAKING marker and no delta spec has one, so there is no breaking-mismatch.
+- spec-lint: Build targets: `mise run check` and `mise run docs:check` exist in mise.toml, so no unknown-target.
+- spec-lint: Untasked requirements: every requirement heading of the four delta specs has a task line with two or more of its distinctive words, so none is raised.
+- spec-lint: Scenario shape: every scenario of the four delta specs has a GIVEN or WHEN line and a THEN line; none is raised as malformed.
+- spec-lint: Task verifiability: every tracked task names a test, a command, a file or an observable; none is raised.
+- spec-lint: Open questions: the one open question of design.md is about registry description text and no task assumes an answer.
+- spec-lint: prior.json was read to line 1237 and searched by grep for the two claims of this round; no closed row covers these two findings.
+- spec-lint: Not raised as findings: the THEN 'the pane of alpha/aria shows the notice of the probe' (no notice text named) and the WHEN 'the server resets' (a named event); both are borderline and left to the controller.
+- test-coverage: Tasks name tests but only 6.1 and 6.3 give a cargo nextest line; the header of tasks.md points to the one-test command in openspec/config.yaml (R-43 deferred). Rows count as covered on that basis.
+- test-coverage: The unchanged world-config scenarios are covered by the suite command of 6.3, not by a named test each.
+- test-coverage: The sentence that mu client names a missing --config directory has no scenario with mu client; a_missing_directory_warns of 6.2 tests it with no scenario heading.
+- test-coverage: The proposal no longer carries a BREAKING marker, so no breaking-unproven finding applies.
+- test-coverage: design.md was grepped for test promises only, not read in full.
 
 ## Ledger
 
@@ -338,3 +351,19 @@ None.
 | R-107 | 5 | 5 | suggestion | in-change |  | ["artifact",["design.md","D3. Key names"],"Task 1.3 checks these reports in Ghostty and Terminal.app."] | fixed | a86584969cad0c1b81b0be952476c5155859e78b |  | scope? deviates-design 0.69; severity? should-fix 0.82 | D3 says that task 1.3 checks the Shift reports in Ghostty and Terminal.app, but task 1.3 checks only Alt+digit, Alt+Home and Alt+End. |
 | R-108 | 5 | 5 | suggestion | in-change |  | ["path","crates/mu-tui/src/update.rs",432] | fixed | a86584969cad0c1b81b0be952476c5155859e78b |  |  | The refusal for no world in focus already has two texts of one form, and D4 adds the bare hint `no world` twice more. The texts vary on purpose only in what does not happen. |
 | R-109 | 5 | 5 | suggestion | in-change |  | ["artifact",["specs/terminal-client/spec.md","Requirement: A refused text stops the sends after it"],"Up SHALL then give them in that order."] | fixed | a86584969cad0c1b81b0be952476c5155859e78b |  |  | The return order holds for any count of returned texts and any held text: successive Ups give them in order. The tests pass only one to three texts, and history_keeps_its_invariants checks no order. |
+| R-110 | 6 | 6 | blocker | in-change | unmet-requirement | ["artifact",["design.md","D2. `mu-cli` reads the file, `mu-tui` owns the type"],"`mu-cli` reads `client.toml` as it reads `server.toml`."] |  |  |  |  | No decision carries the parsed ClientConfig (its echo and the keymap built from [keys]) from mu-cli into mu_tui::run or the Model. At head run takes only the PortalClient and Model::new always uses Keymap::default, and the model fields are pub(crate), so neither mu client nor the app.rs tests can set the echo or the keymap. |
+| R-111 | 6 | 6 | blocker | in-change | unmet-requirement | ["artifact",["design.md","D6. Returned sends go to history (#151)"],"It ends a walk first. The text that the editor held is then the saved draft, not the entry on screen."] |  |  |  | severity? should-fix 0.72 | For a refusal during a walk, put_back first ends the walk, and the walk end pushes the draft. The later push of the held text (the same draft) is then dropped as equal to the newest entry, so by D6 it is not counted. The draft did go into the history, but the refusal line omits it from its count, against the requirement. |
+| R-112 | 6 | 6 | blocker | in-change | unmet-requirement | ["artifact",["specs/client-commands/spec.md","Requirement: Each front end runs an entry the same way"],"A key can run every entry."] |  |  |  |  | The front-end requirement says a key can run every entry, but D2 refuses a binding to an entry whose argument is required, and the client-config spec makes such a binding a bad file. No decision lets a key run focus, so the requirement as written cannot hold. |
+| R-113 | 6 | 6 | should-fix | in-change | drift | ["artifact",["proposal.md","What Changes"],"Alt+1 to Alt+9 give the focus to the world at that place in the top row. Alt+Home and Alt+End scroll the pane to its first and last line."] |  |  |  |  | The change adds default keys to Keymap::default (Alt+1 to Alt+9, Alt+Home, Alt+End, Up and Down for history), but no task updates the hand copies of the default keys in first-run.md and input-editor.md, so both pages miss the new keys. |
+| R-114 | 6 | 6 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D5. History is a state of each world"],"`HistoryPrev` and `HistoryNext` are bound to Up and Down. Up acts only on the first logical line of the pose editor, and Down only on the last."] |  |  |  |  | D5 binds plain Up and Down to the history, and Keymap::get gives a modified chord with no entry the plain entry, so Shift+Up, Ctrl+Up and Shift+Down walk the history instead of their editor moves. |
+| R-115 | 6 | 6 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D3. Key names"],"A key is one character that is not an uppercase letter and not `+`, the name `plus` for the `+` key, or a name of a special key."] |  |  |  |  | The key grammar admits any one character that is not uppercase and not +, so a control character such as a tab, CR or DEL parses to a Char chord that Termina never sends; the binding never fires and nothing refuses it. |
+| R-116 | 6 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["design.md","D5. History is a state of each world"],"When a walk ends, the editor keeps its text, and the draft goes into the history of the world of the walk."] |  |  |  |  | During a walk, the walk end of put_back pushes the draft, so the held-text push of D6 then drops it as equal to the newest entry; the count of kept entries is 0, the spec asks for a count, and no task asserts it. |
+| R-117 | 6 | 6 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D5. History is a state of each world"],"It holds the world of the walk, the place in the history, and the draft that the first Up saved."] |  |  |  |  | The walk state holds the world of the walk, but Model::world shifts world indices when an event adds a world that sorts before it; if the walk keeps an index, the draft lands in another world. No test adds a world during a walk. |
+| R-118 | 6 | 6 | should-fix | in-change | wrong-behaviour | ["artifact",["specs/client-config/spec.md","Requirement: The echo field sets the echo line"],"The field `echo` SHALL be one of `show`, `dim` and `hide`, and its default SHALL be `dim`."] |  |  |  |  | Of the three echo values, only show and hide are parsed from a file; dim is reached only as the default with no file, so a file with echo = "dim" is never read by a test. |
+| R-119 | 6 | 6 | should-fix | in-change | false-test | ["path","crates/mu-tui/src/model.rs",138] |  |  |  |  | D5 routes every focus change through set_focus, which does nothing during the first list, but Model::new writes the focus directly; D8 has tests build Model::new and then give Msg::Listed, so a model built with worlds has a focus while first_list is set. |
+| R-120 | 6 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["specs/client-commands/spec.md","Scenario: Another command cancels the quit"],"**AND** the screen shows the count of the texts that wait a second time"] |  |  |  |  | The THEN step of 'Another command cancels the quit' names the count of the waiting texts without any value, so no test can check the line. |
+| R-121 | 6 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["specs/client-commands/spec.md","Scenario: Quit twice while a text waits"],"**THEN** the screen shows a line that starts with `-- ` and holds the count of the texts that wait"] |  |  |  |  | The THEN step of 'Quit twice while a text waits' names a line that holds the count of waiting texts, but states no count value or format. |
+| R-122 | 6 | 6 | should-fix | in-change | false-test | ["artifact",["tasks.md","3. Client commands"],"The last test also sends a game text and `/focus-next` between two `/quit` commands, and asserts that the client still runs."] |  |  |  |  | Task 3.3 cancels the quit arm with a game text and /focus-next, but the scenario cancels it with a bad command (/fly); that path has no named test. |
+| R-123 | 6 | 6 | suggestion | in-change |  | ["artifact",["design.md","D1. The registry is a table of entries, and the keymap binds entries"],"Names that take a number become one entry for each value"] |  |  |  | severity? should-fix 0.74 | The nine rows focus-1 to focus-9 of the registry differ only in a number that sets the name, the description and the FocusIndex value, so a row written by hand can carry a name and an index that disagree. |
+| R-124 | 6 | 6 | suggestion | in-change |  | ["artifact",["tasks.md","4. Input history"],"The second property test runs random sends, refusals and focus changes, and checks in each history at most 1000 entries"] |  |  |  | severity? should-fix 0.62 | The walk place must stay inside the history of the walk world under any mix of Up, Down, sends, refusals and focus changes, but history_keeps_its_invariants draws no Up or Down, so no generated run has a walk open at a push. |
+| R-125 | 6 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"approach partial"] |  |  |  |  | lens approach reported partial, gaps: 2 |
