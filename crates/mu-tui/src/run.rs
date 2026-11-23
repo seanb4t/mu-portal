@@ -20,15 +20,18 @@ use crate::update::{Effect, Msg, Reply, update};
 use crate::view::view;
 
 /// Runs the client with `settings` on the alternate screen until the Quit action or the end of
-/// terminal input.
+/// terminal input. Each of `notices` is a notice line from the start.
 /// The terminal comes back on exit,
 /// and on a panic through the panic hook of Termina.
 ///
 /// # Errors
 ///
 /// An I/O error of the terminal.
-pub async fn run(client: PortalClient, settings: Settings) -> io::Result<()> {
+pub async fn run(client: PortalClient, settings: Settings, notices: Vec<String>) -> io::Result<()> {
     let mut model = Model::starting(settings);
+    for notice in &notices {
+        model.notice(notice);
+    }
     // The probe sets mode 2027, so a panic before its replies turns the mode off.
     let restore = Arc::new(Restore::default());
     restore.set_grapheme_mode(true);

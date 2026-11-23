@@ -89,7 +89,8 @@ fn clear(socket: &Path) -> Result<(), ServeError> {
 
 /// Runs steps 3 to 7 of the server: lock, clear, bind with mode 0600, write the line on
 /// stderr, build the `Portal`, connect each world, and serve until `shutdown` resolves.
-/// Then it stops each world, ends each stream and removes the socket file.
+/// Then it stops each world, ends each stream and removes the socket file. `ListWorlds`
+/// returns `config_dir`.
 ///
 /// The parent of `socket` must be a private directory: owned by this user, with mode 0700.
 /// Only that directory keeps other users from the socket before its mode changes to 0600.
@@ -101,6 +102,7 @@ fn clear(socket: &Path) -> Result<(), ServeError> {
 pub async fn serve(
     socket: &Path,
     worlds: Vec<WorldSetup>,
+    config_dir: Option<String>,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> Result<(), ServeError> {
     let _lock = lock(socket)?;
@@ -126,6 +128,7 @@ pub async fn serve(
         portal.clone(),
         uuid::Uuid::new_v4().to_string(),
         stop_receiver,
+        config_dir,
     );
     let served = axum::serve(listener, api.router())
         .with_graceful_shutdown(async move {

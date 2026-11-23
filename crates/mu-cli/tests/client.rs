@@ -1420,3 +1420,55 @@ async fn a_key_bound_to_connect_with_no_world_in_focus() {
     client.send(b"x");
     editor_holds(&client, "x").await;
 }
+
+/// A server with the fake world `alpha/aria` and `--config <dir>/a`, and a client on it with
+/// `--config <dir>/<client>`, after the top row shows the world. `<dir>/link` is a symbolic
+/// link to `<dir>/a`. The screen with no whitespace, because a wrap drops spaces, and the
+/// resolved path of `<dir>/a`.
+async fn other_server(client: &str) -> (String, String) {
+    let dir = private_tempdir();
+    let real = dir.path().join("a");
+    std::fs::create_dir(&real).unwrap();
+    std::fs::create_dir(dir.path().join("b")).unwrap();
+    std::os::unix::fs::symlink(&real, dir.path().join("link")).unwrap();
+    let mut flag = std::ffi::OsString::from("--config=");
+    flag.push(&real);
+    let server = ServerBuilder::new()
+        .fake_worlds(&["alpha/aria"])
+        .arg(flag)
+        .start()
+        .await;
+    let own = dir.path().join(client);
+    let client = PtyClient::start_args(
+        server.socket(),
+        dir.path(),
+        Answers::Default,
+        &["--config".as_ref(), own.as_os_str()],
+        &[],
+    );
+    client
+        .wait_top("the world", |top| top.contains("alpha/aria"))
+        .await;
+    let real = std::fs::canonicalize(&real).unwrap();
+    let screen = client.contents();
+    (
+        screen.split_whitespace().collect(),
+        real.display().to_string(),
+    )
+}
+
+#[tokio::test]
+async fn a_server_with_another_directory() {
+    let (screen, real) = other_server("b").await;
+    let notice = "readsitsworldsfrom";
+    assert!(screen.contains(notice), "{screen}");
+    let at = screen.find(notice).unwrap();
+    assert!(screen[at..].contains(&real), "{screen}");
+    assert!(screen[at..].contains("/b"), "{screen}");
+}
+
+#[tokio::test]
+async fn a_server_with_the_same_directory() {
+    let (screen, _) = other_server("link").await;
+    assert!(!screen.contains("readsitsworldsfrom"), "{screen}");
+}

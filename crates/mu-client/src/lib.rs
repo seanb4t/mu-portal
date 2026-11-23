@@ -100,6 +100,20 @@ impl PortalClient {
         Ok(reply.into_owned().worlds)
     }
 
+    /// The configuration directory that the server read its worlds from, or `None` for a
+    /// server with no directory.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the call fails.
+    pub async fn config_dir(&self) -> Result<Option<String>, ClientError> {
+        let reply = self
+            .inner
+            .list_worlds(proto::ListWorldsRequest::default())
+            .await?;
+        Ok(reply.into_owned().config_dir)
+    }
+
     /// Sends one line to `world`. No number means that a hook gagged the line.
     ///
     /// # Errors

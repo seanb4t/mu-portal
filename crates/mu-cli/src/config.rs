@@ -9,6 +9,17 @@ use mu_core::world::{ConfigError, TomlDirSource, resolve};
 
 use crate::env_path::{PathValue, parse_path, xdg_base};
 
+/// `dir` as an absolute path, with each symbolic link resolved if `dir` exists, for the
+/// comparison of the directories of a client and a server.
+#[must_use]
+pub fn shown_dir(dir: &Path) -> String {
+    let absolute = std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf());
+    std::fs::canonicalize(&absolute)
+        .unwrap_or(absolute)
+        .to_string_lossy()
+        .into_owned()
+}
+
 /// The variable that names the configuration directory.
 pub const CONFIG_ENV: &str = "MU_CONFIG";
 

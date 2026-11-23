@@ -87,6 +87,9 @@ message ListWorldsRequest {}
 
 message ListWorldsResponse {
   repeated World worlds = 1;
+  // The configuration directory that the server read its worlds from, as an absolute path with
+  // each symbolic link resolved. A server with no directory sets no value.
+  optional string config_dir = 2;
 }
 
 message World {

@@ -266,3 +266,28 @@ fn client_needs_a_terminal() {
         assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0, "{on:?}");
     }
 }
+
+#[tokio::test]
+async fn the_server_names_its_directory() {
+    let dir = private_tempdir();
+    let real = dir.path().join("a");
+    fs::create_dir(&real).unwrap();
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    let mut flag = std::ffi::OsString::from("--config=");
+    flag.push(&link);
+    let server = ServerBuilder::new().arg(flag).start().await;
+    let named = server.client().config_dir().await.unwrap();
+    assert_eq!(named, Some(text(&fs::canonicalize(&real).unwrap())));
+}
+
+#[tokio::test]
+async fn a_server_with_no_directory_names_none() {
+    let server = ServerBuilder::new()
+        .env("MU_CONFIG", None::<&str>)
+        .env("XDG_CONFIG_HOME", None::<&str>)
+        .env("HOME", None::<&str>)
+        .start()
+        .await;
+    assert_eq!(server.client().config_dir().await.unwrap(), None);
+}

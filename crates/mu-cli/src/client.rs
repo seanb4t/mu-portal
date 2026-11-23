@@ -13,7 +13,7 @@ use mu_core::world::{CLIENT_FILE, Hidden};
 use mu_tui::config::{ClientConfig, Settings};
 use tokio::net::UnixStream;
 
-use crate::config::ConfigArgs;
+use crate::config::{ConfigArgs, shown_dir};
 use crate::socket::{SocketArgs, socket_dir};
 
 /// The log of a server that a client started, in the socket directory.
@@ -120,27 +120,48 @@ pub fn run(args: &ClientArgs) -> ExitCode {
         let client = PortalClient::unix(&socket);
         let first = async {
             match listener(&socket).await {
-                Ok(Found::Nothing) => start_and_wait(&client, &socket, dir, named, wait).await,
-                Ok(Found::Listener) => match tokio::time::timeout(wait, client.list_worlds()).await
-                {
-                    Ok(Ok(_)) => Ok(()),
-                    Ok(Err(error)) => Err(format!("{}: {error}", socket.display())),
-                    Err(_) => Err(format!(
-                        "the server on {} did not answer within {}",
-                        socket.display(),
-                        shown(wait)
-                    )),
-                },
+                Ok(Found::Nothing) => start_and_wait(&client, &socket, dir, named, wait)
+                    .await
+                    .map(|()| None),
+                Ok(Found::Listener) => {
+                    match tokio::time::timeout(wait, client.config_dir()).await {
+                        Ok(Ok(server)) => {
+                            let own = config.as_deref().map(shown_dir);
+                            Ok(other_dir(&socket, server.as_deref(), own.as_deref()))
+                        }
+                        Ok(Err(error)) => Err(format!("{}: {error}", socket.display())),
+                        Err(_) => Err(format!(
+                            "the server on {} did not answer within {}",
+                            socket.display(),
+                            shown(wait)
+                        )),
+                    }
+                }
                 Err(error) => Err(format!("{}: {error}", socket.display())),
             }
         };
-        if let Err(error) = first.await {
-            return fail(&error);
-        }
-        match mu_tui::run(client, settings).await {
+        let notices = match first.await {
+            Ok(notice) => notice.into_iter().collect(),
+            Err(error) => return fail(&error),
+        };
+        match mu_tui::run(client, settings, notices).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => fail(&error),
         }
+    })
+}
+
+/// The notice for a server on `socket` that read its worlds from `server`, if that is not the
+/// directory `own` of the client. `None` is no directory.
+fn other_dir(socket: &Path, server: Option<&str>, own: Option<&str>) -> Option<String> {
+    let shown = |dir: Option<&str>| dir.map_or_else(|| "no directory".to_owned(), str::to_owned);
+    (server != own).then(|| {
+        format!(
+            "the server on {} reads its worlds from {}, not from {}",
+            socket.display(),
+            shown(server),
+            shown(own)
+        )
     })
 }
 
@@ -222,6 +243,22 @@ mod tests {
                 "{error}"
             );
         }
+    }
+
+    #[test]
+    fn a_missing_directory_is_named_no_directory() {
+        let socket = Path::new("/run/s.sock");
+        let notice = other_dir(socket, None, Some("/b")).unwrap();
+        assert!(
+            notice.contains("from no directory, not from /b"),
+            "{notice}"
+        );
+        let notice = other_dir(socket, Some("/a"), None).unwrap();
+        assert!(
+            notice.contains("from /a, not from no directory"),
+            "{notice}"
+        );
+        assert_eq!(other_dir(socket, None, None), None);
     }
 
     #[test]

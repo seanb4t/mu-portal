@@ -12,7 +12,7 @@ use mu_core::{
 use mu_fake_server::FakeTransport;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
-use crate::config::ConfigArgs;
+use crate::config::{ConfigArgs, shown_dir};
 use crate::server_config;
 use crate::socket::SocketArgs;
 use crate::telemetry::{self, Providers, STOP_BOUND, SdkDisabled};
@@ -185,7 +185,8 @@ fn serve_worlds(args: &ServerArgs) -> ExitCode {
             Ok(shutdown) => shutdown,
             Err(error) => return fail(&error),
         };
-        match mu_server::serve(&socket, worlds, shutdown).await {
+        let config_dir = args.config.dir_from_env().map(|dir| shown_dir(&dir));
+        match mu_server::serve(&socket, worlds, config_dir, shutdown).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => fail(&error),
         }

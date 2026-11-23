@@ -13,7 +13,7 @@ The file `client.toml` holds the configuration of the terminal client. It goes a
 
 The client reads the file once, before it opens the screen. If the file does not exist, the client uses the defaults. If the directory does not exist, the client also uses the defaults. If `--config` or `MU_CONFIG` names a directory that does not exist, the client writes a warning that names it.
 
-If the client starts a server and you named the directory with `--config` or `MU_CONFIG`, the client gives that server the same directory. Otherwise the server finds the directory by the same rule as the client. If a server already runs on the socket, the client uses it and its worlds, and the directory changes only the client file.
+If the client starts a server and you named the directory with `--config` or `MU_CONFIG`, the client gives that server the same directory. Otherwise the server finds the directory by the same rule as the client. If a server already runs on the socket, the client uses it and its worlds. The server keeps the worlds of the directory that it started with. If that directory is not the directory of the client, the client shows a notice that names both, and your directory changes only the client file. To use the worlds of your directory, stop that server first, as [Stop the server](/guides/first-run/#stop-the-server) says.
 
 ```toml
 # client.toml
