@@ -8,6 +8,7 @@ Facts from the code at e96b221:
 
 - `Action` (`crates/mu-tui/src/update.rs`) is a `Copy` enum of 13 variants with no names. `Keymap` (`keymap.rs`) is a list of `(Chord, Action)` pairs and a wheel list. `Keymap::default` is the only source of bindings. A chord with modifiers and no entry takes the entry of the plain key.
 - `mu-client` already has `connect` and `disconnect`. No effect of the client calls them.
+- `mu_tui::run` takes only the `PortalClient`. `Model::new` always uses `Keymap::default`, and it writes the focus directly.
 - `mu-cli` lists the worlds once before `mu_tui::run`. If no server answers, it starts one. That first call has no time limit. Only the wait after a start has `START_LIMIT` of 5 s. `start_server` passes only `--socket` to the server.
 - `run.rs` lists the worlds a second time before `screen::open`, and builds the model with `Model::from_listing`. That wait can keep the terminal blank for up to 30 s (#161).
 - `return_waiting` and `put_back` (`update.rs`) join the returned texts into one editor text. The notice of a refusal holds only the reason.
@@ -46,17 +47,19 @@ The keymap binds a chord to an `EntryId`, the place of an entry in the table. Th
 
 Three front ends feed one path. The keymap gives an entry for a chord. A command is parsed to an entry and an argument. The picker of `client-layout` will give a chosen row. Each one sends `Msg::Run { entry: EntryId, arg: Option<String> }`, which replaces `Msg::Action(Action)`. `update` calls `build` and then runs one `act(model, Action)`. No message takes an `Action` from outside, so no front end can skip the registry, and the result cannot differ by front end.
 
-Names that take a number become one entry for each value: `scroll-page-up` and `scroll-page-down`, `scroll-up` and `scroll-down` (3 rows), `focus-1` to `focus-9`.
+Names that take a number become one entry for each value: `scroll-page-up` and `scroll-page-down`, `scroll-up` and `scroll-down` (3 rows), `focus-1` to `focus-9`. The nine rows `focus-1` to `focus-9` come from one helper over the digit. So the name, the description and the `FocusIndex` value of a row come from one number.
 
 The alternative was a trait object for each command. It was rejected, because the `Action` enum already carries the TEA dispatch, and a table keeps the help and the picker a plain iteration.
 
-Enforced by: `Msg` has no variant that holds an `Action`, which the compiler checks. A unit test that each name is unique and matches `^[a-z]+(-[a-z0-9]+)*$`. A unit test that each binding of `Keymap::default` names an entry with no required argument. The spec test "A key and a command give the same focus".
+Enforced by: `Msg` has no variant that holds an `Action`, which the compiler checks. A unit test that each name is unique and matches `^[a-z]+(-[a-z0-9]+)*$`. The unit test `focus_rows_match_their_index` checks each `focus-<n>` row against its index. A unit test that each binding of `Keymap::default` names an entry with no required argument. The spec test "A key and a command give the same focus".
 
 ### D2. `mu-cli` reads the file, `mu-tui` owns the type
 
 `mu-tui` defines `ClientConfig` with `serde::Deserialize` and `deny_unknown_fields`. Its fields are `echo: Echo` and `keys: BTreeMap<String, String>`. `mu-cli` reads `client.toml` as it reads `server.toml`. It joins the name to the directory, and gives the defaults for a missing directory or file. It parses the text with `mu_core::world::parse_toml` and `Hidden::Tables(&[])`, because the file holds no secret. So a parse error names the file, the line and the column, in the format of `server.toml`.
 
 `ClientConfig::keymap()` in `mu-tui` turns the `[keys]` table into a `Keymap` over the default (D3). It refuses an unknown entry, and an entry whose argument is required. It returns an error that names the key and the entry. `mu-cli` puts the path of `client.toml` before that error, so stderr names the file for each bad binding as for a parse error. A file that exists and cannot be read is an error that names the path. If `--config` or `MU_CONFIG` names a missing directory, `mu client` warns on stderr before the screen opens, and goes on with the defaults. The check and its text move out of `ConfigArgs::worlds` into `ConfigArgs::warn_missing(verb)` in `config.rs`. `worlds()` and `client::run` both call it, so the client resolves no world to get the warning.
+
+`mu-cli` passes the result to the client as `mu_tui::run(client, settings)`. `Settings` is a public type of `mu-tui` that holds the `Keymap` and the `Echo`. `run.rs` builds the model with `Model::starting(settings)` (D8). The tests of `app.rs` give a keymap or an echo to a model with the public methods `Model::with_keymap` and `Model::with_echo`. So `mu client` and the tests set both through one public path.
 
 So `mu-tui` gains only `serde`. The TOML parse stays in `mu-core`, which already does it.
 
@@ -66,13 +69,13 @@ Enforced by: the `workspace_boundary.rs` allowlist (`serde` added for `mu-tui`, 
 
 ### D3. Key names
 
-A key name is modifiers from `ctrl`, `alt`, `shift` and `super`, then one key, joined with `+`. A key is one character that is not an uppercase letter and not `+`, the name `plus` for the `+` key, or a name of a special key. So digits such as the `1` of `alt+1` are keys. The special keys are `enter`, `tab`, `backspace`, `esc` and `space`. Termina gives Shift+Tab as `KeyCode::BackTab` with `SHIFT`, so the parse makes `shift+tab` that chord, and the lookup turns `Tab` with `SHIFT` into it. The others are `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`, `insert`, `delete` and `f1` to `f12`. So `+` is only the joiner. An uppercase character is refused, because `shift+a` names that key. The order of the modifiers does not matter, and a repeated modifier is refused.
+A key name is modifiers from `ctrl`, `alt`, `shift` and `super`, then one key, joined with `+`. A key is one character that is not an uppercase letter and not `+`, the name `plus` for the `+` key, or a name of a special key. So digits such as the `1` of `alt+1` are keys. A control character, such as a tab, a carriage return or DEL, is refused, because Termina gives those keys by their special names, not as `Char`. The special keys are `enter`, `tab`, `backspace`, `esc` and `space`. Termina gives Shift+Tab as `KeyCode::BackTab` with `SHIFT`, so the parse makes `shift+tab` that chord, and the lookup turns `Tab` with `SHIFT` into it. The others are `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`, `insert`, `delete` and `f1` to `f12`. So `+` is only the joiner. An uppercase character is refused, because `shift+a` names that key. The order of the modifiers does not matter, and a repeated modifier is refused.
 
 The client pushes only `DISAMBIGUATE_ESCAPE_CODES`. So Shift and a letter alone arrive as text, and Termina gives the uppercase letter, such as `Char('Z')` with `SHIFT`. A chord with Ctrl, Alt or Super keeps the unshifted letter, so Ctrl+Shift+Z arrives as `Char('z')` with `CONTROL` and `SHIFT`. The default redo at head is that chord. A legacy terminal gives `Char('Z')`, with or without `SHIFT`. So the parse makes `shift+z` the chord `Char('z')` with `SHIFT`. At a key, the lookup turns an uppercase letter into its lowercase letter with `SHIFT` before it looks up the chord. So `ctrl+shift+z` in `[keys]` replaces the default redo. Shift with a character that is not a letter is refused, because the terminal gives the shifted character instead, such as `!` for Shift+1. The player binds that character itself. Task 1.3 checks these reports, and Shift+Tab, in Ghostty and Terminal.app.
 
 `ClientConfig::keymap()` parses each name to a chord. If two names give one chord, it refuses both and names them. `"none"` binds the chord to the entry `ignore`, so the key does nothing. The fallback from a modified chord to the plain key then cannot reach a send.
 
-The engram rule 5rk42v8qs1 of this repository asks for an open source crate before own code. Task 1.2 looks for a crate that parses such names into the key type of Termina, or into a neutral type. `crokey` parses only into crossterm types, so it does not fit as is. If no crate fits, a parser of about 60 lines goes in `keymap.rs`. A property test checks that it reads back each name that it writes. It covers every set of modifiers and every key, `plus` included. It also checks that each order of the modifiers gives the same chord.
+The engram rule 5rk42v8qs1 of this repository asks for an open source crate before own code. Task 1.2 looks for a crate that parses such names into the key type of Termina, or into a neutral type. `crokey` 1.5.1 does not fit as is. Its `src/parse.rs` parses into `crossterm::event::KeyCode` and `KeyModifiers`, and its `Cargo.toml` needs `crossterm` ^0.29 with no feature that leaves it out (the crate source from crates.io, read on 2026-11-22). If no crate fits, a parser of about 60 lines goes in `keymap.rs`. A property test checks that it reads back each name that it writes. It covers every set of modifiers and every key, `plus` included. It also checks that each order of the modifiers gives the same chord.
 
 Enforced by: the tests of `keymap.rs`, that property test, and the spec scenarios of "A bad binding stops the client".
 
@@ -103,11 +106,11 @@ Enforced by: the spec tests of `client-commands`, and unit tests of the parser i
 
 ### D5. History is a state of each world
 
-`World` gains `history: History`. `History` holds a `VecDeque<String>` of at most 1000 entries. Its one push drops an empty text and a text equal to the newest entry, for every caller: a send, a command, a focus change and `put_back`. History keeps a text as the player typed it. So `//me waves` stays with both slashes, and a recall sends `/me waves` again. The walk state is in the model, not in a world, because one pose editor serves all worlds. It holds the world of the walk, the place in the history, and the draft that the first Up saved. A send ends the walk.
+`World` gains `history: History`. `History` holds a `VecDeque<String>` of at most 1000 entries. Its one push drops an empty text and a text equal to the newest entry, for every caller: a send, a command, a focus change and `put_back`. History keeps a text as the player typed it. So `//me waves` stays with both slashes, and a recall sends `/me waves` again. The walk state is in the model, not in a world, because one pose editor serves all worlds. It holds the world of the walk by its id, such as `alpha/aria`, the place in the history, and the draft that the first Up saved. It holds the id and not the place of the world in the list, because an event can add a world before it. A send ends the walk.
 
-`HistoryPrev` and `HistoryNext` are bound to Up and Down. Up acts only on the first logical line of the pose editor, and Down only on the last. On other lines, `update` gives the key to the editor as before. A logical line is a line between line breaks, not a wrapped row.
+`HistoryPrev` and `HistoryNext` are bound to Up and Down. Up acts only on the first logical line of the pose editor, and Down only on the last. On other lines, `update` gives the key to the editor as before. A logical line is a line between line breaks, not a wrapped row. The fallback of `Keymap::get` from a modified chord to the plain key skips `history-prev` and `history-next`. So Shift+Up, Ctrl+Up and Shift+Down reach the editor with their modifiers, as at head.
 
-One method `Model::set_focus(index)` changes the focus. It sets the index, clears the unseen mark of that world, and ends a walk. If no world had the focus, it also copies the kept notices into the pane of that world, as `Model::world` does at head. While `first_list` is set, it does nothing. `move_focus`, `focus-1` to `focus-9`, `/focus`, the `None` arm of `Model::world` and the end of the first list all call it. When a walk ends, the editor keeps its text, and the draft goes into the history of the world of the walk.
+One method `Model::set_focus(index)` changes the focus. It sets the index, clears the unseen mark of that world, and ends a walk. If no world had the focus, it also copies the kept notices into the pane of that world, as `Model::world` does at head. While `first_list` is set, it does nothing. `move_focus`, `focus-1` to `focus-9`, `/focus`, the `None` arm of `Model::world` and the end of the first list all call it. When a walk ends, the editor keeps its text, and the draft goes into the history of the world of the walk. `put_back` is the one exception (D6).
 
 Down with no walk does nothing. It does not restore an empty draft.
 
@@ -119,15 +122,15 @@ Enforced by: the spec tests of the history requirements, and a property test tha
 
 `put_back` changes, for a refusal and for `return_waiting` alike:
 
-1. It ends a walk first. The text that the editor held is then the saved draft, not the entry on screen.
+1. It ends a walk first, but it does not push the draft. The saved draft becomes the held text, not the entry on screen, and step 3 pushes it once. So the count of the refusal line includes the draft.
 2. The first returned text goes alone into the editor, with the cursor at the start of its first line. So the next Up recalls history at once.
 3. The other returned texts, and then the held text, go into the history of their world. They are pushed in reverse order, so the first Up gives the next one. A stream end or a reset puts the held text into the history of the world in focus.
 
-The line of a refusal in `on_reply` stays a push to the pane of the refused world, as at head. It holds the reason. If texts went into history, it also holds their count. The count is of the entries that the push kept, because Up gives only those. A returned text equal to the newest entry is not counted. With none, it holds the reason alone. The line of `return_waiting` stays a hint, as at head. It keeps its count of each world and adds `Up recalls the rest`.
+The line of a refusal in `on_reply` stays a push to the pane of the refused world, as at head. It holds the reason. If texts went into history, it also holds their count, as `(<n> in history)`. The count is of the entries that the push kept, because Up gives only those. A returned text equal to the newest entry is not counted. With none, it holds the reason alone. The line of `return_waiting` stays a hint, as at head. It keeps its count of each world and adds `Up recalls the rest`.
 
-The alternative was a marker line between the texts in the editor. #151 rejects it, because Alt+Enter sends the marker as a command.
+The alternative was a marker line between the texts in the editor. #151 says that the client has no line that it keeps in the editor but does not send, and that an empty line does not work, because Alt+Enter sends it as an empty command. A marker would need such a line, so this change keeps the texts apart in history instead.
 
-Enforced by: the spec scenarios of "A refused text stops the sends after it" in `tests/app.rs`.
+Enforced by: the spec scenarios of "A refused text stops the sends after it" in `tests/app.rs`. The test `a_refusal_during_a_walk_of_the_history` asserts the count `(1 in history)` and one entry `draft`.
 
 ### D7. Echo
 
@@ -137,7 +140,7 @@ Enforced by: the spec scenarios of the echo requirements on `TestBackend`. A tes
 
 ### D8. The screen opens before the first list
 
-`run.rs` opens the screen first, and sends the first list as an effect. `Msg::Listed` becomes the one path of every list, the first included. `Model::from_listing` goes away. The tests build a model with `Model::new` and then give it `Msg::Listed`, so they run the path that `run.rs` runs.
+`run.rs` opens the screen first, and sends the first list as an effect. `Msg::Listed` becomes the one path of every list, the first included. `Model::from_listing` goes away. `run.rs` builds the model with `Model::starting(settings)`: no world, `Listing::Asked`, and `first_list` set. The tests of the first list build the same model and then give it `Msg::Listed`, so they run the path that `run.rs` runs. `Model::new(worlds)` stays for the other tests. It leaves `first_list` clear and gives the focus through `set_focus`, so no constructor writes the focus directly.
 
 The model starts with `Listing::Asked` and a flag `first_list`. The top row shows `listing worlds` while the flag is set. The stream starts from the first event, so its events can add worlds before the list ends. While the flag is set, the focus stays empty: `Model::world` adds the world and gives it no focus. Each end of the first list clears the flag: a reply with worlds, a failure, and the 30 s limit. Then, if the model holds a world, `set_focus` gives the focus to the first world, with the kept notices, such as the width notice of the probe. So a world that an event added stays in reach also after a failed list. A failed first list adds a notice with the reason, as `from_listing` did. A reset while the first list is with the server keeps the flag, and the list is asked again as today.
 
@@ -147,7 +150,7 @@ Enforced by: `TestBackend` tests of the first view before `Msg::Listed`, of a se
 
 ### D9. The architecture model
 
-`architecture/model.c4` gains the part `registry` between `keymap` and `update`, and the edge `update -> registry`. The dynamic view of one key press in `views.c4` names the registry. This follows the contributing page for diagrams: a change that alters the architecture updates the model.
+`architecture/model.c4` gains the part `registry` between `keymap` and `update`, and the edge `update -> registry`. The dynamic view of one key press in `views.c4` names the registry. The description of `keymap` and the label of the edge `keymap -> update` change from an `Action` to a registry entry. This follows the contributing page for diagrams: a change that alters the architecture updates the model.
 
 Enforced by: review alone, and the LikeC4 build of the docs.
 
@@ -155,7 +158,7 @@ Enforced by: review alone, and the LikeC4 build of the docs.
 
 Completion of a command name or an argument, with a fuzzy list in the style of fzf, comes in a later change. This change keeps three seams for it:
 
-- Each argument has a kind (`ArgKind`). A function `candidates(model, kind) -> Vec<String>` gives the values of a kind. For `World` it gives the worlds of the model in the order of the top row. Step 4 of D4 uses it, so the seam has a caller and a test from the start.
+- Each argument has a kind (`ArgKind`). A function `candidates(model, kind) -> Vec<String>` gives the values of a kind. For `World` it gives `Model::world_ids`, the worlds in the order of the top row, with no second list. Step 4 of D4 uses it, so the seam has a caller and a test from the start.
 - The command parser returns a parse that knows where the cursor is: in the name, in the argument, or past it. A completion widget then asks the registry for names or `candidates` for the kind, with no second parser.
 - The default keymap leaves Tab, Shift+Tab and Ctrl+Space with no binding. The guide page says that they are kept for completion.
 

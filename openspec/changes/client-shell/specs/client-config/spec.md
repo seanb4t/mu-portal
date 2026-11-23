@@ -12,6 +12,11 @@ The client SHALL read `client.toml` at the top level of the configuration direct
 - **WHEN** the user starts `mu client --config <dir>`, types `hello` and presses Enter
 - **THEN** the screen shows `> hello`, and its cells are not dim
 
+#### Scenario: A file that sets dim
+- **GIVEN** `<dir>/client.toml` holds `echo = "dim"`, and a server with the fake world `alpha/aria`
+- **WHEN** the user starts `mu client --config <dir>`, types `hello` and presses Enter
+- **THEN** the cells of `> hello` are dim
+
 #### Scenario: No file
 - **GIVEN** `<dir>` holds no `client.toml`, and a server with the fake world `alpha/aria`
 - **WHEN** the user starts `mu client --config <dir>`
@@ -46,7 +51,7 @@ A bad file is one that the client cannot read or parse, or that holds an unknown
 - **AND** the exit status is 1
 
 ### Requirement: The keys table binds a key to an entry
-The table `[keys]` SHALL map a key to the name of an entry of the registry, or to `"none"`. A key SHALL be modifiers from `ctrl`, `alt`, `shift` and `super`, then one key, joined with `+`. A key is one character that is not an uppercase letter and not `+`, the name `plus`, or a name of a special key. Each binding SHALL replace the default binding of that key. A key bound to `"none"` SHALL do nothing. The keys that the table does not name SHALL keep their defaults.
+The table `[keys]` SHALL map a key to the name of an entry of the registry, or to `"none"`. A key SHALL be modifiers from `ctrl`, `alt`, `shift` and `super`, then one key, joined with `+`. A key is one character that is not an uppercase letter, not a control character and not `+`, the name `plus`, or a name of a special key. Each binding SHALL replace the default binding of that key. A key bound to `"none"` SHALL do nothing. The keys that the table does not name SHALL keep their defaults.
 
 #### Scenario: A new binding
 - **GIVEN** `<dir>/client.toml` holds `[keys]` with `"alt+n" = "focus-next"`, and a server with the fake worlds `alpha/aria` and `beta/bryn`
@@ -75,7 +80,7 @@ The table `[keys]` SHALL map a key to the name of an entry of the registry, or t
 - **AND** the editor holds `hi`
 
 ### Requirement: A bad binding stops the client
-A binding of `[keys]` SHALL stop the client as a bad file in each of these cases: an unknown key, an unknown entry, an entry that needs an argument, a repeated modifier, `shift` with a character that is not a letter, and two names of one key. The terminal reports Shift and such a character as the shifted character, such as `!`.
+A binding of `[keys]` SHALL stop the client as a bad file in each of these cases: an unknown key, an unknown entry, an entry that needs an argument, a repeated modifier, `shift` with a character that is not a letter, a control character, and two names of one key. The terminal reports Shift and such a character as the shifted character, such as `!`.
 
 #### Scenario: Two names of one key
 - **GIVEN** `<dir>/client.toml` holds `[keys]` with `"ctrl+shift+z" = "redo"` and `"shift+ctrl+z" = "undo"`
@@ -92,6 +97,12 @@ A binding of `[keys]` SHALL stop the client as a bad file in each of these cases
 - **GIVEN** `<dir>/client.toml` holds `[keys]` with `"ctrl+N" = "quit"`
 - **WHEN** the user starts `mu client --config <dir>`
 - **THEN** stderr names `client.toml` and `ctrl+N`
+- **AND** the exit status is 1
+
+#### Scenario: A control character
+- **GIVEN** `<dir>/client.toml` holds `[keys]` with `"alt+\u007f" = "quit"`
+- **WHEN** the user starts `mu client --config <dir>`
+- **THEN** stderr names `client.toml`
 - **AND** the exit status is 1
 
 #### Scenario: Shift with a digit

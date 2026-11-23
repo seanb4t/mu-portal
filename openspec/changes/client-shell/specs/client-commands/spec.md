@@ -15,7 +15,7 @@ The client SHALL have one registry of entries. Each entry SHALL have a unique na
 - **AND** the server records no player event
 
 ### Requirement: Each front end runs an entry the same way
-A key and a command SHALL only choose an entry and its argument. The client SHALL run the entry the same way for each of them. An entry that acts on the text of the editor SHALL NOT run from a command, because the command is that text. A key can run every entry.
+A key and a command SHALL only choose an entry and its argument. The client SHALL run the entry the same way for each of them. An entry that acts on the text of the editor SHALL NOT run from a command, because the command is that text. A key can run every entry that needs no argument, an editing entry included.
 
 #### Scenario: A key and a command give the same focus
 - **GIVEN** a server with the fake worlds `alpha/aria` and `beta/bryn`, and the world in focus is `alpha/aria`
@@ -138,7 +138,7 @@ A bad command names no entry, or an entry that does not run as a command. It can
 #### Scenario: Quit twice while a text waits
 - **GIVEN** a text of `alpha/aria` waits for the server
 - **WHEN** the user types `/quit` and presses Enter
-- **THEN** the screen shows a line that starts with `-- ` and holds the count of the texts that wait
+- **THEN** the screen shows a line that starts with `-- ` and holds `1 line not sent yet`
 - **WHEN** the user types `/quit` and presses Enter again
 - **THEN** the client exits with status 0
 
@@ -146,7 +146,7 @@ A bad command names no entry, or an entry that does not run as a command. It can
 - **GIVEN** a text of `alpha/aria` waits for the server
 - **WHEN** the user types `/quit` and presses Enter, then types `/fly` and presses Enter, then types `/quit` and presses Enter
 - **THEN** the client is still running
-- **AND** the screen shows the count of the texts that wait a second time
+- **AND** after the last Enter the screen shows a line that starts with `-- ` and holds `1 line not sent yet`
 
 #### Scenario: A command with no world in focus
 - **GIVEN** a server with no world

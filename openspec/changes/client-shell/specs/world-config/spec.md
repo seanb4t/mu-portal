@@ -42,6 +42,12 @@ The flag `--config <dir>` of `mu server`, `mu world` and `mu client` SHALL name 
 - **AND** stderr names `<dir>/none`
 - **AND** the exit status is 0
 
+#### Scenario: The client warns of a missing directory
+- **GIVEN** a server with the fake world `alpha/aria`
+- **WHEN** the user starts `mu client --config <dir>/none`
+- **THEN** stderr names `<dir>/none`
+- **AND** the top row shows `[alpha/aria]`
+
 #### Scenario: A missing default directory
 - **GIVEN** `XDG_CONFIG_HOME` is `<dir>`, `<dir>/mu` does not exist, and neither `MU_CONFIG` nor `--config` is given
 - **WHEN** the user runs `mu world list`
