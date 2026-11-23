@@ -4,9 +4,9 @@ Test files: `crates/mu-tui/tests/app.rs` holds the tests of `update` and `view` 
 
 ## 1. Facts to check first
 
-- [ ] 1.1 Read the code of `mu_core::world::parse_toml` and the current documentation of `toml` for the line and column of a parse error. Make sure that the stderr text of the scenarios "An unknown key" and "Not TOML" can name the key and the line.
-- [ ] 1.2 Search crates.io and GitHub for a parser of key names such as `ctrl+shift+z`. It must fit Termina's `KeyEvent` or a neutral type, and the license policy of `deny.toml`. Record the result in design.md D3. Make sure that D3 names the crate, or names why each candidate does not fit.
-- [ ] 1.3 Read the Termina documentation and the kitty keyboard protocol for how Alt+digit, Alt+Home, Alt+End, Shift with a letter, Ctrl+Shift+Z and Shift+Tab arrive. Make sure that design.md lists each terminal (Ghostty, Terminal.app) where they do not arrive.
+- [x] 1.1 Read the code of `mu_core::world::parse_toml` and the current documentation of `toml` for the line and column of a parse error. Make sure that the stderr text of the scenarios "An unknown key" and "Not TOML" can name the key and the line.
+- [x] 1.2 Search crates.io and GitHub for a parser of key names such as `ctrl+shift+z`. It must fit Termina's `KeyEvent` or a neutral type, and the license policy of `deny.toml`. Record the result in design.md D3. Make sure that D3 names the crate, or names why each candidate does not fit.
+- [x] 1.3 Read the Termina documentation and the kitty keyboard protocol for how Alt+digit, Alt+Home, Alt+End, Shift with a letter, Ctrl+Shift+Z and Shift+Tab arrive. Make sure that design.md lists each terminal (Ghostty, Terminal.app) where they do not arrive.
 
 ## 2. The registry and one dispatch
 
