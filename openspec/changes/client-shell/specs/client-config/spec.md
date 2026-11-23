@@ -135,7 +135,7 @@ A binding of `[keys]` SHALL stop the client as a bad file in each of these cases
 - **AND** the exit status is 1
 
 ### Requirement: The server table sets the wait for a server
-The field `connect_wait_seconds` of the table `[server]` SHALL be the longest time, in seconds, that `mu client` waits for a server to answer. It SHALL allow a fraction, and its default SHALL be 5. A value that is 0 or less, or that is not finite, SHALL stop the client before the screen opens, with exit status 1 and an error on stderr that names `client.toml` and `server.connect_wait_seconds`. The requirement "The client starts a server" gives the waits that it bounds.
+The field `connect_wait_seconds` of the table `[server]` SHALL be the longest time, in seconds, that `mu client` waits for a server to answer. It SHALL allow a fraction, and its default SHALL be 5. A value that is 0 or less, that is not finite, or that is less than 1 ns SHALL stop the client before the screen opens, with exit status 1 and an error on stderr that names `client.toml` and `server.connect_wait_seconds`. The requirement "The client starts a server" gives the waits that it bounds.
 
 #### Scenario: A wait of zero
 - **GIVEN** `<dir>/client.toml` holds `[server]` with `connect_wait_seconds = 0`
