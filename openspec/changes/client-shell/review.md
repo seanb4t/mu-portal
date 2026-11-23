@@ -1,9 +1,9 @@
 ---
 verdict: approve
 phase: plan
-reviewed_at: 2026-11-23T02:16:09+00:00
-head: 4b1a72f74a568163ca7369da4134df092b37a019
-round: 14
+reviewed_at: 2026-11-23T02:17:47+00:00
+head: aa9ff96f02f0900ac84fedbc20975c18eb50e3e1
+round: 15
 next_id: 155
 lenses:
   spec-lint: ok
@@ -54,6 +54,7 @@ None.
 | 12 | plan | full | adb7ef9d45bd8d7f221e824fefe213f7a69a316f | 717676bdfe6a7c46a6f743aa7b43adee44b311a201cf97ec3e18000fa308e6af | changes-requested | 12 | 0 | 0 | 0 | 0 | The owner chose a pose editor for each world, which rewrites D5 and D6 and adds and replaces scenarios |
 | 13 | plan | follow-up | 662c14c418afd9f5272f5e40564bd4bb42a4493c | 0267b079207336632636ada23ccb88ff247bf939a1a83507356762e4b2bccf23 | approve | 0 | 0 | 1 | 12 | 0 |  |
 | 14 | plan | follow-up | 4b1a72f74a568163ca7369da4134df092b37a019 | bae8b166475602911b08e66a59c847eff7cf6ba6f285df8794204fe49b9d479e | approve | 0 | 0 | 0 | 1 | 0 |  |
+| 15 | plan | follow-up | aa9ff96f02f0900ac84fedbc20975c18eb50e3e1 | 2a30ae0de66fb5d7674bfa757bf17c2729078b9880e061dee6f154658bb0669e | approve | 0 | 0 | 0 | 0 | 0 |  |
 
 ## Judge
 
@@ -184,10 +185,9 @@ None.
 
 ## Lens notes
 
-- verify: R-154: task 4.1 now has the property test history_keeps_its_invariants check after each step of random sends, refusals, focus changes, Up and Down that each world's editor text is unchanged, except in the world that had the focus before the step or a world where put_back ran. So the editor invariant is now checked over random runs, not only by the example a_focus_change_keeps_each_editor.
-- verify: Task 4.1 wording: the exception says 'the step typed into the world that had the focus', but the step list has no typing step, and Up, Down and a send change the focused editor without typing. 'A focus change is such a step' can also be read as exempting the world that had the focus before. In that reading a focus change that alters the old world's editor goes unchecked. The intended reading checks both worlds, and the example a_focus_change_keeps_each_editor covers that case. A plainer wording would remove the doubt.
-- verify: The D5 text at design.md line 110 says each world editor and loose get the capabilities of the terminal. That matches head: Model::set_caps already updates every editor, and Model::world builds a new pane with the current caps (crates/mu-tui/src/model.rs 249, 277-283).
-- verify: The ranges of review.md in diff-hunks.txt were not read: this agent never reads the change's review.md.
+- verify: prior.json holds no fixed row: 152 rows are resolved and 2 (R-37, R-43) are deferred, so fixes is empty.
+- verify: The changed range tasks.md 28 1 (task 4.1, the property test history_keeps_its_invariants) was read at head against design.md D5 and the requirement Each world keeps its own editor; its editor rule agrees with A change of the focus SHALL NOT change the text of an editor, and with put_back of D6 acting on its own world only.
+- verify: The changed ranges of review.md were not read, because the agent rules forbid a read of review.md; they hold review records, not plan text.
 
 ## Ledger
 
