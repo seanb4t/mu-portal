@@ -1,9 +1,9 @@
-//! The keymap: a table from a key with its modifiers, or a step of the mouse wheel, to an
-//! [`Action`].
+//! The keymap: a table from a key with its modifiers, or a step of the mouse wheel, to an entry
+//! of the [registry](crate::registry).
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-use crate::update::Action;
+use crate::registry::EntryId;
 
 /// A key with its modifiers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,6 +37,12 @@ impl Chord {
     }
 }
 
+/// The entries that Alt+1 to Alt+9 run, in the order of the digits.
+const FOCUS_PLACES: [&str; 9] = [
+    "focus-1", "focus-2", "focus-3", "focus-4", "focus-5", "focus-6", "focus-7", "focus-8",
+    "focus-9",
+];
+
 /// One step of the mouse wheel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Wheel {
@@ -46,12 +52,12 @@ pub enum Wheel {
     Down,
 }
 
-/// The table from a [`Chord`] or a [`Wheel`] step to an [`Action`]. A key for which
-/// [`Keymap::get`] gives no action goes to the pose editor.
+/// The table from a [`Chord`] or a [`Wheel`] step to an [`EntryId`]. A key for which
+/// [`Keymap::get`] gives no entry goes to the pose editor.
 #[derive(Clone, Debug)]
 pub struct Keymap {
-    entries: Vec<(Chord, Action)>,
-    wheel: Vec<(Wheel, Action)>,
+    entries: Vec<(Chord, EntryId)>,
+    wheel: Vec<(Wheel, EntryId)>,
 }
 
 impl Keymap {
@@ -64,35 +70,43 @@ impl Keymap {
         }
     }
 
-    /// Maps the wheel step `step` to `action`, in place of an earlier entry of the same step.
-    pub fn bind_wheel(&mut self, step: Wheel, action: Action) {
+    /// Maps the wheel step `step` to `entry`, in place of an earlier entry of the same step.
+    pub fn bind_wheel(&mut self, step: Wheel, entry: EntryId) {
         match self.wheel.iter_mut().find(|(each, _)| *each == step) {
-            Some(entry) => entry.1 = action,
-            None => self.wheel.push((step, action)),
+            Some(bound) => bound.1 = entry,
+            None => self.wheel.push((step, entry)),
         }
     }
 
-    /// The action of the wheel step `step`.
+    /// The entry of the wheel step `step`.
     #[must_use]
-    pub fn wheel(&self, step: Wheel) -> Option<Action> {
+    pub fn wheel(&self, step: Wheel) -> Option<EntryId> {
         self.wheel
             .iter()
             .find(|(each, _)| *each == step)
-            .map(|(_, action)| *action)
+            .map(|(_, entry)| *entry)
     }
 
-    /// Maps `chord` to `action`, in place of an earlier entry of the same chord.
-    pub fn bind(&mut self, chord: Chord, action: Action) {
+    /// Each chord and wheel step with its entry, the chords first.
+    pub fn bindings(&self) -> impl Iterator<Item = EntryId> + '_ {
+        self.entries
+            .iter()
+            .map(|(_, entry)| *entry)
+            .chain(self.wheel.iter().map(|(_, entry)| *entry))
+    }
+
+    /// Maps `chord` to `entry`, in place of an earlier entry of the same chord.
+    pub fn bind(&mut self, chord: Chord, entry: EntryId) {
         match self.entries.iter_mut().find(|(each, _)| *each == chord) {
-            Some(entry) => entry.1 = action,
-            None => self.entries.push((chord, action)),
+            Some(bound) => bound.1 = entry,
+            None => self.entries.push((chord, entry)),
         }
     }
 
-    /// The action of `key`. A key with modifiers and no entry of its own takes the entry of
+    /// The entry of `key`. A key with modifiers and no entry of its own takes the entry of
     /// the same key with no modifier.
     #[must_use]
-    pub fn get(&self, key: &KeyEvent) -> Option<Action> {
+    pub fn get(&self, key: &KeyEvent) -> Option<EntryId> {
         let exact = Chord {
             code: key.code,
             modifiers: key.modifiers,
@@ -101,16 +115,17 @@ impl Keymap {
             .or_else(|| self.find(Chord::plain(key.code)))
     }
 
-    fn find(&self, chord: Chord) -> Option<Action> {
+    fn find(&self, chord: Chord) -> Option<EntryId> {
         self.entries
             .iter()
             .find(|(each, _)| *each == chord)
-            .map(|(_, action)| *action)
+            .map(|(_, entry)| *entry)
     }
 }
 
 impl Default for Keymap {
-    /// Ctrl+C quits, and Ctrl+N and Ctrl+P move the focus. The page keys scroll one page, and
+    /// Ctrl+C quits, Ctrl+N and Ctrl+P move the focus, and Alt+1 to Alt+9 give it to the world
+    /// at that place. Alt+Home and Alt+End scroll the pane to its ends. The page keys scroll one page, and
     /// each step of the mouse wheel scrolls three rows.
     ///
     /// Enter and Ctrl+M send the text of the pose editor as one command. Alt+Enter and
@@ -122,42 +137,59 @@ impl Default for Keymap {
     /// is redo.
     fn default() -> Self {
         let mut keymap = Self::empty();
-        keymap.bind(Chord::ctrl('c'), Action::Quit);
-        keymap.bind(Chord::ctrl('n'), Action::FocusNext);
-        keymap.bind(Chord::ctrl('p'), Action::FocusPrev);
-        keymap.bind(Chord::plain(KeyCode::Enter), Action::Submit);
-        keymap.bind(Chord::ctrl('m'), Action::Submit);
+        keymap.bind(Chord::ctrl('c'), EntryId::of("quit"));
+        keymap.bind(Chord::ctrl('n'), EntryId::of("focus-next"));
+        keymap.bind(Chord::ctrl('p'), EntryId::of("focus-prev"));
+        keymap.bind(Chord::plain(KeyCode::Enter), EntryId::of("send"));
+        keymap.bind(Chord::ctrl('m'), EntryId::of("send"));
         keymap.bind(
             Chord::with(KeyCode::Enter, Modifiers::ALT),
-            Action::SubmitLines,
+            EntryId::of("send-lines"),
         );
         keymap.bind(
             Chord::with(KeyCode::Enter, Modifiers::CONTROL),
-            Action::SubmitLines,
+            EntryId::of("send-lines"),
         );
         keymap.bind(
             Chord::with(KeyCode::Enter, Modifiers::SHIFT),
-            Action::Newline,
+            EntryId::of("newline"),
         );
-        keymap.bind(Chord::ctrl('j'), Action::Newline);
+        keymap.bind(Chord::ctrl('j'), EntryId::of("newline"));
         keymap.bind(
             Chord::with(KeyCode::Char('r'), Modifiers::ALT),
-            Action::JoinLines,
+            EntryId::of("join-lines"),
         );
-        keymap.bind(Chord::ctrl('u'), Action::DeleteToLineStart);
-        keymap.bind(Chord::ctrl('r'), Action::Ignore);
-        keymap.bind(Chord::ctrl('z'), Action::Undo);
+        keymap.bind(Chord::ctrl('u'), EntryId::of("delete-to-line-start"));
+        keymap.bind(Chord::ctrl('r'), EntryId::of("ignore"));
+        keymap.bind(Chord::ctrl('z'), EntryId::of("undo"));
         keymap.bind(
             Chord::with(
                 KeyCode::Char('z'),
                 Modifiers::CONTROL.union(Modifiers::SHIFT),
             ),
-            Action::Redo,
+            EntryId::of("redo"),
         );
-        keymap.bind(Chord::plain(KeyCode::PageUp), Action::ScrollPage(-1));
-        keymap.bind(Chord::plain(KeyCode::PageDown), Action::ScrollPage(1));
-        keymap.bind_wheel(Wheel::Up, Action::ScrollRows(-3));
-        keymap.bind_wheel(Wheel::Down, Action::ScrollRows(3));
+        keymap.bind(Chord::plain(KeyCode::PageUp), EntryId::of("scroll-page-up"));
+        keymap.bind(
+            Chord::plain(KeyCode::PageDown),
+            EntryId::of("scroll-page-down"),
+        );
+        for (digit, name) in ('1'..='9').zip(FOCUS_PLACES) {
+            keymap.bind(
+                Chord::with(KeyCode::Char(digit), Modifiers::ALT),
+                EntryId::of(name),
+            );
+        }
+        keymap.bind(
+            Chord::with(KeyCode::Home, Modifiers::ALT),
+            EntryId::of("scroll-top"),
+        );
+        keymap.bind(
+            Chord::with(KeyCode::End, Modifiers::ALT),
+            EntryId::of("scroll-bottom"),
+        );
+        keymap.bind_wheel(Wheel::Up, EntryId::of("scroll-up"));
+        keymap.bind_wheel(Wheel::Down, EntryId::of("scroll-down"));
         keymap
     }
 }

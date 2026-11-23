@@ -281,7 +281,7 @@ fn control_characters_are_replaced_in_every_part() {
 }
 
 #[test]
-fn enter_sends_to_world_in_focus() {
+fn a_line_goes_to_the_world_in_focus() {
     let mut app = two_worlds();
     press(&mut app, ctrl('n'));
     type_text(&mut app, "hi");
@@ -297,7 +297,7 @@ fn enter_sends_to_world_in_focus() {
 }
 
 #[test]
-fn empty_enter_sends_empty_line() {
+fn an_empty_line() {
     let mut app = two_worlds();
     let action = press(&mut app, key(KeyCode::Enter));
     assert_eq!(
@@ -324,7 +324,7 @@ fn enter_with_no_world() {
 }
 
 #[test]
-fn refused_line_keeps_input() {
+fn a_refused_line() {
     let mut app = two_worlds();
     type_text(&mut app, "hi");
     assert_ne!(press(&mut app, key(KeyCode::Enter)), [] as [Effect; 0]);
@@ -1433,4 +1433,44 @@ fn list_adds_a_world_that_the_client_did_not_hold() {
     };
     assert_eq!(update(&mut app, Msg::Listed(Ok(vec![beta]))), []);
     assert!(top(&mut app).contains("beta/bryn"));
+}
+
+// Alt and a digit give the focus by place, and Alt+Home and Alt+End scroll to the ends.
+
+fn alt(code: KeyCode) -> KeyEvent {
+    KeyEvent::new(code, Modifiers::ALT)
+}
+
+#[test]
+fn the_second_world() {
+    let mut app = two_worlds();
+    press(&mut app, alt(KeyCode::Char('2')));
+    assert_eq!(top(&mut app), "alpha/aria [beta/bryn]");
+}
+
+#[test]
+fn no_world_at_that_place() {
+    let mut app = two_worlds();
+    assert_eq!(press(&mut app, alt(KeyCode::Char('3'))), []);
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn*");
+}
+
+#[test]
+fn back_to_the_first_world() {
+    let mut app = two_worlds();
+    press(&mut app, ctrl('n'));
+    press(&mut app, alt(KeyCode::Char('1')));
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn");
+}
+
+#[test]
+fn top_and_bottom() {
+    let mut app = numbered(40);
+    press(&mut app, alt(KeyCode::Home));
+    let first = pane_rows(&mut app)[0].clone();
+    press(&mut app, alt(KeyCode::End));
+    assert_eq!(
+        (first.as_str(), pane_rows(&mut app).last().unwrap().as_str()),
+        ("1", "40")
+    );
 }

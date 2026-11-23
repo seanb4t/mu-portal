@@ -498,7 +498,7 @@ fn last_rows(rows: &[String], count: usize) -> Vec<&str> {
 }
 
 #[tokio::test]
-async fn pose_of_two_lines() {
+async fn a_pose_of_two_lines() {
     let (_session, mut client) = attached().await;
     // Ctrl+J is the byte LF.
     client.send(b"one\ntwo\r");
@@ -528,7 +528,7 @@ async fn alt_enter_sends_each_line() {
 }
 
 #[tokio::test]
-async fn line_break_that_the_world_refuses() {
+async fn a_line_break_that_the_world_refuses() {
     let game = ScriptedGame::new(Script::new().silent());
     let listening = game.listen().await.unwrap();
     let port = listening.addr().port();

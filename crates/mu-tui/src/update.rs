@@ -20,6 +20,7 @@ use crate::keymap::Wheel;
 use crate::model::{Late, Listing, Model, PaneId};
 use crate::pane::{Caps, PaneState};
 use crate::probe::{self, Outcome};
+use crate::registry::EntryId;
 use crate::store::Image;
 use crate::text::{clean, clean_paste, line};
 
@@ -28,8 +29,14 @@ use crate::text::{clean, clean_paste, line};
 pub enum Msg {
     /// An event of the terminal.
     Terminal(TermEvent),
-    /// An action from a source other than the keymap.
-    Action(Action),
+    /// Run an entry of the registry with its argument. A key, a command and a picker each give
+    /// this message, so each runs an entry the same way.
+    Run {
+        /// The entry to run.
+        entry: EntryId,
+        /// Its argument, or `None` for no argument.
+        arg: Option<String>,
+    },
     /// An item of the event stream of the server.
     Client(ClientEvent),
     /// The result of the startup probe.
@@ -43,8 +50,8 @@ pub enum Msg {
     Listed(Result<Vec<ProtoWorld>, String>),
 }
 
-/// What a key or a client command means.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// What an entry of the registry does. Only [`Entry::build`](crate::registry::Entry) makes one.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Action {
     /// Leave the client.
     Quit,
@@ -78,6 +85,13 @@ pub enum Action {
     /// Scroll the pane in focus by this many rows: back for a negative count, forward for a
     /// positive one.
     ScrollRows(i32),
+    /// Give the focus to the world at this place of the top row, from 1. With no world at that
+    /// place, do nothing.
+    FocusIndex(u8),
+    /// Scroll the pane in focus to its oldest line.
+    ScrollTop,
+    /// Return the pane in focus to the bottom.
+    ScrollBottom,
 }
 
 /// What the loop must do after an update.
@@ -152,7 +166,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
             Vec::new()
         }
         Msg::Terminal(_) => Vec::new(),
-        Msg::Action(action) => act(model, action),
+        Msg::Run { entry, arg } => run_entry(model, entry, arg),
         Msg::Client(item) => on_client(model, item),
         Msg::Listed(listed) => {
             let again = model.listing == Listing::AskedBeforeReset;
@@ -300,13 +314,10 @@ fn on_cut_reply_key(model: &mut Model, mut bytes: Vec<u8>, key: KeyEvent) -> Vec
 }
 
 fn on_input_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
-    let action = model.keymap.get(&key);
-    if action != Some(Action::Quit) {
-        model.quit_armed = false;
-    }
-    if let Some(action) = action {
-        act(model, action)
+    if let Some(entry) = model.keymap.get(&key) {
+        run_entry(model, entry, None)
     } else {
+        model.quit_armed = false;
         model.pose().textarea().input(input_key(key));
         Vec::new()
     }
@@ -348,13 +359,23 @@ fn on_mouse(model: &mut Model, mouse: MouseEvent) -> Vec<Effect> {
 
 fn wheel(model: &mut Model, step: Wheel) -> Vec<Effect> {
     match model.keymap.wheel(step) {
-        Some(action) => act(model, action),
+        Some(entry) => run_entry(model, entry, None),
         None => Vec::new(),
     }
 }
 
-fn act(model: &mut Model, action: Action) -> Vec<Effect> {
-    match action {
+/// Builds the action of `entry` with `arg` and runs it. Every action but a quit disarms an
+/// armed quit.
+fn run_entry(model: &mut Model, entry: EntryId, arg: Option<String>) -> Vec<Effect> {
+    let action = (entry.entry().build)(arg);
+    if action != Action::Quit {
+        model.quit_armed = false;
+    }
+    act(model, &action)
+}
+
+fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
+    match *action {
         Action::Quit => {
             let waiting: usize = model.sends.values().map(VecDeque::len).sum();
             if waiting == 0 || model.quit_armed {
@@ -376,7 +397,7 @@ fn act(model: &mut Model, action: Action) -> Vec<Effect> {
             Vec::new()
         }
         Action::Submit | Action::SubmitLines => {
-            let effects = if action == Action::Submit {
+            let effects = if *action == Action::Submit {
                 submit(model)
             } else {
                 submit_lines(model)
@@ -417,6 +438,26 @@ fn act(model: &mut Model, action: Action) -> Vec<Effect> {
         Action::ScrollRows(rows) => {
             if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
                 state.scroll_rows(rows);
+            }
+            Vec::new()
+        }
+        Action::FocusIndex(place) => {
+            if let Some(index) = usize::from(place).checked_sub(1)
+                && index < model.worlds.len()
+            {
+                focus_on(model, index);
+            }
+            Vec::new()
+        }
+        Action::ScrollTop => {
+            if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
+                state.to_top();
+            }
+            Vec::new()
+        }
+        Action::ScrollBottom => {
+            if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
+                state.to_bottom();
             }
             Vec::new()
         }
@@ -523,8 +564,13 @@ fn move_focus(model: &mut Model, forward: bool) {
     } else {
         focus - 1
     };
-    model.focus = Some(next);
-    model.worlds[next].unseen = false;
+    focus_on(model, next);
+}
+
+/// Gives the focus to the world at `index`, and clears its unseen mark.
+fn focus_on(model: &mut Model, index: usize) {
+    model.focus = Some(index);
+    model.worlds[index].unseen = false;
 }
 
 /// The effects of an item of the event stream: a list of the worlds after a Reset, or after
