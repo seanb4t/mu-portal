@@ -5,6 +5,7 @@
 //! model by walking its layout tree.
 
 pub mod command;
+pub mod config;
 pub mod convert;
 mod diacritics;
 mod editor;
@@ -25,8 +26,9 @@ mod view;
 pub mod width;
 pub mod wrap;
 
+pub use config::{ClientConfig, Echo, KeyError, Settings};
 pub use editor::{Editor, EditorId, EditorState};
-pub use keymap::{Chord, Keymap, Wheel};
+pub use keymap::{Chord, KeyNameError, Keymap, Wheel};
 pub use layout::{Leaf, Node, Size};
 pub use model::{Model, PaneId};
 pub use pane::{Caps, OutputPane, PaneState, Position};

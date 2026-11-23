@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use mu_client::ClientEvent;
 use mu_proto::{EventKind, Source, World as ProtoWorld};
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use ratatui_textarea::{CursorMove, Input, Key};
 use termina::Event as TermEvent;
 use termina::escape::csi::{Csi, DecPrivateMode, DecPrivateModeCode, Device, Mode};
@@ -16,6 +16,7 @@ use termina::event::{
 };
 
 use crate::command::{self, Parse};
+use crate::config::Echo;
 use crate::convert::convert;
 use crate::history::Walk;
 use crate::keymap::Wheel;
@@ -851,7 +852,15 @@ fn on_client(model: &mut Model, item: ClientEvent) -> Vec<Effect> {
                 .or_insert_with(|| PaneState::with_caps(Arc::clone(&model.caps)));
             let prompt = event.kind.as_known() == Some(EventKind::EVENT_KIND_PROMPT);
             match event.source.as_known() {
-                Some(Source::SOURCE_PLAYER | Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => {
+                Some(Source::SOURCE_PLAYER) => match model.echo {
+                    Echo::Show => pane.push(&line(&event)),
+                    Echo::Dim => pane.push_styled(
+                        &line(&event),
+                        &[(0, Style::default().add_modifier(Modifier::DIM))],
+                    ),
+                    Echo::Hide => {}
+                },
+                Some(Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => {
                     pane.push(&line(&event));
                 }
                 _ if prompt => {

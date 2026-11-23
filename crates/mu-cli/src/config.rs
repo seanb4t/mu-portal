@@ -44,15 +44,8 @@ impl ConfigArgs {
         )
     }
 
-    /// The resolved worlds of the directory, read from the environment of the process. With no
-    /// directory, or a missing one, there are no worlds. If `--config` or `MU_CONFIG` names a
-    /// missing directory, a warning of `verb` on stderr names it.
-    ///
-    /// # Errors
-    ///
-    /// A [`ConfigError`] that names the file or the world, and the field.
-    pub fn worlds(&self, verb: &str) -> Result<Vec<ResolvedWorld>, ConfigError> {
-        let dir = self.dir_from_env();
+    /// Warns on stderr, as `verb`, if `--config` or `MU_CONFIG` names a missing directory.
+    pub fn warn_missing(&self, verb: &str) {
         if let Some(named) = self.config.as_ref().and_then(PathValue::path)
             && matches!(named.try_exists(), Ok(false))
         {
@@ -64,7 +57,18 @@ impl ConfigArgs {
                 ),
             );
         }
-        match dir {
+    }
+
+    /// The resolved worlds of the directory, read from the environment of the process. With no
+    /// directory, or a missing one, there are no worlds. It warns as [`Self::warn_missing`]
+    /// does.
+    ///
+    /// # Errors
+    ///
+    /// A [`ConfigError`] that names the file or the world, and the field.
+    pub fn worlds(&self, verb: &str) -> Result<Vec<ResolvedWorld>, ConfigError> {
+        self.warn_missing(verb);
+        match self.dir_from_env() {
             Some(dir) => resolve_dir(&dir),
             None => Ok(Vec::new()),
         }

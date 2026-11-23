@@ -13,7 +13,7 @@ use super::parse::{LAYER_HIDDEN, parse};
 /// The layers of a configuration directory.
 ///
 /// The directory holds `global.toml`, `types/<name>.toml`, `games/<game>.toml` and
-/// `characters/<game>/<character>.toml`, and [`SERVER_FILE`] at the top, which holds no layer.
+/// `characters/<game>/<character>.toml`, and [`SERVER_FILE`] and [`CLIENT_FILE`] at the top, which hold no layer.
 /// Any other file whose name ends in `.toml`, in any case, is an error. So is an entry that
 /// cannot be read, such as a link to nothing.
 /// A missing directory holds no layers.
@@ -41,7 +41,7 @@ impl LayerSource for TomlDirSource {
         let mut kept = Vec::with_capacity(files.len());
         for parts in files {
             if let [name] = parts.as_slice()
-                && is_server_file(&self.root, name)?
+                && is_top_file(&self.root, name)?
             {
                 continue;
             }
@@ -101,23 +101,32 @@ impl TomlDirSource {
 /// The file of the server at the top of the directory. It holds no layer.
 pub const SERVER_FILE: &str = "server.toml";
 
-/// Whether the top-level entry `name` is [`SERVER_FILE`]: the same name in any case, and the
-/// same file. The exact name is that file with no compare, so an unreadable `server.toml` is
-/// left to the server, which reports the read error. On a file system that ignores case,
-/// `Server.toml` is that file. When `server.toml` does not exist, another name is not that file,
-/// but an entry of that name that cannot be opened is still an error.
+/// The file of the terminal client at the top of the directory. It holds no layer.
+pub const CLIENT_FILE: &str = "client.toml";
+
+/// The files at the top of the directory that make no world.
+const TOP_FILES: [&str; 2] = [SERVER_FILE, CLIENT_FILE];
+
+/// Whether the top-level entry `name` is one of [`TOP_FILES`]: the same name in any case, and
+/// the same file. The exact name is that file with no compare, so an unreadable `server.toml` is
+/// left to the program that reads it, which reports the read error. On a file system that
+/// ignores case, `Server.toml` is that file. When the file does not exist, another name is not
+/// that file, but an entry of that name that cannot be opened is still an error.
 ///
 /// # Errors
 ///
 /// A [`ConfigError`] that names the entry, when the compare cannot open the files.
-fn is_server_file(root: &Path, name: &str) -> Result<bool, ConfigError> {
-    if !name.eq_ignore_ascii_case(SERVER_FILE) {
+fn is_top_file(root: &Path, name: &str) -> Result<bool, ConfigError> {
+    let Some(file) = TOP_FILES
+        .into_iter()
+        .find(|file| name.eq_ignore_ascii_case(file))
+    else {
         return Ok(false);
-    }
-    if name == SERVER_FILE {
+    };
+    if name == file {
         return Ok(true);
     }
-    match same_file::is_same_file(root.join(name), root.join(SERVER_FILE)) {
+    match same_file::is_same_file(root.join(name), root.join(file)) {
         Ok(same) => Ok(same),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
         Err(error) => Err(ConfigError::new(name, error.to_string())),

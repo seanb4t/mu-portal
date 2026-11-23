@@ -1,7 +1,7 @@
 //! Helpers that run the built binary as a server, relay its socket, or give it a
 //! pseudo-terminal on one stream.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fmt::Display;
 use std::fs::File;
 use std::future::Future;
@@ -709,6 +709,29 @@ impl PtyClient {
         answers: Answers,
         (rows, cols): (u16, u16),
     ) -> Self {
+        Self::spawn(socket, cwd, answers, (rows, cols), &[], &[])
+    }
+
+    /// Starts `mu client` as [`Self::start_with`] does, with `args` after the socket, and with
+    /// `env` after [`super::test_env`]. A `None` value removes the variable.
+    pub fn start_args(
+        socket: &Path,
+        cwd: &Path,
+        answers: Answers,
+        args: &[&OsStr],
+        env: &[(&str, Option<&OsStr>)],
+    ) -> Self {
+        Self::spawn(socket, cwd, answers, (24, 80), args, env)
+    }
+
+    fn spawn(
+        socket: &Path,
+        cwd: &Path,
+        answers: Answers,
+        (rows, cols): (u16, u16),
+        args: &[&OsStr],
+        env: &[(&str, Option<&OsStr>)],
+    ) -> Self {
         use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
         let pair = native_pty_system()
@@ -722,8 +745,13 @@ impl PtyClient {
         let mut command = CommandBuilder::new(env!("CARGO_BIN_EXE_mu"));
         command.args(["client", "--socket"]);
         command.arg(socket);
+        command.args(args);
         command.cwd(cwd);
-        for (name, value) in super::test_env() {
+        let changes = super::test_env().into_iter().chain(
+            env.iter()
+                .map(|(name, value)| ((*name).into(), value.map(OsStr::to_owned))),
+        );
+        for (name, value) in changes {
             match value {
                 Some(value) => command.env(name, value),
                 None => command.env_remove(name),
@@ -784,6 +812,21 @@ impl PtyClient {
     /// The rows of the screen now.
     pub fn rows(&self) -> Vec<String> {
         self.screen.borrow().screen().rows(0, 80).collect()
+    }
+
+    /// The dim flag of each cell of the first row that starts with `text`, one for each char of
+    /// `text`.
+    pub fn dims(&self, text: &str) -> Vec<bool> {
+        let parser = self.screen.borrow();
+        let screen = parser.screen();
+        let row = screen
+            .rows(0, 80)
+            .position(|row| row.starts_with(text))
+            .unwrap_or_else(|| panic!("no row starts with {text:?}"));
+        let row = u16::try_from(row).unwrap();
+        (0..u16::try_from(text.chars().count()).unwrap())
+            .map(|col| screen.cell(row, col).is_some_and(vt100::Cell::dim))
+            .collect()
     }
 
     /// The foreground color and the bold flag of each cell of the first row that starts with

@@ -1,12 +1,12 @@
 //! `server.toml`, the configuration of the server in the configuration directory.
 
-use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
+use mu_core::world::Hidden;
 pub use mu_core::world::SERVER_FILE;
-use mu_core::world::{ConfigError, Hidden, parse_toml};
 use serde::Deserialize;
+
+pub use crate::config_file::FileError as ServerFileError;
 
 /// The content of `server.toml`. A missing file is the default. An error of the file quotes no
 /// value, because a value such as an endpoint URL can hold a password.
@@ -37,22 +37,6 @@ pub struct TelemetryTable {
     pub certificate: Option<PathBuf>,
 }
 
-/// An error of `server.toml`.
-#[derive(Debug, thiserror::Error)]
-pub enum ServerFileError {
-    /// The file holds a bad table, field or value.
-    #[error(transparent)]
-    Parse(#[from] ConfigError),
-    /// The file at `path` cannot be read.
-    #[error("{}: {source}", path.display())]
-    Read {
-        /// The path of `server.toml` in the configuration directory.
-        path: PathBuf,
-        /// The error of the read.
-        source: io::Error,
-    },
-}
-
 /// Reads `server.toml` from `dir`. With no directory, or no file, it is the default. A relative
 /// `certificate` becomes a path under `dir`.
 ///
@@ -61,30 +45,23 @@ pub enum ServerFileError {
 /// A [`ServerFileError`] that names `server.toml`, and the field when there is one. An error of
 /// the read names the path of the file, which holds the directory.
 pub fn read(dir: Option<&Path>) -> Result<ServerFile, ServerFileError> {
-    let Some(dir) = dir else {
-        return Ok(ServerFile::default());
-    };
-    let path = dir.join(SERVER_FILE);
-    match fs::read_to_string(&path) {
-        Ok(text) => {
-            let mut file: ServerFile = parse_toml(&SERVER_FILE, &text, Hidden::All)?;
-            if let Some(path) = file
-                .telemetry
-                .certificate
-                .as_mut()
-                .filter(|path| path.is_relative())
-            {
-                *path = dir.join(&*path);
-            }
-            Ok(file)
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(ServerFile::default()),
-        Err(source) => Err(ServerFileError::Read { path, source }),
+    let mut file: ServerFile = crate::config_file::read(dir, SERVER_FILE, Hidden::All)?;
+    if let Some(dir) = dir
+        && let Some(path) = file
+            .telemetry
+            .certificate
+            .as_mut()
+            .filter(|path| path.is_relative())
+    {
+        *path = dir.join(&*path);
     }
+    Ok(file)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
 
     fn read_text(text: &str) -> (tempfile::TempDir, ServerFile) {

@@ -5,7 +5,7 @@ sidebar:
   order: 2
 ---
 
-This guide shows how to configure your worlds. A world is one character on one game. The configuration is a directory of TOML files. `mu server` reads it at the start, and `mu world` shows what it holds.
+This guide shows how to configure your worlds. A world is one character on one game. The configuration is a directory of TOML files. `mu server` and `mu client` read it at the start, and `mu world` shows what it holds.
 
 ## Where the directory is
 
@@ -20,7 +20,7 @@ This guide shows how to configure your worlds. A world is one character on one g
 
 If the directory does not exist, there are no configured worlds.
 
-The directory can also hold `server.toml`, the configuration of the server. It makes no world. The guide [The server file and telemetry](/guides/telemetry/) describes it.
+The directory can also hold `server.toml`, the configuration of the server, and `client.toml`, the configuration of the terminal client. Neither file makes a world. The guide [The server file and telemetry](/guides/telemetry/) describes `server.toml`, and the guide [The client file](/guides/client/) describes `client.toml`.
 
 ## The layout
 
@@ -33,7 +33,7 @@ The directory holds four kinds of files:
 | `games/<game>.toml` | One game: the host, the port and the type |
 | `characters/<game>/<character>.toml` | One world: a character on the game |
 
-Each character file makes one world. Its id is `<game>/<character>`. A name holds only `a` to `z`, `0` to `9` and `-`, and starts with a letter. Any other file that ends in `.toml` is an error. The one exception is `server.toml` at the top of the directory. If the file system ignores case, the same name in another case is that file too.
+Each character file makes one world. Its id is `<game>/<character>`. A name holds only `a` to `z`, `0` to `9` and `-`, and starts with a letter. Any other file that ends in `.toml` is an error. The exceptions are `server.toml` and `client.toml` at the top of the directory. If the file system ignores case, the same name in another case is that file too.
 
 This example configures the world `alpha/aria`:
 

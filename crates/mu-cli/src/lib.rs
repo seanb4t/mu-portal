@@ -2,6 +2,7 @@
 
 pub mod client;
 pub mod config;
+pub mod config_file;
 pub mod env_path;
 pub mod server;
 pub mod server_config;

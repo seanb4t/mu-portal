@@ -8,6 +8,7 @@ use std::sync::Arc;
 use mu_proto::World as ProtoWorld;
 use ratatui::style::Style;
 
+use crate::config::{Echo, Settings};
 use crate::editor::{EditorId, EditorState};
 use crate::history::{History, Walk};
 use crate::keymap::Keymap;
@@ -90,6 +91,8 @@ pub struct Model {
     /// Quit then leaves.
     pub(crate) quit_arm: Option<QuitArm>,
     pub(crate) listing: Listing,
+    /// How the echo line of a send shows.
+    pub(crate) echo: Echo,
     /// The reason of the last list of the worlds, if it failed.
     pub(crate) list_failure: Option<String>,
 }
@@ -151,6 +154,7 @@ impl Model {
             quit_arm: None,
             listing: Listing::Idle,
             list_failure: None,
+            echo: Echo::default(),
         };
         for id in worlds {
             model.world(&id);
@@ -159,6 +163,21 @@ impl Model {
             model.set_focus(0);
         }
         model
+    }
+
+    /// A model with no world, and the keymap and the echo of `settings`.
+    #[must_use]
+    pub fn starting(settings: Settings) -> Self {
+        Self::new([])
+            .with_keymap(settings.keymap)
+            .with_echo(settings.echo)
+    }
+
+    /// The model with `echo` as the style of the echo line of a send.
+    #[must_use]
+    pub const fn with_echo(mut self, echo: Echo) -> Self {
+        self.echo = echo;
+        self
     }
 
     /// A model with the worlds of a list of worlds. A failed list gives no worlds and a notice

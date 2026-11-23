@@ -1942,6 +1942,7 @@ dependencies = [
  "ratatui",
  "ratatui-textarea",
  "rustix",
+ "serde",
  "termina",
  "tokio",
  "unicode-segmentation",

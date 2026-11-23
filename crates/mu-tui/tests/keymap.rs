@@ -115,3 +115,151 @@ fn default_keymap_leaves_tab_free() {
     ];
     assert_eq!(keys.map(|key| keymap.get(&key)), [None, None, None]);
 }
+
+// Key names of `client.toml`.
+
+use mu_tui::{Chord, Model, Msg, update};
+use proptest::prelude::*;
+use termina::Event as TermEvent;
+use termina::event::{KeyCode, KeyEvent, Modifiers};
+
+fn parse(name: &str) -> Chord {
+    Chord::parse(name).unwrap_or_else(|error| panic!("{error}"))
+}
+
+#[test]
+fn ctrl_plus_and_alt_1_are_read() {
+    assert_eq!(
+        [parse("ctrl+plus"), parse("alt+1")],
+        [
+            Chord::with(KeyCode::Char('+'), Modifiers::CONTROL),
+            Chord::with(KeyCode::Char('1'), Modifiers::ALT),
+        ]
+    );
+}
+
+#[test]
+fn f1_and_f12_are_read() {
+    assert_eq!(
+        [parse("f1"), parse("f12")],
+        [
+            Chord::plain(KeyCode::Function(1)),
+            Chord::plain(KeyCode::Function(12))
+        ]
+    );
+}
+
+#[test]
+fn bad_key_names_are_refused_with_the_name() {
+    for name in [
+        "ctrl+N",
+        "ctrl+ctrl+n",
+        "ctrl++",
+        "+",
+        "ctrl+",
+        "",
+        "ctrl",
+        "shift+1",
+        "shift+space",
+        "shift+plus",
+        "f0",
+        "f01",
+        "f13",
+        "alt+\t",
+        "alt+\r",
+        "alt+\u{7f}",
+        "hyper+n",
+    ] {
+        let error = Chord::parse(name).expect_err(name);
+        assert!(
+            error.to_string().starts_with(&format!("{name}: ")),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn shift_tab_matches_back_tab() {
+    let mut keymap = Keymap::empty();
+    keymap.bind(parse("shift+tab"), named("focus-prev"));
+    let keys = [
+        KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT),
+        KeyEvent::new(KeyCode::Tab, Modifiers::SHIFT),
+    ];
+    assert_eq!(
+        keys.map(|key| keymap.get(&key)),
+        [Some(named("focus-prev")); 2]
+    );
+}
+
+#[test]
+fn shift_and_a_letter_match_the_key() {
+    let mut keymap = Keymap::empty();
+    keymap.bind(parse("shift+z"), named("quit"));
+    let keys = [
+        KeyEvent::new(KeyCode::Char('z'), Modifiers::SHIFT),
+        KeyEvent::new(KeyCode::Char('Z'), Modifiers::SHIFT),
+        KeyEvent::new(KeyCode::Char('Z'), Modifiers::NONE),
+    ];
+    assert_eq!(keys.map(|key| keymap.get(&key)), [Some(named("quit")); 3]);
+}
+
+#[test]
+fn an_unbound_shift_letter_types_it() {
+    let mut model = Model::new(["alpha/aria".to_owned()]);
+    for modifiers in [Modifiers::SHIFT, Modifiers::NONE] {
+        let key = KeyEvent::new(KeyCode::Char('Z'), modifiers);
+        assert_eq!(update(&mut model, Msg::Terminal(TermEvent::Key(key))), []);
+    }
+    assert_eq!(model.input(), "ZZ");
+}
+
+/// A key of a key name, as the name writes it, and whether Shift can go with it.
+fn key_part() -> impl Strategy<Value = (String, bool)> {
+    let special = [
+        "enter",
+        "tab",
+        "backspace",
+        "esc",
+        "up",
+        "down",
+        "left",
+        "right",
+        "home",
+        "end",
+        "pageup",
+        "pagedown",
+        "insert",
+        "delete",
+    ];
+    prop_oneof![
+        proptest::sample::select(special.to_vec()).prop_map(|name| (name.to_owned(), true)),
+        Just(("space".to_owned(), false)),
+        Just(("plus".to_owned(), false)),
+        (1u8..=12).prop_map(|n| (format!("f{n}"), true)),
+        proptest::char::range('a', 'z').prop_map(|c| (c.to_string(), true)),
+        proptest::sample::select(
+            "0123456789!@#$%^&*()-=[]{};:'\",.<>/?`~|\\_"
+                .chars()
+                .collect::<Vec<_>>()
+        )
+        .prop_map(|c| (c.to_string(), false)),
+    ]
+}
+
+proptest! {
+    #[test]
+    fn key_names_read_back(
+        (modifiers, turned) in proptest::sample::subsequence(vec!["ctrl", "alt", "shift", "super"], 0..=4)
+            .prop_flat_map(|modifiers| (Just(modifiers.clone()), Just(modifiers).prop_shuffle())),
+        (key, shift_ok) in key_part(),
+    ) {
+        prop_assume!(shift_ok || !modifiers.contains(&"shift"));
+        let name = modifiers.iter().copied().chain([key.as_str()]).collect::<Vec<_>>().join("+");
+        let chord = Chord::parse(&name).map_err(|error| TestCaseError::fail(error.to_string()))?;
+        let written = chord.name().expect("a parsed chord has a name");
+        prop_assert_eq!(Chord::parse(&written).ok(), Some(chord));
+        let other = turned.iter().copied().chain([key.as_str()]).collect::<Vec<_>>().join("+");
+        prop_assert_eq!(Chord::parse(&other).ok(), Some(chord));
+    }
+}

@@ -113,7 +113,7 @@ A binding of `[keys]` SHALL stop the client as a bad file in each of these cases
 
 #### Scenario: A binding of Ctrl+Shift+Z
 - **GIVEN** `<dir>/client.toml` holds `[keys]` with `"ctrl+shift+z" = "none"`
-- **WHEN** the user types `hi`, presses Ctrl+Z, and presses Ctrl+Shift+Z
+- **WHEN** the user types `h`, presses Ctrl+Z, and presses Ctrl+Shift+Z
 - **THEN** the editor is empty
 
 #### Scenario: An unknown entry

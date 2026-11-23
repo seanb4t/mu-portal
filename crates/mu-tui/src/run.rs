@@ -11,6 +11,7 @@ use termina::escape::osc::{Osc, Selection};
 use termina::{EventReader, EventStream};
 use tokio::sync::mpsc;
 
+use crate::config::Settings;
 use crate::kitty;
 use crate::model::Model;
 use crate::probe;
@@ -18,14 +19,15 @@ use crate::screen::{self, Restore, Screen};
 use crate::update::{Effect, Msg, Reply, update};
 use crate::view::view;
 
-/// Runs the client on the alternate screen until the Quit action or the end of terminal input.
+/// Runs the client with `settings` on the alternate screen until the Quit action or the end of
+/// terminal input.
 /// The terminal comes back on exit,
 /// and on a panic through the panic hook of Termina.
 ///
 /// # Errors
 ///
 /// An I/O error of the terminal.
-pub async fn run(client: PortalClient) -> io::Result<()> {
+pub async fn run(client: PortalClient, settings: Settings) -> io::Result<()> {
     let listed = within(
         async {
             client
@@ -37,7 +39,9 @@ pub async fn run(client: PortalClient) -> io::Result<()> {
         "",
     )
     .await;
-    let mut model = Model::from_listing(listed);
+    let mut model = Model::from_listing(listed)
+        .with_keymap(settings.keymap)
+        .with_echo(settings.echo);
     // The probe sets mode 2027, so a panic before its replies turns the mode off.
     let restore = Arc::new(Restore::default());
     restore.set_grapheme_mode(true);
