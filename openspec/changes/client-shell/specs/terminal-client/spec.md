@@ -278,7 +278,7 @@ The client SHALL open the screen before its first list of the worlds for the scr
 #### Scenario: A notice before the first list
 - **GIVEN** the terminal does not answer the probe of its width, and the first list of the worlds did not end yet
 - **WHEN** the list ends with the world `alpha/aria`
-- **THEN** the pane of `alpha/aria` shows the notice of the probe
+- **THEN** the pane of `alpha/aria` shows a line that starts with `-- ` and contains `the terminal gave no character widths`
 
 #### Scenario: The first list fails
 - **GIVEN** the client opened the screen, and its first list of the worlds did not end yet
