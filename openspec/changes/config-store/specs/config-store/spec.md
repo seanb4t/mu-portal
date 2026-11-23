@@ -49,6 +49,11 @@ At the start, `mu server` SHALL read and check each file under `clients/` in the
 - **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
 - **THEN** stderr holds no ESC character, and holds the character U+FFFD
 
+#### Scenario: A line break in a layer name
+- **GIVEN** `<dir>/clients/devices/` holds a file whose name is `lap`, a line break, and `.toml`
+- **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
+- **THEN** stderr holds exactly one line that contains `clients/devices/lap`
+
 #### Scenario: A file that is not TOML
 - **GIVEN** `<dir>/clients/notes.txt` exists
 - **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
@@ -210,7 +215,7 @@ The revision SHALL be a text. A change to the content of a layer that applies to
 
 #### Scenario: A reload does not apply a world change
 - **GIVEN** a server serves `<dir>` with the world `alpha/aria` on `<dir>/s.sock`
-- **WHEN** the user writes `host = "localhost"` and `port = 4201` to `<dir>/games/beta.toml`, writes an empty `<dir>/characters/beta/bryn.toml`, and runs `mu config reload --server unix://<dir>/s.sock`
+- **WHEN** the user writes `extends = "tinymux"`, `host = "localhost"` and `port = 4201` to `<dir>/games/beta.toml`, writes an empty `<dir>/characters/beta/bryn.toml`, and runs `mu config reload --server unix://<dir>/s.sock`
 - **THEN** stdout holds a line that contains `characters/beta/bryn.toml` and `restart`
 - **AND** an API call on `<dir>/s.sock` lists `alpha/aria` and not `beta/bryn`
 
@@ -233,7 +238,8 @@ The revision SHALL be a text. A change to the content of a layer that applies to
 - **THEN** stdout holds a line that contains `server.toml` and `restart`
 
 #### Scenario: A second reload lists the world change again
-- **GIVEN** the scenario "A reload does not apply a world change" ran
+- **GIVEN** a server serves `<dir>` with the world `alpha/aria` on `<dir>/s.sock`
+- **AND** after the server started, `<dir>/games/beta.toml` got `extends = "tinymux"`, `host = "localhost"` and `port = 4201`, `<dir>/characters/beta/bryn.toml` was written empty, and `mu config reload --server unix://<dir>/s.sock` ran once
 - **WHEN** the user runs `mu config reload --server unix://<dir>/s.sock` again
 - **THEN** stdout holds a line that contains `characters/beta/bryn.toml` and `restart`
 
