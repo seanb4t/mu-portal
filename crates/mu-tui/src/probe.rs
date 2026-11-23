@@ -592,7 +592,7 @@ pub fn read_answers(
     let mut outcome = Outcome::learn(&answers);
     if skip == Skip::Paste {
         // The rest of a paste that did not end in time reaches the event reader as keys. The
-        // first bytes of a cut end mark or of a cut UTF-8 character are dropped (#158).
+        // first bytes of a cut end mark or of a cut UTF-8 character are dropped.
         let text = &pending[..pending.len() - held_for_paste(&pending)];
         if !text.is_empty() {
             events.push(Event::Paste(String::from_utf8_lossy(text).into_owned()));
