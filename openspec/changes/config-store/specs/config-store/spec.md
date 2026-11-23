@@ -38,6 +38,17 @@ At the start, `mu server` SHALL read and check each file under `clients/` in the
 - **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
 - **THEN** stdout holds `"alt+period" = "quit"` with the source `clients/global.toml`
 
+#### Scenario: An unlistable clients directory
+- **GIVEN** the test runs as a user that is not root, and `<dir>/clients` exists with mode 000
+- **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
+- **THEN** stderr holds one line that contains `clients`
+- **AND** an API call on `<dir>/s.sock` succeeds
+
+#### Scenario: A control character in a layer name
+- **GIVEN** `<dir>/clients/devices/` holds a file whose name is `lap`, the character ESC, and `.toml`
+- **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
+- **THEN** stderr holds no ESC character, and holds the character U+FFFD
+
 #### Scenario: A layer for an unknown kind
 - **GIVEN** `<dir>/clients/kinds/tiu.toml` holds `echo = "show"`
 - **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
@@ -103,6 +114,16 @@ The call `GetClientConfig` SHALL take a kind, an OS and a device name. It SHALL 
 - **WHEN** a client calls `GetClientConfig` with the kind `tui`, the OS `linux` and the device `My Laptop`
 - **THEN** the call fails, and its error contains `My Laptop`
 
+#### Scenario: A bad kind in a call
+- **GIVEN** a server serves `<dir>` on `<dir>/s.sock`
+- **WHEN** a client calls `GetClientConfig` with the kind `gui`, the OS `linux` and the device `laptop`
+- **THEN** the call fails, and its error contains `gui`
+
+#### Scenario: A bad OS in a call
+- **GIVEN** a server serves `<dir>` on `<dir>/s.sock`
+- **WHEN** a client calls `GetClientConfig` with the kind `tui`, the OS `windows` and the device `laptop`
+- **THEN** the call fails, and its error contains `windows`
+
 #### Scenario: No notice for a bad layer of another device
 - **GIVEN** `clients/devices/laptop.toml` holds `echo = "loud"`, and a server serves that directory on `<dir>/s.sock`
 - **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device desk`
@@ -143,6 +164,10 @@ The revision SHALL be a text. A change to the content of a layer that applies to
 ### Requirement: mu config reload reads the directory again
 `mu config reload` SHALL ask the server to read and check the configuration directory again. The server SHALL apply the new client layers. It SHALL NOT apply a change to a world or to `server.toml`. For each such changed file, the command SHALL print one line that says that the change applies at restart. The command SHALL print one line for each bad file to stderr. If every file is good, the exit status SHALL be 0. If a file is bad, it SHALL be 1. The good layers SHALL apply in both cases.
 
+#### Scenario: An unknown OS flag
+- **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop --os windows`
+- **THEN** the exit status is 1, and stderr contains `windows`
+
 #### Scenario: A reload applies a client layer
 - **GIVEN** a server serves `<dir>` on `<dir>/s.sock`, and `<dir>` holds no `clients` directory
 - **WHEN** the user writes `echo = "hide"` to `<dir>/clients/global.toml`, runs `mu config reload --server unix://<dir>/s.sock`, and then runs `mu config show --server unix://<dir>/s.sock --device laptop`
@@ -168,6 +193,12 @@ The revision SHALL be a text. A change to the content of a layer that applies to
 - **THEN** stderr holds a line that contains `characters/alpha/aria.toml` and `port`
 - **AND** the exit status is 1
 - **AND** an API call on `<dir>/s.sock` still lists `alpha/aria`
+
+#### Scenario: A reload with a link to nothing in games
+- **GIVEN** a server serves `<dir>` on `<dir>/s.sock`, and then the user adds `<dir>/games/ghost.toml` as a symbolic link to a file that does not exist and writes `echo = "hide"` to `clients/global.toml`
+- **WHEN** the user runs `mu config reload --server unix://<dir>/s.sock`
+- **THEN** stderr contains `games/ghost.toml`, and the exit status is 1
+- **AND** `mu config show --server unix://<dir>/s.sock --device laptop` prints `echo = "hide"`
 
 ### Requirement: An attached client gets a new configuration
 After a reload, the server SHALL tell each attached client whose configuration has a new revision. The client SHALL then apply the new configuration without a restart. After a gap in its stream, the client SHALL also get its configuration again. If a layer that applies to the client is bad after the reload, the client SHALL show one notice for it.

@@ -76,4 +76,5 @@ Tracked by #169.
 - Code: `crates/mu-cli` gets the client start, the URL and the new `config` verb. `crates/mu-server` gets the store, the new calls and the reload. `crates/mu-tui` takes its configuration from the server and applies a new one live. `crates/mu-proto` gets the new calls and messages. The new crate is `crates/mu-config`.
 - The crate rules in `crates/mu-cli/tests/workspace_boundary.rs` get the edges to `mu-config`.
 - New dependencies: a URL parser and a host name reader. If a crate in the workspace already does the work, no new dependency comes in.
-- The documentation pages that name `client.toml`, `--socket` for the client, or the directory notice.
+- Documentation: the guides and the architecture pages that name `client.toml`, `--socket` for the client, or the directory notice, and a new decision page for #169.
+- Diagrams: the LikeC4 model gets the configuration store and the crate `mu-config`, and two dynamic views show the start of a client and a reload.

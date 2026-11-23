@@ -9,13 +9,18 @@ Defines the values that a client needs before a server answers: the URL of the s
 ### Requirement: The server URL
 `mu client` and `mu config` SHALL take the URL of the server from the flag `--server`, then from `MU_SERVER`. An empty `MU_SERVER` SHALL count as unset. With neither, the URL SHALL be `unix://` and the default socket path of `mu server`. `MU_SOCKET` SHALL NOT change the URL of a client.
 
-#### Scenario: The flag wins
+#### Scenario: The server flag wins
 - **GIVEN** a server serves `<dir>/flag.sock`, nothing serves `<dir>/env.sock`, and `MU_SERVER` is `unix://<dir>/env.sock`
 - **WHEN** the user runs `mu config show --server unix://<dir>/flag.sock --device laptop`
 - **THEN** the exit status is 0
 
-#### Scenario: The variable
+#### Scenario: The server variable
 - **GIVEN** a server serves `<dir>/env.sock`, and `MU_SERVER` is `unix://<dir>/env.sock`
+- **WHEN** the user runs `mu config show --device laptop`
+- **THEN** the exit status is 0
+
+#### Scenario: An empty server variable
+- **GIVEN** `XDG_RUNTIME_DIR` is `<dir>`, `mu server` with no `--socket` serves, and `MU_SERVER` is the empty string
 - **WHEN** the user runs `mu config show --device laptop`
 - **THEN** the exit status is 0
 
@@ -45,6 +50,19 @@ A server URL SHALL be `unix://`, then an absolute path, then an optional query. 
 - **WHEN** the user runs `mu config show --server unix://host/tmp/s.sock --device laptop`
 - **THEN** the exit status is 1, and stderr contains `unix://host/tmp/s.sock`
 
+#### Scenario: A user
+- **WHEN** the user runs `mu config show --server unix://me@/tmp/s.sock --device laptop`
+- **THEN** the exit status is 1, and stderr contains `unix://me@/tmp/s.sock`
+
+#### Scenario: A password
+- **WHEN** the user runs `mu config show --server unix://me:pw@/tmp/s.sock --device laptop`
+- **THEN** the exit status is 1, and stderr names the URL
+
+#### Scenario: A fragment
+- **GIVEN** a server serves `<dir>/s.sock`
+- **WHEN** the user runs `mu config show --server "unix://<dir>/s.sock#x" --device laptop`
+- **THEN** the exit status is 1, and stderr contains `#x`
+
 #### Scenario: No double slash
 - **WHEN** the user runs `mu config show --server unix:/tmp/s.sock --device laptop`
 - **THEN** the exit status is 1, and stderr contains `unix:/tmp/s.sock`
@@ -58,6 +76,22 @@ The query option `connect_wait` SHALL be the longest time, in seconds, that a cl
 
 #### Scenario: A wait of zero
 - **WHEN** the user runs `mu config show --server "unix://<dir>/s.sock?connect_wait=0" --device laptop`
+- **THEN** the exit status is 1, and stderr contains `connect_wait`
+
+#### Scenario: A negative wait
+- **WHEN** the user runs `mu config show --server "unix://<dir>/s.sock?connect_wait=-1" --device laptop`
+- **THEN** the exit status is 1, and stderr contains `connect_wait`
+
+#### Scenario: A wait that is not a number
+- **WHEN** the user runs `mu config show --server "unix://<dir>/s.sock?connect_wait=nan" --device laptop`
+- **THEN** the exit status is 1, and stderr contains `connect_wait`
+
+#### Scenario: An infinite wait
+- **WHEN** the user runs `mu config show --server "unix://<dir>/s.sock?connect_wait=inf" --device laptop`
+- **THEN** the exit status is 1, and stderr contains `connect_wait`
+
+#### Scenario: A wait under one nanosecond
+- **WHEN** the user runs `mu config show --server "unix://<dir>/s.sock?connect_wait=1e-10" --device laptop`
 - **THEN** the exit status is 1, and stderr contains `connect_wait`
 
 #### Scenario: An unknown option
@@ -76,15 +110,20 @@ The query option `connect_wait` SHALL be the longest time, in seconds, that a cl
 ### Requirement: The device name
 `mu client` and `mu config` SHALL take the device name from the flag `--device`, then from `MU_DEVICE`. An empty `MU_DEVICE` SHALL count as unset. With neither, the device name SHALL be the host name of the machine in lowercase. A device name SHALL have 1 to 64 characters from `a` to `z`, `0` to `9`, `-`, `_` and `.`. Another name SHALL stop the command with exit status 1, and stderr SHALL name it.
 
-#### Scenario: The variable
+#### Scenario: The device variable
 - **GIVEN** `clients/devices/laptop.toml` holds `echo = "hide"`, a server serves that directory on `<dir>/s.sock`, and `MU_DEVICE` is `laptop`
 - **WHEN** the user runs `mu config show --server unix://<dir>/s.sock`
 - **THEN** stdout holds `echo = "hide"` with the source `clients/devices/laptop.toml`
 
-#### Scenario: The flag wins
+#### Scenario: The device flag wins
 - **GIVEN** `clients/devices/laptop.toml` holds `echo = "hide"`, a server serves that directory on `<dir>/s.sock`, and `MU_DEVICE` is `desk`
 - **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
 - **THEN** stdout holds `echo = "hide"` with the source `clients/devices/laptop.toml`
+
+#### Scenario: An empty device variable
+- **GIVEN** `<host>` is the host name of the test machine in lowercase, `clients/devices/<host>.toml` holds `echo = "hide"`, a server serves that directory on `<dir>/s.sock`, and `MU_DEVICE` is the empty string
+- **WHEN** the user runs `mu config show --server unix://<dir>/s.sock`
+- **THEN** stdout holds `echo = "hide"` with the source `clients/devices/<host>.toml`
 
 #### Scenario: The host name
 - **GIVEN** `<host>` is the host name of the test machine in lowercase

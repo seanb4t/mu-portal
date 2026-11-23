@@ -113,6 +113,12 @@ The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml`
 - **THEN** stdout holds the line `alpha/aria`
 - **AND** the exit status is 0
 
+#### Scenario: An unreadable server file leaves world list
+- **GIVEN** the test runs as a user that is not root, the directory holds the world `alpha/aria`, and `server.toml` exists with mode 000
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stdout holds the line `alpha/aria`
+- **AND** the exit status is 0
+
 #### Scenario: A game named clients
 - **GIVEN** a directory with `games/clients.toml` and `characters/clients/aria.toml`
 - **WHEN** the user runs `mu world list --config <dir>`
