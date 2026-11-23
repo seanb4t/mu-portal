@@ -29,12 +29,12 @@ This change is the first of two that #101 splits into. It gives the client a con
 - The echo default is `dim`. Before this change it was `show`.
 - History is per world, kept in memory only, at most 1000 sends for each world. It does not keep an empty send or a send equal to the one before it. Quitting the client loses it.
 - Up and Down recall history only from the first and the last line of the editor. On other lines they move the cursor.
-- A bad `client.toml` stops the client. The client does not start with the defaults and a warning.
+- A bad `client.toml` stops the client. The client does not start with the defaults and a warning. A `--config` directory that does not exist is not an error: the client warns on stderr and starts with the defaults.
 - After a refusal, the editor gets one send back, not all of them. The rest wait in history.
 - Each world has its own pose editor. A half-typed pose stays with its world when the focus moves, and the other world shows its own editor. Text typed before any world has the focus goes to the first world that gets it.
-- A refusal from a world out of focus does not touch the editor on screen. The refused text waits in the editor of its world.
+- A refusal from a world out of focus does not touch the editor on screen. The refused text waits in the editor of its world, and the top row shows `*` after that world.
 - The key names of `[keys]` are lowercase and joined with `+`, for example `alt+enter` and `ctrl+shift+z`. The `+` key is `plus`. `"none"` makes a key do nothing.
-- A key in `[keys]` cannot run an entry that needs a world, such as `focus`. A control character is not a key name.
+- A key in `[keys]` cannot run an entry that needs a world, such as `focus`. A control character is not a key name. Shift with a key that is not a letter, such as `shift+1`, `shift+space` or `shift+plus`, is refused, because the terminal sends the shifted character instead.
 - Shift+Up, Ctrl+Up and Shift+Down keep their editor moves. Only plain Up and Down recall history.
 - A returned text goes in the editor with the cursor at its start, so Up recalls the next one at once.
 - Tab, Shift+Tab and Ctrl+Space get no binding, because completion will use them later.
