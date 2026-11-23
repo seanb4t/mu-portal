@@ -1,10 +1,10 @@
 ---
-verdict: approve-with-notes
+verdict: changes-requested
 phase: plan
-reviewed_at: 2026-11-23T01:32:11+00:00
-head: d4e2273fb97303757ceb064999c94fc10cd2ada7
-round: 11
-next_id: 143
+reviewed_at: 2026-11-23T01:42:01+00:00
+head: adb7ef9d45bd8d7f221e824fefe213f7a69a316f
+round: 12
+next_id: 155
 lenses:
   spec-lint: ok
   approach: ok
@@ -12,7 +12,7 @@ lenses:
   test-coverage: ok
   test-honesty: not-applicable
   invariants: ok
-  verify: ok
+  verify: not-applicable
 ---
 # Review
 
@@ -20,7 +20,18 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-142 | verify | should-fix | in-change | The fix makes a refusal out of focus leave the editor alone, but the Enter requirement of the same delta still says without a condition that a refused text goes back in the editor. The two SHALL statements conflict for a refusal that arrives after a focus change. A build that follows the Enter requirement puts the refused text in the editor of the world in focus, where a plain Enter sends it to the wrong world, which is the case that the fix removes. | specs/terminal-client/spec.md > Requirement: A refused text stops the sends after it — "If the refused world does not have the focus, the client SHALL NOT change the editor." | In the Enter requirement, limit the put-back to a refused world that has the focus, or drop that sentence and leave the rule to the requirement "A refused text stops the sends after it". |  |  | wrong-behaviour |
+| R-143 | approach,fit | blocker | in-change | app-1: D4 moves the send onto spawn_call(tx, call, limit, wrap), and that helper has no parameter for the text of a late answer. At head the send gets the suffix that the requirement 'A send with no reply is refused' needs through reply_of. No decision keeps that reason once the send uses the helper. The tests of tests/send.rs call reply_of directly, so they still pass when the reason is lost.; fit-1: D4 adds the helper spawn_call to spawn a mu-client call and send its message back. run.rs already has spawn_reply for that job, and D4 does not name it, so the loop gets two helpers for one mechanism. | design.md > D4. Commands are parsed in `update` at a send — "One helper `spawn_call(tx, call, limit, wrap)` takes the `mu-client` future, the limit and the `Msg` constructor." | app-1: Give spawn_call the late text that it passes to within, or state in D4 that the send passes reply_of as its call and that spawn_call adds no second bound.; fit-1: Name spawn_reply and within in D4, and build the Connect and Disconnect arms on them: either extend spawn_reply to take the limit and the Msg constructor, or state that spawn_call replaces spawn_reply. |  | severity? should-fix 0.62 | wrong-behaviour |
+| R-144 | approach | should-fix | in-change | D6 says the line of a returned send sets the unseen mark of a world out of focus, as any line does. At head that is not so. The refusal line of on_reply goes through Model::push, which sets no mark, and the line of return_waiting is a hint in the pane in focus. A refusal in a world out of focus therefore shows no `*`. The requirement 'Keys move the focus' asks for that mark, and no task builds it. | design.md > D6. Returned sends go to history (#151) — "A world out of focus shows its returned text when it gets the focus, and its line sets its unseen mark, as any line does" | Say in D6 that the refusal line of on_reply sets the unseen mark of a refused world out of focus, and assert the `*` in a_refusal_out_of_focus. Otherwise, drop the claim from D6. |  |  | wrong-behaviour |
+| R-145 | fit | should-fix | in-change | D4 moves the send onto spawn_call(tx, call, limit, wrap), which has no late text. The send at head goes through reply_of, whose timeout reason adds that the game can have the line or not, so the send arm loses that reason or cannot use spawn_call. | design.md > D4. Commands are parsed in `update` at a send — "The list, the send, `ListWorlds`, `Connect` and `Disconnect` all use it, so the change leaves one copy, not four." | Say in D4 how the send arm keeps reply_of: give spawn_call the future that already ends in a Msg (as spawn_reply takes), or a late-text parameter, and name reply_of as the wrap of the send. |  |  | wrong-behaviour |
+| R-146 | fit | should-fix | in-change | D5 routes the update side through a new Model::pose_mut, but the view reaches the pose editor by EditorId in two places, and Model::pose and Model::editor do the same. D5 names none of them, so each keeps its own way to find the pose editor. | design.md > D5. Each world has its own editor and history — "`Model::input`, `Model::set_input` and the key path of the editor all go through one method `Model::pose_mut`, which giv" | Name in D5 one resolver from an EditorId to its state that maps EditorId::POSE to the editor of the world in focus or loose. Rename Model::pose to it, and use it in Model::editor, the render of an editor leaf and the row count of Size::Editor. |  |  | drift |
+| R-147 | fit | should-fix | in-change | D5 has set_focus copy the kept notices into the pane of the world that takes the focus. The Reset arm of on_client already copies the kept notices into the pane in focus with the same loop, and D5 does not name it, so the two copies stay apart. | design.md > D5. Each world has its own editor and history — "and copies the kept notices into its pane, as `Model::world` does at head." | Add one Model method that pushes the kept notices into a pane, and call it from set_focus and from the Reset arm of on_client. |  |  | drift |
+| R-148 | invariants | should-fix | in-change | Every world editor must use the probed widths. D5 states this only for a change of the caps, but in a run the probe ends before the first list, so each world editor is made after it. No test passes that case. | design.md > D5. Each world has its own editor and history — "A change of the capabilities of the terminal reaches every world editor and `loose`." | State in D5 that Model::world builds the editor of a new world with the current caps, as it builds the pane. In task 4.1 add a test: give the probe with a learned width, then Msg::Listed with two worlds, and check that width in the editor of each world, the second after Ctrl+N. |  |  | wrong-behaviour |
+| R-149 | invariants | should-fix | in-change | A walk now stays open in a world out of focus, and put_back must take the draft of the walk of the refused world. No test refuses a text of a world out of focus while that world has an open walk, so a put_back that reads the walk of the world in focus passes. | design.md > D6. Returned sends go to history (#151) — "It ends a walk of that world first, but it does not push the draft." | Add to task 5.1 a test: alpha/aria sends old and then one, types draft and presses Up, Ctrl+N to beta/bryn, and alpha/aria refuses one. Assert that the editor of beta/bryn is unchanged, and after Ctrl+P that the editor holds one, the line holds (1 in history), and Up gives draft. |  |  | wrong-behaviour |
+| R-150 | invariants | should-fix | in-change | The lookup now turns Char('Z') into Char('z') with SHIFT. A key that no binding takes must still reach the editor as it arrived, or each capital letter types lowercase. No test types an unbound Shift and a letter and checks the editor text. | design.md > D3. Key names — "At a key, the lookup turns an uppercase letter into its lowercase letter with SHIFT before it looks up the chord." | Add to task 6.4 a test that presses Char('Z') with SHIFT, and Char('Z') with no modifier, with no binding of shift+z, and asserts that the editor holds ZZ. Say in D3 that only the lookup sees the lowered chord. |  |  | wrong-behaviour |
+| R-151 | spec-lint | should-fix | in-change | The THEN step of 'A notice before the first list' names the notice only as 'the notice of the probe', with no text, value or cell that a test can compare. | specs/terminal-client/spec.md > Scenario: A notice before the first list — "**THEN** the pane of `alpha/aria` shows the notice of the probe" | Name the exact text of the width notice that the probe adds, and the pane row that shows it, in the THEN step. |  |  | unmet-requirement |
+| R-152 | approach | suggestion | in-change | D4 says that at head the block that spawns a call, bounds it with within and sends back a message is in three places in run.rs. At head the first list is awaited inline before the screen opens. It spawns nothing and sends no message, so the block is in two places. The spawn and the send-back are also already one helper, spawn_reply, which D4 does not name. | design.md > D4. Commands are parsed in `update` at a send — "At head the block that spawns a call, bounds it with `within` and sends back a message is in three places in `run.rs`." | Correct the count in D4, and say whether spawn_call replaces spawn_reply or builds on it. |  | severity? should-fix 0.77 |  |
+| R-153 | approach | suggestion | in-change | The mitigation of the risk 'History in memory only' is a later change beside #156. No task and no follow-up line of tasks.md names that change, so the mitigation names nothing that the plan does. | design.md > Risks / Trade-offs — "[History in memory only] A crash loses it. → History on disk is a later change, beside #156." | Add the history on disk to the Workflow follow-up of tasks.md with its issue, or call the risk accepted with no mitigation. |  | severity? should-fix 0.73 |  |
+| R-154 | invariants | suggestion | in-change | A key edits only the editor of the world in focus, and a focus change changes no editor text. That holds over any run of typing, sends, refusals and focus changes, but only the example a_focus_change_keeps_each_editor tests it. | specs/terminal-client/spec.md > Requirement: Each world keeps its own editor — "A change of the focus SHALL NOT change the text of an editor, and SHALL NOT end a walk." | Extend the proptest history_keeps_its_invariants in crates/mu-tui/tests/app.rs: after each step, the editor text of each world out of focus is unchanged, unless a put_back of that world ran in the step. |  |  |  |
 
 ## Repeats
 
@@ -52,10 +63,11 @@ None.
 | 9 | plan | follow-up | a099e007418226878bc8c5d43209ac8f238393ef | e50cb84f88e44bb81bcb1e6adad817b5414d8596995f77bff47eb510f5d99a2e | approve-with-notes | 0 | 0 | 1 | 1 | 0 |  |
 | 10 | plan | follow-up | 8ecf9a8204c6010e36f9a929639650242c8560bf | 6019de0da81b5a9f906f44ca7993a7d318310a14bc36e6e6a8da663ed112f5ce | approve-with-notes | 1 | 0 | 1 | 0 | 0 |  |
 | 11 | plan | follow-up | d4e2273fb97303757ceb064999c94fc10cd2ada7 | d155389c6dd9637865283a87d9c4ef198c60e59af3c5bd748be91d99d5caa5c1 | approve-with-notes | 1 | 0 | 0 | 2 | 0 |  |
+| 12 | plan | full | adb7ef9d45bd8d7f221e824fefe213f7a69a316f | 717676bdfe6a7c46a6f743aa7b43adee44b311a201cf97ec3e18000fa308e6af | changes-requested | 12 | 0 | 0 | 0 | 0 | The owner chose a pose editor for each world, which rewrites D5 and D6 and adds and replaces scenarios |
 
 ## Judge
 
-judge: 2 questions, 0.000 USD
+judge: 24 questions, 0.001 USD
 
 ## Coverage matrix
 
@@ -63,7 +75,7 @@ judge: 2 questions, 0.000 USD
 |---|---|---|---|
 | Help lists the entries | 3.3 | covered |  |
 | A key and a command give the same focus | 3.4 | covered |  |
-| An editing entry is not a command | 3.4 | covered |  |
+| An editing entry is not a command | 3.1 | covered |  |
 | A command does not reach the game | 3.1 | covered |  |
 | Several lines are not a command | 3.1 | covered |  |
 | An escaped slash | 3.1 | covered |  |
@@ -120,6 +132,7 @@ judge: 2 questions, 0.000 USD
 | The sends stay apart | 5.1 | covered |  |
 | The stream ends while lines wait | 5.1 | covered |  |
 | Lines of two worlds wait | 5.1 | covered |  |
+| A refusal out of focus | 5.1 | covered |  |
 | The server resets while lines wait | 5.1 | covered |  |
 | A refusal during a walk of the history | 5.1 | covered |  |
 | A refusal after the stream ended | 5.1 | covered |  |
@@ -133,7 +146,8 @@ judge: 2 questions, 0.000 USD
 | Back to the draft | 4.2 | covered |  |
 | Up inside a pose moves the cursor | 4.2 | covered |  |
 | A send during a walk | 4.3 | covered |  |
-| A focus change ends a walk | 4.2 | covered |  |
+| A focus change keeps each editor | 4.2 | covered |  |
+| A walk stays with its world | 4.2 | covered |  |
 | The second world | 2.3 | covered |  |
 | No world at that place | 2.3 | covered |  |
 | Back to the first world | 2.3 | covered |  |
@@ -141,6 +155,7 @@ judge: 2 questions, 0.000 USD
 | The echo of a pose of two lines | 7.1 | covered |  |
 | Before the first list | 7.2 | covered |  |
 | A send before the first list | 7.2 | covered |  |
+| Text typed before the first list | 7.2 | covered |  |
 | An event before the first list | 7.2 | covered |  |
 | A focus key before the first list | 7.2 | covered |  |
 | A failed first list after an event | 7.2 | covered |  |
@@ -179,8 +194,42 @@ None.
 
 ## Lens notes
 
-- verify: Task 5.1 asserts `(2 in history)` for `a_refusal_out_of_focus` without saying how `b1` and `b2` were sent. If they are two Enter sends, both are already in the history of beta/bryn, the push of `b2` equals the newest entry, and by D6 the count is 1. With one Alt+Enter of two lines the count is 2. The task can name the send.
-- verify: Proposal What Changes still says that after a refusal the first returned send goes back in the editor and the text of the editor goes into history. The new line of Choices you will notice states the exception for a world out of focus, so the two read together.
+- approach: R-142 (fixed) is resolved at head: the Enter requirement now puts a refused text back in the editor of that world, which agrees with the out-of-focus rule.
+- approach: The crokey 1.5.1 facts of D3 come from the crate source on crates.io. That source is not in the local registry, so they are not checked.
+- approach: The Termina 0.3.3 facts of D3 hold. Legacy CSI Z and the kitty path with SHIFT both give KeyCode::BackTab with SHIFT, and the client pushes only DISAMBIGUATE_ESCAPE_CODES.
+- approach: D8 lists 'a reply with worlds' as an end of the first list. An empty reply must also clear the flag, so that a server with no world shows `no worlds`. Read it as any successful reply.
+- fit: D9 changes the keymap description and the keymap -> update label in architecture/model.c4, but the description of the part update (model.c4 line 27) still says it changes the model for a Msg or an Action. After D1 no message carries an Action, so that line goes stale too.
+- fit: D2 follows the field-error pattern of server.toml (telemetry.rs SettingSource writes the file name and the field), and D3 names the crate search with crokey. Neither needs a fit finding.
+- fit: D10 candidates reuses Model::world_ids, and D11 extends is_server_file in place. Both fit the existing code.
+- invariants: I1: A history holds at most 1000 entries, no empty entry and no entry equal to the one before it \| enforced at History::push (D5) \| boundary test history_drops_the_oldest_past_1000 (1000 and 1001), no_empty_entry, no_repeat, proptest history_keeps_its_invariants
+- invariants: I2: Each registry name is unique and kebab \| enforced at registry unit test \| boundary test entry_names_are_unique_and_kebab
+- invariants: I3: A key never binds an entry with a required argument \| enforced at ClientConfig::keymap and the default-keymap test \| boundary test an_entry_that_needs_an_argument, default_keymap_binds_entries_with_no_required_argument
+- invariants: I4: The edits flag is set exactly on the editing rows \| enforced at registry table \| boundary test edits_flag_matches_the_editing_rows, /undo and /ignore
+- invariants: I5: A key name reads back to the chord it names, in any modifier order \| enforced at the parser of keymap.rs \| boundary test key_names_read_back, f0/f1/f12/f13, ctrl++, empty name, shift+space
+- invariants: I6: Two names of one chord are refused \| enforced at ClientConfig::keymap \| boundary test two_names_of_one_key
+- invariants: I7: No world has the focus while first_list is set \| enforced at set_focus and Model::world \| boundary test an_event_before_the_first_list, a_focus_key_before_the_first_list, a_reset_during_the_first_list
+- invariants: I8: Each end of the first list clears first_list, an empty list included \| enforced at Msg::Listed \| boundary test the_first_list_fails, a_failed_first_list_after_an_event; the empty list by client_starts_a_server in crates/mu-cli/tests/client.rs, which waits for no worlds
+- invariants: I9: The world editor that takes the loose text is empty \| enforced by construction: worlds are never removed (no worlds.remove or focus = None at head), so focus goes from None to Some only once, and a send needs the focus \| boundary test text_typed_before_the_first_list
+- invariants: I10: Every pose editor uses the current caps \| enforced at set_caps (planned), creation not stated \| boundary test none for a world editor made after the probe (inv-1)
+- invariants: I11: put_back changes only the editor, walk and history of its world \| enforced at put_back (D6) \| boundary test a_refusal_out_of_focus; walk out of focus untested (inv-2)
+- invariants: I12: The count of the refusal line counts only kept entries \| enforced at put_back \| boundary test 0 (a_refused_line), 1, 2, equal-to-newest (the_sends_stay_apart), draft (a_refusal_during_a_walk_of_the_history)
+- invariants: I13: A /quit armed by command is cleared only by the parse of the next submit \| enforced at the quit arm of D4 \| boundary test quit_twice_while_a_text_waits, another_command_cancels_the_quit with /fly, a game text and /focus-next
+- invariants: I14: Alt+n with no world at place n does nothing \| enforced at FocusIndex in act \| boundary test no_world_at_that_place (Alt+3 with two worlds), back_to_the_first_world (Alt+1)
+- invariants: I15: The echo rows joined with line_break give the cleaned text \| enforced at text::line \| boundary test echo_rows_join_back, an_echo_with_no_line_break
+- invariants: I16: An unbound key reaches the editor as it arrived \| enforced at Keymap::get by placement only \| boundary test none (inv-3)
+- invariants: I17: client.toml in another case or as a hard link follows the server.toml rule \| enforced at is_server_file over a list (D11) \| boundary test the world_config.rs tests of task 6.3
+- invariants: R-142 (fixed) is fixed: the Enter requirement now says the client puts the text back in the editor of that world, under the rule of the refusal requirement.
+- invariants: I18: An error of server.toml shows no value \| enforced at config_file::read with the Hidden value of its caller (server_config::read passes Hidden::All) \| boundary test error_under_telemetry_holds_no_value in crates/mu-cli/src/server_config.rs, kept by task 6.2
+- invariants: I19: A missing directory named by --config or MU_CONFIG is named on stderr, for mu client too \| enforced at ConfigArgs::warn_missing; MU_CONFIG reaches the same field through clap env = CONFIG_ENV \| boundary test missing_directory, the_client_warns_of_a_missing_directory
+- invariants: I20: A /quit armed by a key is cleared by each typed key; one armed by a command is cleared only by the next parse \| enforced at on_input_key and the by_command mark (D4) \| boundary test quit_twice_while_a_text_waits, another_command_cancels_the_quit
+- invariants: No enforcement point of this change is a script, so no probe ran.
+- spec-lint: No BREAKING marker in proposal.md or in any delta spec at head, so no breaking-mismatch finding.
+- spec-lint: Every requirement of the four delta specs has at least one scenario, and every scenario has a WHEN or GIVEN line and a THEN line.
+- spec-lint: Every task of tasks.md names a test, a command or an observable. The build targets exist: mise tasks docs:check and check, and the test files workspace_boundary.rs, world_config.rs and client.rs.
+- spec-lint: Every requirement heading shares two distinctive words with a task line, counting test names in backticks. No untasked-requirement finding.
+- spec-lint: prior.json was read to line 1596 of 2125. The one new finding has no matching prior row by a search of the whole file.
+- test-coverage: Tasks name tests and rely on the one-test command of openspec/config.yaml; only 6.1 and 6.3 print a cargo command (R-43 deferred, not raised again).
+- test-coverage: No BREAKING marker remains in the artifacts, so no breaking-unproven finding applies.
 
 ## Ledger
 
@@ -328,3 +377,15 @@ None.
 | R-140 | 7 | 8 | suggestion | in-change |  | ["artifact",["design.md","D7. Echo"],"For a player event it returns the rows: the first part with `> `, and each other part with two spaces."] | resolved | resolved in round 8 from fixed 902f8e9f3a8f53ab09079bdfaa44fac32ba5f9e0 |  |  | The echo split is a round trip over any text and any line_break: the rows with their prefixes removed, joined with line_break, give the cleaned text. Only a single %r example tests it, so a break at the end or two breaks in a row are untested. |
 | R-141 | 10 | 11 | should-fix | in-change | wrong-behaviour | ["artifact",["specs/terminal-client/spec.md","Requirement: A refused text stops the sends after it"],"If texts went into the history, the line SHALL also hold their count, as `(<n> in history)`."] | resolved | resolved in round 11 from fixed 0d869e27435893318f6a953d0c35d78e94f50ee1 |  |  | The fix sends the held text of a refusal out of focus to the world in focus. When only that history keeps a text (nothing waited, or each returned text equalled the newest entry), the count rule falls back to the bare form `(<n> in history)`. That line goes to the pane of the refused world, whose Up gives nothing, so the line counts entries of a world that it does not name. D6 says Up in each world gives exactly the count the line shows for it, and this case breaks that. Before the fix the one history was always the refused world's, so the bare form was right. |
 | R-142 | 11 | 11 | should-fix | in-change | wrong-behaviour | ["artifact",["specs/terminal-client/spec.md","Requirement: A refused text stops the sends after it"],"If the refused world does not have the focus, the client SHALL NOT change the editor."] | fixed | 686603313ca3b90cc3713fdfcb4ce3ad68df5bc8 |  |  | The fix makes a refusal out of focus leave the editor alone, but the Enter requirement of the same delta still says without a condition that a refused text goes back in the editor. The two SHALL statements conflict for a refusal that arrives after a focus change. A build that follows the Enter requirement puts the refused text in the editor of the world in focus, where a plain Enter sends it to the wrong world, which is the case that the fix removes. |
+| R-143 | 12 | 12 | blocker | in-change | wrong-behaviour | ["artifact",["design.md","D4. Commands are parsed in `update` at a send"],"One helper `spawn_call(tx, call, limit, wrap)` takes the `mu-client` future, the limit and the `Msg` constructor."] |  |  |  | severity? should-fix 0.62 | app-1: D4 moves the send onto spawn_call(tx, call, limit, wrap), and that helper has no parameter for the text of a late answer. At head the send gets the suffix that the requirement 'A send with no reply is refused' needs through reply_of. No decision keeps that reason once the send uses the helper. The tests of tests/send.rs call reply_of directly, so they still pass when the reason is lost.; fit-1: D4 adds the helper spawn_call to spawn a mu-client call and send its message back. run.rs already has spawn_reply for that job, and D4 does not name it, so the loop gets two helpers for one mechanism. |
+| R-144 | 12 | 12 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D6. Returned sends go to history (#151)"],"A world out of focus shows its returned text when it gets the focus, and its line sets its unseen mark, as any line does."] |  |  |  |  | D6 says the line of a returned send sets the unseen mark of a world out of focus, as any line does. At head that is not so. The refusal line of on_reply goes through Model::push, which sets no mark, and the line of return_waiting is a hint in the pane in focus. A refusal in a world out of focus therefore shows no `*`. The requirement 'Keys move the focus' asks for that mark, and no task builds it. |
+| R-145 | 12 | 12 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D4. Commands are parsed in `update` at a send"],"The list, the send, `ListWorlds`, `Connect` and `Disconnect` all use it, so the change leaves one copy, not four."] |  |  |  |  | D4 moves the send onto spawn_call(tx, call, limit, wrap), which has no late text. The send at head goes through reply_of, whose timeout reason adds that the game can have the line or not, so the send arm loses that reason or cannot use spawn_call. |
+| R-146 | 12 | 12 | should-fix | in-change | drift | ["artifact",["design.md","D5. Each world has its own editor and history"],"`Model::input`, `Model::set_input` and the key path of the editor all go through one method `Model::pose_mut`, which gives that editor."] |  |  |  |  | D5 routes the update side through a new Model::pose_mut, but the view reaches the pose editor by EditorId in two places, and Model::pose and Model::editor do the same. D5 names none of them, so each keeps its own way to find the pose editor. |
+| R-147 | 12 | 12 | should-fix | in-change | drift | ["artifact",["design.md","D5. Each world has its own editor and history"],"and copies the kept notices into its pane, as `Model::world` does at head."] |  |  |  |  | D5 has set_focus copy the kept notices into the pane of the world that takes the focus. The Reset arm of on_client already copies the kept notices into the pane in focus with the same loop, and D5 does not name it, so the two copies stay apart. |
+| R-148 | 12 | 12 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D5. Each world has its own editor and history"],"A change of the capabilities of the terminal reaches every world editor and `loose`."] |  |  |  |  | Every world editor must use the probed widths. D5 states this only for a change of the caps, but in a run the probe ends before the first list, so each world editor is made after it. No test passes that case. |
+| R-149 | 12 | 12 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D6. Returned sends go to history (#151)"],"It ends a walk of that world first, but it does not push the draft."] |  |  |  |  | A walk now stays open in a world out of focus, and put_back must take the draft of the walk of the refused world. No test refuses a text of a world out of focus while that world has an open walk, so a put_back that reads the walk of the world in focus passes. |
+| R-150 | 12 | 12 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D3. Key names"],"At a key, the lookup turns an uppercase letter into its lowercase letter with SHIFT before it looks up the chord."] |  |  |  |  | The lookup now turns Char('Z') into Char('z') with SHIFT. A key that no binding takes must still reach the editor as it arrived, or each capital letter types lowercase. No test types an unbound Shift and a letter and checks the editor text. |
+| R-151 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["specs/terminal-client/spec.md","Scenario: A notice before the first list"],"**THEN** the pane of `alpha/aria` shows the notice of the probe"] |  |  |  |  | The THEN step of 'A notice before the first list' names the notice only as 'the notice of the probe', with no text, value or cell that a test can compare. |
+| R-152 | 12 | 12 | suggestion | in-change |  | ["artifact",["design.md","D4. Commands are parsed in `update` at a send"],"At head the block that spawns a call, bounds it with `within` and sends back a message is in three places in `run.rs`."] |  |  |  | severity? should-fix 0.77 | D4 says that at head the block that spawns a call, bounds it with within and sends back a message is in three places in run.rs. At head the first list is awaited inline before the screen opens. It spawns nothing and sends no message, so the block is in two places. The spawn and the send-back are also already one helper, spawn_reply, which D4 does not name. |
+| R-153 | 12 | 12 | suggestion | in-change |  | ["artifact",["design.md","Risks / Trade-offs"],"[History in memory only] A crash loses it. \\u2192 History on disk is a later change, beside #156."] |  |  |  | severity? should-fix 0.73 | The mitigation of the risk 'History in memory only' is a later change beside #156. No task and no follow-up line of tasks.md names that change, so the mitigation names nothing that the plan does. |
+| R-154 | 12 | 12 | suggestion | in-change |  | ["artifact",["specs/terminal-client/spec.md","Requirement: Each world keeps its own editor"],"A change of the focus SHALL NOT change the text of an editor, and SHALL NOT end a walk."] |  |  |  |  | A key edits only the editor of the world in focus, and a focus change changes no editor text. That holds over any run of typing, sends, refusals and focus changes, but only the example a_focus_change_keeps_each_editor tests it. |
