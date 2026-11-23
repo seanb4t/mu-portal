@@ -32,7 +32,7 @@ Test files: `crates/mu-tui/tests/app.rs` holds the tests of `update` and `view` 
 ## 5. Returned sends go to history
 
 - [x] 5.1 Change `put_back`, `return_waiting` and the refusal notice of `on_reply` (D6). Make sure that these tests in `app.rs` pass: `a_refused_line_after_more_text`, `a_line_that_the_server_refuses`, `the_last_line_is_refused`, `a_refused_send_of_enter_with_a_send_after_it`, `the_sends_stay_apart`, `the_stream_ends_while_lines_wait`, `lines_of_two_worlds_wait`, `the_server_resets_while_lines_wait`, `a_refusal_during_a_walk_of_the_history`, `a_refusal_after_the_stream_ended`. Make sure that `a_refusal_out_of_focus` passes: the user sends `b1` and `b2` to `beta/bryn` with one Alt+Enter, presses Ctrl+P to `alpha/aria`, and `beta/bryn` refuses `b1` with `b2` behind it while `alpha/aria` has the focus and its editor holds `typed`. Then the editor on screen still holds `typed`, the history of `alpha/aria` does not change, the top row shows `*` after `beta/bryn`, the refusal line in the pane of `beta/bryn` holds `(1 in history)`, and after Ctrl+N to `beta/bryn` the editor holds `b1` and Up gives `b2`. Make sure that `a_refusal_out_of_focus_during_a_walk` passes: `alpha/aria` sends `old` and then `one`, types `draft` and presses Up, the user presses Ctrl+N to `beta/bryn`, and `alpha/aria` refuses `one`. The editor of `beta/bryn` does not change. After Ctrl+P the editor holds `one`, the refusal line holds `(1 in history)`, and Up gives `draft`. Make sure that `replay_notices` serves `set_focus` and the `Reset` arm, and that the existing tests of a reset still pass. In `a_refusal_during_a_walk_of_the_history`, assert `(1 in history)` and that `draft` is in the history once. In `the_sends_stay_apart`, assert the count of the refusal line where the returned `c` equals the newest entry. Add the property test `returned_texts_come_back_in_order`: random distinct waiting texts and a held text, a refusal of the first, then each Up gives the rest in order and then the held text. Assert the count of the refusal line in `a_line_that_the_server_refuses` (1) and `a_refused_send_of_enter_with_a_send_after_it` (2), and its absence in `a_refused_line` (0). In `a_line_that_the_server_refuses`, a second Up gives the next line and not an empty editor.
-- [ ] 5.2 Make sure that the pull request body says `Fixes #151` and `Fixes #140`.
+- [x] 5.2 Make sure that the pull request body says `Fixes #151` and `Fixes #140`.
 
 ## 6. Configuration
 
@@ -57,7 +57,7 @@ Test files: `crates/mu-tui/tests/app.rs` holds the tests of `update` and `view` 
 ## 8. Review and integration
 
 - [x] 8.1 Run `/sb:openspec-review client-shell implementation`. Make sure that the verdict is not changes-requested.
-- [ ] 8.2 Run `/sb:suite-review` on the branch, and fix or triage each blocker and major finding. Make sure that `mise run check` passes on Linux and macOS in CI.
+- [x] 8.2 Run `/sb:suite-review` on the branch, and fix or triage each blocker and major finding. Make sure that `mise run check` passes on Linux and macOS in CI.
 
 ## Workflow follow-up
 

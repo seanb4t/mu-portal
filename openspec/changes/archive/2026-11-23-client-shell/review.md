@@ -36,7 +36,7 @@ None.
 | R-37 | suggestion | deferred | Low-cost polish of the client-shell plan: the dim-echo note in the guide, a shared reader for top-level config files, and runnable test commands in tasks; deferred to one ticket by the owner. | https://github.com/seanb4t/mu-portal/issues/164 |
 | R-43 | suggestion | deferred | Low-cost polish of the client-shell plan: the dim-echo note in the guide, a shared reader for top-level config files, and runnable test commands in tasks; deferred to one ticket by the owner. | https://github.com/seanb4t/mu-portal/issues/164 |
 | R-172 | suggestion | deferred | The usage text of an argument moves into the registry when client-layout adds the palette, which is its first second reader; until then help is the only reader. | https://github.com/seanb4t/mu-portal/issues/167 |
-| R-185 | should-fix | accepted | The test-coverage lens runs again in round 23, and all 117 covering tests of its round 22 matrix ran and passed. |  |
+| R-185 | should-fix | accepted | The test-coverage lens did not run again, because a follow-up round runs only osr-verify. All 117 covering tests of its round 22 matrix ran and passed in rounds 22 and 23. |  |
 
 ## Rounds
 
@@ -514,7 +514,7 @@ None.
 | R-182 | 22 | 23 | should-fix | in-change | false-test | ["path","crates/mu-tui/tests/app.rs",2059] | resolved | resolved in round 23 from fixed 41a65b436b4a8ec538f06ea7f0b8f982bbd813a9 | 22 |  |  | history_keeps_its_invariants never checks the 1000-entry cap that task 4.1 says it checks, and 60 steps cannot reach 1000 entries, so a broken cap passes it. |
 | R-183 | 22 | 23 | suggestion | in-change |  | ["artifact",["design.md","D8. The screen opens before the first list"],"On an attach to a server that it did not start, `mu client` resolves its own directory the same way and compares."] | resolved | resolved in round 23 from fixed 41a65b436b4a8ec538f06ea7f0b8f982bbd813a9 | 22 |  | severity? should-fix 0.75 | D8 compares config_dir only on an attach to a server that the client did not start. At head mu client compares after every first list, also after it started a server itself, and design.md records no deviation. |
 | R-184 | 22 | 23 | suggestion | in-change |  | ["artifact",["design.md","D8. The screen opens before the first list"],"The list that `mu-cli` makes before `run` decides whether to start a server."] | resolved | resolved in round 23 from fixed 41a65b436b4a8ec538f06ea7f0b8f982bbd813a9 | 22 |  | severity? should-fix 0.71 | D8 says the list before run decides whether to start a server. At head a bare UnixStream connect decides, and the list comes after it; design.md does not name the probe. |
-| R-185 | 22 | 22 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-coverage partial"] | accepted | ticket: none; reason: The test-coverage lens runs again in round 23, and all 117 covering tests of its round 22 matrix ran and passed. |  |  |  | lens test-coverage reported partial, gaps: 2 |
+| R-185 | 22 | 22 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-coverage partial"] | accepted | ticket: none; reason: The test-coverage lens did not run again, because a follow-up round runs only osr-verify. All 117 covering tests of its round 22 matrix ran and passed in rounds 22 and 23. |  |  |  | lens test-coverage reported partial, gaps: 2 |
 
 ## Reviewed files
 
