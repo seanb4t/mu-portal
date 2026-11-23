@@ -1104,28 +1104,97 @@ async fn the_client_with_no_directory() {
     assert_eq!(client.dims("> hello"), [true; 7]);
 }
 
-#[tokio::test]
-async fn the_first_list_gives_up() {
+/// A socket in a private directory where a test listens, and gives each connection to `serve`.
+fn listening(
+    serve: fn(tokio::net::UnixStream, &mut Vec<tokio::net::UnixStream>),
+) -> (
+    tempfile::TempDir,
+    std::path::PathBuf,
+    tokio::task::JoinHandle<()>,
+) {
     let dir = private_tempdir();
     let socket = dir.path().join("s.sock");
     let listener = tokio::net::UnixListener::bind(&socket).unwrap();
-    // Each connection stays open with no answer.
-    let held = tokio::spawn(async move {
+    let task = tokio::spawn(async move {
         let mut open = Vec::new();
         while let Ok((stream, _)) = listener.accept().await {
-            open.push(stream);
+            serve(stream, &mut open);
         }
     });
-    let mut client = PtyClient::start(&socket, dir.path());
-    // 5 seconds, and a margin for the start of the process.
-    let status = client
-        .exit_within(Duration::from_secs(8))
-        .await
-        .expect("the client leaves the first list");
+    (dir, socket, task)
+}
+
+#[tokio::test]
+async fn a_server_that_does_not_answer() {
+    // Each connection stays open with no answer.
+    let (dir, socket, task) = listening(|stream, open| open.push(stream));
+    let config = client_file("[server]\nconnect_wait_seconds = 0.2\n");
+    let mut client = PtyClient::start_args(
+        &socket,
+        dir.path(),
+        Answers::Default,
+        &["--config".as_ref(), config.path().as_os_str()],
+        &[],
+    );
+    let status = client.exit_within(BOUND).await.expect("the client exits");
     assert_eq!(status.exit_code(), 1);
     let screen = client.contents().replace('\n', "");
     assert!(screen.contains(&socket.display().to_string()), "{screen}");
-    held.abort();
+    assert!(screen.contains("0.2 s"), "{screen}");
+    task.abort();
+}
+
+#[tokio::test]
+async fn a_server_that_closes_the_connection() {
+    let (dir, socket, task) = listening(|stream, _| drop(stream));
+    let mut client = PtyClient::start(&socket, dir.path());
+    let status = client.exit_within(BOUND).await.expect("the client exits");
+    assert_eq!(status.exit_code(), 1);
+    let screen = client.contents().replace('\n', "");
+    assert!(screen.contains(&socket.display().to_string()), "{screen}");
+    assert!(
+        !dir.path().join("server.log").exists(),
+        "the client started a server"
+    );
+    task.abort();
+}
+
+#[tokio::test]
+async fn a_wait_of_zero() {
+    stops_naming(
+        "[server]\nconnect_wait_seconds = 0\n",
+        &["client.toml", "server.connect_wait_seconds"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn the_started_server_finds_the_default_directory() {
+    let dir = private_tempdir();
+    let xdg = dir.path().join("xdg");
+    let run = dir.path().join("run");
+    let log = run.join("server.log");
+    let _reaper = Reaper(log.clone());
+    let mut client = PtyClient::start_args(
+        &run.join("s.sock"),
+        dir.path(),
+        Answers::Default,
+        &[],
+        &[
+            ("MU_CONFIG", None),
+            ("XDG_CONFIG_HOME", Some(xdg.as_os_str())),
+        ],
+    );
+    client
+        .wait_top("no worlds", |top| top.trim() == "no worlds")
+        .await;
+    client.send(b"\x03");
+    client.exit_within(BOUND).await.expect("the client exits");
+    // The server writes any warning before it serves, and the client waited until it served.
+    let log = std::fs::read_to_string(&log).unwrap();
+    assert!(log.lines().any(|line| line.starts_with(SERVING)), "{log}");
+    let xdg = xdg.display().to_string();
+    assert!(!log.lines().any(|line| line.contains(&xdg)), "{log}");
 }
 
 // The keys table of client.toml.

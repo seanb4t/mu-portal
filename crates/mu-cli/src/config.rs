@@ -44,9 +44,15 @@ impl ConfigArgs {
         )
     }
 
+    /// The directory that `--config` or `MU_CONFIG` names, if the user named one.
+    #[must_use]
+    pub fn named(&self) -> Option<&Path> {
+        self.config.as_ref().and_then(PathValue::path)
+    }
+
     /// Warns on stderr, as `verb`, if `--config` or `MU_CONFIG` names a missing directory.
     pub fn warn_missing(&self, verb: &str) {
-        if let Some(named) = self.config.as_ref().and_then(PathValue::path)
+        if let Some(named) = self.named()
             && matches!(named.try_exists(), Ok(false))
         {
             crate::warn(

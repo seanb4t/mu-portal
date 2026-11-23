@@ -26,7 +26,7 @@ mod view;
 pub mod width;
 pub mod wrap;
 
-pub use config::{ClientConfig, Echo, KeyError, Settings};
+pub use config::{ClientConfig, Echo, KeyError, ServerTable, Settings};
 pub use editor::{Editor, EditorId, EditorState};
 pub use keymap::{Chord, KeyNameError, Keymap, Wheel};
 pub use layout::{Leaf, Node, Size};

@@ -11,12 +11,10 @@ use clap::Args;
 use mu_client::PortalClient;
 use mu_core::world::{CLIENT_FILE, Hidden};
 use mu_tui::config::{ClientConfig, Settings};
+use tokio::net::UnixStream;
 
 use crate::config::ConfigArgs;
 use crate::socket::{SocketArgs, socket_dir};
-
-/// How long the client waits for a server that it started.
-const START_LIMIT: Duration = Duration::from_secs(5);
 
 /// The log of a server that a client started, in the socket directory.
 pub const SERVER_LOG: &str = "server.log";
@@ -34,29 +32,82 @@ fn fail(error: &dyn std::fmt::Display) -> ExitCode {
     crate::fail("client", error)
 }
 
-/// The settings of `client.toml` in `dir`, or the error to print: the file, then the key of a
-/// bad binding.
-fn settings(dir: Option<&Path>) -> Result<Settings, String> {
+/// What `client.toml` gives a run: the settings of the screen, and the longest wait for a
+/// server to answer.
+struct FileSettings {
+    settings: Settings,
+    wait: Duration,
+}
+
+/// The settings of `client.toml` in `dir`, or the error to print: the file, then the field or
+/// the key of a bad binding.
+fn settings(dir: Option<&Path>) -> Result<FileSettings, String> {
     let file: ClientConfig = crate::config_file::read(dir, CLIENT_FILE, Hidden::Tables(&[]))
         .map_err(|error| error.to_string())?;
-    file.settings()
-        .map_err(|error| format!("{CLIENT_FILE}: keys.{}: {error}", error.key))
+    let wait = connect_wait(file.server.connect_wait_seconds)
+        .map_err(|reason| format!("{CLIENT_FILE}: server.connect_wait_seconds: {reason}"))?;
+    let settings = file
+        .settings()
+        .map_err(|error| format!("{CLIENT_FILE}: keys.{}: {error}", error.key))?;
+    Ok(FileSettings { settings, wait })
+}
+
+/// The wait of `seconds`, or the reason that it is no wait.
+fn connect_wait(seconds: f64) -> Result<Duration, String> {
+    let reason = || format!("{seconds} is not a finite number of seconds above 0");
+    if !(seconds.is_finite() && seconds > 0.0) {
+        return Err(reason());
+    }
+    Duration::try_from_secs_f64(seconds).map_err(|_| reason())
+}
+
+/// The wait as the messages print it, such as `5 s` or `0.2 s`.
+fn shown(wait: Duration) -> String {
+    format!("{} s", wait.as_secs_f64())
+}
+
+/// What answered on the socket before the first list.
+enum Found {
+    /// Nothing listens: the socket path has no file, or the connection is refused.
+    Nothing,
+    /// A connection opened, so a server listens.
+    Listener,
+}
+
+/// Whether anything listens on `socket`, or the error of a connection that neither opened nor
+/// found that nothing listens.
+async fn listener(socket: &Path) -> io::Result<Found> {
+    match UnixStream::connect(socket).await {
+        Ok(_) => Ok(Found::Listener),
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+            ) =>
+        {
+            Ok(Found::Nothing)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 /// Runs the terminal client. Nothing runs before the check of the terminal, so a client
 /// with no terminal creates no directory and no file. It reads `client.toml` before the screen
-/// opens, and a bad file stops it there. With no server on the socket, the client starts one in
-/// the background with the same configuration directory and attaches to it.
+/// opens, and a bad file stops it there. If nothing listens on the socket, the client starts a
+/// server in the background and attaches to it. Any other failure of the first list stops it.
+/// The first list, and the wait for a started server, each wait at most the time of
+/// `[server] connect_wait_seconds`.
 pub fn run(args: &ClientArgs) -> ExitCode {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         return fail(&"stdin and stdout must be a terminal");
     }
     args.config.warn_missing("client");
     let config = args.config.dir_from_env();
-    let settings = match settings(config.as_deref()) {
-        Ok(settings) => settings,
+    let FileSettings { settings, wait } = match settings(config.as_deref()) {
+        Ok(file) => file,
         Err(error) => return fail(&error),
     };
+    let named = args.config.named();
     let socket = match args.socket.private_socket() {
         Ok(socket) => socket,
         Err(error) => return fail(&error),
@@ -68,20 +119,24 @@ pub fn run(args: &ClientArgs) -> ExitCode {
     };
     runtime.block_on(async {
         let client = PortalClient::unix(&socket);
-        match tokio::time::timeout(START_LIMIT, client.list_worlds()).await {
-            Ok(Ok(_)) => {}
-            Ok(Err(_)) => {
-                if let Some(error) = start_and_wait(&client, &socket, dir, config.as_deref()).await
+        let first = async {
+            match listener(&socket).await {
+                Ok(Found::Nothing) => start_and_wait(&client, &socket, dir, named, wait).await,
+                Ok(Found::Listener) => match tokio::time::timeout(wait, client.list_worlds()).await
                 {
-                    return error;
-                }
+                    Ok(Ok(_)) => Ok(()),
+                    Ok(Err(error)) => Err(format!("{}: {error}", socket.display())),
+                    Err(_) => Err(format!(
+                        "the server on {} did not answer within {}",
+                        socket.display(),
+                        shown(wait)
+                    )),
+                },
+                Err(error) => Err(format!("{}: {error}", socket.display())),
             }
-            Err(_) => {
-                return fail(&format!(
-                    "the server on {} did not answer within 5 seconds",
-                    socket.display()
-                ));
-            }
+        };
+        if let Err(error) = first.await {
+            return fail(&error);
         }
         match mu_tui::run(client, settings).await {
             Ok(()) => ExitCode::SUCCESS,
@@ -90,30 +145,32 @@ pub fn run(args: &ClientArgs) -> ExitCode {
     })
 }
 
-/// Starts a server for `socket` with the configuration directory `config`, and waits until it
-/// answers. The failure to return, if it does not start or answer.
+/// Starts a server for `socket`, with `--config` only for a directory that the user named, and
+/// waits up to `wait` until it answers. The error to print, if it does not start or answer.
 async fn start_and_wait(
     client: &PortalClient,
     socket: &Path,
     dir: &Path,
-    config: Option<&Path>,
-) -> Option<ExitCode> {
+    named: Option<&Path>,
+    wait: Duration,
+) -> Result<(), String> {
     let log = dir.join(SERVER_LOG);
-    if let Err(error) = start_server(socket, &log, config) {
-        return Some(fail(&format!("{}: {error}", log.display())));
-    }
-    if !answers(client).await {
-        return Some(fail(&format!(
-            "no server answered on {} within 5 seconds; read {}",
+    start_server(socket, &log, named).map_err(|error| format!("{}: {error}", log.display()))?;
+    if answers(client, wait).await {
+        Ok(())
+    } else {
+        Err(format!(
+            "no server answered on {} within {}; read {}",
             socket.display(),
+            shown(wait),
             log.display()
-        )));
+        ))
     }
-    None
 }
 
 /// Starts `mu server` for `socket` in its own process group, with stdout and stderr
-/// appended to `log`, and `--config <config>` when there is a directory.
+/// appended to `log`, and `--config <config>` when there is a directory. With no directory, the
+/// server resolves the default from the environment that it inherits.
 fn start_server(socket: &Path, log: &Path, config: Option<&Path>) -> io::Result<()> {
     let log: File = OpenOptions::new().create(true).append(true).open(log)?;
     let mut command = Command::new(std::env::current_exe()?);
@@ -130,16 +187,16 @@ fn start_server(socket: &Path, log: &Path, config: Option<&Path>) -> io::Result<
     Ok(())
 }
 
-/// Tries `ListWorlds` with the backoff of the resume, for up to 5 seconds in all.
-async fn answers(client: &PortalClient) -> bool {
+/// Tries `ListWorlds` with the backoff of the resume, for up to `wait` in all.
+async fn answers(client: &PortalClient, wait: Duration) -> bool {
     let tries = async {
         let mut backoff = mu_client::backoff();
         while client.list_worlds().await.is_err() {
-            let wait = backoff.next().unwrap_or(START_LIMIT);
-            tokio::time::sleep(wait).await;
+            let step = backoff.next().unwrap_or(wait);
+            tokio::time::sleep(step).await;
         }
     };
-    tokio::time::timeout(START_LIMIT, tries).await.is_ok()
+    tokio::time::timeout(wait, tries).await.is_ok()
 }
 
 #[cfg(test)]
@@ -155,11 +212,30 @@ mod tests {
                 format!("[keys]\n\"{key}\" = \"{entry}\"\n"),
             )
             .unwrap();
-            let error = settings(Some(dir.path())).unwrap_err();
+            let Err(error) = settings(Some(dir.path())) else {
+                panic!("{key} is a good binding");
+            };
             assert!(
                 error.starts_with(&format!("client.toml: keys.{key}: ")),
                 "{error}"
             );
         }
+    }
+
+    #[test]
+    fn a_wait_that_is_no_time_is_refused() {
+        for seconds in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::MAX] {
+            assert!(connect_wait(seconds).is_err(), "{seconds}");
+        }
+        assert_eq!(connect_wait(0.2), Ok(Duration::from_millis(200)));
+    }
+
+    #[test]
+    fn the_wait_is_five_seconds_by_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let Ok(file) = settings(Some(dir.path())) else {
+            panic!("no file gives the defaults");
+        };
+        assert_eq!(file.wait, Duration::from_secs(5));
     }
 }

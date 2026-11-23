@@ -5,7 +5,7 @@ sidebar:
   order: 4
 ---
 
-This guide shows how to change the keys and the echo line of `mu client`. The echo line is the row that shows each text that you send, after `> `.
+This guide shows how to change the keys and the echo line of `mu client`, and how long it waits for a server. The echo line is the row that shows each text that you send, after `> `.
 
 ## The client file
 
@@ -13,7 +13,7 @@ The file `client.toml` holds the configuration of the terminal client. It goes a
 
 The client reads the file once, before it opens the screen. If the file does not exist, the client uses the defaults. If the directory does not exist, the client also uses the defaults. If `--config` or `MU_CONFIG` names a directory that does not exist, the client writes a warning that names it.
 
-If the client starts a server, it gives that server the same configuration directory.
+If the client starts a server and you named the directory with `--config` or `MU_CONFIG`, the client gives that server the same directory. Otherwise the server finds the directory by the same rule as the client.
 
 ```toml
 # client.toml
@@ -22,12 +22,24 @@ echo = "show"
 [keys]
 "alt+n" = "focus-next"
 "ctrl+n" = "none"
+
+[server]
+connect_wait_seconds = 5
 ```
 
 | Field | Meaning |
 |---|---|
 | `echo` | `show`, `dim` or `hide`. The default is `dim` |
 | `[keys]` | A table from a key name to the name of an entry, or to `none` |
+| `[server]` | The table of the field `connect_wait_seconds` |
+
+## The wait for a server
+
+The field `connect_wait_seconds` of the table `[server]` is the longest time, in seconds, that the client waits for a server to answer. The default is 5. A fraction such as `0.5` is a valid value.
+
+The client uses this time twice. First, it asks the server on its socket for the list of the worlds. If nothing listens on the socket, the client starts a server, and then waits for that server to answer. If the server does not answer in time, the client exits with status 1, and the error names the socket and the time.
+
+If a server listens but the list fails for another reason, the client does not start a second server. It writes the error and exits with status 1.
 
 ## The echo line
 
@@ -74,4 +86,5 @@ The client does not open the screen for a bad file. It writes the error and exit
 - A file that the client cannot read. The error names the path.
 - A file that is not TOML. The error names `client.toml`, the line and the column.
 - An unknown field, or an `echo` value that is not `show`, `dim` or `hide`. The error names `client.toml` and the field.
+- A `connect_wait_seconds` value of 0 or less, or a value that is not finite. The error names `client.toml` and `server.connect_wait_seconds`.
 - A bad binding. The error names `client.toml` and the key. A binding is bad if its key name is bad, or if its entry is unknown or needs a world. Two names of the same key are also bad, such as `ctrl+shift+z` and `shift+ctrl+z`.

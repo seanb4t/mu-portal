@@ -21,8 +21,32 @@ pub enum Echo {
     Hide,
 }
 
+/// The table `[server]` of `client.toml`: how `mu client` waits for a server.
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ServerTable {
+    /// The longest time, in seconds, that `mu client` waits for a server to answer. `mu-cli`
+    /// refuses a value that is not finite or not above 0.
+    #[serde(default = "ServerTable::default_wait")]
+    pub connect_wait_seconds: f64,
+}
+
+impl ServerTable {
+    const fn default_wait() -> f64 {
+        5.0
+    }
+}
+
+impl Default for ServerTable {
+    fn default() -> Self {
+        Self {
+            connect_wait_seconds: Self::default_wait(),
+        }
+    }
+}
+
 /// The content of `client.toml`. A missing file is the default.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientConfig {
     /// How the client shows the echo line of a send.
@@ -31,6 +55,9 @@ pub struct ClientConfig {
     /// Each key name and the name of the entry that it runs, or `none`.
     #[serde(default)]
     pub keys: BTreeMap<String, String>,
+    /// How `mu client` waits for a server.
+    #[serde(default)]
+    pub server: ServerTable,
 }
 
 /// What a run of the client takes from its configuration.
