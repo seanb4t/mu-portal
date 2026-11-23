@@ -1,10 +1,10 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-23T13:35:03+00:00
-head: 65a9a51fb21f2fdbd08291585c663f1adbb7dfa8
-round: 20
-next_id: 174
+reviewed_at: 2026-11-23T14:24:45+00:00
+head: 518e8a5b0a7075488e2a37d495fba82867aa98ae
+round: 21
+next_id: 178
 lenses:
   spec-lint: not-applicable
   approach: ok
@@ -20,6 +20,10 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
+| R-175 | test-coverage | should-fix | in-change | delta scenario 'The server names its directory' has no matrix row | review > absent-row — "The server names its directory" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-176 | test-coverage | should-fix | in-change | delta scenario 'A server with another directory' has no matrix row | review > absent-row — "A server with another directory" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-177 | test-coverage | should-fix | in-change | delta scenario 'A server with the same directory' has no matrix row | review > absent-row — "A server with the same directory" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-174 | verify | should-fix | in-change | A client that finds nothing on the socket never compares config_dir. If two clients with other directories start at once, the second one's server loses the lock and exits, and that client attaches to the first client's server, which it did not start, with no notice. | crates/mu-cli/src/client.rs:123 — "Ok(Found::Nothing) => start_and_wait(&client, &socket, dir, named, wait)" | After start_and_wait, read config_dir too and pass it through other_dir, as the Listener arm does. A server that the client started inherits its directory, so the normal start gives no notice. |  |  | unmet-requirement |
 
 ## Repeats
 
@@ -63,10 +67,11 @@ None.
 | 18 | implementation | full | 7c2b15c0c15e93779d84997bad0fe7e6b544bb8e | efe6f8accbb9a4b8affd2837b461fe1ec9a672e3aa441be8a9eba566d56c9c2d | changes-requested | 18 | 0 | 0 | 0 | 0 |  |
 | 19 | implementation | follow-up | 2790b3cac0e01bae2b24ccc58cd327c3ef88f6c8 | cc60356d45d236c9b474b7b592f08ffb8cd87a1907e5094fc7f4de1c49e662da | approve-with-notes | 0 | 1 | 1 | 17 | 0 |  |
 | 20 | implementation | follow-up | 65a9a51fb21f2fdbd08291585c663f1adbb7dfa8 | cc60356d45d236c9b474b7b592f08ffb8cd87a1907e5094fc7f4de1c49e662da | approve-with-notes | 0 | 1 | 0 | 1 | 0 |  |
+| 21 | implementation | follow-up | 518e8a5b0a7075488e2a37d495fba82867aa98ae | 9856775cf557a23f9b7f7a5f272c3ba19e8daf6bcd3b318a3e296909c6130fad | approve-with-notes | 4 | 1 | 0 | 0 | 0 |  |
 
 ## Judge
 
-judge: 0 questions, 0.000 USD
+judge: 2 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -313,11 +318,9 @@ None.
 
 ## Lens notes
 
-- verify: R-161: connect_wait now filters seconds >= 1e-9 before Duration::try_from_secs_f64. The f64 nearest 1e-9 lies just above 1 ns, so every accepted value gives at least 1 ns, NaN fails the filter, and inf or f64::MAX fail the conversion.
-- verify: The unit test a_wait_that_is_no_time_is_refused passes 1e-10 and 0.9e-9 below the edge and 1e-9 at the edge, which equals Duration::from_nanos(1).
-- verify: The error text for f64::MAX reads 'is not a finite number of seconds of 1 ns or more', though f64::MAX is finite. It is still refused and the error still names client.toml and server.connect_wait_seconds, so the spec holds. This wording is no defect of the fix.
-- verify: The fix hunks at crates/mu-cli/tests/client.rs 1084 and 1090 are a comment and the arguments of a_started_server_takes_a_directory_that_starts_with_a_dash. They hold no defect.
-- verify: docs/src/content/docs/guides/client.md line 89 now names the 1 ns floor, which matches the code and the requirement 'The server table sets the wait for a server'.
+- verify: prior.json has no fixed row, so fixes is empty.
+- verify: a_server_with_another_directory checks only that the text after the notice holds /b, not the resolved path of <dir>/b. On macOS the temp path under /var/folders/<two chars>/ can itself hold /b, so the check can pass on the server path alone (crates/mu-cli/tests/client.rs:1467). This is a question for the test-honesty lens.
+- verify: The diff since 65a9a51 was read at head: client.rs, config.rs shown_dir, server.rs, mu-client config_dir, the proto field, serve.rs, service.rs, run.rs, the new tests and wait_line. The Listener path, the timeout message and the error path keep the earlier behaviour.
 
 ## Ledger
 
@@ -495,7 +498,11 @@ None.
 | R-170 | 18 | 19 | suggestion | in-change |  | ["artifact",["design.md","D7. Echo"],"So the prefix rule stays in one place."] | resolved | resolved in round 19 from fixed aa67cf5b2104fc3a11b3159cfb8db5a5c6251826 | 18 |  | severity? should-fix 0.79 | D7 says echo_rows keeps the prefix rule in one place, but text::line still writes the > prefix for a player event. That arm has no caller now, so the > prefix has two places. |
 | R-171 | 18 | 19 | suggestion | in-change |  | ["artifact",["design.md","Open Questions"],"The exact text of each description in the registry. It changes no spec and no task."] | resolved | resolved in round 19 from fixed aa67cf5b2104fc3a11b3159cfb8db5a5c6251826 | 18 |  |  | The one open question is the text of each registry description, but registry.rs at head already gives every entry its description, so the question is answered. |
 | R-172 | 18 | 18 | suggestion | in-change |  | ["path","crates/mu-tui/src/update.rs",705] | deferred | ticket: https://github.com/seanb4t/mu-portal/issues/167; reason: The usage text of an argument moves into the registry when client-layout adds the palette, which is its first second reader; until then help is the only reader. |  |  | severity? should-fix 0.62 | The text of an entry's argument (`<world>` or `[world]`) is built inside update::help. The palette of client-layout lists the registry and must show the same, so it must copy that match or move it into the registry. |
-| R-173 | 18 | 20 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"The default dims"] | refuted | Both tests of the row ran at head and passed: verification runs list the_default_dims and the_client_with_no_directory with exit 0. The merge matches a run only to a row that names one test, so a row with two tests reads as not-run. |  |  |  | covered row 'The default dims' has no verification run |
+| R-173 | 18 | 21 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"The default dims"] | refuted | Both tests of the row ran at head and passed: verification runs list the_default_dims and the_client_with_no_directory with exit 0. The merge matches a run only to a row that names one test, so a row with two tests reads as not-run. |  |  |  | covered row 'The default dims' has no verification run |
+| R-174 | 21 | 21 | should-fix | in-change | unmet-requirement | ["path","crates/mu-cli/src/client.rs",123] | fixed | edfe9c40f6398484074b306ef1f33b383d9f6400 | 21 |  |  | A client that finds nothing on the socket never compares config_dir. If two clients with other directories start at once, the second one's server loses the lock and exits, and that client attaches to the first client's server, which it did not start, with no notice. |
+| R-175 | 21 | 21 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The server names its directory"] |  |  |  |  |  | delta scenario 'The server names its directory' has no matrix row |
+| R-176 | 21 | 21 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A server with another directory"] |  |  |  |  |  | delta scenario 'A server with another directory' has no matrix row |
+| R-177 | 21 | 21 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A server with the same directory"] |  |  |  |  |  | delta scenario 'A server with the same directory' has no matrix row |
 
 ## Reviewed files
 
@@ -504,17 +511,23 @@ None.
 | Cargo.lock | f0935658614fed31bdee0876a5ec6fc0dc240d8a |
 | architecture/model.c4 | de0d8250e2b32b9f8eb4830106a16eec74dbe4c9 |
 | architecture/views.c4 | 717d223162471a4c7ff60f04983b37862ecca58d |
-| crates/mu-cli/src/client.rs | 7ae45dec6c2c04b8c2472a786c6dce7a5da579b0 |
-| crates/mu-cli/src/config.rs | 8d51df6e069507a4eeee97382dad05dc068c44fb |
+| crates/mu-cli/src/client.rs | 5a61a9f686491e130586eb2374c4b14833d442ed |
+| crates/mu-cli/src/config.rs | c2100c2eefbfae7e6240c2eea48c38a021672aa0 |
 | crates/mu-cli/src/config_file.rs | 0cdf1cf8be27ec0ffa7a2e515da1103aba0ff2cd |
 | crates/mu-cli/src/lib.rs | b95c38ec64b888cbc94cec8c70ad33855955dd6a |
+| crates/mu-cli/src/server.rs | fbd7a47ce318b43296252f9e90cdd19d95d6a06a |
 | crates/mu-cli/src/server_config.rs | bbe084932305de93217609b7f9ecfe648df3855f |
-| crates/mu-cli/tests/client.rs | 5f2e3924723a239f9be538e2b09489b837ebf0ae |
-| crates/mu-cli/tests/support/process.rs | c7ad3ea58626fcbfe803037d2432edc257789947 |
+| crates/mu-cli/tests/client.rs | b903d815c173a332214bca4372e6b0cccdf49435 |
+| crates/mu-cli/tests/server.rs | 3097ddf730abbad92668e4d4d3e6c8496d3fd188 |
+| crates/mu-cli/tests/support/process.rs | 9506e59932cb92fd0c929999d2508a30bdb151af |
 | crates/mu-cli/tests/workspace_boundary.rs | 72318b1b01439268d6978870625c59517efc3a81 |
 | crates/mu-cli/tests/world_config.rs | 0365226492201277a55be1507b43c95c808bfd02 |
+| crates/mu-client/src/lib.rs | 97bbce2fcc6177888e8cc7959ee33666fd764cb2 |
 | crates/mu-core/src/world/dir.rs | 19f66de7d16879d500e0d0fdc50cb273d0f2e5fc |
 | crates/mu-core/src/world/mod.rs | 770247846d487e5740e4cc56d790e2d151cf0f0b |
+| crates/mu-proto/proto/mu/v1/portal.proto | 5ba3dbf8e79753889893c152c42a6ff5c34ee4d1 |
+| crates/mu-server/src/serve.rs | 63fde9d4de6afc73363471d8285ceb8a6aef197f |
+| crates/mu-server/src/service.rs | e18a9d3bdc1b0332201a9a5822339fc31da6f44d |
 | crates/mu-tui/Cargo.toml | 00eb86b87ed3b96c5147c131a54b9a9662759f77 |
 | crates/mu-tui/src/command.rs | 4317699680b210cf929759b1860b141cfc075377 |
 | crates/mu-tui/src/config.rs | 2823f3961513f132528a5c55aa74f5b0c2902de4 |
@@ -526,7 +539,7 @@ None.
 | crates/mu-tui/src/pane.rs | 7a6eb6c699ad9d7ede4ef79abeaa0d01c282e3d2 |
 | crates/mu-tui/src/probe.rs | a2174ee68afdc0b6e6b5c52807e7a12e2924ae9a |
 | crates/mu-tui/src/registry.rs | d2260e1a8867da5494d2bc853c30fbd0ea430ceb |
-| crates/mu-tui/src/run.rs | 382dd5d9c8396fea1da25f8147afe133ac7624e0 |
+| crates/mu-tui/src/run.rs | 5851ff9587cad0adc2e65fc8cceb87ab737b8c00 |
 | crates/mu-tui/src/text.rs | d17176e2d881884e87e8c2eecaacfc05c1832e24 |
 | crates/mu-tui/src/update.rs | f16e18a2d2230245242489a93490df1d26fd33bf |
 | crates/mu-tui/src/view.rs | c0d1cf99d3cf5797733d8807c6d3ff56219b530b |
@@ -539,18 +552,18 @@ None.
 | docs/src/content/docs/architecture/terminal-client.mdx | 80c1c26e4542676cffb172c3cc560a1a85e041ab |
 | docs/src/content/docs/decisions/input-editor.md | 111a5a5738933fa1c69ae125cdb0feec80caee51 |
 | docs/src/content/docs/decisions/terminal-client-architecture.md | 5921a051ae562b4c9571105a6368b01ef9578f9c |
-| docs/src/content/docs/guides/client.md | 1999da3e10ffaa192d6b5b05061eb13dda9fb92f |
+| docs/src/content/docs/guides/client.md | 3aa074414267c0c1fdece380ba0473bb9a1c5acc |
 | docs/src/content/docs/guides/configuration.md | 31ab6d6de0839a80dd6ca6231868a19e9e976d7a |
 | docs/src/content/docs/guides/first-run.md | 14fb49ebf76010d2faf14345b20d2a1c711af4b7 |
 | openspec/changes/client-shell/.openspec.yaml | b6809d6be7a6faad01a1bd5da9bea068ac829d8f |
-| openspec/changes/client-shell/design.md | 6d196806db4ae42f8cef7ceb71ca3836d9d75fd2 |
-| openspec/changes/client-shell/proposal.md | c91ce1153b2d7502906e30e801d967cdac9989c2 |
+| openspec/changes/client-shell/design.md | 3b3bade2962ecffad16ef3faa75eb74d3e7c765f |
+| openspec/changes/client-shell/proposal.md | 8af63d31dc6cf1916c5a3c23825548c35b170618 |
 | openspec/changes/client-shell/specs/client-commands/spec.md | e0930b8d51ba76cf8bd3326d22807f042e1b849b |
 | openspec/changes/client-shell/specs/client-config/spec.md | 7914965008639b9e2ed35fac6f4f85e857badd5d |
-| openspec/changes/client-shell/specs/server-process/spec.md | 29a32d39c11b6afb9397a7294ec4d718177dad25 |
+| openspec/changes/client-shell/specs/server-process/spec.md | f7dba345acccf6ed1943279f4a4d9dab3328f65f |
 | openspec/changes/client-shell/specs/terminal-client/spec.md | 097fce94a330389b7caf6525769286ba67da51a6 |
 | openspec/changes/client-shell/specs/world-config/spec.md | 515b84297760374f211078b26da0c4ce297e435c |
-| openspec/changes/client-shell/tasks.md | sha256:3745ca2208ccfd49d139a4935c037435fe76dd2bb45bec8b45645ff8a7b49a4a |
+| openspec/changes/client-shell/tasks.md | sha256:840f7e92d60c5f5d2c0bb5a9278ad2a872beb6715e6dd6766b851ae373d88173 |
 | openspec/review.json | absent |
 
 ## Plan review (2026-11-23)
