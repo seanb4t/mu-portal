@@ -89,6 +89,7 @@ async fn client_gives_up_after_five_seconds() {
         .await
         .expect("the client exits within 7 seconds");
     assert_eq!(status.exit_code(), 1);
+    client.wait_line("mu client: ").await;
     let screen = client.contents().replace('\n', "");
     let log = dir.path().join("server.log");
     for name in [socket.display().to_string(), log.display().to_string()] {
@@ -1001,6 +1002,7 @@ async fn refused_file(config: &ConfigDir) -> String {
         "the client entered the alternate screen"
     );
     assert!(!socket.exists(), "the client started a server");
+    client.wait_line("mu client: ").await;
     client.contents().replace('\n', "")
 }
 
@@ -1162,6 +1164,7 @@ async fn a_server_that_does_not_answer() {
     );
     let status = client.exit_within(BOUND).await.expect("the client exits");
     assert_eq!(status.exit_code(), 1);
+    client.wait_line("mu client: ").await;
     let screen = client.contents().replace('\n', "");
     assert!(screen.contains(&socket.display().to_string()), "{screen}");
     assert!(screen.contains("0.2 s"), "{screen}");
@@ -1174,6 +1177,7 @@ async fn a_server_that_closes_the_connection() {
     let mut client = PtyClient::start(&socket, dir.path());
     let status = client.exit_within(BOUND).await.expect("the client exits");
     assert_eq!(status.exit_code(), 1);
+    client.wait_line("mu client: ").await;
     let screen = client.contents().replace('\n', "");
     assert!(screen.contains(&socket.display().to_string()), "{screen}");
     assert!(

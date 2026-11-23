@@ -848,16 +848,31 @@ impl PtyClient {
 
     /// Waits until the bytes that the client wrote hold `needle`. A failure prints the screen.
     pub async fn wait_output(&self, what: &str, needle: &[u8]) {
+        self.wait_bytes(what, |all| find(all, needle).is_some())
+            .await;
+    }
+
+    /// Waits until the client wrote a whole line that starts with `prefix`, such as the error
+    /// line of a client that stops. The reader of the terminal can still be behind when the
+    /// client exits, so a test waits for this before it reads the screen.
+    pub async fn wait_line(&self, prefix: &str) {
+        let prefix = prefix.as_bytes();
+        self.wait_bytes(&format!("a line that starts with {prefix:?}"), |all| {
+            find(all, prefix).is_some_and(|at| all[at..].contains(&b'\n'))
+        })
+        .await;
+    }
+
+    /// Waits until `check` holds for the bytes that the client wrote. A failure prints the
+    /// screen.
+    async fn wait_bytes(&self, what: &str, check: impl Fn(&[u8]) -> bool) {
         let mut receiver = self.output.subscribe();
         let note = ScreenNote {
             what,
             screen: &self.screen,
         };
         wait_until(BOUND, note, async {
-            receiver
-                .wait_for(|all| all.windows(needle.len()).any(|window| window == needle))
-                .await
-                .is_ok()
+            receiver.wait_for(|all| check(all)).await.is_ok()
         })
         .await;
     }
@@ -923,6 +938,12 @@ impl PtyClient {
             Err(_elapsed) => None,
         }
     }
+}
+
+/// The place of the first `needle` in `all`.
+fn find(all: &[u8], needle: &[u8]) -> Option<usize> {
+    all.windows(needle.len())
+        .position(|window| window == needle)
 }
 
 /// The name of a wait on the screen. It shows the screen as it is when the wait fails.
