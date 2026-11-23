@@ -18,6 +18,7 @@ use termina::event::{
 use crate::command::{self, Parse};
 use crate::config::Echo;
 use crate::convert::convert;
+use crate::history::HISTORY_LIMIT;
 use crate::keymap::Wheel;
 use crate::model::{Late, Listing, Model, PaneId, QuitArm};
 use crate::pane::{Caps, PaneState};
@@ -954,8 +955,9 @@ fn line_count(count: usize) -> String {
 /// Gives `texts` back to `world`. The first goes alone into the editor of that world, with the
 /// cursor at its start. The others, and then the text that the editor held, go into the history
 /// of that world, so each Up gives the next one. During a walk, the held text is the draft of
-/// the walk. A world out of focus gets its unseen mark. Returns the count of entries that the
-/// history kept.
+/// the walk. A world out of focus gets its unseen mark. The history keeps the held text and at
+/// most [`HISTORY_LIMIT`] less one of the others, the first ones, so no push of this call drops
+/// the held text. Returns the count of entries that the history kept.
 fn put_back(model: &mut Model, world: &str, texts: Vec<String>) -> usize {
     let Some(index) = model.find(world) else {
         return 0;
@@ -969,7 +971,7 @@ fn put_back(model: &mut Model, world: &str, texts: Vec<String>) -> usize {
         None => model.pose_of(world).text(),
     };
     model.pose_of(world).set_text_at_start(&first);
-    let rest: Vec<String> = texts.collect();
+    let rest: Vec<String> = texts.take(HISTORY_LIMIT - 1).collect();
     let entry = &mut model.worlds[index];
     let mut kept = usize::from(entry.history.push(&held));
     for text in rest.iter().rev() {

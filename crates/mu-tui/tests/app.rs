@@ -4,6 +4,7 @@
 use mu_client::ClientEvent;
 use mu_proto::{Event, EventKind, Source, World};
 use mu_tui::convert::convert;
+use mu_tui::history::HISTORY_LIMIT;
 use mu_tui::{Effect, Model, Msg, Reply, update, view};
 use proptest::prelude::*;
 use ratatui::Terminal;
@@ -1972,6 +1973,29 @@ proptest! {
             prop_assert_eq!(&app.input(), text);
         }
     }
+}
+
+#[test]
+fn returned_texts_past_the_limit_keep_the_draft() {
+    let texts: Vec<String> = (0..=HISTORY_LIMIT + 100).map(|n| format!("t{n}")).collect();
+    let mut app = two_worlds();
+    let lines: Vec<&str> = texts.iter().map(String::as_str).collect();
+    type_lines(&mut app, &lines);
+    assert_eq!(
+        press(&mut app, alt_enter()),
+        [send("alpha/aria", &texts[0])]
+    );
+    type_text(&mut app, "DRAFT");
+    on_reply(&mut app, refused("alpha/aria", &texts[0]));
+    assert_eq!(app.input(), texts[0]);
+    assert!(has_notice(
+        &mut app,
+        &format!("({HISTORY_LIMIT} in history)")
+    ));
+    let history = app.history("alpha/aria").unwrap();
+    assert_eq!(history.len(), HISTORY_LIMIT);
+    assert_eq!(history[0], "DRAFT");
+    assert_eq!(history[HISTORY_LIMIT - 1], texts[1]);
 }
 
 #[derive(Clone, Debug)]
