@@ -152,6 +152,18 @@ pub static ENTRIES: &[Entry] = &[
     ),
     plain("ignore", "do nothing", true, |_| Action::Ignore),
     plain(
+        "history-prev",
+        "on the first line, put the previous entry of the history in the editor",
+        true,
+        |_| Action::HistoryPrev,
+    ),
+    plain(
+        "history-next",
+        "on the last line, put the next entry of the history, or the draft, in the editor",
+        true,
+        |_| Action::HistoryNext,
+    ),
+    plain(
         "scroll-page-up",
         "scroll the pane back one page",
         false,

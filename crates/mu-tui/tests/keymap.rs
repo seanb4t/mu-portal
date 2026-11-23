@@ -97,7 +97,9 @@ fn edits_flag_matches_the_editing_rows() {
             "delete-to-line-start",
             "undo",
             "redo",
-            "ignore"
+            "ignore",
+            "history-prev",
+            "history-next"
         ]
     );
 }

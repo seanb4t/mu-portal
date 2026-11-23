@@ -8,7 +8,7 @@ use std::sync::Arc;
 use mu_client::ClientEvent;
 use mu_proto::{EventKind, Source, World as ProtoWorld};
 use ratatui::style::Style;
-use ratatui_textarea::{Input, Key};
+use ratatui_textarea::{CursorMove, Input, Key};
 use termina::Event as TermEvent;
 use termina::escape::csi::{Csi, DecPrivateMode, DecPrivateModeCode, Device, Mode};
 use termina::event::{
@@ -17,6 +17,7 @@ use termina::event::{
 
 use crate::command::{self, Parse};
 use crate::convert::convert;
+use crate::history::Walk;
 use crate::keymap::Wheel;
 use crate::model::{Late, Listing, Model, PaneId, QuitArm};
 use crate::pane::{Caps, PaneState};
@@ -108,6 +109,12 @@ pub enum Action {
     Focus(String),
     /// Show one line for each entry of the registry.
     Help,
+    /// On the first line of the pose editor, put the previous entry of the history of the world
+    /// in focus in the editor. On another line, move the cursor up.
+    HistoryPrev,
+    /// On the last line of the pose editor, put the next entry of the history, or the draft
+    /// after the newest entry, in the editor. On another line, move the cursor down.
+    HistoryNext,
 }
 
 /// What the loop must do after an update.
@@ -432,7 +439,7 @@ fn world_arg(model: &Model, arg: Option<String>, name: &str) -> Result<String, S
 
 /// Runs the command `parse`. A bad command leaves the editor as it is and adds a hint. A good
 /// command clears the editor before it runs. Any command but `/quit` cancels an armed quit.
-fn run_command(model: &mut Model, parse: Parse<'_>) -> Vec<Effect> {
+fn run_command(model: &mut Model, text: &str, parse: Parse<'_>) -> Vec<Effect> {
     let name = parse.name;
     let checked = check_command(model, parse);
     let entry = match checked {
@@ -448,6 +455,7 @@ fn run_command(model: &mut Model, parse: Parse<'_>) -> Vec<Effect> {
             Vec::new()
         }
         Ok((entry, arg)) => {
+            record(model, text);
             model.set_input("");
             let effects = run_entry(model, entry, arg);
             if name == "quit" && model.quit_arm.is_some() {
@@ -547,7 +555,7 @@ fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
             if let Some(index) = usize::from(place).checked_sub(1)
                 && index < model.worlds.len()
             {
-                focus_on(model, index);
+                model.set_focus(index);
             }
             Vec::new()
         }
@@ -557,7 +565,7 @@ fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
         Action::Disconnect(ref world) => control(model, world.clone(), false),
         Action::Focus(ref world) => {
             match model.worlds.iter().position(|each| each.id == *world) {
-                Some(index) => focus_on(model, index),
+                Some(index) => model.set_focus(index),
                 None => model.hint(&format!("no world is named {world}")),
             }
             Vec::new()
@@ -566,7 +574,83 @@ fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
             help(model);
             Vec::new()
         }
+        Action::HistoryPrev => {
+            history_prev(model);
+            Vec::new()
+        }
+        Action::HistoryNext => {
+            history_next(model);
+            Vec::new()
+        }
     }
+}
+
+/// Up: the previous entry of the history of the world in focus. The first Up saves the text of
+/// the editor as the draft of a new walk. With no older entry, nothing changes.
+fn history_prev(model: &mut Model) {
+    let textarea = model.pose().textarea();
+    if textarea.cursor().0 > 0 {
+        textarea.move_cursor(CursorMove::Up);
+        return;
+    }
+    let Some(index) = model.focus else {
+        return;
+    };
+    let draft = model.input();
+    let world = &mut model.worlds[index];
+    let place = match &world.walk {
+        Some(walk) => walk.place.checked_sub(1),
+        None => world.history.len().checked_sub(1),
+    };
+    let Some(place) = place else {
+        return;
+    };
+    let text = world.history.get(place).unwrap_or_default().to_owned();
+    match &mut world.walk {
+        Some(walk) => walk.place = place,
+        None => world.walk = Some(Walk { place, draft }),
+    }
+    model.pose().set_text_at_start(&text);
+}
+
+/// Down: the next entry of the history of the world in focus, or after the newest entry the
+/// draft, which ends the walk. With no walk, nothing changes.
+fn history_next(model: &mut Model) {
+    let textarea = model.pose().textarea();
+    if textarea.cursor().0 + 1 < textarea.lines().len() {
+        textarea.move_cursor(CursorMove::Down);
+        return;
+    }
+    let Some(index) = model.focus else {
+        return;
+    };
+    let world = &mut model.worlds[index];
+    let Some(walk) = &mut world.walk else {
+        return;
+    };
+    let text = if walk.place + 1 < world.history.len() {
+        walk.place += 1;
+        world.history.get(walk.place).unwrap_or_default().to_owned()
+    } else {
+        world
+            .walk
+            .take()
+            .map_or_else(String::new, |walk| walk.draft)
+    };
+    model.pose().set_text(&text);
+}
+
+/// Adds `text` to the history of the world in focus. An open walk ends first, and its draft goes
+/// into the history before `text`.
+fn record(model: &mut Model, text: &str) {
+    let Some(index) = model.focus else {
+        return;
+    };
+    let world = &mut model.worlds[index];
+    if let Some(walk) = world.walk.take() {
+        world.history.push(&walk.draft);
+    }
+    world.history.push(text);
 }
 
 /// Runs `change` on the state of the pane in focus.
@@ -637,12 +721,13 @@ fn enqueue(
 fn submit(model: &mut Model, lines: bool) -> Vec<Effect> {
     let text = model.input();
     if let Some(parse) = command::parse(&text, text.len()) {
-        return run_command(model, parse);
+        return run_command(model, &text, parse);
     }
     model.quit_arm = None;
     let Some(world) = world_to_send_to(model) else {
         return Vec::new();
     };
+    record(model, &text);
     model.set_input("");
     let text = match text.strip_prefix('/') {
         Some(rest) if rest.starts_with('/') && !text.contains('\n') => rest.to_owned(),
@@ -712,13 +797,7 @@ fn move_focus(model: &mut Model, forward: bool) {
     } else {
         focus - 1
     };
-    focus_on(model, next);
-}
-
-/// Gives the focus to the world at `index`, and clears its unseen mark.
-fn focus_on(model: &mut Model, index: usize) {
-    model.focus = Some(index);
-    model.worlds[index].unseen = false;
+    model.set_focus(next);
 }
 
 /// The effects of an item of the event stream: a list of the worlds after a Reset, or after
@@ -737,9 +816,7 @@ fn on_client(model: &mut Model, item: ClientEvent) -> Vec<Effect> {
             // The Reset does not clear the notices pane, so its notices are still there.
             let pane = model.focused_pane();
             if pane != PaneId::NOTICES {
-                for line in model.notices.clone() {
-                    model.push(pane, &line);
-                }
+                model.replay_notices(pane);
             }
             return_waiting(model, "the server started again");
             if model.listing == Listing::Asked {
@@ -803,13 +880,6 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
             reason,
         } => (world, text, reason),
     };
-    let notice = format!("-- {}", clean(&reason));
-    let pane = model
-        .worlds
-        .iter()
-        .find(|each| each.id == world)
-        .map_or(PaneId::NOTICES, |world| world.pane);
-    model.push(pane, &notice);
     let waits = model
         .sends
         .get(&world)
@@ -819,7 +889,18 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
     } else {
         vec![text]
     };
-    put_back(model, lines);
+    let kept = put_back(model, &world, lines);
+    let notice = if kept > 0 {
+        format!("-- {} ({kept} in history)", clean(&reason))
+    } else {
+        format!("-- {}", clean(&reason))
+    };
+    let pane = model
+        .worlds
+        .iter()
+        .find(|each| each.id == world)
+        .map_or(PaneId::NOTICES, |world| world.pane);
+    model.push(pane, &notice);
     Vec::new()
 }
 
@@ -832,43 +913,65 @@ fn line_count(count: usize) -> String {
     }
 }
 
-/// Puts `lines` back in the pose editor, before the text that the player typed since.
-fn put_back(model: &mut Model, mut lines: Vec<String>) {
-    let typed = model.input();
-    if !typed.is_empty() {
-        lines.push(typed);
+/// Gives `texts` back to `world`. The first goes alone into the editor of that world, with the
+/// cursor at its start. The others, and then the text that the editor held, go into the history
+/// of that world, so each Up gives the next one. During a walk, the held text is the draft of
+/// the walk. A world out of focus gets its unseen mark. Returns the count of entries that the
+/// history kept.
+fn put_back(model: &mut Model, world: &str, texts: Vec<String>) -> usize {
+    let Some(index) = model.worlds.iter().position(|each| each.id == world) else {
+        return 0;
+    };
+    let mut texts = texts.into_iter();
+    let Some(first) = texts.next() else {
+        return 0;
+    };
+    let held = match model.worlds[index].walk.take() {
+        Some(walk) => walk.draft,
+        None => model.pose_of(world).text(),
+    };
+    model.pose_of(world).set_text_at_start(&first);
+    let rest: Vec<String> = texts.collect();
+    let entry = &mut model.worlds[index];
+    let mut kept = usize::from(entry.history.push(&held));
+    for text in rest.iter().rev() {
+        kept += usize::from(entry.history.push(text));
     }
-    model.set_input(&lines.join("\n"));
+    if model.focus != Some(index) {
+        entry.unseen = true;
+    }
+    kept
 }
 
-/// Puts the sends that wait behind the send with the server back in the pose editor, in the
+/// Gives the sends that wait behind the send with the server back to their worlds, in the
 /// order of the worlds, with a hint that names `why` and the count of each world. The send with
 /// the server stays, so its reply still moves on or puts back only that send.
 fn return_waiting(model: &mut Model, why: &str) {
-    let mut lines = Vec::new();
-    let mut counts = Vec::new();
+    let mut returned = Vec::new();
     for world in &model.worlds {
         if let Some(queue) = model.sends.get_mut(&world.id) {
-            let before = lines.len();
-            lines.extend(queue.drain(1..));
-            if lines.len() > before {
-                counts.push(format!(
-                    "{} of {}",
-                    line_count(lines.len() - before),
-                    world.id
-                ));
+            let texts: Vec<String> = queue.drain(1..).collect();
+            if !texts.is_empty() {
+                returned.push((world.id.clone(), texts));
             }
         }
     }
-    if lines.is_empty() {
+    if returned.is_empty() {
         return;
     }
+    let total = returned.iter().map(|(_, texts)| texts.len()).sum();
+    let counts: Vec<String> = returned
+        .iter()
+        .map(|(world, texts)| format!("{} of {world}", line_count(texts.len())))
+        .collect();
     model.hint(&format!(
-        "{why}, so {} that waited went back to the editor: {}",
-        line_count(lines.len()),
+        "{why}, so {} that waited went back to the editor: {}, Up recalls the rest",
+        line_count(total),
         counts.join(", ")
     ));
-    put_back(model, lines);
+    for (world, texts) in returned {
+        put_back(model, &world, texts);
+    }
 }
 
 /// The next send of `world`, after the server took `text`. Only the reply of the first send

@@ -19,6 +19,8 @@ struct Parts<'a> {
     lost: bool,
     sends: &'a HashMap<String, VecDeque<String>>,
     editors: &'a mut HashMap<EditorId, EditorState>,
+    /// The pose editor of the world in focus, or the loose editor.
+    pose: Option<&'a mut EditorState>,
     panes: &'a mut HashMap<PaneId, PaneState>,
     focused_pane: PaneId,
 }
@@ -32,21 +34,48 @@ pub fn view(model: &mut Model, frame: &mut Frame) {
         focus,
         panes,
         editors,
+        pose_editors,
+        loose,
         lost,
         layout,
         sends,
         ..
     } = model;
+    let pose = match focus.and_then(|index| worlds.get(index)) {
+        Some(world) => pose_editors.get_mut(&world.id),
+        None => Some(loose),
+    };
     let mut parts = Parts {
         worlds,
         focus: *focus,
         lost: *lost,
         sends,
         editors,
+        pose,
         panes,
         focused_pane,
     };
     render(layout, frame.area(), frame, &mut parts);
+}
+
+impl Parts<'_> {
+    /// The state of the editor `id`: the pose editor for [`EditorId::POSE`].
+    fn editor(&self, id: EditorId) -> Option<&EditorState> {
+        if id == EditorId::POSE {
+            self.pose.as_deref()
+        } else {
+            self.editors.get(&id)
+        }
+    }
+
+    /// The state of the editor `id`, to render it.
+    fn editor_mut(&mut self, id: EditorId) -> Option<&mut EditorState> {
+        if id == EditorId::POSE {
+            self.pose.as_deref_mut()
+        } else {
+            self.editors.get_mut(&id)
+        }
+    }
 }
 
 fn render(node: &Node, area: Rect, frame: &mut Frame, parts: &mut Parts) {
@@ -67,7 +96,7 @@ fn render(node: &Node, area: Rect, frame: &mut Frame, parts: &mut Parts) {
         Node::Leaf(Leaf::WorldTabs) => frame.render_widget(Paragraph::new(top_row(parts)), area),
         Node::Leaf(Leaf::Pane(pane)) => render_pane(*pane, area, frame, parts),
         Node::Leaf(Leaf::Editor(id)) => {
-            if let Some(state) = parts.editors.get_mut(id) {
+            if let Some(state) = parts.editor_mut(*id) {
                 frame.render_stateful_widget(Editor, area, state);
                 // The pose editor has the focus for keys, so the terminal cursor is its cursor.
                 if *id == EditorId::POSE
@@ -90,10 +119,7 @@ fn constraint(size: Size, direction: Direction, area: Rect, parts: &Parts) -> Co
             if direction == Direction::Horizontal {
                 return Constraint::Min(0);
             }
-            let rows = parts
-                .editors
-                .get(&id)
-                .map_or(1, |state| state.rows(area.width));
+            let rows = parts.editor(id).map_or(1, |state| state.rows(area.width));
             let limit = max_rows.min(area.height / 2).max(1);
             let rows = u16::try_from(rows).unwrap_or(u16::MAX).clamp(1, limit);
             Constraint::Length(rows)

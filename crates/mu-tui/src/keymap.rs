@@ -43,6 +43,10 @@ const FOCUS_PLACES: [&str; 9] = [
     "focus-9",
 ];
 
+/// The entries that a key with modifiers never takes from the same key with no modifier. So
+/// Shift+Up and Ctrl+Up reach the editor, and only plain Up and Down walk the history.
+const NO_FALLBACK: [&str; 2] = ["history-prev", "history-next"];
+
 /// One step of the mouse wheel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Wheel {
@@ -111,8 +115,10 @@ impl Keymap {
             code: key.code,
             modifiers: key.modifiers,
         };
-        self.find(exact)
-            .or_else(|| self.find(Chord::plain(key.code)))
+        self.find(exact).or_else(|| {
+            self.find(Chord::plain(key.code))
+                .filter(|entry| !NO_FALLBACK.contains(&entry.entry().name))
+        })
     }
 
     fn find(&self, chord: Chord) -> Option<EntryId> {
@@ -131,6 +137,8 @@ impl Default for Keymap {
     /// Enter and Ctrl+M send the text of the pose editor as one command. Alt+Enter and
     /// Ctrl+Enter send each line as its own command. Shift+Enter and Ctrl+J insert a line
     /// break. Alt+R joins the lines with the line break of the world.
+    ///
+    /// Up on the first line and Down on the last line walk the input history.
     ///
     /// The editing keys follow readline: Ctrl+U deletes to the start of the line. Ctrl+R does
     /// nothing, so the redo of the text area does not take it. Ctrl+Z is undo, and Ctrl+Shift+Z
@@ -169,6 +177,8 @@ impl Default for Keymap {
             ),
             EntryId::of("redo"),
         );
+        keymap.bind(Chord::plain(KeyCode::Up), EntryId::of("history-prev"));
+        keymap.bind(Chord::plain(KeyCode::Down), EntryId::of("history-next"));
         keymap.bind(Chord::plain(KeyCode::PageUp), EntryId::of("scroll-page-up"));
         keymap.bind(
             Chord::plain(KeyCode::PageDown),

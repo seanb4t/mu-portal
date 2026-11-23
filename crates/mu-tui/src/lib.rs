@@ -8,6 +8,7 @@ pub mod command;
 pub mod convert;
 mod diacritics;
 mod editor;
+pub mod history;
 mod keymap;
 pub mod kitty;
 mod layout;

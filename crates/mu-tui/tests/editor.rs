@@ -264,6 +264,31 @@ fn editor_uses_the_probed_widths() {
 }
 
 #[test]
+fn world_editors_use_the_probed_widths() {
+    let mut app = Model::new([]);
+    let outcome = Outcome {
+        profile: Profile::learn(&[(FAMILY, 8)]),
+        complete: true,
+        measured: true,
+        ..Outcome::default()
+    };
+    assert_eq!(update(&mut app, Msg::Probe(outcome)), []);
+    let world = |id: &str| mu_proto::World {
+        id: id.to_owned(),
+        ..Default::default()
+    };
+    update(
+        &mut app,
+        Msg::Listed(Ok(vec![world("alpha/aria"), world("beta/bryn")])),
+    );
+    type_text(&mut app, &format!("{FAMILY}x"));
+    assert_eq!(column_of(&mut app, "x"), Some(8));
+    press(&mut app, KeyCode::Char('n'), Modifiers::CONTROL);
+    type_text(&mut app, &format!("{FAMILY}y"));
+    assert_eq!(column_of(&mut app, "y"), Some(8));
+}
+
+#[test]
 fn editor_uses_unicode_width() {
     let mut app = app();
     type_text(&mut app, &format!("{FAMILY}x"));

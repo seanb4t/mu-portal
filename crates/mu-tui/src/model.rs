@@ -9,6 +9,7 @@ use mu_proto::World as ProtoWorld;
 use ratatui::style::Style;
 
 use crate::editor::{EditorId, EditorState};
+use crate::history::{History, Walk};
 use crate::keymap::Keymap;
 use crate::layout::Node;
 use crate::pane::{Caps, PaneState};
@@ -36,6 +37,10 @@ pub(crate) struct World {
     pub(crate) line_break: Option<String>,
     /// True once a list of the worlds held this world, so `line_break` is known.
     pub(crate) listed: bool,
+    /// The texts that the player sent to this world.
+    pub(crate) history: History,
+    /// The walk of Up and Down through `history`, if one is open.
+    pub(crate) walk: Option<Walk>,
 }
 
 /// The order of the worlds: by the game part, then by the character part.
@@ -63,7 +68,12 @@ pub struct Model {
     /// What the terminal can draw, which every pane shares.
     pub(crate) caps: Arc<Caps>,
     next_pane: u32,
+    /// The editors that are not the pose editor.
     pub(crate) editors: HashMap<EditorId, EditorState>,
+    /// The pose editor of each world, by the id of the world.
+    pub(crate) pose_editors: HashMap<String, EditorState>,
+    /// The pose editor while no world has the focus.
+    pub(crate) loose: EditorState,
     /// The sends of each world that the server did not answer yet, in the order of the keys.
     /// The first one is with the server. The client sends the next one after that reply. So
     /// the lines of a world reach the game in order. A world with no such send has no entry.
@@ -126,7 +136,9 @@ impl Model {
             worlds: Vec::new(),
             focus: None,
             panes: HashMap::from([(PaneId::NOTICES, PaneState::default())]),
-            editors: HashMap::from([(EditorId::POSE, EditorState::with_caps(Arc::clone(&caps)))]),
+            editors: HashMap::new(),
+            pose_editors: HashMap::new(),
+            loose: EditorState::with_caps(Arc::clone(&caps)),
             sends: HashMap::new(),
             caps,
             next_pane: 1,
@@ -143,7 +155,9 @@ impl Model {
         for id in worlds {
             model.world(&id);
         }
-        model.focus = (!model.worlds.is_empty()).then_some(0);
+        if !model.worlds.is_empty() {
+            model.set_focus(0);
+        }
         model
     }
 
@@ -222,18 +236,91 @@ impl Model {
             .map_or_else(String::new, EditorState::text)
     }
 
-    /// The state of the editor `id`.
+    /// The state of the editor `id`. [`EditorId::POSE`] is the pose editor of the world in
+    /// focus, or the loose editor when no world has the focus.
     #[must_use]
     pub fn editor(&self, id: EditorId) -> Option<&EditorState> {
-        self.editors.get(&id)
+        if id != EditorId::POSE {
+            return self.editors.get(&id);
+        }
+        match self.focused_world() {
+            Some(world) => self.pose_editors.get(&world.id),
+            None => Some(&self.loose),
+        }
     }
 
-    /// The pose editor.
+    /// The pose editor of the world in focus, or the loose editor when no world has the focus.
     pub(crate) fn pose(&mut self) -> &mut EditorState {
+        let world = self.focus.and_then(|index| self.worlds.get(index));
+        match world {
+            Some(world) => {
+                let caps = &self.caps;
+                self.pose_editors
+                    .entry(world.id.clone())
+                    .or_insert_with(|| EditorState::with_caps(Arc::clone(caps)))
+            }
+            None => &mut self.loose,
+        }
+    }
+
+    /// The pose editor of `world`, made if the world has none yet.
+    pub(crate) fn pose_of(&mut self, world: &str) -> &mut EditorState {
         let caps = &self.caps;
-        self.editors
-            .entry(EditorId::POSE)
+        self.pose_editors
+            .entry(world.to_owned())
             .or_insert_with(|| EditorState::with_caps(Arc::clone(caps)))
+    }
+
+    /// The text of the pose editor of `world`, or `None` for a world that the model does not
+    /// hold.
+    #[must_use]
+    pub fn input_of(&self, world: &str) -> Option<String> {
+        self.pose_editors.get(world).map(EditorState::text)
+    }
+
+    /// The input history of `world`, the oldest entry first.
+    #[must_use]
+    pub fn history(&self, world: &str) -> Option<Vec<&str>> {
+        self.worlds
+            .iter()
+            .find(|each| each.id == world)
+            .map(|each| each.history.iter().collect())
+    }
+
+    /// The place of the open walk of `world` in its history, and the length of that history.
+    #[must_use]
+    pub fn walk(&self, world: &str) -> Option<(usize, usize)> {
+        let world = self.worlds.iter().find(|each| each.id == world)?;
+        world
+            .walk
+            .as_ref()
+            .map(|walk| (walk.place, world.history.len()))
+    }
+
+    /// Gives the focus to the world at `index` and clears its unseen mark. If no world had the
+    /// focus, the text of the loose editor moves into the editor of that world, and the kept
+    /// notices go into its pane.
+    pub(crate) fn set_focus(&mut self, index: usize) {
+        let had_focus = self.focus.is_some();
+        self.focus = Some(index);
+        let world = &mut self.worlds[index];
+        world.unseen = false;
+        if !had_focus {
+            let (id, pane) = (world.id.clone(), world.pane);
+            let text = self.loose.text();
+            self.loose.set_text("");
+            if !text.is_empty() {
+                self.pose_of(&id).set_text(&text);
+            }
+            self.replay_notices(pane);
+        }
+    }
+
+    /// Adds the kept notices at the bottom of `pane`.
+    pub(crate) fn replay_notices(&mut self, pane: PaneId) {
+        for line in self.notices.clone() {
+            self.push(pane, &line);
+        }
     }
 
     /// Takes the line break of each world of a list of the worlds. A listed world that the
@@ -273,16 +360,17 @@ impl Model {
                         style: Style::default(),
                         line_break: None,
                         listed: false,
+                        history: History::default(),
+                        walk: None,
                     },
+                );
+                self.pose_editors.insert(
+                    id.to_owned(),
+                    EditorState::with_caps(Arc::clone(&self.caps)),
                 );
                 match self.focus {
                     Some(focus) if focus >= index => self.focus = Some(focus + 1),
-                    None => {
-                        self.focus = Some(index);
-                        for line in self.notices.clone() {
-                            self.push(pane, &line);
-                        }
-                    }
+                    None => self.set_focus(index),
                     Some(_) => {}
                 }
                 index
@@ -296,7 +384,12 @@ impl Model {
         for pane in self.panes.values_mut() {
             pane.set_caps(Arc::clone(&self.caps));
         }
-        for editor in self.editors.values_mut() {
+        for editor in self
+            .editors
+            .values_mut()
+            .chain(self.pose_editors.values_mut())
+            .chain([&mut self.loose])
+        {
             editor.set_caps(Arc::clone(&self.caps));
         }
     }
