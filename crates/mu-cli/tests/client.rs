@@ -1074,6 +1074,29 @@ async fn the_client_takes_the_flag() {
 }
 
 #[tokio::test]
+async fn a_started_server_takes_a_directory_that_starts_with_a_dash() {
+    let dir = private_tempdir();
+    let base = ConfigDir::base();
+    std::os::unix::fs::symlink(base.path(), dir.path().join("-conf")).unwrap();
+    let run = dir.path().join("run");
+    let _reaper = Reaper(run.join("server.log"));
+    let socket = run.join("mu.sock");
+    // A relative MU_CONFIG, read from the directory where the client starts.
+    let client = PtyClient::start_args(
+        &socket,
+        dir.path(),
+        Answers::Default,
+        &[],
+        &[("MU_CONFIG", Some("-conf".as_ref()))],
+    );
+    client
+        .wait_top("the world of the directory", |top| {
+            top.contains("[alpha/aria]")
+        })
+        .await;
+}
+
+#[tokio::test]
 async fn the_client_warns_of_a_missing_directory() {
     let session = Session::with_worlds(&["alpha/aria"]).await;
     let missing = private_tempdir().path().join("none");
