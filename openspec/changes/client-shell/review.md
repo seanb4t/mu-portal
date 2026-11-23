@@ -1,9 +1,9 @@
 ---
-verdict: approve-with-notes
+verdict: approve
 phase: plan
-reviewed_at: 2026-11-23T02:46:59+00:00
-head: b6d8c06fca2698b34fb7bfc34531302cc4fe4bb5
-round: 16
+reviewed_at: 2026-11-23T02:48:04+00:00
+head: 40216b11e741569700fa4bd7d509bbde86bf5037
+round: 17
 next_id: 156
 lenses:
   spec-lint: ok
@@ -20,7 +20,6 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-155 | verify | should-fix | in-change | The changed choice line refuses Shift with any key that is not a letter. That rule covers shift+tab, but the spec and D3 refuse only Shift with a non-letter character, and the scenario A binding of Shift+Tab binds shift+tab. | proposal.md > Choices you will notice — "Shift with a key that is not a letter, such as `shift+1`, `shift+space` or `shift+plus`, is refused" | In proposal.md, write 'Shift with a character that is not a letter', as the spec and D3 say, so shift+tab and other special keys with Shift stay bindable. |  |  | unmet-requirement |
 
 ## Repeats
 
@@ -57,10 +56,11 @@ None.
 | 14 | plan | follow-up | 4b1a72f74a568163ca7369da4134df092b37a019 | bae8b166475602911b08e66a59c847eff7cf6ba6f285df8794204fe49b9d479e | approve | 0 | 0 | 0 | 1 | 0 |  |
 | 15 | plan | follow-up | aa9ff96f02f0900ac84fedbc20975c18eb50e3e1 | 2a30ae0de66fb5d7674bfa757bf17c2729078b9880e061dee6f154658bb0669e | approve | 0 | 0 | 0 | 0 | 0 |  |
 | 16 | plan | follow-up | b6d8c06fca2698b34fb7bfc34531302cc4fe4bb5 | 14fed7022fa01074c56e7e084d04c1ba3621099e039dbd17c0cd095edf1e9abb | approve-with-notes | 1 | 0 | 0 | 0 | 0 |  |
+| 17 | plan | follow-up | 40216b11e741569700fa4bd7d509bbde86bf5037 | 8932bb09d711081f038f9302bd99f449108fdfa8d4c08b760e42fba287bdd5d3 | approve | 0 | 0 | 0 | 1 | 0 |  |
 
 ## Judge
 
-judge: 2 questions, 0.000 USD
+judge: 0 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -187,9 +187,9 @@ None.
 
 ## Lens notes
 
-- verify: prior.json holds no fixed row, so fixes is empty. Every row is resolved or deferred.
-- verify: proposal.md line 32 names only a missing --config directory; the world-config spec also warns for a missing MU_CONFIG directory. The proposal line is narrower, not contrary.
-- verify: proposal.md line 35 agrees with D6 and the scenario A refusal out of focus.
+- verify: R-155: proposal.md line 37 now refuses only Shift with a character that is not a letter and names shift+tab and shift+up as valid. This matches the client-config requirement A bad binding stops the client, the scenario A binding of Shift+Tab, D3 and task 6.4 (shift+1, shift+space and shift+plus refused, shift_tab_matches_back_tab).
+- verify: D3 lists space among the special keys and also says that space and plus are characters too. The new proposal sentence that Shift with a special key is valid relies on that second statement for shift+space. The proposal line itself lists shift+space as refused, so the two texts agree. The double class of space is in unchanged D3 text and outside this fix.
+- verify: The other ranges of diff-hunks.txt are in review.md, which this agent does not read.
 
 ## Ledger
 
@@ -349,4 +349,4 @@ None.
 | R-152 | 12 | 13 | suggestion | in-change |  | ["artifact",["design.md","D4. Commands are parsed in `update` at a send"],"At head the block that spawns a call, bounds it with `within` and sends back a message is in three places in `run.rs`."] | resolved | resolved in round 13 from fixed 882e0254a993bceba3a95f46f10b25695870b5e9 |  |  | severity? should-fix 0.77 | D4 says that at head the block that spawns a call, bounds it with within and sends back a message is in three places in run.rs. At head the first list is awaited inline before the screen opens. It spawns nothing and sends no message, so the block is in two places. The spawn and the send-back are also already one helper, spawn_reply, which D4 does not name. |
 | R-153 | 12 | 13 | suggestion | in-change |  | ["artifact",["design.md","Risks / Trade-offs"],"[History in memory only] A crash loses it. \\u2192 History on disk is a later change, beside #156."] | resolved | resolved in round 13 from fixed 882e0254a993bceba3a95f46f10b25695870b5e9 |  |  | severity? should-fix 0.73 | The mitigation of the risk 'History in memory only' is a later change beside #156. No task and no follow-up line of tasks.md names that change, so the mitigation names nothing that the plan does. |
 | R-154 | 12 | 14 | suggestion | in-change | false-test | ["artifact",["specs/terminal-client/spec.md","Requirement: Each world keeps its own editor"],"A change of the focus SHALL NOT change the text of an editor, and SHALL NOT end a walk."] | resolved | resolved in round 14 from fixed b5e655971c09b67b2f92eacc5f4fec0a6cd61577 |  |  | severity? should-fix 0.61 | A key edits only the editor of the world in focus, and a focus change changes no editor text. That holds over any run of typing, sends, refusals and focus changes, but only the example a_focus_change_keeps_each_editor tests it. |
-| R-155 | 16 | 16 | should-fix | in-change | unmet-requirement | ["artifact",["proposal.md","Choices you will notice"],"Shift with a key that is not a letter, such as `shift+1`, `shift+space` or `shift+plus`, is refused"] | fixed | 2437c591d7683966284b68eb246bbdf2925eaebb | 16 |  |  | The changed choice line refuses Shift with any key that is not a letter. That rule covers shift+tab, but the spec and D3 refuse only Shift with a non-letter character, and the scenario A binding of Shift+Tab binds shift+tab. |
+| R-155 | 16 | 17 | should-fix | in-change | unmet-requirement | ["artifact",["proposal.md","Choices you will notice"],"Shift with a key that is not a letter, such as `shift+1`, `shift+space` or `shift+plus`, is refused"] | resolved | resolved in round 17 from fixed 2437c591d7683966284b68eb246bbdf2925eaebb | 16 |  |  | The changed choice line refuses Shift with any key that is not a letter. That rule covers shift+tab, but the spec and D3 refuse only Shift with a non-letter character, and the scenario A binding of Shift+Tab binds shift+tab. |
