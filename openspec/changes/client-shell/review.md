@@ -1,18 +1,18 @@
 ---
-verdict: approve
-phase: plan
-reviewed_at: 2026-11-23T02:48:04+00:00
-head: 40216b11e741569700fa4bd7d509bbde86bf5037
-round: 17
-next_id: 156
+verdict: changes-requested
+phase: implementation
+reviewed_at: 2026-11-23T13:13:18+00:00
+head: 7c2b15c0c15e93779d84997bad0fe7e6b544bb8e
+round: 18
+next_id: 174
 lenses:
-  spec-lint: ok
+  spec-lint: not-applicable
   approach: ok
   fit: ok
   test-coverage: ok
-  test-honesty: not-applicable
+  test-honesty: ok
   invariants: ok
-  verify: ok
+  verify: not-applicable
 ---
 # Review
 
@@ -20,6 +20,26 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
+| R-126 | fit | blocker | in-change | The Connect and Disconnect arms of the loop are the same twelve lines apart from the method name: each clones the client, maps the error to a string and calls control_of with CALL_LIMIT. | crates/mu-tui/src/run.rs:121 — "Effect::Connect { world } => {" | Let control_of take the client, the world and whether to connect, make the call itself, and let both arms be one spawn_reply call. | new-evidence | severity? suggestion 0.75 | drift |
+| R-12 | fit | should-fix | in-change | echo_rows adds its own `> ` prefix for a player line, while text::line keeps its player arm with the same prefix. Only system and credential events still reach line, so the prefix rule has two copies against D7. | crates/mu-tui/src/text.rs:95 — "let prefix = if index == 0 { "> " } else { "  " };" | Remove the player arm of text::line, or let it call echo_rows with no line break, so the `> ` prefix lives in echo_rows alone. | new-evidence |  | drift |
+| R-156 | fit | should-fix | in-change | The Focus arm of act repeats the unknown-world check and its hint text that world_arg owns, so /focus and a key or the picker refuse an unknown world through two copies. | crates/mu-tui/src/update.rs:456 — "Some(world) => Err(format!("no world is named {world}"))," | Let the Focus arm call world_arg with Some(world) and hint its error, as control does for connect and disconnect. |  |  | drift |
+| R-157 | fit | should-fix | in-change | Model::pose repeats the entry-or-insert block of Model::pose_of, and Model::world makes the same editor a third way. Model::world always inserts the editor, so the two fallbacks are dead copies of how a world editor is made. | crates/mu-tui/src/model.rs:275 — ".or_insert_with(\|\| EditorState::with_caps(Arc::clone(caps)))" | Let Model::pose clone the id of the world in focus and call pose_of, and let Model::world make its editor through pose_of, so one place makes a world editor. |  | scope? beyond-scope 0.60; severity? suggestion 0.61 | drift |
+| R-158 | fit | should-fix | in-change | The count text `(<n> in history)` that the spec fixes is built twice, in on_reply and in return_waiting, each with its own zero case. | crates/mu-tui/src/update.rs:929 — "format!("-- {} ({kept} in history)", clean(&reason))" | Add one function in update.rs that gives ` (<n> in history)` or an empty text for a count, and call it from on_reply and return_waiting. |  | severity? suggestion 0.70 | drift |
+| R-159 | fit | should-fix | in-change | The keymap lists the nine names focus-1 to focus-9 by hand and zips them with the digits, while the registry builds the same names from the digit in focus_place!. A reorder of the list binds Alt+1 to another place. | crates/mu-tui/src/keymap.rs:209 — "const FOCUS_PLACES: [&str; 9] = [" | Drop FOCUS_PLACES and bind each Alt+digit to EntryId::of(&format!("focus-{digit}")), so the digit gives the key and the entry. |  |  | drift |
+| R-160 | fit | should-fix | in-change | The new test helper dims repeats looks line for line: it finds the first row that starts with the text and maps each of its cells. Only the read of the cell differs. | crates/mu-cli/tests/support/process.rs:819 — "pub fn dims(&self, text: &str) -> Vec<bool> {" | Add one helper that gives the cells of the first row that starts with the text, and let dims and looks map those cells. |  | scope? beyond-scope 0.61; severity? suggestion 0.92 | drift |
+| R-161 | invariants | should-fix | in-change | connect_wait checks that the f64 is above 0, but not the Duration. A positive value under 1 ns, such as 1e-10, passes and gives a zero wait. The first list then always times out with a socket error, not the client.toml error. | crates/mu-cli/src/client.rs:58 — "if !(seconds.is_finite() && seconds > 0.0) {" | In connect_wait, refuse a Duration that is zero after the conversion. Add 1e-10 beside 0.0 in a_wait_that_is_no_time_is_refused. |  | scope? beyond-scope 0.69 | wrong-behaviour |
+| R-162 | invariants | should-fix | in-change | start_server now passes --config=<dir> as one argument, so that a path that starts with - stays a value. No test passes such a path, for example a relative MU_CONFIG of -conf. A return to two arguments would pass every test, and the started server would then fail on its own flags. | crates/mu-cli/src/client.rs:179 — "// One argument, so a path that starts with `-` stays a value." | Add a client.rs test that sets MU_CONFIG to a relative directory named -conf under the test's current directory, with no server running. Assert that the started server holds the world of -conf, as the_client_takes_the_flag does. |  |  | wrong-behaviour |
+| R-163 | invariants | should-fix | in-change | The hint of return_waiting adds (<n> in history) only when kept > 0. No test asserts that the hint lacks the count when kept is 0. lines_of_two_worlds_wait has kept 0 but checks a substring, so it also passes with (0 in history) appended. The refusal line tests both sides, and this hint tests only the side above 0. | crates/mu-tui/src/update.rs:1007 — "let in_history = if kept > 0 {" | In lines_of_two_worlds_wait, also assert that the screen holds no `in history` text, as the_sends_stay_apart does for the refusal line. |  |  | false-test |
+| R-173 | test-coverage | should-fix | in-change | covered row 'The default dims' has no verification run | review > not-run — "The default dims" | run the covering test and record it in verification-runs.txt |  |  | unmet-requirement |
+| R-164 | test-honesty | should-fix | in-change | world_candidates_follow_the_top_row compares candidates() with Model::world_ids(), the one call that candidates() makes, so it cannot fail. | crates/mu-tui/tests/update.rs:392 — "mu_tui::candidates(&model, mu_tui::ArgKind::World)," | Assert the literal order the top row shows for the input beta/bryn then alpha/aria, such as ["alpha/aria", "beta/bryn"], or the order of the top row text. |  |  | false-test |
+| R-165 | test-honesty | should-fix | in-change | The no_repeat test cannot tell a history that drops equal texts from one that keeps them: with entries one, one, two the three Up presses give one, one in both cases. | crates/mu-tui/tests/app.rs:1741 — "for text in ["one", "one", "two"] {" | Also assert the history, such as app.history("alpha/aria") equal to ["one", "two"], or press Down after the third Up and expect two. |  |  | false-test |
+| R-166 | test-honesty | should-fix | in-change | echo_rows_join_back takes its expected cleaned text from echo_rows(text, None), the function under test, so a wrong clean of the text passes in both calls. | crates/mu-tui/tests/app.rs:2172 — "let cleaned = mu_tui::echo_rows(&text, None).remove(0);" | Take the expected text from an independent clean of the input, such as the text of a generator with no control characters, or the text::clean helper only if a test of its own covers it. |  |  | false-test |
+| R-167 | approach | suggestion | in-change | D4 cites world_arg(model, Option<String>) -> Result<String, Refusal>. At head it also takes the entry name and returns Result<String, String>; no type Refusal exists. | design.md > D4. Commands are parsed in `update` at a send — "One function `world_arg(model, Option<String>) -> Result<String, Refusal>` in `update.rs` resolves a world argument." | Write the signature of head in D4: world_arg(model, arg, name) -> Result<String, String>, where the error is the hint text. |  |  |  |
+| R-168 | approach | suggestion | in-change | D4 names the quit arm of a command the mark by_command. At head the arm is the enum QuitArm with the variants Key and Command; no name by_command exists. | design.md > D4. Commands are parsed in `update` at a send — "A `Quit` from a command sets the arm with the mark `by_command`." | Name QuitArm::Command (and QuitArm::Key for a key) in D4 in place of the mark by_command. |  | severity? should-fix 0.63 |  |
+| R-169 | approach | suggestion | in-change | D1 says each front end, the keymap included, sends Msg::Run. At head a key and a command call run_entry inside update, and only a test sends Msg::Run; the one path is run_entry, which D1 does not name. | design.md > D1. The registry is a table of entries, and the keymap binds entries — "Each one sends `Msg::Run { entry: EntryId, arg: Option<String> }`, which replaces `Msg::Action(Action)`." | Say in D1 that the keymap and the command parser call run_entry in update, and that Msg::Run is the entry point of a front end outside update, such as the later picker. |  | severity? should-fix 0.72 |  |
+| R-170 | approach | suggestion | in-change | D7 says echo_rows keeps the prefix rule in one place, but text::line still writes the > prefix for a player event. That arm has no caller now, so the > prefix has two places. | design.md > D7. Echo — "So the prefix rule stays in one place." | Remove the player arm of text::line, or make it call echo_rows, so the > prefix is written in one place. |  | severity? should-fix 0.79 |  |
+| R-171 | approach | suggestion | in-change | The one open question is the text of each registry description, but registry.rs at head already gives every entry its description, so the question is answered. | design.md > Open Questions — "The exact text of each description in the registry. It changes no spec and no task." | Remove the open question, or record that the descriptions of registry.rs are the answer. |  |  |  |
+| R-172 | fit | suggestion | in-change | The text of an entry's argument (`<world>` or `[world]`) is built inside update::help. The palette of client-layout lists the registry and must show the same, so it must copy that match or move it into the registry. | crates/mu-tui/src/update.rs:705 — "format!(" <{kind}>")" | Give Entry a method in registry.rs that returns the usage of its argument, and let help call it. |  | severity? should-fix 0.62 |  |
 
 ## Repeats
 
@@ -35,6 +55,7 @@ None.
 |---|---|---|---|---|
 | R-37 | suggestion | deferred | Low-cost polish of the client-shell plan: the dim-echo note in the guide, a shared reader for top-level config files, and runnable test commands in tasks; deferred to one ticket by the owner. | https://github.com/seanb4t/mu-portal/issues/164 |
 | R-43 | suggestion | deferred | Low-cost polish of the client-shell plan: the dim-echo note in the guide, a shared reader for top-level config files, and runnable test commands in tasks; deferred to one ticket by the owner. | https://github.com/seanb4t/mu-portal/issues/164 |
+| R-172 | suggestion | deferred | The usage text of an argument moves into the registry when client-layout adds the palette, which is its first second reader; until then help is the only reader. | https://github.com/seanb4t/mu-portal/issues/167 |
 
 ## Rounds
 
@@ -57,129 +78,250 @@ None.
 | 15 | plan | follow-up | aa9ff96f02f0900ac84fedbc20975c18eb50e3e1 | 2a30ae0de66fb5d7674bfa757bf17c2729078b9880e061dee6f154658bb0669e | approve | 0 | 0 | 0 | 0 | 0 |  |
 | 16 | plan | follow-up | b6d8c06fca2698b34fb7bfc34531302cc4fe4bb5 | 14fed7022fa01074c56e7e084d04c1ba3621099e039dbd17c0cd095edf1e9abb | approve-with-notes | 1 | 0 | 0 | 0 | 0 |  |
 | 17 | plan | follow-up | 40216b11e741569700fa4bd7d509bbde86bf5037 | 8932bb09d711081f038f9302bd99f449108fdfa8d4c08b760e42fba287bdd5d3 | approve | 0 | 0 | 0 | 1 | 0 |  |
+| 18 | implementation | full | 7c2b15c0c15e93779d84997bad0fe7e6b544bb8e | efe6f8accbb9a4b8affd2837b461fe1ec9a672e3aa441be8a9eba566d56c9c2d | changes-requested | 18 | 0 | 0 | 0 | 0 |  |
 
 ## Judge
 
-judge: 0 questions, 0.000 USD
+judge: 38 questions, 0.001 USD
 
 ## Coverage matrix
 
 | scenario | covered by | status | verified |
 |---|---|---|---|
-| Help lists the entries | 3.3 | covered |  |
-| A key and a command give the same focus | 3.4 | covered |  |
-| An editing entry is not a command | 3.1 | covered |  |
-| A command does not reach the game | 3.1 | covered |  |
-| Several lines are not a command | 3.1 | covered |  |
-| An escaped slash | 3.1 | covered |  |
-| An unknown command | 3.1 | covered |  |
-| A missing world | 3.1 | covered |  |
-| An argument to an entry that takes none | 3.1 | covered |  |
-| An unknown world | 3.1 | covered |  |
-| Connect the world in focus | 3.2 | covered |  |
-| Disconnect a named world | 3.2 | covered |  |
-| A key bound to connect with no world in focus | 3.2 | covered |  |
-| Connect with no world in focus | 3.1 | covered |  |
-| A trailing space is no argument | 3.2 | covered |  |
-| Disconnect an unknown world | 3.2 | covered |  |
-| Focus by name | 3.1 | covered |  |
-| A world with a trailing space | 3.4 | covered |  |
-| Quit | 3.3 | covered |  |
-| Quit twice while a text waits | 3.3 | covered |  |
-| Another command cancels the quit | 3.3 | covered |  |
-| A command with no world in focus | 3.1 | covered |  |
-| A file that sets the echo | 6.2 | covered |  |
-| A file that sets dim | 6.2 | covered |  |
-| No file | 6.2 | covered |  |
-| An unknown key | 6.2 | covered |  |
-| A bad echo value | 6.2 | covered |  |
-| A file that cannot be read | 6.2 | covered |  |
-| Not TOML | 6.2 | covered |  |
-| A new binding | 6.4 | covered |  |
-| The default keys stay | 6.4 | covered |  |
-| A removed binding | 6.4 | covered |  |
-| A binding replaces a default | 6.4 | covered |  |
-| None on a key with a modifier | 6.4 | covered |  |
-| Two names of one key | 6.4 | covered |  |
-| A binding of Shift+Tab | 6.4 | covered |  |
-| An uppercase key | 6.4 | covered |  |
-| A control character | 6.4 | covered |  |
-| Shift with a digit | 6.4 | covered |  |
-| A binding of Ctrl+Shift+Z | 6.4 | covered |  |
-| An unknown entry | 6.4 | covered |  |
-| An unknown key name | 6.4 | covered |  |
-| An entry that needs an argument | 6.4 | covered |  |
-| The default dims | 7.1 | covered |  |
-| Hide | 7.1 | covered |  |
-| A line goes to the world in focus | 2.2 | covered |  |
-| An empty line | 2.2 | covered |  |
-| Enter with no world | 2.2 | covered |  |
-| A refused line | 2.2 | covered |  |
-| A refused line after more text | 5.1 | covered |  |
-| Ctrl+M sends | 2.2 | covered |  |
-| A pose of two lines | 2.2 | covered |  |
-| A line break that the world refuses | 2.2 | covered |  |
-| A line that the server refuses | 5.1 | covered |  |
-| The last line is refused | 5.1 | covered |  |
-| A refused send of Enter with a send after it | 5.1 | covered |  |
-| The sends stay apart | 5.1 | covered |  |
-| The stream ends while lines wait | 5.1 | covered |  |
-| Lines of two worlds wait | 5.1 | covered |  |
-| A refusal out of focus | 5.1 | covered |  |
-| The server resets while lines wait | 5.1 | covered |  |
-| A refusal during a walk of the history | 5.1 | covered |  |
-| A refusal after the stream ended | 5.1 | covered |  |
-| A send enters the history | 4.1 | covered |  |
-| A pose is one entry | 4.1 | covered |  |
-| No empty entry | 4.1 | covered |  |
-| Each world has its own history | 4.1 | covered |  |
-| No repeat | 4.1 | covered |  |
-| An escaped slash in the history | 4.1 | covered |  |
-| Down with no walk | 4.2 | covered |  |
-| Back to the draft | 4.2 | covered |  |
-| Up inside a pose moves the cursor | 4.2 | covered |  |
-| A send during a walk | 4.3 | covered |  |
-| A focus change keeps each editor | 4.2 | covered |  |
-| A walk stays with its world | 4.2 | covered |  |
-| The second world | 2.3 | covered |  |
-| No world at that place | 2.3 | covered |  |
-| Back to the first world | 2.3 | covered |  |
-| Top and bottom | 2.3 | covered |  |
-| The echo of a pose of two lines | 7.1 | covered |  |
-| Before the first list | 7.2 | covered |  |
-| A send before the first list | 7.2 | covered |  |
-| Text typed before the first list | 7.2 | covered |  |
-| An event before the first list | 7.2 | covered |  |
-| A focus key before the first list | 7.2 | covered |  |
-| A failed first list after an event | 7.2 | covered |  |
-| A notice before the first list | 7.2 | covered |  |
-| The first list fails | 7.2 | covered |  |
-| The flag wins over the environment | 6.3 | covered |  |
-| The default directory | 6.3 | covered |  |
-| The directory under the home directory | 6.3 | covered |  |
-| An empty MU_CONFIG | 6.3 | covered |  |
-| A relative XDG_CONFIG_HOME | 6.3 | covered |  |
-| No home directory | 6.3 | covered |  |
-| A missing directory | 6.3 | covered |  |
-| The client warns of a missing directory | 6.2 | covered |  |
-| A missing default directory | 6.3 | covered |  |
-| The client takes the flag | 6.2 | covered |  |
-| Worlds from character files | 6.3 | covered |  |
-| A character with no game | 6.3 | covered |  |
-| A file name outside the id rule | 6.3 | covered |  |
-| A stray file | 6.3 | covered |  |
-| A link to nothing | 6.3 | covered |  |
-| The file of the server | 6.3 | covered |  |
-| A character named server | 6.3 | covered |  |
-| The file of the client | 6.3 | covered |  |
+| Help lists the entries | crates/mu-tui/tests/app.rs: help_lists_the_entries | covered | pass |
+| A key and a command give the same focus | crates/mu-cli/tests/client.rs: a_key_and_a_command_give_the_same_focus | covered | pass |
+| An editing entry is not a command | crates/mu-tui/tests/app.rs: an_editing_entry_is_not_a_command | covered | pass |
+| A command does not reach the game | crates/mu-tui/tests/app.rs: a_command_does_not_reach_the_game | covered | pass |
+| Several lines are not a command | crates/mu-tui/tests/app.rs: several_lines_are_not_a_command | covered | pass |
+| An escaped slash | crates/mu-tui/tests/app.rs: an_escaped_slash | covered | pass |
+| An unknown command | crates/mu-tui/tests/app.rs: an_unknown_command | covered | pass |
+| A missing world | crates/mu-tui/tests/app.rs: a_missing_world | covered | pass |
+| An argument to an entry that takes none | crates/mu-tui/tests/app.rs: an_argument_to_an_entry_that_takes_none | covered | pass |
+| An unknown world | crates/mu-tui/tests/app.rs: an_unknown_world | covered | pass |
+| Connect the world in focus | crates/mu-cli/tests/client.rs: connect_the_world_in_focus | covered | pass |
+| Disconnect a named world | crates/mu-cli/tests/client.rs: disconnect_a_named_world | covered | pass |
+| A key bound to connect with no world in focus | crates/mu-cli/tests/client.rs: a_key_bound_to_connect_with_no_world_in_focus | covered | pass |
+| Connect with no world in focus | crates/mu-tui/tests/app.rs: connect_with_no_world_in_focus | covered | pass |
+| A trailing space is no argument | crates/mu-cli/tests/client.rs: a_trailing_space_is_no_argument | covered | pass |
+| Disconnect an unknown world | crates/mu-cli/tests/client.rs: disconnect_an_unknown_world | covered | pass |
+| Focus by name | crates/mu-tui/tests/app.rs: focus_by_name | covered | pass |
+| A world with a trailing space | crates/mu-tui/tests/app.rs: a_world_with_a_trailing_space | covered | pass |
+| Quit | crates/mu-cli/tests/client.rs: quit_by_command | covered | pass |
+| Quit twice while a text waits | crates/mu-cli/tests/client.rs: quit_twice_while_a_text_waits | covered | pass |
+| Another command cancels the quit | crates/mu-cli/tests/client.rs: another_command_cancels_the_quit | covered | pass |
+| A command with no world in focus | crates/mu-tui/tests/app.rs: a_command_with_no_world_in_focus | covered | pass |
+| A file that sets the echo | crates/mu-cli/tests/client.rs: a_file_that_sets_the_echo | covered | pass |
+| A file that sets dim | crates/mu-cli/tests/client.rs: a_file_that_sets_dim | covered | pass |
+| No file | crates/mu-cli/tests/client.rs: no_file | covered | pass |
+| An unknown key | crates/mu-cli/tests/client.rs: an_unknown_key | covered | pass |
+| A bad echo value | crates/mu-cli/tests/client.rs: a_bad_echo_value | covered | pass |
+| A file that cannot be read | crates/mu-cli/tests/client.rs: a_file_that_cannot_be_read | covered | pass |
+| Not TOML | crates/mu-cli/tests/client.rs: not_toml | covered | pass |
+| A new binding | crates/mu-cli/tests/client.rs: a_new_binding | covered | pass |
+| The default keys stay | crates/mu-cli/tests/client.rs: the_default_keys_stay | covered | pass |
+| A removed binding | crates/mu-cli/tests/client.rs: a_removed_binding | covered | pass |
+| A binding replaces a default | crates/mu-cli/tests/client.rs: a_binding_replaces_a_default | covered | pass |
+| None on a key with a modifier | crates/mu-cli/tests/client.rs: none_on_a_key_with_a_modifier | covered | pass |
+| Two names of one key | crates/mu-cli/tests/client.rs: two_names_of_one_key | covered | pass |
+| A binding of Shift+Tab | crates/mu-cli/tests/client.rs: a_binding_of_shift_tab | covered | pass |
+| An uppercase key | crates/mu-cli/tests/client.rs: an_uppercase_key | covered | pass |
+| A control character | crates/mu-cli/tests/client.rs: a_control_character | covered | pass |
+| Shift with a digit | crates/mu-cli/tests/client.rs: shift_with_a_digit | covered | pass |
+| A binding of Ctrl+Shift+Z | crates/mu-cli/tests/client.rs: a_binding_of_ctrl_shift_z | covered | pass |
+| An unknown entry | crates/mu-cli/tests/client.rs: an_unknown_entry | covered | pass |
+| An unknown key name | crates/mu-cli/tests/client.rs: an_unknown_key_name | covered | pass |
+| An entry that needs an argument | crates/mu-cli/tests/client.rs: an_entry_that_needs_an_argument | covered | pass |
+| A wait of zero | crates/mu-cli/tests/client.rs: a_wait_of_zero | covered | pass |
+| The default dims | crates/mu-tui/tests/app.rs: the_default_dims; crates/mu-cli/tests/client.rs: the_client_with_no_directory | covered | not-run |
+| Hide | crates/mu-tui/tests/app.rs: hide | covered | pass |
+| A client with no server starts one | crates/mu-cli/tests/client.rs: client_starts_a_server | covered | pass |
+| No server answers in time | crates/mu-cli/tests/client.rs: client_gives_up_after_five_seconds | covered | pass |
+| Two clients start at the same time | crates/mu-cli/tests/client.rs: two_clients_start_one_server | covered | pass |
+| A server that closes the connection | crates/mu-cli/tests/client.rs: a_server_that_closes_the_connection | covered | pass |
+| A server that does not answer | crates/mu-cli/tests/client.rs: a_server_that_does_not_answer | covered | pass |
+| The started server finds the default directory | crates/mu-cli/tests/client.rs: the_started_server_finds_the_default_directory | covered | pass |
+| A line goes to the world in focus | crates/mu-tui/tests/app.rs: a_line_goes_to_the_world_in_focus | covered | pass |
+| An empty line | crates/mu-tui/tests/app.rs: an_empty_line | covered | pass |
+| Enter with no world | crates/mu-tui/tests/app.rs: enter_with_no_world | covered | pass |
+| A refused line | crates/mu-tui/tests/app.rs: a_refused_line | covered | pass |
+| A refused line after more text | crates/mu-tui/tests/app.rs: a_refused_line_after_more_text | covered | pass |
+| Ctrl+M sends | crates/mu-tui/tests/app.rs: ctrl_m_sends | covered | pass |
+| A pose of two lines | crates/mu-cli/tests/client.rs: a_pose_of_two_lines | covered | pass |
+| A line break that the world refuses | crates/mu-cli/tests/client.rs: a_line_break_that_the_world_refuses | covered | pass |
+| A line that the server refuses | crates/mu-tui/tests/app.rs: a_line_that_the_server_refuses | covered | pass |
+| The last line is refused | crates/mu-tui/tests/app.rs: the_last_line_is_refused | covered | pass |
+| A refused send of Enter with a send after it | crates/mu-tui/tests/app.rs: a_refused_send_of_enter_with_a_send_after_it | covered | pass |
+| The sends stay apart | crates/mu-tui/tests/app.rs: the_sends_stay_apart | covered | pass |
+| The stream ends while lines wait | crates/mu-tui/tests/app.rs: the_stream_ends_while_lines_wait | covered | pass |
+| Lines of two worlds wait | crates/mu-tui/tests/app.rs: lines_of_two_worlds_wait | covered | pass |
+| A refusal out of focus | crates/mu-tui/tests/app.rs: a_refusal_out_of_focus | covered | pass |
+| The server resets while lines wait | crates/mu-tui/tests/app.rs: the_server_resets_while_lines_wait | covered | pass |
+| A refusal during a walk of the history | crates/mu-tui/tests/app.rs: a_refusal_during_a_walk_of_the_history | covered | pass |
+| A refusal after the stream ended | crates/mu-tui/tests/app.rs: a_refusal_after_the_stream_ended | covered | pass |
+| A send enters the history | crates/mu-tui/tests/app.rs: a_send_enters_the_history | covered | pass |
+| A pose is one entry | crates/mu-tui/tests/app.rs: a_pose_is_one_entry | covered | pass |
+| No empty entry | crates/mu-tui/tests/app.rs: no_empty_entry | covered | pass |
+| Each world has its own history | crates/mu-tui/tests/app.rs: each_world_has_its_own_history | covered | pass |
+| No repeat | crates/mu-tui/tests/app.rs: no_repeat | covered | pass |
+| An escaped slash in the history | crates/mu-tui/tests/app.rs: an_escaped_slash_in_the_history | covered | pass |
+| Down with no walk | crates/mu-tui/tests/app.rs: down_with_no_walk | covered | pass |
+| Back to the draft | crates/mu-tui/tests/app.rs: back_to_the_draft | covered | pass |
+| Up inside a pose moves the cursor | crates/mu-tui/tests/app.rs: up_inside_a_pose_moves_the_cursor | covered | pass |
+| A send during a walk | crates/mu-tui/tests/app.rs: a_send_during_a_walk | covered | pass |
+| A focus change keeps each editor | crates/mu-tui/tests/app.rs: a_focus_change_keeps_each_editor | covered | pass |
+| A walk stays with its world | crates/mu-tui/tests/app.rs: a_walk_stays_with_its_world | covered | pass |
+| The second world | crates/mu-tui/tests/app.rs: the_second_world | covered | pass |
+| No world at that place | crates/mu-tui/tests/app.rs: no_world_at_that_place | covered | pass |
+| Back to the first world | crates/mu-tui/tests/app.rs: back_to_the_first_world | covered | pass |
+| Top and bottom | crates/mu-tui/tests/app.rs: top_and_bottom | covered | pass |
+| The echo of a pose of two lines | crates/mu-tui/tests/app.rs: the_echo_of_a_pose_of_two_lines | covered | pass |
+| Before the first list | crates/mu-tui/tests/app.rs: before_the_first_list | covered | pass |
+| A send before the first list | crates/mu-tui/tests/app.rs: a_send_before_the_first_list | covered | pass |
+| Text typed before the first list | crates/mu-tui/tests/app.rs: text_typed_before_the_first_list | covered | pass |
+| An event before the first list | crates/mu-tui/tests/app.rs: an_event_before_the_first_list | covered | pass |
+| A focus key before the first list | crates/mu-tui/tests/app.rs: a_focus_key_before_the_first_list | covered | pass |
+| A failed first list after an event | crates/mu-tui/tests/app.rs: a_failed_first_list_after_an_event | covered | pass |
+| A notice before the first list | crates/mu-tui/tests/app.rs: a_notice_before_the_first_list | covered | pass |
+| The first list fails | crates/mu-tui/tests/app.rs: the_first_list_fails | covered | pass |
+| The flag wins over the environment | crates/mu-cli/tests/world_config.rs: flag_wins_over_the_environment | covered | pass |
+| The default directory | crates/mu-cli/tests/world_config.rs: default_directory | covered | pass |
+| The directory under the home directory | crates/mu-cli/tests/world_config.rs: directory_under_home | covered | pass |
+| An empty MU_CONFIG | crates/mu-cli/tests/world_config.rs: empty_mu_config | covered | pass |
+| A relative XDG_CONFIG_HOME | crates/mu-cli/tests/world_config.rs: relative_xdg_config_home | covered | pass |
+| No home directory | crates/mu-cli/tests/world_config.rs: no_home_directory | covered | pass |
+| A missing directory | crates/mu-cli/tests/world_config.rs: missing_directory | covered | pass |
+| The client warns of a missing directory | crates/mu-cli/tests/client.rs: the_client_warns_of_a_missing_directory | covered | pass |
+| A missing default directory | crates/mu-cli/tests/world_config.rs: missing_default_directory_is_quiet | covered | pass |
+| The client takes the flag | crates/mu-cli/tests/client.rs: the_client_takes_the_flag | covered | pass |
+| Worlds from character files | crates/mu-cli/tests/world_config.rs: worlds_from_character_files | covered | pass |
+| A character with no game | crates/mu-cli/tests/world_config.rs: character_with_no_game | covered | pass |
+| A file name outside the id rule | crates/mu-cli/tests/world_config.rs: file_name_outside_the_id_rule | covered | pass |
+| A stray file | crates/mu-cli/tests/world_config.rs: stray_file | covered | pass |
+| A link to nothing | crates/mu-cli/tests/world_config.rs: link_to_nothing_is_an_error | covered | pass |
+| The file of the server | crates/mu-cli/tests/world_config.rs: server_file_makes_no_world | covered | pass |
+| A character named server | crates/mu-cli/tests/world_config.rs: character_named_server_is_a_world | covered | pass |
+| The file of the client | crates/mu-cli/tests/world_config.rs: the_file_of_the_client | covered | pass |
 
 ### Not run
 
-Plan phase: no verification runs.
+- The default dims: no verification run names this row
 
 ## Verification runs
 
-None.
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=help_lists_the_entries)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_key_and_a_command_give_the_same_focus)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_editing_entry_is_not_a_command)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_command_does_not_reach_the_game)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=several_lines_are_not_a_command)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_escaped_slash)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_unknown_command)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_missing_world)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_argument_to_an_entry_that_takes_none)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_unknown_world)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=connect_the_world_in_focus)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=disconnect_a_named_world)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_key_bound_to_connect_with_no_world_in_focus)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=connect_with_no_world_in_focus)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_trailing_space_is_no_argument)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=disconnect_an_unknown_world)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=focus_by_name)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_world_with_a_trailing_space)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=quit_by_command)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=quit_twice_while_a_text_waits)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=another_command_cancels_the_quit)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_command_with_no_world_in_focus)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_file_that_sets_the_echo)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_file_that_sets_dim)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=no_file)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_unknown_key)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_bad_echo_value)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_file_that_cannot_be_read)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=not_toml)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_new_binding)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_default_keys_stay)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_removed_binding)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_binding_replaces_a_default)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=none_on_a_key_with_a_modifier)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=two_names_of_one_key)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_binding_of_shift_tab)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_uppercase_key)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_control_character)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=shift_with_a_digit)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_binding_of_ctrl_shift_z)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_unknown_entry)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_unknown_key_name)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_entry_that_needs_an_argument)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_wait_of_zero)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_default_dims)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_client_with_no_directory)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=hide)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=client_starts_a_server)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=client_gives_up_after_five_seconds)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=two_clients_start_one_server)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_server_that_closes_the_connection)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_server_that_does_not_answer)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_started_server_finds_the_default_directory)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_line_goes_to_the_world_in_focus)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_empty_line)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=enter_with_no_world)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refused_line)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refused_line_after_more_text)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=ctrl_m_sends)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_pose_of_two_lines)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_line_break_that_the_world_refuses)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_line_that_the_server_refuses)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_last_line_is_refused)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refused_send_of_enter_with_a_send_after_it)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_sends_stay_apart)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_stream_ends_while_lines_wait)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=lines_of_two_worlds_wait)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refusal_out_of_focus)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_server_resets_while_lines_wait)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refusal_during_a_walk_of_the_history)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_refusal_after_the_stream_ended)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_send_enters_the_history)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_pose_is_one_entry)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=no_empty_entry)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=each_world_has_its_own_history)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=no_repeat)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_escaped_slash_in_the_history)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=down_with_no_walk)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=back_to_the_draft)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=up_inside_a_pose_moves_the_cursor)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_send_during_a_walk)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_focus_change_keeps_each_editor)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_walk_stays_with_its_world)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_second_world)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=no_world_at_that_place)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=back_to_the_first_world)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=top_and_bottom)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_echo_of_a_pose_of_two_lines)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_send_before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=text_typed_before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_event_before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_focus_key_before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_failed_first_list_after_an_event)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_notice_before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_first_list_fails)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=flag_wins_over_the_environment)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=default_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=directory_under_home)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=empty_mu_config)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=relative_xdg_config_home)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=no_home_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=missing_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_client_warns_of_a_missing_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=missing_default_directory_is_quiet)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_client_takes_the_flag)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=worlds_from_character_files)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=character_with_no_game)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=file_name_outside_the_id_rule)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=stray_file)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=link_to_nothing_is_an_error)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=server_file_makes_no_world)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=character_named_server_is_a_world)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=the_file_of_the_client)'`
 
 ## Dropped
 
@@ -187,9 +329,42 @@ None.
 
 ## Lens notes
 
-- verify: R-155: proposal.md line 37 now refuses only Shift with a character that is not a letter and names shift+tab and shift+up as valid. This matches the client-config requirement A bad binding stops the client, the scenario A binding of Shift+Tab, D3 and task 6.4 (shift+1, shift+space and shift+plus refused, shift_tab_matches_back_tab).
-- verify: D3 lists space among the special keys and also says that space and plus are characters too. The new proposal sentence that Shift with a special key is valid relies on that second statement for shift+space. The proposal line itself lists shift+space as refused, so the two texts agree. The double class of space is in unchanged D3 text and outside this fix.
-- verify: The other ranges of diff-hunks.txt are in review.md, which this agent does not read.
+- approach: Every row of prior.json is closed (resolved or deferred); no finding raises one again.
+- approach: D2, D3, D5, D6, D8, D10 and D11 match the code at head: config_file::read, warn_missing, the key parser with BackTab and the uppercase lookup, History with its walk, put_back and its count, Model::starting and set_focus, candidates, and TOP_FILES.
+- approach: The Termina 0.3.3 parser gives CSI Z as BackTab with SHIFT, and a kitty tab with SHIFT as BackTab, as D3 states.
+- approach: The Ghostty and Terminal.app rows of the D3 table and the crate survey of D3 cite outside sources and were not checked.
+- fit: The prompt named no path for repository library rows, so only the generic rows of the rulebook were applied.
+- fit: D2 (config_file::read shared by server.toml and client.toml, warn_missing split out of worlds), D3 (key parser, with the crate search recorded), D8 (first list through Msg::Listed, start only when nothing listens), D9 (registry part in model.c4 and views.c4), D10 (candidates over world_ids) and D11 (TOP_FILES in dir.rs) match their decisions with no further fit finding.
+- fit: Model::editor, Model::pose and the pose lookup in view are three resolvers of the pose editor; D5 names all three and the borrow split of Parts as its reason, so no finding is raised for them.
+- invariants: I1: A history holds at most 1000 entries and drops the oldest \| enforced at History::push (history.rs) \| boundary test history_drops_the_oldest_past_1000 (1000 and 1001)
+- invariants: I2: A history never holds an empty entry or an entry equal to the one before it \| enforced at History::push \| boundary test no_empty_entry, no_repeat, the_sends_stay_apart, property history_keeps_its_invariants
+- invariants: I3: The place of an open walk is always inside its history \| enforced at History::push (ends the walk), older/newer bounds \| boundary test a_walk_at_the_limit_keeps_its_entry, history_keeps_its_invariants
+- invariants: I4: A draft is never lost at a send or a put_back during a walk \| enforced at record() and put_back via end_walk \| boundary test a_send_during_a_walk, a_refusal_during_a_walk_of_the_history, a_refusal_out_of_focus_during_a_walk
+- invariants: I5: A key never runs an entry with a required argument \| enforced at ClientConfig::keymap and arity in run_entry \| boundary test an_entry_that_needs_an_argument, default_keymap_binds_entries_with_no_required_argument
+- invariants: I6: Two key names never give one chord \| enforced at ClientConfig::keymap (named list) \| boundary test two_names_of_one_key, property key_names_read_back
+- invariants: I7: A key name has no uppercase, no control character, shift only with a letter or a special key, and f1 to f12 \| enforced at Chord::parse and key_code \| boundary test bad_key_names_are_refused_with_the_name (f0, f01, f13, shift+1, shift+space, shift+plus, tab, CR, DEL), f1_and_f12_are_read
+- invariants: I8: connect_wait_seconds is finite and above 0 \| enforced at connect_wait (mu-cli client.rs) \| boundary test a_wait_that_is_no_time_is_refused, a_wait_of_zero; the edge just above 0 is not tested (inv-1)
+- invariants: I9: An editing entry never runs from a command \| enforced at check_command (entry.edits) \| boundary test edits_flag_matches_the_editing_rows, ignore_is_not_a_command, an_editing_entry_is_not_a_command
+- invariants: I10: A command is only a text of one line that starts with / and not // \| enforced at command::parse \| boundary test several_lines_are_not_a_command, an_escaped_slash, a_slash_alone_is_an_unknown_command
+- invariants: I11: An argument of only spaces is no argument \| enforced at command::parse (trim_matches) \| boundary test property trailing_spaces_are_no_argument (0 to 7 spaces)
+- invariants: I12: A world argument is always a held world or the world in focus \| enforced at world_arg (update.rs) \| boundary test an_unknown_world, disconnect_an_unknown_world, connect_with_no_world_in_focus, a_key_bound_to_connect_with_no_world_in_focus
+- invariants: I13: A quit armed by a command survives typing, and any other send or command clears it \| enforced at run_command, submit and run_entry \| boundary test quit_twice_while_a_text_waits, another_command_cancels_the_quit
+- invariants: I14: No world has the focus while first_list is set \| enforced at Model::set_focus guard and Action::Focus \| boundary test a_focus_key_before_the_first_list, an_event_before_the_first_list, a_reset_during_the_first_list
+- invariants: I15: put_back changes the editor and history of its own world only \| enforced at put_back \| boundary test a_refusal_out_of_focus, property history_keeps_its_invariants
+- invariants: I16: The (<n> in history) count is of the kept entries and is absent at 0 \| enforced at on_reply and return_waiting (kept > 0) \| boundary test a_refused_line and the_sends_stay_apart for the refusal line; none for the zero side of the return hint (inv-3)
+- invariants: I17: Echo rows joined with the line_break give the cleaned text \| enforced at text::echo_rows \| boundary test property echo_rows_join_back, an_echo_with_no_line_break
+- invariants: I18: server.toml and client.toml are the only top files that make no world, by the case rule and the same-file rule \| enforced at is_top_file (mu-core dir.rs) \| boundary test client_file_in_another_case, hard_link_to_the_client_file_is_an_error, unreadable_client_file_makes_no_world
+- invariants: I19: A started server gets --config only for a named directory, as one argument \| enforced at start_server and ConfigArgs::named \| boundary test the_started_server_finds_the_default_directory, the_client_takes_the_flag; no test of a path that starts with - (inv-2)
+- invariants: I20: A bad client.toml stops the client before the screen, and unknown fields are refused \| enforced at client::run order and deny_unknown_fields on ClientConfig and ServerTable \| boundary test an_unknown_key, a_bad_echo_value, not_toml, a_file_that_cannot_be_read
+- invariants: Probe: a copy of connect_wait at head gives Ok(0ns) for 1e-10, 4.9e-10 and 5e-324, shown as 0 s. It gives 1 ns for 1e-9, and it refuses 1.8e19. The files are under probe-invariants/ in the handoff directory.
+- invariants: Weakened check: server_config::read and is_top_file at head are the same as at the merge base e96b221, now through config_file::read and TOP_FILES. The quit arm now clears on more entries (wheel) than at the base, not on fewer.
+- test-coverage: Task 6.3 names `a_stray_file`, but the test in world_config.rs is `stray_file`; the scenario is covered, only the task name differs.
+- test-coverage: Rows were graded from the test source at head; no test was run. The controller runs the covering tests.
+- test-coverage: Tasks 5.2, 8.1 and 8.2 are unchecked; they are process steps, not scenarios.
+- test-honesty: a_file_that_cannot_be_read in crates/mu-cli/tests/client.rs and unreadable_server_file_in_another_case_names_the_error return early when the user can read a 0o000 file (root), so they pass with no assertion there; the tasks state this skip. No test is ignored or disabled in the diff.
+- test-honesty: a_control_character asserts only that client.toml is named, which matches the scenario text; any bad file passes it, so the bad control character itself is checked by the parser tests in keymap.rs only.
+- test-honesty gap: crates/mu-tui/tests/app.rs hunks before line 1500 (small edits of existing tests) and the property test file app.proptest-regressions were read only by name.
+- test-honesty gap: docs and architecture files are not tests and were not read.
 
 ## Ledger
 
@@ -206,7 +381,7 @@ None.
 | R-9 | 1 | 2 | should-fix | in-change | unmet-requirement | ["artifact",["proposal.md","Impact"],"The world resolver accepts `client.toml`."] | resolved | resolved in round 2 from fixed a9555c243143a1800eea6daef564f374719bf20f |  |  | scope? beyond-scope 0.73 | fit-3: The proposal puts the world resolver change in mu-cli. The resolver and its one top-level exception, is_server_file with SERVER_FILE, live in mu-core dir.rs. The design names neither that crate nor how the exception takes a second file, so a change kept to the named crates cannot make the scenario The file of the client hold.; app-10: The world resolver that refuses stray top-level files is in mu-core (world/dir.rs), but the proposal's Impact places its change under crates/mu-cli and lists no mu-core change. |
 | R-10 | 1 | 2 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D4. Commands are parsed in `update` at a send"],"`Help` adds one notice line for each entry."] | resolved | resolved in round 2 from fixed a9555c243143a1800eea6daef564f374719bf20f |  |  | scope? deviates-design 0.72 | D4 makes a bad command and /help add notices. The model has two kinds of -- line. A notice is kept, and shows again after each Reset and for the first world. A hint is for one moment. The help list and a bad command are of the moment, so as notices they come back after each Reset. |
 | R-11 | 1 | 2 | should-fix | in-change | drift | ["artifact",["design.md","D8. The screen opens before the first list"],"The model starts with `Listing::Asked` and a flag `first_list`, and the top row shows `listing worlds` until `Msg::Listed` arrives."] | resolved | resolved in round 2 from fixed a9555c243143a1800eea6daef564f374719bf20f |  |  |  | D8 takes the first list through Msg::Listed, but does not say what happens to Model::from_listing. That constructor takes the first list now, and the tests build the model with it. The two paths handle a failed list differently: from_listing adds a notice, and Msg::Listed only sets list_failure. |
-| R-12 | 1 | 2 | should-fix | in-change | drift | ["artifact",["design.md","D7. Echo"],"It shows the first part with `> ` and each other part with two spaces."] | resolved | resolved in round 2 from fixed a9555c243143a1800eea6daef564f374719bf20f |  |  |  | D7 puts the split of a player line and its prefixes in update. text::line already owns the prefix rule of each source and the clean of the text, so the > prefix of a player line would have two places. |
+| R-12 | 1 | 18 | should-fix | in-change | drift | ["artifact",["design.md","D7. Echo"],"It shows the first part with `> ` and each other part with two spaces."] | fixed | 1c4ee80f96410210fee04a29f94dab11cb87c89d | 18 |  |  | D7 puts the split of a player line and its prefixes in update. text::line already owns the prefix rule of each source and the clean of the text, so the > prefix of a player line would have two places. |
 | R-13 | 1 | 2 | should-fix | in-change | wrong-behaviour | ["path","docs/src/content/docs/guides/configuration.md",36] | resolved | resolved in round 2 from fixed a9555c243143a1800eea6daef564f374719bf20f |  |  |  | The configuration guide links each top-level file of the directory to its own page, and says that server.toml is the one exception to the stray-file rule. Task 6.5 adds a page for client.toml, but no task updates the configuration guide, so after the change it tells the player that client.toml is an error. |
 | R-14 | 1 | 2 | should-fix | in-change | wrong-behaviour | ["artifact",["specs/client-commands/spec.md","Requirement: A bad command keeps its text"],"A bad command names no entry, or an entry that does not run as a command."] | resolved | resolved in round 2 from fixed a9555c243143a1800eea6daef564f374719bf20f |  |  |  | Nothing refuses an argument to an entry that takes none, so `/quit now` or `/focus-next beta/bryn` runs and drops the argument; the bad-command list omits that case. |
 | R-15 | 1 | 2 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D4. Commands are parsed in `update` at a send"],"The text after `/` is split at the first run of spaces into a name and an argument."] | resolved | resolved in round 2 from fixed a9555c243143a1800eea6daef564f374719bf20f |  |  |  | The D4 split leaves the empty argument undefined: `/connect ` with a trailing space may give Some("") and an unknown world instead of the world in focus; no test passes it. |
@@ -320,7 +495,7 @@ None.
 | R-123 | 6 | 8 | suggestion | in-change |  | ["artifact",["design.md","D1. The registry is a table of entries, and the keymap binds entries"],"Names that take a number become one entry for each value"] | resolved | resolved in round 8 from fixed 3372ec1d63a2d7d5a0643b31a14f8ea20f9ba88d |  |  | severity? should-fix 0.74 | The nine rows focus-1 to focus-9 of the registry differ only in a number that sets the name, the description and the FocusIndex value, so a row written by hand can carry a name and an index that disagree. |
 | R-124 | 6 | 8 | suggestion | in-change |  | ["artifact",["tasks.md","4. Input history"],"The second property test runs random sends, refusals and focus changes, and checks in each history at most 1000 entries"] | resolved | resolved in round 8 from fixed 3372ec1d63a2d7d5a0643b31a14f8ea20f9ba88d |  |  | severity? should-fix 0.62 | The walk place must stay inside the history of the walk world under any mix of Up, Down, sends, refusals and focus changes, but history_keeps_its_invariants draws no Up or Down, so no generated run has a walk open at a push. |
 | R-125 | 6 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"approach partial"] | resolved | resolved in round 8 from fixed 3372ec1d63a2d7d5a0643b31a14f8ea20f9ba88d |  |  |  | lens approach reported partial, gaps: 2 |
-| R-126 | 7 | 8 | blocker | in-change | drift | ["artifact",["design.md","D4. Commands are parsed in `update` at a send"],"The loop calls `mu-client` in a spawned task with the same 30 s limit as a send, and sends back `Msg::Control { world, result }`."] | resolved | resolved in round 8 from fixed 902f8e9f3a8f53ab09079bdfaa44fac32ba5f9e0 |  |  |  | D4 adds the effects Connect and Disconnect as two more arms of the run loop that clone the client, spawn a task, map the mu-client error to a string and wrap the call in within with CALL_LIMIT. At head that block is already in three places (the first list, Send and ListWorlds). D8 removes the first list, so the change leaves four copies, and D4 names no shared helper. |
+| R-126 | 7 | 18 | blocker | in-change | drift | ["artifact",["design.md","D4. Commands are parsed in `update` at a send"],"The loop calls `mu-client` in a spawned task with the same 30 s limit as a send, and sends back `Msg::Control { world, result }`."] | fixed | 1c4ee80f96410210fee04a29f94dab11cb87c89d | 18 |  | severity? suggestion 0.75 | D4 adds the effects Connect and Disconnect as two more arms of the run loop that clone the client, spawn a task, map the mu-client error to a string and wrap the call in within with CALL_LIMIT. At head that block is already in three places (the first list, Send and ListWorlds). D8 removes the first list, so the change leaves four copies, and D4 names no shared helper. |
 | R-127 | 7 | 11 | should-fix | in-change | wrong-behaviour | ["artifact",["specs/terminal-client/spec.md","Requirement: A refused text stops the sends after it"],"It SHALL put each text that waited behind it, and then the text that the editor held, into the input history of that world. Up SHALL then give them in that order."] | resolved | resolved in round 11 from fixed 0d869e27435893318f6a953d0c35d78e94f50ee1 |  |  |  | After a refusal, Up gives the waiting texts and then the held text only if the refused world has the focus. A refusal of a world out of focus puts the texts in its history, but Up walks the world in focus, and the held text of that world goes into the refused world's history. |
 | R-128 | 7 | 8 | should-fix | in-change | wrong-behaviour | ["artifact",["specs/client-commands/spec.md","Requirement: Each front end runs an entry the same way"],"An entry that acts on the text of the editor SHALL NOT run from a command, because the command is that text."] | resolved | resolved in round 8 from fixed 902f8e9f3a8f53ab09079bdfaa44fac32ba5f9e0 |  |  |  | The rule that no editing entry runs from a command rests on a hand-set edits flag of each row, but the tests pass only /undo and /ignore. A row such as submit with the flag unset makes /submit clear the editor and send an empty line. |
 | R-129 | 7 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["specs/terminal-client/spec.md","Requirement: Up and Down walk the history"],"With no older entry, Up SHALL NOT change the text."] | resolved | resolved in round 8 from fixed 902f8e9f3a8f53ab09079bdfaa44fac32ba5f9e0 |  |  |  | Up with no older entry must leave the text, but the only test of an empty history presses Up on an empty editor, so an Up that blanks typed text on an empty history passes it. |
@@ -350,3 +525,201 @@ None.
 | R-153 | 12 | 13 | suggestion | in-change |  | ["artifact",["design.md","Risks / Trade-offs"],"[History in memory only] A crash loses it. \\u2192 History on disk is a later change, beside #156."] | resolved | resolved in round 13 from fixed 882e0254a993bceba3a95f46f10b25695870b5e9 |  |  | severity? should-fix 0.73 | The mitigation of the risk 'History in memory only' is a later change beside #156. No task and no follow-up line of tasks.md names that change, so the mitigation names nothing that the plan does. |
 | R-154 | 12 | 14 | suggestion | in-change | false-test | ["artifact",["specs/terminal-client/spec.md","Requirement: Each world keeps its own editor"],"A change of the focus SHALL NOT change the text of an editor, and SHALL NOT end a walk."] | resolved | resolved in round 14 from fixed b5e655971c09b67b2f92eacc5f4fec0a6cd61577 |  |  | severity? should-fix 0.61 | A key edits only the editor of the world in focus, and a focus change changes no editor text. That holds over any run of typing, sends, refusals and focus changes, but only the example a_focus_change_keeps_each_editor tests it. |
 | R-155 | 16 | 17 | should-fix | in-change | unmet-requirement | ["artifact",["proposal.md","Choices you will notice"],"Shift with a key that is not a letter, such as `shift+1`, `shift+space` or `shift+plus`, is refused"] | resolved | resolved in round 17 from fixed 2437c591d7683966284b68eb246bbdf2925eaebb | 16 |  |  | The changed choice line refuses Shift with any key that is not a letter. That rule covers shift+tab, but the spec and D3 refuse only Shift with a non-letter character, and the scenario A binding of Shift+Tab binds shift+tab. |
+| R-156 | 18 | 18 | should-fix | in-change | drift | ["path","crates/mu-tui/src/update.rs",456] | fixed | 1c4ee80f96410210fee04a29f94dab11cb87c89d | 18 |  |  | The Focus arm of act repeats the unknown-world check and its hint text that world_arg owns, so /focus and a key or the picker refuse an unknown world through two copies. |
+| R-157 | 18 | 18 | should-fix | in-change | drift | ["path","crates/mu-tui/src/model.rs",275] | fixed | 1c4ee80f96410210fee04a29f94dab11cb87c89d | 18 |  | scope? beyond-scope 0.60; severity? suggestion 0.61 | Model::pose repeats the entry-or-insert block of Model::pose_of, and Model::world makes the same editor a third way. Model::world always inserts the editor, so the two fallbacks are dead copies of how a world editor is made. |
+| R-158 | 18 | 18 | should-fix | in-change | drift | ["path","crates/mu-tui/src/update.rs",929] | fixed | 1c4ee80f96410210fee04a29f94dab11cb87c89d | 18 |  | severity? suggestion 0.70 | The count text `(<n> in history)` that the spec fixes is built twice, in on_reply and in return_waiting, each with its own zero case. |
+| R-159 | 18 | 18 | should-fix | in-change | drift | ["path","crates/mu-tui/src/keymap.rs",209] | fixed | 1c4ee80f96410210fee04a29f94dab11cb87c89d | 18 |  |  | The keymap lists the nine names focus-1 to focus-9 by hand and zips them with the digits, while the registry builds the same names from the digit in focus_place!. A reorder of the list binds Alt+1 to another place. |
+| R-160 | 18 | 18 | should-fix | in-change | drift | ["path","crates/mu-cli/tests/support/process.rs",819] | fixed | 50eec65501eaa53c8e1331e0cd03c1bf864eb473 | 18 |  | scope? beyond-scope 0.61; severity? suggestion 0.92 | The new test helper dims repeats looks line for line: it finds the first row that starts with the text and maps each of its cells. Only the read of the cell differs. |
+| R-161 | 18 | 18 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-cli/src/client.rs",58] | fixed | 0af0fde9a0890c1a21beaec12f8f2d67c27b9198 | 18 |  | scope? beyond-scope 0.69 | connect_wait checks that the f64 is above 0, but not the Duration. A positive value under 1 ns, such as 1e-10, passes and gives a zero wait. The first list then always times out with a socket error, not the client.toml error. |
+| R-162 | 18 | 18 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-cli/src/client.rs",179] | fixed | f980bad417ff81e7ba60466f84cac8b2c73c2e0a | 18 |  |  | start_server now passes --config=<dir> as one argument, so that a path that starts with - stays a value. No test passes such a path, for example a relative MU_CONFIG of -conf. A return to two arguments would pass every test, and the started server would then fail on its own flags. |
+| R-163 | 18 | 18 | should-fix | in-change | false-test | ["path","crates/mu-tui/src/update.rs",1007] | fixed | 832260cb4ae6823641ba71532e4eaf16b2f8d3ab | 18 |  |  | The hint of return_waiting adds (<n> in history) only when kept > 0. No test asserts that the hint lacks the count when kept is 0. lines_of_two_worlds_wait has kept 0 but checks a substring, so it also passes with (0 in history) appended. The refusal line tests both sides, and this hint tests only the side above 0. |
+| R-164 | 18 | 18 | should-fix | in-change | false-test | ["path","crates/mu-tui/tests/update.rs",392] | fixed | 832260cb4ae6823641ba71532e4eaf16b2f8d3ab | 18 |  |  | world_candidates_follow_the_top_row compares candidates() with Model::world_ids(), the one call that candidates() makes, so it cannot fail. |
+| R-165 | 18 | 18 | should-fix | in-change | false-test | ["path","crates/mu-tui/tests/app.rs",1741] | fixed | 832260cb4ae6823641ba71532e4eaf16b2f8d3ab | 18 |  |  | The no_repeat test cannot tell a history that drops equal texts from one that keeps them: with entries one, one, two the three Up presses give one, one in both cases. |
+| R-166 | 18 | 18 | should-fix | in-change | false-test | ["path","crates/mu-tui/tests/app.rs",2172] | fixed | 832260cb4ae6823641ba71532e4eaf16b2f8d3ab | 18 |  |  | echo_rows_join_back takes its expected cleaned text from echo_rows(text, None), the function under test, so a wrong clean of the text passes in both calls. |
+| R-167 | 18 | 18 | suggestion | in-change |  | ["artifact",["design.md","D4. Commands are parsed in `update` at a send"],"One function `world_arg(model, Option<String>) -> Result<String, Refusal>` in `update.rs` resolves a world argument."] | fixed | aa67cf5b2104fc3a11b3159cfb8db5a5c6251826 | 18 |  |  | D4 cites world_arg(model, Option<String>) -> Result<String, Refusal>. At head it also takes the entry name and returns Result<String, String>; no type Refusal exists. |
+| R-168 | 18 | 18 | suggestion | in-change |  | ["artifact",["design.md","D4. Commands are parsed in `update` at a send"],"A `Quit` from a command sets the arm with the mark `by_command`."] | fixed | aa67cf5b2104fc3a11b3159cfb8db5a5c6251826 | 18 |  | severity? should-fix 0.63 | D4 names the quit arm of a command the mark by_command. At head the arm is the enum QuitArm with the variants Key and Command; no name by_command exists. |
+| R-169 | 18 | 18 | suggestion | in-change |  | ["artifact",["design.md","D1. The registry is a table of entries, and the keymap binds entries"],"Each one sends `Msg::Run { entry: EntryId, arg: Option<String> }`, which replaces `Msg::Action(Action)`."] | fixed | aa67cf5b2104fc3a11b3159cfb8db5a5c6251826 | 18 |  | severity? should-fix 0.72 | D1 says each front end, the keymap included, sends Msg::Run. At head a key and a command call run_entry inside update, and only a test sends Msg::Run; the one path is run_entry, which D1 does not name. |
+| R-170 | 18 | 18 | suggestion | in-change |  | ["artifact",["design.md","D7. Echo"],"So the prefix rule stays in one place."] | fixed | aa67cf5b2104fc3a11b3159cfb8db5a5c6251826 | 18 |  | severity? should-fix 0.79 | D7 says echo_rows keeps the prefix rule in one place, but text::line still writes the > prefix for a player event. That arm has no caller now, so the > prefix has two places. |
+| R-171 | 18 | 18 | suggestion | in-change |  | ["artifact",["design.md","Open Questions"],"The exact text of each description in the registry. It changes no spec and no task."] | fixed | aa67cf5b2104fc3a11b3159cfb8db5a5c6251826 | 18 |  |  | The one open question is the text of each registry description, but registry.rs at head already gives every entry its description, so the question is answered. |
+| R-172 | 18 | 18 | suggestion | in-change |  | ["path","crates/mu-tui/src/update.rs",705] | deferred | ticket: https://github.com/seanb4t/mu-portal/issues/167; reason: The usage text of an argument moves into the registry when client-layout adds the palette, which is its first second reader; until then help is the only reader. |  |  | severity? should-fix 0.62 | The text of an entry's argument (`<world>` or `[world]`) is built inside update::help. The palette of client-layout lists the registry and must show the same, so it must copy that match or move it into the registry. |
+| R-173 | 18 | 18 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"The default dims"] | refuted | Both tests of the row ran at head and passed: verification runs list the_default_dims and the_client_with_no_directory with exit 0. The merge matches a run only to a row that names one test, so a row with two tests reads as not-run. |  |  |  | covered row 'The default dims' has no verification run |
+
+## Reviewed files
+
+| path | content |
+|---|---|
+| Cargo.lock | f0935658614fed31bdee0876a5ec6fc0dc240d8a |
+| architecture/model.c4 | de0d8250e2b32b9f8eb4830106a16eec74dbe4c9 |
+| architecture/views.c4 | 717d223162471a4c7ff60f04983b37862ecca58d |
+| crates/mu-cli/src/client.rs | 2394588c75ae9e1d27b822b23ce178e77bda30c7 |
+| crates/mu-cli/src/config.rs | 8d51df6e069507a4eeee97382dad05dc068c44fb |
+| crates/mu-cli/src/config_file.rs | 0cdf1cf8be27ec0ffa7a2e515da1103aba0ff2cd |
+| crates/mu-cli/src/lib.rs | b95c38ec64b888cbc94cec8c70ad33855955dd6a |
+| crates/mu-cli/src/server_config.rs | bbe084932305de93217609b7f9ecfe648df3855f |
+| crates/mu-cli/tests/client.rs | 513b4a73b2c94da410167cb5fe985d5d68e0207d |
+| crates/mu-cli/tests/support/process.rs | a7c3923b7c6c1c8372e3f440128d2802209a0941 |
+| crates/mu-cli/tests/workspace_boundary.rs | 72318b1b01439268d6978870625c59517efc3a81 |
+| crates/mu-cli/tests/world_config.rs | 0365226492201277a55be1507b43c95c808bfd02 |
+| crates/mu-core/src/world/dir.rs | 19f66de7d16879d500e0d0fdc50cb273d0f2e5fc |
+| crates/mu-core/src/world/mod.rs | 770247846d487e5740e4cc56d790e2d151cf0f0b |
+| crates/mu-tui/Cargo.toml | 00eb86b87ed3b96c5147c131a54b9a9662759f77 |
+| crates/mu-tui/src/command.rs | 4317699680b210cf929759b1860b141cfc075377 |
+| crates/mu-tui/src/config.rs | 2823f3961513f132528a5c55aa74f5b0c2902de4 |
+| crates/mu-tui/src/editor.rs | d162d6a62fb062a9a1a652dd0cb32e29492fe29f |
+| crates/mu-tui/src/history.rs | a57c6a02208023eabb5e413dbda1fd6c49a8192c |
+| crates/mu-tui/src/keymap.rs | ee7e058988ff93d458a5433058e7aee9d3134334 |
+| crates/mu-tui/src/lib.rs | c77c9da92104480ee3221e056921ac4fb167330f |
+| crates/mu-tui/src/model.rs | 7bc73456c7e540bc6012cd22a9673591e6307558 |
+| crates/mu-tui/src/pane.rs | 7a6eb6c699ad9d7ede4ef79abeaa0d01c282e3d2 |
+| crates/mu-tui/src/probe.rs | a2174ee68afdc0b6e6b5c52807e7a12e2924ae9a |
+| crates/mu-tui/src/registry.rs | d2260e1a8867da5494d2bc853c30fbd0ea430ceb |
+| crates/mu-tui/src/run.rs | 12645a09c22e8d8059c23da1af5d6e7aef6c265d |
+| crates/mu-tui/src/text.rs | f0ae1afa348a9a4c8238b324805ba4adbcb77abc |
+| crates/mu-tui/src/update.rs | e3cad99040744db966bd260e4dc60de738c0d30e |
+| crates/mu-tui/src/view.rs | c0d1cf99d3cf5797733d8807c6d3ff56219b530b |
+| crates/mu-tui/tests/app.proptest-regressions | 943492e6fe7b9a499e12b97ecaf2b78caaa52f6b |
+| crates/mu-tui/tests/app.rs | 4dd352e9a666eb40d548835857264a75ec6c7fae |
+| crates/mu-tui/tests/editor.rs | 40eb0bb21d471d734ea4fb747754d649fd44a284 |
+| crates/mu-tui/tests/history.rs | 6d4b3e4e70b58bf180445121b507c87bd69784f3 |
+| crates/mu-tui/tests/keymap.rs | 0592e99c3fb3af6c25b3a863cf3988be34e6bd3f |
+| crates/mu-tui/tests/update.rs | 950168d1abf0fabf6f88212721043b666da5762e |
+| docs/src/content/docs/architecture/terminal-client.mdx | 80c1c26e4542676cffb172c3cc560a1a85e041ab |
+| docs/src/content/docs/decisions/input-editor.md | 111a5a5738933fa1c69ae125cdb0feec80caee51 |
+| docs/src/content/docs/decisions/terminal-client-architecture.md | 5921a051ae562b4c9571105a6368b01ef9578f9c |
+| docs/src/content/docs/guides/client.md | 261b0151da99337af274d46511460e322bf41379 |
+| docs/src/content/docs/guides/configuration.md | 31ab6d6de0839a80dd6ca6231868a19e9e976d7a |
+| docs/src/content/docs/guides/first-run.md | 14fb49ebf76010d2faf14345b20d2a1c711af4b7 |
+| openspec/changes/client-shell/.openspec.yaml | b6809d6be7a6faad01a1bd5da9bea068ac829d8f |
+| openspec/changes/client-shell/design.md | 69b77a58238c44a1fb3f08c966864f28fc37d745 |
+| openspec/changes/client-shell/proposal.md | c91ce1153b2d7502906e30e801d967cdac9989c2 |
+| openspec/changes/client-shell/specs/client-commands/spec.md | e0930b8d51ba76cf8bd3326d22807f042e1b849b |
+| openspec/changes/client-shell/specs/client-config/spec.md | 699672bfbbce8eebfcf34dbd4bede100b50d5636 |
+| openspec/changes/client-shell/specs/server-process/spec.md | 29a32d39c11b6afb9397a7294ec4d718177dad25 |
+| openspec/changes/client-shell/specs/terminal-client/spec.md | 097fce94a330389b7caf6525769286ba67da51a6 |
+| openspec/changes/client-shell/specs/world-config/spec.md | 515b84297760374f211078b26da0c4ce297e435c |
+| openspec/changes/client-shell/tasks.md | sha256:3745ca2208ccfd49d139a4935c037435fe76dd2bb45bec8b45645ff8a7b49a4a |
+| openspec/review.json | absent |
+
+## Plan review (2026-11-23)
+
+Verdict approve at head 40216b11e741569700fa4bd7d509bbde86bf5037.
+
+### Findings
+
+| id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
+|---|---|---|---|---|---|---|---|---|---|
+
+### Coverage matrix
+
+| scenario | covered by | status | verified |
+|---|---|---|---|
+| Help lists the entries | 3.3 | covered |  |
+| A key and a command give the same focus | 3.4 | covered |  |
+| An editing entry is not a command | 3.1 | covered |  |
+| A command does not reach the game | 3.1 | covered |  |
+| Several lines are not a command | 3.1 | covered |  |
+| An escaped slash | 3.1 | covered |  |
+| An unknown command | 3.1 | covered |  |
+| A missing world | 3.1 | covered |  |
+| An argument to an entry that takes none | 3.1 | covered |  |
+| An unknown world | 3.1 | covered |  |
+| Connect the world in focus | 3.2 | covered |  |
+| Disconnect a named world | 3.2 | covered |  |
+| A key bound to connect with no world in focus | 3.2 | covered |  |
+| Connect with no world in focus | 3.1 | covered |  |
+| A trailing space is no argument | 3.2 | covered |  |
+| Disconnect an unknown world | 3.2 | covered |  |
+| Focus by name | 3.1 | covered |  |
+| A world with a trailing space | 3.4 | covered |  |
+| Quit | 3.3 | covered |  |
+| Quit twice while a text waits | 3.3 | covered |  |
+| Another command cancels the quit | 3.3 | covered |  |
+| A command with no world in focus | 3.1 | covered |  |
+| A file that sets the echo | 6.2 | covered |  |
+| A file that sets dim | 6.2 | covered |  |
+| No file | 6.2 | covered |  |
+| An unknown key | 6.2 | covered |  |
+| A bad echo value | 6.2 | covered |  |
+| A file that cannot be read | 6.2 | covered |  |
+| Not TOML | 6.2 | covered |  |
+| A new binding | 6.4 | covered |  |
+| The default keys stay | 6.4 | covered |  |
+| A removed binding | 6.4 | covered |  |
+| A binding replaces a default | 6.4 | covered |  |
+| None on a key with a modifier | 6.4 | covered |  |
+| Two names of one key | 6.4 | covered |  |
+| A binding of Shift+Tab | 6.4 | covered |  |
+| An uppercase key | 6.4 | covered |  |
+| A control character | 6.4 | covered |  |
+| Shift with a digit | 6.4 | covered |  |
+| A binding of Ctrl+Shift+Z | 6.4 | covered |  |
+| An unknown entry | 6.4 | covered |  |
+| An unknown key name | 6.4 | covered |  |
+| An entry that needs an argument | 6.4 | covered |  |
+| The default dims | 7.1 | covered |  |
+| Hide | 7.1 | covered |  |
+| A line goes to the world in focus | 2.2 | covered |  |
+| An empty line | 2.2 | covered |  |
+| Enter with no world | 2.2 | covered |  |
+| A refused line | 2.2 | covered |  |
+| A refused line after more text | 5.1 | covered |  |
+| Ctrl+M sends | 2.2 | covered |  |
+| A pose of two lines | 2.2 | covered |  |
+| A line break that the world refuses | 2.2 | covered |  |
+| A line that the server refuses | 5.1 | covered |  |
+| The last line is refused | 5.1 | covered |  |
+| A refused send of Enter with a send after it | 5.1 | covered |  |
+| The sends stay apart | 5.1 | covered |  |
+| The stream ends while lines wait | 5.1 | covered |  |
+| Lines of two worlds wait | 5.1 | covered |  |
+| A refusal out of focus | 5.1 | covered |  |
+| The server resets while lines wait | 5.1 | covered |  |
+| A refusal during a walk of the history | 5.1 | covered |  |
+| A refusal after the stream ended | 5.1 | covered |  |
+| A send enters the history | 4.1 | covered |  |
+| A pose is one entry | 4.1 | covered |  |
+| No empty entry | 4.1 | covered |  |
+| Each world has its own history | 4.1 | covered |  |
+| No repeat | 4.1 | covered |  |
+| An escaped slash in the history | 4.1 | covered |  |
+| Down with no walk | 4.2 | covered |  |
+| Back to the draft | 4.2 | covered |  |
+| Up inside a pose moves the cursor | 4.2 | covered |  |
+| A send during a walk | 4.3 | covered |  |
+| A focus change keeps each editor | 4.2 | covered |  |
+| A walk stays with its world | 4.2 | covered |  |
+| The second world | 2.3 | covered |  |
+| No world at that place | 2.3 | covered |  |
+| Back to the first world | 2.3 | covered |  |
+| Top and bottom | 2.3 | covered |  |
+| The echo of a pose of two lines | 7.1 | covered |  |
+| Before the first list | 7.2 | covered |  |
+| A send before the first list | 7.2 | covered |  |
+| Text typed before the first list | 7.2 | covered |  |
+| An event before the first list | 7.2 | covered |  |
+| A focus key before the first list | 7.2 | covered |  |
+| A failed first list after an event | 7.2 | covered |  |
+| A notice before the first list | 7.2 | covered |  |
+| The first list fails | 7.2 | covered |  |
+| The flag wins over the environment | 6.3 | covered |  |
+| The default directory | 6.3 | covered |  |
+| The directory under the home directory | 6.3 | covered |  |
+| An empty MU_CONFIG | 6.3 | covered |  |
+| A relative XDG_CONFIG_HOME | 6.3 | covered |  |
+| No home directory | 6.3 | covered |  |
+| A missing directory | 6.3 | covered |  |
+| The client warns of a missing directory | 6.2 | covered |  |
+| A missing default directory | 6.3 | covered |  |
+| The client takes the flag | 6.2 | covered |  |
+| Worlds from character files | 6.3 | covered |  |
+| A character with no game | 6.3 | covered |  |
+| A file name outside the id rule | 6.3 | covered |  |
+| A stray file | 6.3 | covered |  |
+| A link to nothing | 6.3 | covered |  |
+| The file of the server | 6.3 | covered |  |
+| A character named server | 6.3 | covered |  |
+| The file of the client | 6.3 | covered |  |
+
+### Not run
+
+Plan phase: no verification runs.
