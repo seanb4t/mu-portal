@@ -51,7 +51,7 @@ Test files: `crates/mu-tui/tests/app.rs` holds the tests of `update` and `view` 
 - [ ] 7.4 Add the table `[server]` with `connect_wait_seconds` to `ClientConfig`, and replace `START_LIMIT` in `mu-cli` with it (D2, D8). Print the time in force in each message about a server that did not answer. Describe the field in `guides/client.md`. Make sure that `a_wait_of_zero` and `a_server_that_does_not_answer` in `client.rs` pass, that `the_first_list_gives_up` sets the wait to 0.2, and that a unit test refuses 0, -1, `nan` and `inf`.
 - [ ] 7.5 Start a server only if nothing listens on the socket (D8). Make sure that `a_server_that_closes_the_connection` in `client.rs` passes, and that `client_starts_a_server`, `two_clients_start_one_server` and `client_gives_up_after_five_seconds` still pass.
 - [ ] 7.6 Pass `--config` to a started server only if the user named a directory (D8). Make sure that `the_started_server_finds_the_default_directory` and `the_client_takes_the_flag` in `client.rs` pass.
-- [ ] 7.7 Move the walk into `History` (D5), and make `Walk` private to the crate. Make sure that every test of the history in `app.rs` still passes, and that a unit test in `tests/history.rs` shows that a push during a walk ends it.
+- [x] 7.7 Move the walk into `History` (D5), and make `Walk` private to the crate. Make sure that every test of the history in `app.rs` still passes, and that a unit test in `tests/history.rs` shows that a push during a walk ends it.
 
 ## 8. Review and integration
 

@@ -18,7 +18,6 @@ use termina::event::{
 use crate::command::{self, Parse};
 use crate::config::Echo;
 use crate::convert::convert;
-use crate::history::Walk;
 use crate::keymap::Wheel;
 use crate::model::{Late, Listing, Model, PaneId, QuitArm};
 use crate::pane::{Caps, PaneState};
@@ -608,19 +607,13 @@ fn history_prev(model: &mut Model) {
         return;
     };
     let draft = model.input();
-    let world = &mut model.worlds[index];
-    let place = match &world.walk {
-        Some(walk) => walk.place.checked_sub(1),
-        None => world.history.len().checked_sub(1),
-    };
-    let Some(place) = place else {
+    let Some(text) = model.worlds[index]
+        .history
+        .prev(|| draft)
+        .map(str::to_owned)
+    else {
         return;
     };
-    let text = world.history.get(place).unwrap_or_default().to_owned();
-    match &mut world.walk {
-        Some(walk) => walk.place = place,
-        None => world.walk = Some(Walk { place, draft }),
-    }
     model.pose().set_text_at_start(&text);
 }
 
@@ -635,18 +628,8 @@ fn history_next(model: &mut Model) {
     let Some(index) = model.focus else {
         return;
     };
-    let world = &mut model.worlds[index];
-    let Some(walk) = &mut world.walk else {
+    let Some(text) = model.worlds[index].history.next() else {
         return;
-    };
-    let text = if walk.place + 1 < world.history.len() {
-        walk.place += 1;
-        world.history.get(walk.place).unwrap_or_default().to_owned()
-    } else {
-        world
-            .walk
-            .take()
-            .map_or_else(String::new, |walk| walk.draft)
     };
     model.pose().set_text(&text);
 }
@@ -657,11 +640,11 @@ fn record(model: &mut Model, text: &str) {
     let Some(index) = model.focus else {
         return;
     };
-    let world = &mut model.worlds[index];
-    if let Some(walk) = world.walk.take() {
-        world.history.push(&walk.draft);
+    let history = &mut model.worlds[index].history;
+    if let Some(draft) = history.end_walk() {
+        history.push(&draft);
     }
-    world.history.push(text);
+    history.push(text);
 }
 
 /// Runs `change` on the state of the pane in focus.
@@ -947,8 +930,8 @@ fn put_back(model: &mut Model, world: &str, texts: Vec<String>) -> usize {
     let Some(first) = texts.next() else {
         return 0;
     };
-    let held = match model.worlds[index].walk.take() {
-        Some(walk) => walk.draft,
+    let held = match model.worlds[index].history.end_walk() {
+        Some(draft) => draft,
         None => model.pose_of(world).text(),
     };
     model.pose_of(world).set_text_at_start(&first);

@@ -10,7 +10,7 @@ use ratatui::style::Style;
 
 use crate::config::{Echo, Settings};
 use crate::editor::{EditorId, EditorState};
-use crate::history::{History, Walk};
+use crate::history::History;
 use crate::keymap::Keymap;
 use crate::layout::Node;
 use crate::pane::{Caps, PaneState};
@@ -38,10 +38,8 @@ pub(crate) struct World {
     pub(crate) line_break: Option<String>,
     /// True once a list of the worlds held this world, so `line_break` is known.
     pub(crate) listed: bool,
-    /// The texts that the player sent to this world.
+    /// The texts that the player sent to this world, and the walk of Up and Down through them.
     pub(crate) history: History,
-    /// The walk of Up and Down through `history`, if one is open.
-    pub(crate) walk: Option<Walk>,
 }
 
 /// The order of the worlds: by the game part, then by the character part.
@@ -309,9 +307,9 @@ impl Model {
     pub fn walk(&self, world: &str) -> Option<(usize, usize)> {
         let world = self.worlds.iter().find(|each| each.id == world)?;
         world
-            .walk
-            .as_ref()
-            .map(|walk| (walk.place, world.history.len()))
+            .history
+            .walk_place()
+            .map(|place| (place, world.history.len()))
     }
 
     /// Gives the focus to the world at `index` and clears its unseen mark. If no world had the
@@ -381,7 +379,6 @@ impl Model {
                         line_break: None,
                         listed: false,
                         history: History::default(),
-                        walk: None,
                     },
                 );
                 self.pose_editors.insert(

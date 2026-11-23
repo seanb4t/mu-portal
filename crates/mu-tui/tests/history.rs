@@ -18,3 +18,24 @@ fn history_drops_the_oldest_past_1000() {
     let past = pushed(HISTORY_LIMIT + 1);
     assert_eq!((past.len(), past.get(0)), (1000, Some("1")));
 }
+
+#[test]
+fn a_push_during_a_walk_ends_it() {
+    let mut history = pushed(2);
+    assert_eq!(history.prev(|| "draft".to_owned()), Some("1"));
+    assert_eq!(history.walk_place(), Some(1));
+    history.push("2");
+    assert_eq!(history.walk_place(), None);
+    assert_eq!(history.next(), None);
+}
+
+#[test]
+fn a_walk_at_the_limit_keeps_its_entry() {
+    let mut history = pushed(HISTORY_LIMIT);
+    assert_eq!(history.prev(String::new), Some("999"));
+    assert_eq!(history.prev(String::new), Some("998"));
+    // A push at the limit drops the oldest entry, so it ends the walk instead of moving it.
+    history.push("new");
+    assert_eq!(history.prev(|| "draft".to_owned()), Some("new"));
+    assert_eq!(history.next().as_deref(), Some("draft"));
+}
