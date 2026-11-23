@@ -1,9 +1,9 @@
 ---
-verdict: approve-with-notes
+verdict: approve
 phase: implementation
-reviewed_at: 2026-11-23T14:55:45+00:00
-head: be93e0fa97b328b69bbce3b5c7dc4aa6e962a716
-round: 22
+reviewed_at: 2026-11-23T15:11:50+00:00
+head: 5a8347668d1da55af425a113d205d7b16f305024
+round: 23
 next_id: 186
 lenses:
   spec-lint: not-applicable
@@ -12,30 +12,14 @@ lenses:
   test-coverage: partial
   test-honesty: ok
   invariants: ok
-  verify: not-applicable
+  verify: ok
 ---
 # Review
-
-## Incomplete lenses
-
-- test-coverage: partial, gaps: 2
-  - Assertions read in full only for the command, quit and key-binding tests; the rest are graded by test name plus task text, not by reading each THEN assertion.
-  - Tests were not run, by rule.
-
-The verdict covers only what the lenses checked. While the `ctl-lens` row of an incomplete lens is open, the verdict cannot be `approve`.
 
 ## Findings
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-178 | fit | should-fix | in-change | PortalClient::config_dir repeats the body of PortalClient::list_worlds: the same ListWorlds request and call, keeping the other half of one response. Two methods of one RPC can change apart, and mu client makes the call twice after a start. | crates/mu-client/src/lib.rs:95 — "pub async fn list_worlds(&self) -> Result<Vec<proto::World>, ClientError> {" | Give mu-client one method that makes the ListWorlds call and returns the whole reply (worlds and config_dir); make list_worlds and config_dir project it, or drop config_dir and read config_dir from that reply in mu-cli. |  |  | drift |
-| R-179 | fit | should-fix | in-change | The word for an argument kind is written in three places: help and arity each match ArgKind to 'world', and ClientConfig::keymap writes 'needs a world' for any required argument without reading its kind. | crates/mu-tui/src/update.rs:533 — "ArgKind::World => format!("{shown} needs a world")," | Add one ArgKind method in registry.rs that gives the noun of a kind, and build the help text, the arity hint and the keymap refusal from it. |  |  | drift |
-| R-180 | fit | should-fix | in-change | The change adds five linear scans that find a world by its id (Model::history, Model::walk, the Focus arm, on_reply, put_back), beside the sorted binary search of Model::world. No one lookup without insert exists, so each copy keeps its own match rule. | crates/mu-tui/src/model.rs:296 — ".find(\|each\| each.id == world)" | Add Model::index_of(id) -> Option<usize> over the binary search that Model::world uses, let Model::world call it, and replace the five scans with it. |  |  | drift |
-| R-181 | invariants | should-fix | in-change | put_back pushes the held text first and then each returned text, so with 1000 or more texts behind a refused one the pushes drop the held draft and the last returned line, and the count overstates what Up gives. | crates/mu-tui/src/update.rs:980 — "let mut kept = usize::from(entry.history.push(&held));" | Keep the held text and the count true at the limit: cap the returned texts that go to history at HISTORY_LIMIT - 1 (or count the entries left after the pushes), and add a test that refuses the first of 1001 lines sent with Alt+Enter and asserts the draft and the count. |  |  | wrong-behaviour |
-| R-185 | test-coverage | should-fix | in-change | lens test-coverage reported partial, gaps: 2 | review > lens-status — "test-coverage partial" | rerun the lens or accept the gap in the review |  |  | unmet-requirement |
-| R-182 | test-honesty | should-fix | in-change | history_keeps_its_invariants never checks the 1000-entry cap that task 4.1 says it checks, and 60 steps cannot reach 1000 entries, so a broken cap passes it. | crates/mu-tui/tests/app.rs:2059 — "prop_assert!(history.iter().all(\|entry\| !entry.is_empty()));" | Add a len() <= 1000 assert in the loop, or change task 4.1 to say that history_drops_the_oldest_past_1000 alone covers the cap. |  |  | false-test |
-| R-183 | approach | suggestion | in-change | D8 compares config_dir only on an attach to a server that the client did not start. At head mu client compares after every first list, also after it started a server itself, and design.md records no deviation. | design.md > D8. The screen opens before the first list — "On an attach to a server that it did not start, `mu client` resolves its own directory the same way and compares." | Change the D8 sentence: mu client compares after each first list, also after it started a server, because a concurrent client can start the server that wins the lock. |  | severity? should-fix 0.75 |  |
-| R-184 | approach | suggestion | in-change | D8 says the list before run decides whether to start a server. At head a bare UnixStream connect decides, and the list comes after it; design.md does not name the probe. | design.md > D8. The screen opens before the first list — "The list that `mu-cli` makes before `run` decides whether to start a server." | Record in D8 that a connect to the socket decides whether to start a server, and that the list with the wait follows it. |  | severity? should-fix 0.71 |  |
 
 ## Repeats
 
@@ -80,10 +64,11 @@ None.
 | 20 | implementation | follow-up | 65a9a51fb21f2fdbd08291585c663f1adbb7dfa8 | cc60356d45d236c9b474b7b592f08ffb8cd87a1907e5094fc7f4de1c49e662da | approve-with-notes | 0 | 1 | 0 | 1 | 0 |  |
 | 21 | implementation | follow-up | 518e8a5b0a7075488e2a37d495fba82867aa98ae | 9856775cf557a23f9b7f7a5f272c3ba19e8daf6bcd3b318a3e296909c6130fad | approve-with-notes | 4 | 1 | 0 | 0 | 0 |  |
 | 22 | implementation | full | be93e0fa97b328b69bbce3b5c7dc4aa6e962a716 | da066dd74257ac9dbcd42d84b302b7ed3c023f2c1bf0d36f68ea2a9269daef07 | approve-with-notes | 8 | 0 | 0 | 0 | 0 | new scenarios for the notice about another server directory need coverage rows |
+| 23 | implementation | follow-up | 5a8347668d1da55af425a113d205d7b16f305024 | 6d93ab75f432c154fe50dd6c33ee6c2bfe3ee7499c0dcc46a6ebe787287ab4cf | approve | 0 | 0 | 0 | 7 | 0 |  |
 
 ## Judge
 
-judge: 14 questions, 0.001 USD
+judge: 0 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -337,40 +322,9 @@ None.
 
 ## Lens notes
 
-- approach: Each requirement of the five delta specs has a decision that produces it: D1 and D4 for client-commands, D2, D3 and D7 for client-config, D8 for server-process, D5 to D8 for terminal-client, D2 and D11 for world-config.
-- approach: Decisions D1 to D11 were read against the code at head. The registry, keymap and key names, run_entry and Msg::Run, the command check and quit arm, History and its walk, set_focus and replay_notices, put_back and return_waiting, echo_rows, the first list, config_file::read, warn_missing and the resolver list of top files match their decisions.
-- approach: The fixed row R-174 no longer holds at head: mu client now compares config_dir after it starts a server too. app-1 records that D8 still says otherwise.
-- approach: The facts of the Context section are stated as of e96b221, not head, so they were not judged as stale citations.
-- approach: The Migration Plan has no deployed configuration, so no rollback step is needed.
-- fit: The prompt names no path for repository library-preference rows; only the generic rows of the rulebook were applied.
-- fit: Keymap::bind and Keymap::bind_wheel, and Keymap::find and Keymap::wheel, are two pairs of the same upsert and lookup over two lists; the pairs were there before the change, which only changed their value type, so no finding is raised.
-- fit: The Tab-with-Shift-to-BackTab rule is written in Chord::parse and Chord::of_key; D3 names both sides and shift_tab_matches_back_tab covers them, so no finding is raised.
-- fit: Earlier fit rows (spawn_reply, config_file::read, replay_notices, pose_of, in_history, focus_place!, cells_of, echo_rows) were checked at head and hold.
-- invariants: I1: A history holds at most 1000 entries, none empty, none equal to the one before it \| enforced at crates/mu-tui/src/history.rs:20 History::push \| boundary test crates/mu-tui/tests/history.rs history_drops_the_oldest_past_1000 (1000 and 1001)
-- invariants: I2: The place of an open walk is always the place of an entry \| enforced at history.rs:21, every push clears the walk, and push is the one change of the entries \| boundary test app.rs history_keeps_its_invariants (place < len) and tests/history.rs
-- invariants: I3: After a refusal, Up gives the returned texts in order and then the held text, and the count equals the entries Up gives \| enforced at crates/mu-tui/src/update.rs:965 put_back, but not at the history limit (inv-1) \| boundary test none: returned_texts_come_back_in_order draws 2 to 5 texts
-- invariants: I4: connect_wait_seconds is finite and at least 1 ns \| enforced at crates/mu-cli/src/client.rs:56 connect_wait \| boundary test client.rs a_wait_that_is_no_time_is_refused (0, -1, 1e-10, 0.9e-9, NaN, inf, f64::MAX refused; 1e-9 gives 1 ns)
-- invariants: I5: A key name is modifiers from ctrl, alt, shift, super once each, then one key that is not uppercase, not a control character and not +; shift goes only with a lowercase character or a special key \| enforced at crates/mu-tui/src/keymap.rs:49 Chord::parse \| boundary test tests/keymap.rs bad_key_names_are_refused_with_the_name (f0, f01, f13, empty, +, ctrl+, alt+DEL) and f1_and_f12_are_read, property key_names_read_back
-- invariants: I6: Two names of one key, an unknown entry and an entry with a required argument stop the client \| enforced at crates/mu-tui/src/config.rs:102 ClientConfig::keymap \| boundary test client.rs (mu-cli unit) a_binding_error_starts_with_the_file_and_the_key and the client.rs scenario tests
-- invariants: I7: client.toml has no unknown key at the top or in [server] \| enforced at crates/mu-tui/src/config.rs:26 and :50 deny_unknown_fields \| boundary test an_unknown_key (top level); no test of an unknown key inside [server], but serde enforces it
-- invariants: I8: No message carries an Action, so each front end goes through run_entry \| enforced at crates/mu-tui/src/update.rs:31 Msg (compiler) \| boundary test not applicable
-- invariants: I9: Entry names are unique and kebab case \| enforced at registry.rs ENTRIES (static) \| boundary test tests/keymap.rs entry_names_are_unique_and_kebab
-- invariants: I10: A command is one line that starts with / and not //, and an argument of only spaces is no argument \| enforced at crates/mu-tui/src/command.rs:29 parse \| boundary test update.rs parser tests for /, /connect with a space, / focus, and property trailing_spaces_are_no_argument
-- invariants: I11: FocusIndex outside 1 to the count of worlds does nothing \| enforced at update.rs:593 checked_sub and index < len \| boundary test app.rs no_world_at_that_place (Alt+3 with two worlds)
-- invariants: I12: The focus index follows its world when a world is inserted before it \| enforced at crates/mu-tui/src/model.rs:381 \| boundary test app.rs a_world_added_during_a_walk
-- invariants: I13: set_focus does nothing while the first list is open \| enforced at model.rs:314 \| boundary test app.rs a_focus_key_before_the_first_list
-- invariants: I14: client.toml and server.toml make no world, in any case only as the same file \| enforced at crates/mu-core/src/world/dir.rs is_top_file \| boundary test world_config.rs tests of another case, unreadable and hard link
-- invariants: I15: The client and the server resolve the directory the same way before the compare \| enforced at crates/mu-cli/src/config.rs:15 shown_dir, used by server.rs and client.rs \| boundary test mu-cli unit a_missing_directory_is_named_no_directory (None on each side and both), client.rs a_server_with_the_same_directory (symlink)
-- invariants: I16: A client that started a server still compares config_dir (R-174) \| enforced at crates/mu-cli/src/client.rs:129, after start_and_wait \| boundary test client.rs two_clients_with_other_directories_start_at_once. R-174 holds at head, so it is not raised again.
-- invariants: I17: The echo rows joined with the line break give the cleaned text \| enforced at crates/mu-tui/src/text.rs:85 echo_rows, and model.rs:346 drops an empty line break or one with a control character \| property test echo_rows_join_back
-- invariants: Probe: a Python model of History::push and put_back at head, inv-probe/put_back.py under the handoff directory, gives for 999 texts behind kept=1000 with the draft kept, for 1000 behind kept=1001 with 1000 entries and the draft gone, and for 1001 behind kept=1002 with the draft and the last line gone.
-- invariants: tasks.md 4.1 says that history_keeps_its_invariants checks at most 1000 entries, but its loop asserts no length and runs at most 60 steps. The bound itself is tested at 1000 and 1001 in tests/history.rs.
-- invariants: The enforcement points are Rust code, not scripts, so no other probe ran. No repository test ran.
-- test-coverage: Every delta scenario heading maps to a named test; no missing or partial rows found among those read.
-- test-honesty: a_file_that_cannot_be_read (client.rs) and unreadable_server_file_in_another_case_names_the_error (world_config.rs) return early with a pass when the user can read a mode 0o000 file, such as root. The tasks name this skip, so it is not raised as disabled; a CI container that runs as root skips both silently.
-- test-honesty: The quit-cancel tests (client.rs 900-948) were checked: each ends with a wait on a hint that a client that quit would not show, and the hint of the first quit sits in another pane or is replaced, so they can fail.
-- test-honesty gap: crates/mu-tui/tests/editor.rs, tests/history.rs, tests/support/process.rs and the remaining tests of app.rs before line 1504 were not read in full.
-- test-honesty gap: Tests of mu-core dir.rs and mu-server were not read.
+- verify: R-178: list_worlds and config_dir now share the private helper list(). After a start, mu client still makes ListWorlds twice: the answers() loop polls with list_worlds, then config_dir runs once more. Both go through one helper, so the two calls cannot drift.
+- verify: R-181: put_back takes at most HISTORY_LIMIT - 1 of the other returned texts, so with more than 1000 texts behind a refused one, the texts after the first 999 are dropped. The refusal line does not say this. D6 states it on purpose, and the history cap dropped texts before the fix as well, so the fix made nothing worse.
+- verify: R-180: find() compares the id itself after the binary search, because order() gives a and a/ the same key. Model::world, whose binary search the fix moved into search(), still returns the index of a for the id a/. This was the same before the fix.
 
 ## Ledger
 
@@ -553,13 +507,13 @@ None.
 | R-175 | 21 | 21 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The server names its directory"] | fixed | 518e8a5b0a7075488e2a37d495fba82867aa98ae | 21 |  |  | delta scenario 'The server names its directory' has no matrix row |
 | R-176 | 21 | 21 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A server with another directory"] | fixed | 518e8a5b0a7075488e2a37d495fba82867aa98ae | 21 |  |  | delta scenario 'A server with another directory' has no matrix row |
 | R-177 | 21 | 21 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A server with the same directory"] | fixed | 518e8a5b0a7075488e2a37d495fba82867aa98ae | 21 |  |  | delta scenario 'A server with the same directory' has no matrix row |
-| R-178 | 22 | 22 | should-fix | in-change | drift | ["path","crates/mu-client/src/lib.rs",95] | fixed | d3b092f5c8cac62289fec11937863afbcafc2407 | 22 |  |  | PortalClient::config_dir repeats the body of PortalClient::list_worlds: the same ListWorlds request and call, keeping the other half of one response. Two methods of one RPC can change apart, and mu client makes the call twice after a start. |
-| R-179 | 22 | 22 | should-fix | in-change | drift | ["path","crates/mu-tui/src/update.rs",533] | fixed | c1f7d643e5da4f43b9c41349142dbbbf1d57e118 | 22 |  |  | The word for an argument kind is written in three places: help and arity each match ArgKind to 'world', and ClientConfig::keymap writes 'needs a world' for any required argument without reading its kind. |
-| R-180 | 22 | 22 | should-fix | in-change | drift | ["path","crates/mu-tui/src/model.rs",296] | fixed | 25f105707947c1f397f86700d57a70abb61c7520 | 22 |  |  | The change adds five linear scans that find a world by its id (Model::history, Model::walk, the Focus arm, on_reply, put_back), beside the sorted binary search of Model::world. No one lookup without insert exists, so each copy keeps its own match rule. |
-| R-181 | 22 | 22 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-tui/src/update.rs",980] | fixed | 2e9b00459767e43c0aabdf1f696865f43e3123bd | 22 |  |  | put_back pushes the held text first and then each returned text, so with 1000 or more texts behind a refused one the pushes drop the held draft and the last returned line, and the count overstates what Up gives. |
-| R-182 | 22 | 22 | should-fix | in-change | false-test | ["path","crates/mu-tui/tests/app.rs",2059] | fixed | 41a65b436b4a8ec538f06ea7f0b8f982bbd813a9 | 22 |  |  | history_keeps_its_invariants never checks the 1000-entry cap that task 4.1 says it checks, and 60 steps cannot reach 1000 entries, so a broken cap passes it. |
-| R-183 | 22 | 22 | suggestion | in-change |  | ["artifact",["design.md","D8. The screen opens before the first list"],"On an attach to a server that it did not start, `mu client` resolves its own directory the same way and compares."] | fixed | 41a65b436b4a8ec538f06ea7f0b8f982bbd813a9 | 22 |  | severity? should-fix 0.75 | D8 compares config_dir only on an attach to a server that the client did not start. At head mu client compares after every first list, also after it started a server itself, and design.md records no deviation. |
-| R-184 | 22 | 22 | suggestion | in-change |  | ["artifact",["design.md","D8. The screen opens before the first list"],"The list that `mu-cli` makes before `run` decides whether to start a server."] | fixed | 41a65b436b4a8ec538f06ea7f0b8f982bbd813a9 | 22 |  | severity? should-fix 0.71 | D8 says the list before run decides whether to start a server. At head a bare UnixStream connect decides, and the list comes after it; design.md does not name the probe. |
+| R-178 | 22 | 23 | should-fix | in-change | drift | ["path","crates/mu-client/src/lib.rs",95] | resolved | resolved in round 23 from fixed d3b092f5c8cac62289fec11937863afbcafc2407 | 22 |  |  | PortalClient::config_dir repeats the body of PortalClient::list_worlds: the same ListWorlds request and call, keeping the other half of one response. Two methods of one RPC can change apart, and mu client makes the call twice after a start. |
+| R-179 | 22 | 23 | should-fix | in-change | drift | ["path","crates/mu-tui/src/update.rs",533] | resolved | resolved in round 23 from fixed c1f7d643e5da4f43b9c41349142dbbbf1d57e118 | 22 |  |  | The word for an argument kind is written in three places: help and arity each match ArgKind to 'world', and ClientConfig::keymap writes 'needs a world' for any required argument without reading its kind. |
+| R-180 | 22 | 23 | should-fix | in-change | drift | ["path","crates/mu-tui/src/model.rs",296] | resolved | resolved in round 23 from fixed 25f105707947c1f397f86700d57a70abb61c7520 | 22 |  |  | The change adds five linear scans that find a world by its id (Model::history, Model::walk, the Focus arm, on_reply, put_back), beside the sorted binary search of Model::world. No one lookup without insert exists, so each copy keeps its own match rule. |
+| R-181 | 22 | 23 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-tui/src/update.rs",980] | resolved | resolved in round 23 from fixed 2e9b00459767e43c0aabdf1f696865f43e3123bd | 22 |  |  | put_back pushes the held text first and then each returned text, so with 1000 or more texts behind a refused one the pushes drop the held draft and the last returned line, and the count overstates what Up gives. |
+| R-182 | 22 | 23 | should-fix | in-change | false-test | ["path","crates/mu-tui/tests/app.rs",2059] | resolved | resolved in round 23 from fixed 41a65b436b4a8ec538f06ea7f0b8f982bbd813a9 | 22 |  |  | history_keeps_its_invariants never checks the 1000-entry cap that task 4.1 says it checks, and 60 steps cannot reach 1000 entries, so a broken cap passes it. |
+| R-183 | 22 | 23 | suggestion | in-change |  | ["artifact",["design.md","D8. The screen opens before the first list"],"On an attach to a server that it did not start, `mu client` resolves its own directory the same way and compares."] | resolved | resolved in round 23 from fixed 41a65b436b4a8ec538f06ea7f0b8f982bbd813a9 | 22 |  | severity? should-fix 0.75 | D8 compares config_dir only on an attach to a server that the client did not start. At head mu client compares after every first list, also after it started a server itself, and design.md records no deviation. |
+| R-184 | 22 | 23 | suggestion | in-change |  | ["artifact",["design.md","D8. The screen opens before the first list"],"The list that `mu-cli` makes before `run` decides whether to start a server."] | resolved | resolved in round 23 from fixed 41a65b436b4a8ec538f06ea7f0b8f982bbd813a9 | 22 |  | severity? should-fix 0.71 | D8 says the list before run decides whether to start a server. At head a bare UnixStream connect decides, and the list comes after it; design.md does not name the probe. |
 | R-185 | 22 | 22 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-coverage partial"] | accepted | ticket: none; reason: The test-coverage lens runs again in round 23, and all 117 covering tests of its round 22 matrix ran and passed. |  |  |  | lens test-coverage reported partial, gaps: 2 |
 
 ## Reviewed files
@@ -580,7 +534,7 @@ None.
 | crates/mu-cli/tests/support/process.rs | 9506e59932cb92fd0c929999d2508a30bdb151af |
 | crates/mu-cli/tests/workspace_boundary.rs | 72318b1b01439268d6978870625c59517efc3a81 |
 | crates/mu-cli/tests/world_config.rs | 0365226492201277a55be1507b43c95c808bfd02 |
-| crates/mu-client/src/lib.rs | 97bbce2fcc6177888e8cc7959ee33666fd764cb2 |
+| crates/mu-client/src/lib.rs | b8daa7c475a19812bbb1b44a828ccc28973dd0c7 |
 | crates/mu-core/src/world/dir.rs | 19f66de7d16879d500e0d0fdc50cb273d0f2e5fc |
 | crates/mu-core/src/world/mod.rs | 770247846d487e5740e4cc56d790e2d151cf0f0b |
 | crates/mu-proto/proto/mu/v1/portal.proto | 5ba3dbf8e79753889893c152c42a6ff5c34ee4d1 |
@@ -588,21 +542,21 @@ None.
 | crates/mu-server/src/service.rs | e18a9d3bdc1b0332201a9a5822339fc31da6f44d |
 | crates/mu-tui/Cargo.toml | 00eb86b87ed3b96c5147c131a54b9a9662759f77 |
 | crates/mu-tui/src/command.rs | 4317699680b210cf929759b1860b141cfc075377 |
-| crates/mu-tui/src/config.rs | 2823f3961513f132528a5c55aa74f5b0c2902de4 |
+| crates/mu-tui/src/config.rs | 27feb02c472935b876b9586e531137e408e30f28 |
 | crates/mu-tui/src/editor.rs | d162d6a62fb062a9a1a652dd0cb32e29492fe29f |
 | crates/mu-tui/src/history.rs | a57c6a02208023eabb5e413dbda1fd6c49a8192c |
 | crates/mu-tui/src/keymap.rs | 290b2f2365ffe7405a397902e3fa67e7b6219475 |
 | crates/mu-tui/src/lib.rs | c77c9da92104480ee3221e056921ac4fb167330f |
-| crates/mu-tui/src/model.rs | 68992b685aa45bbd4a0aa11c4547f7b345867f3d |
+| crates/mu-tui/src/model.rs | 6e9d2b0ceff8873d2ac9724c6f568b2872b10b47 |
 | crates/mu-tui/src/pane.rs | 7a6eb6c699ad9d7ede4ef79abeaa0d01c282e3d2 |
 | crates/mu-tui/src/probe.rs | a2174ee68afdc0b6e6b5c52807e7a12e2924ae9a |
-| crates/mu-tui/src/registry.rs | d2260e1a8867da5494d2bc853c30fbd0ea430ceb |
+| crates/mu-tui/src/registry.rs | a0e4afe4c9997c744db859d1184187856e3a8abc |
 | crates/mu-tui/src/run.rs | 5851ff9587cad0adc2e65fc8cceb87ab737b8c00 |
 | crates/mu-tui/src/text.rs | d17176e2d881884e87e8c2eecaacfc05c1832e24 |
-| crates/mu-tui/src/update.rs | f16e18a2d2230245242489a93490df1d26fd33bf |
+| crates/mu-tui/src/update.rs | 7dc39c7efb713c472449b406396557afaffc0fa3 |
 | crates/mu-tui/src/view.rs | c0d1cf99d3cf5797733d8807c6d3ff56219b530b |
 | crates/mu-tui/tests/app.proptest-regressions | 943492e6fe7b9a499e12b97ecaf2b78caaa52f6b |
-| crates/mu-tui/tests/app.rs | b380ee442da21cd39a866d3a6a268e3347de6dc5 |
+| crates/mu-tui/tests/app.rs | 66401041325931615b9fdcba3c9afed65ad121b4 |
 | crates/mu-tui/tests/editor.rs | 40eb0bb21d471d734ea4fb747754d649fd44a284 |
 | crates/mu-tui/tests/history.rs | 6d4b3e4e70b58bf180445121b507c87bd69784f3 |
 | crates/mu-tui/tests/keymap.rs | 0592e99c3fb3af6c25b3a863cf3988be34e6bd3f |
@@ -614,14 +568,14 @@ None.
 | docs/src/content/docs/guides/configuration.md | 31ab6d6de0839a80dd6ca6231868a19e9e976d7a |
 | docs/src/content/docs/guides/first-run.md | 14fb49ebf76010d2faf14345b20d2a1c711af4b7 |
 | openspec/changes/client-shell/.openspec.yaml | b6809d6be7a6faad01a1bd5da9bea068ac829d8f |
-| openspec/changes/client-shell/design.md | 3b3bade2962ecffad16ef3faa75eb74d3e7c765f |
+| openspec/changes/client-shell/design.md | dd89a0eb8ce29e177944fd16aadef05f4d3d6eb7 |
 | openspec/changes/client-shell/proposal.md | 8af63d31dc6cf1916c5a3c23825548c35b170618 |
 | openspec/changes/client-shell/specs/client-commands/spec.md | e0930b8d51ba76cf8bd3326d22807f042e1b849b |
 | openspec/changes/client-shell/specs/client-config/spec.md | 7914965008639b9e2ed35fac6f4f85e857badd5d |
 | openspec/changes/client-shell/specs/server-process/spec.md | 2b2e2bc879bc948702ba016c8bf786d4b7a1d70f |
 | openspec/changes/client-shell/specs/terminal-client/spec.md | 097fce94a330389b7caf6525769286ba67da51a6 |
 | openspec/changes/client-shell/specs/world-config/spec.md | 515b84297760374f211078b26da0c4ce297e435c |
-| openspec/changes/client-shell/tasks.md | sha256:6b7aa8b6d0e898f8f3e852f39b7523f06c833be2d7c7efcd968fecbfee9a9b58 |
+| openspec/changes/client-shell/tasks.md | sha256:1f593fb100cad6df0667fb86d7d9c8ee04435a30737c11c405aa2cefe75dca7d |
 | openspec/review.json | absent |
 
 ## Plan review (2026-11-23)
