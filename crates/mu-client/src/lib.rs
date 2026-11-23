@@ -93,11 +93,7 @@ impl PortalClient {
     ///
     /// A [`ClientError`] if the call fails.
     pub async fn list_worlds(&self) -> Result<Vec<proto::World>, ClientError> {
-        let reply = self
-            .inner
-            .list_worlds(proto::ListWorldsRequest::default())
-            .await?;
-        Ok(reply.into_owned().worlds)
+        Ok(self.list().await?.worlds)
     }
 
     /// The configuration directory that the server read its worlds from, or `None` for a
@@ -107,11 +103,16 @@ impl PortalClient {
     ///
     /// A [`ClientError`] if the call fails.
     pub async fn config_dir(&self) -> Result<Option<String>, ClientError> {
+        Ok(self.list().await?.config_dir)
+    }
+
+    /// The reply of one `ListWorlds` call.
+    async fn list(&self) -> Result<proto::ListWorldsResponse, ClientError> {
         let reply = self
             .inner
             .list_worlds(proto::ListWorldsRequest::default())
             .await?;
-        Ok(reply.into_owned().config_dir)
+        Ok(reply.into_owned())
     }
 
     /// Sends one line to `world`. No number means that a hook gagged the line.
