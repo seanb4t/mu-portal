@@ -8,7 +8,9 @@ use std::sync::Arc;
 use mu_proto::World as ProtoWorld;
 use ratatui::style::Style;
 
+use crate::config::{Echo, Settings};
 use crate::editor::{EditorId, EditorState};
+use crate::history::History;
 use crate::keymap::Keymap;
 use crate::layout::Node;
 use crate::pane::{Caps, PaneState};
@@ -36,11 +38,23 @@ pub(crate) struct World {
     pub(crate) line_break: Option<String>,
     /// True once a list of the worlds held this world, so `line_break` is known.
     pub(crate) listed: bool,
+    /// The texts that the player sent to this world, and the walk of Up and Down through them.
+    pub(crate) history: History,
 }
 
 /// The order of the worlds: by the game part, then by the character part.
 fn order(id: &str) -> (&str, &str) {
     id.split_once('/').unwrap_or((id, ""))
+}
+
+/// What set the arm of a quit, which decides what cancels it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum QuitArm {
+    /// A key. The next key or action that is not a quit cancels it.
+    Key,
+    /// The command `/quit`. A `/quit` or a quit key leaves. Any other submitted text or command
+    /// cancels it, and another key does not.
+    Command,
 }
 
 /// The state of the terminal client.
@@ -53,7 +67,12 @@ pub struct Model {
     /// What the terminal can draw, which every pane shares.
     pub(crate) caps: Arc<Caps>,
     next_pane: u32,
+    /// The editors that are not the pose editor.
     pub(crate) editors: HashMap<EditorId, EditorState>,
+    /// The pose editor of each world, by the id of the world.
+    pub(crate) pose_editors: HashMap<String, EditorState>,
+    /// The pose editor while no world has the focus.
+    pub(crate) loose: EditorState,
     /// The sends of each world that the server did not answer yet, in the order of the keys.
     /// The first one is with the server. The client sends the next one after that reply. So
     /// the lines of a world reach the game in order. A world with no such send has no entry.
@@ -66,10 +85,14 @@ pub struct Model {
     pub(crate) notices: Vec<String>,
     /// True if a late answer gave mode 2027 as set before the probe.
     pub(crate) keeps_grapheme_mode: bool,
-    /// True after a Quit while a send has no reply yet, the send with the server included,
-    /// until the next key that is not Quit. A second Quit then leaves.
-    pub(crate) quit_armed: bool,
+    /// Set by a Quit while a send has no reply yet, the send with the server included. A second
+    /// Quit then leaves.
+    pub(crate) quit_arm: Option<QuitArm>,
     pub(crate) listing: Listing,
+    /// True until the first list of the worlds ends. While it is set, no world gets the focus.
+    pub(crate) first_list: bool,
+    /// How the echo line of a send shows.
+    pub(crate) echo: Echo,
     /// The reason of the last list of the worlds, if it failed.
     pub(crate) list_failure: Option<String>,
 }
@@ -116,7 +139,9 @@ impl Model {
             worlds: Vec::new(),
             focus: None,
             panes: HashMap::from([(PaneId::NOTICES, PaneState::default())]),
-            editors: HashMap::from([(EditorId::POSE, EditorState::with_caps(Arc::clone(&caps)))]),
+            editors: HashMap::new(),
+            pose_editors: HashMap::new(),
+            loose: EditorState::with_caps(Arc::clone(&caps)),
             sends: HashMap::new(),
             caps,
             next_pane: 1,
@@ -126,33 +151,47 @@ impl Model {
             late: Late::None,
             notices: Vec::new(),
             keeps_grapheme_mode: false,
-            quit_armed: false,
+            quit_arm: None,
             listing: Listing::Idle,
             list_failure: None,
+            first_list: false,
+            echo: Echo::default(),
         };
         for id in worlds {
             model.world(&id);
         }
-        model.focus = (!model.worlds.is_empty()).then_some(0);
+        if !model.worlds.is_empty() {
+            model.set_focus(0);
+        }
         model
     }
 
-    /// A model with the worlds of a list of worlds. A failed list gives no worlds and a notice
-    /// with its error. The events of each world add the world later.
+    /// A model with no world, and the keymap and the echo of `settings`, that waits for its
+    /// first list of the worlds. The caller asks for that list. Until the first list ends, the top
+    /// row shows `listing worlds` and no world gets the focus.
     #[must_use]
-    pub fn from_listing(listed: Result<Vec<ProtoWorld>, String>) -> Self {
-        match listed {
-            Ok(worlds) => {
-                let mut model = Self::new(worlds.iter().map(|world| world.id.clone()));
-                model.learn(worlds);
-                model
-            }
-            Err(error) => {
-                let mut model = Self::new([]);
-                model.notice(&format!("could not list the worlds: {error}"));
-                model
-            }
+    pub fn starting(settings: Settings) -> Self {
+        let mut model = Self::new([])
+            .with_keymap(settings.keymap)
+            .with_echo(settings.echo);
+        model.listing = Listing::Asked;
+        model.first_list = true;
+        model
+    }
+
+    /// Ends the first list of the worlds: the first world, if there is one, gets the focus.
+    pub(crate) fn end_first_list(&mut self) {
+        self.first_list = false;
+        if !self.worlds.is_empty() {
+            self.set_focus(0);
         }
+    }
+
+    /// The model with `echo` as the style of the echo line of a send.
+    #[must_use]
+    pub const fn with_echo(mut self, echo: Echo) -> Self {
+        self.echo = echo;
+        self
     }
 
     /// True if a late answer gave mode 2027 as set before the probe, so the client leaves the
@@ -181,6 +220,13 @@ impl Model {
         self.late = Late::Csi(bytes);
     }
 
+    /// This model with `keymap` in place of its keymap.
+    #[must_use]
+    pub fn with_keymap(mut self, keymap: Keymap) -> Self {
+        self.keymap = keymap;
+        self
+    }
+
     /// The world in focus.
     pub(crate) fn focused_world(&self) -> Option<&World> {
         self.focus.and_then(|index| self.worlds.get(index))
@@ -205,18 +251,87 @@ impl Model {
             .map_or_else(String::new, EditorState::text)
     }
 
-    /// The state of the editor `id`.
+    /// The state of the editor `id`. [`EditorId::POSE`] is the pose editor of the world in
+    /// focus, or the loose editor when no world has the focus.
     #[must_use]
     pub fn editor(&self, id: EditorId) -> Option<&EditorState> {
-        self.editors.get(&id)
+        if id != EditorId::POSE {
+            return self.editors.get(&id);
+        }
+        match self.focused_world() {
+            Some(world) => self.pose_editors.get(&world.id),
+            None => Some(&self.loose),
+        }
     }
 
-    /// The pose editor.
+    /// The pose editor of the world in focus, or the loose editor when no world has the focus.
     pub(crate) fn pose(&mut self) -> &mut EditorState {
+        match self.focused().map(str::to_owned) {
+            Some(world) => self.pose_of(&world),
+            None => &mut self.loose,
+        }
+    }
+
+    /// The pose editor of `world`, made if the world has none yet.
+    pub(crate) fn pose_of(&mut self, world: &str) -> &mut EditorState {
         let caps = &self.caps;
-        self.editors
-            .entry(EditorId::POSE)
+        self.pose_editors
+            .entry(world.to_owned())
             .or_insert_with(|| EditorState::with_caps(Arc::clone(caps)))
+    }
+
+    /// The text of the pose editor of `world`, or `None` for a world that the model does not
+    /// hold.
+    #[must_use]
+    pub fn input_of(&self, world: &str) -> Option<String> {
+        self.pose_editors.get(world).map(EditorState::text)
+    }
+
+    /// The input history of `world`, the oldest entry first. `None` for a world that the model
+    /// does not hold.
+    #[must_use]
+    pub fn history(&self, world: &str) -> Option<Vec<&str>> {
+        self.find(world)
+            .map(|index| self.worlds[index].history.iter().collect())
+    }
+
+    /// The place of the open walk of `world` in its history, and the length of that history.
+    #[must_use]
+    pub fn walk(&self, world: &str) -> Option<(usize, usize)> {
+        let world = &self.worlds[self.find(world)?];
+        world
+            .history
+            .walk_place()
+            .map(|place| (place, world.history.len()))
+    }
+
+    /// Gives the focus to the world at `index` and clears its unseen mark. If no world had the
+    /// focus, the text of the loose editor moves into the editor of that world, and the kept
+    /// notices go into its pane. Until the first list ends, it does nothing.
+    pub(crate) fn set_focus(&mut self, index: usize) {
+        if self.first_list {
+            return;
+        }
+        let had_focus = self.focus.is_some();
+        self.focus = Some(index);
+        let world = &mut self.worlds[index];
+        world.unseen = false;
+        if !had_focus {
+            let (id, pane) = (world.id.clone(), world.pane);
+            let text = self.loose.text();
+            self.loose.set_text("");
+            if !text.is_empty() {
+                self.pose_of(&id).set_text(&text);
+            }
+            self.replay_notices(pane);
+        }
+    }
+
+    /// Adds the kept notices at the bottom of `pane`.
+    pub(crate) fn replay_notices(&mut self, pane: PaneId) {
+        for line in self.notices.clone() {
+            self.push(pane, &line);
+        }
     }
 
     /// Takes the line break of each world of a list of the worlds. A listed world that the
@@ -233,14 +348,25 @@ impl Model {
         }
     }
 
+    /// The index of `id`, or `None` if the model does not hold that world.
+    pub(crate) fn find(&self, id: &str) -> Option<usize> {
+        // The order key of `a` and `a/` is the same, so the id itself decides.
+        self.search(id)
+            .ok()
+            .filter(|&index| self.worlds[index].id == id)
+    }
+
+    /// The index of `id` in the sorted worlds, or the index where it goes.
+    fn search(&self, id: &str) -> Result<usize, usize> {
+        self.worlds
+            .binary_search_by(|world| order(&world.id).cmp(&order(id)))
+    }
+
     /// The index of `id`, which this adds in its order, with a new pane, if it is new. A new
     /// world takes the focus when no world has it, with the notices in its pane, and the focus
     /// stays on its world.
     pub(crate) fn world(&mut self, id: &str) -> usize {
-        match self
-            .worlds
-            .binary_search_by(|world| order(&world.id).cmp(&order(id)))
-        {
+        match self.search(id) {
             Ok(index) => index,
             Err(index) => {
                 let pane = PaneId(self.next_pane);
@@ -256,16 +382,13 @@ impl Model {
                         style: Style::default(),
                         line_break: None,
                         listed: false,
+                        history: History::default(),
                     },
                 );
+                self.pose_of(id);
                 match self.focus {
                     Some(focus) if focus >= index => self.focus = Some(focus + 1),
-                    None => {
-                        self.focus = Some(index);
-                        for line in self.notices.clone() {
-                            self.push(pane, &line);
-                        }
-                    }
+                    None => self.set_focus(index),
                     Some(_) => {}
                 }
                 index
@@ -279,7 +402,12 @@ impl Model {
         for pane in self.panes.values_mut() {
             pane.set_caps(Arc::clone(&self.caps));
         }
-        for editor in self.editors.values_mut() {
+        for editor in self
+            .editors
+            .values_mut()
+            .chain(self.pose_editors.values_mut())
+            .chain([&mut self.loose])
+        {
             editor.set_caps(Arc::clone(&self.caps));
         }
     }

@@ -21,10 +21,13 @@ model {
         description 'Reads the terminal events, the event stream and the call replies, and performs each effect.'
       }
       keymap = part 'Keymap' {
-        description 'A table from a key with its modifiers to an Action.'
+        description 'A table from a key with its modifiers, or a wheel step, to an entry of the registry.'
+      }
+      registry = part 'Registry' {
+        description 'One table of the entries that the player can run, each with its name, argument and Action.'
       }
       update = part 'update' {
-        description 'Changes the model for a Msg or an Action and returns the effects. It does no I/O.'
+        description 'Changes the model for a Msg and returns the effects. It parses a client command and builds the Action of an entry. It does no I/O.'
       }
       state = part 'Model' {
         description 'The focus, the worlds, the pane states by pane id, the editors by editor id, the lines of a send of each line and the layout tree.'
@@ -37,7 +40,8 @@ model {
       }
 
       loop -> keymap 'a key event'
-      keymap -> update 'an Action'
+      keymap -> update 'a registry entry'
+      update -> registry 'builds the Action of an entry'
       loop -> update 'a Msg'
       update -> state 'changes'
       update -> loop 'effects'

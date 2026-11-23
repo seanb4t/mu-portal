@@ -269,27 +269,51 @@ fn server_file_makes_no_world() {
 }
 
 #[test]
-fn server_file_in_another_case() {
-    let config = Config::base().file("SERVER.toml", "");
+fn the_file_of_the_client() {
+    let config = Config::base().file("client.toml", "echo = \"hide\"\n");
+    has_line(&succeeds(&config.list()), "alpha/aria");
+}
+
+/// `name` with its stem in uppercase makes no world where the file system ignores case, and is
+/// a stray file where it does not.
+fn top_file_in_another_case(name: &str) {
+    let other = name.replace(".toml", "").to_uppercase() + ".toml";
+    let config = Config::base().file(&other, "");
     let output = config.list();
-    // On a file system that ignores case, the server reads this file as `server.toml`.
-    if config.path().join("server.toml").exists() {
+    // On a file system that ignores case, the reader of the file takes this file as `name`.
+    if config.path().join(name).exists() {
         has_line(&succeeds(&output), "alpha/aria");
     } else {
-        fails_naming(&output, &["SERVER.toml"]);
+        fails_naming(&output, &[&other]);
     }
 }
 
 #[test]
-fn unreadable_server_file_makes_no_world() {
+fn server_file_in_another_case() {
+    top_file_in_another_case("server.toml");
+}
+
+#[test]
+fn client_file_in_another_case() {
+    top_file_in_another_case("client.toml");
+}
+
+/// An unreadable `name` makes no world, and the list does not fail.
+fn unreadable_top_file_makes_no_world(name: &str) {
     use std::os::unix::fs::PermissionsExt as _;
-    let config = Config::base().file("server.toml", "");
-    fs::set_permissions(
-        config.path().join("server.toml"),
-        fs::Permissions::from_mode(0o000),
-    )
-    .unwrap();
+    let config = Config::base().file(name, "");
+    fs::set_permissions(config.path().join(name), fs::Permissions::from_mode(0o000)).unwrap();
     has_line(&succeeds(&config.list()), "alpha/aria");
+}
+
+#[test]
+fn unreadable_server_file_makes_no_world() {
+    unreadable_top_file_makes_no_world("server.toml");
+}
+
+#[test]
+fn unreadable_client_file_makes_no_world() {
+    unreadable_top_file_makes_no_world("client.toml");
 }
 
 #[test]
@@ -305,15 +329,21 @@ fn unreadable_server_file_in_another_case_names_the_error() {
     fails_naming(&config.list(), &["SERVER.toml", "Permission denied"]);
 }
 
+/// A hard link of `name` under another name is a stray file.
+fn hard_link_to_a_top_file_is_an_error(name: &str) {
+    let config = Config::base().file(name, "");
+    std::fs::hard_link(config.path().join(name), config.path().join("worlds.toml")).unwrap();
+    fails_naming(&config.list(), &["worlds.toml"]);
+}
+
 #[test]
 fn hard_link_to_the_server_file_is_an_error() {
-    let config = Config::base().file("server.toml", "");
-    std::fs::hard_link(
-        config.path().join("server.toml"),
-        config.path().join("worlds.toml"),
-    )
-    .unwrap();
-    fails_naming(&config.list(), &["worlds.toml"]);
+    hard_link_to_a_top_file_is_an_error("server.toml");
+}
+
+#[test]
+fn hard_link_to_the_client_file_is_an_error() {
+    hard_link_to_a_top_file_is_an_error("client.toml");
 }
 
 #[test]

@@ -21,16 +21,24 @@ pub struct PortalApi {
     portal: Portal,
     instance_id: String,
     stopping: watch::Receiver<bool>,
+    config_dir: Option<String>,
 }
 
 impl PortalApi {
-    /// The API over `portal`. Each stream ends when `stopping` turns true.
+    /// The API over `portal`. Each stream ends when `stopping` turns true. `ListWorlds`
+    /// returns `config_dir` as the configuration directory of the server.
     #[must_use]
-    pub fn new(portal: Portal, instance_id: String, stopping: watch::Receiver<bool>) -> Self {
+    pub fn new(
+        portal: Portal,
+        instance_id: String,
+        stopping: watch::Receiver<bool>,
+        config_dir: Option<String>,
+    ) -> Self {
         Self {
             portal,
             instance_id,
             stopping,
+            config_dir,
         }
     }
 
@@ -211,6 +219,7 @@ impl proto::PortalService for PortalApi {
             .collect();
         ready(Response::ok(proto::ListWorldsResponse {
             worlds,
+            config_dir: self.config_dir.clone(),
             ..Default::default()
         }))
     }

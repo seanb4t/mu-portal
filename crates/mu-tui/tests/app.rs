@@ -4,6 +4,7 @@
 use mu_client::ClientEvent;
 use mu_proto::{Event, EventKind, Source, World};
 use mu_tui::convert::convert;
+use mu_tui::history::HISTORY_LIMIT;
 use mu_tui::{Effect, Model, Msg, Reply, update, view};
 use proptest::prelude::*;
 use ratatui::Terminal;
@@ -19,6 +20,18 @@ mod support;
 
 fn app(worlds: &[&str]) -> Model {
     Model::new(worlds.iter().map(|world| (*world).to_owned()))
+}
+
+/// A model of `run`, before its first list of the worlds ends.
+fn starting() -> Model {
+    Model::starting(mu_tui::Settings::default())
+}
+
+/// A model of `run` after its first list of the worlds ends with `listed`.
+fn after_list(listed: Result<Vec<World>, String>) -> Model {
+    let mut app = starting();
+    assert_eq!(update(&mut app, Msg::Listed(listed)), []);
+    app
 }
 
 /// An 80 by 24 screen.
@@ -110,6 +123,16 @@ fn key(code: KeyCode) -> KeyEvent {
     KeyEvent::new(code, Modifiers::NONE)
 }
 
+/// Presses Up, which runs no effect.
+fn up(app: &mut Model) {
+    assert_eq!(press(app, key(KeyCode::Up)), []);
+}
+
+/// Presses Down, which runs no effect.
+fn down(app: &mut Model) {
+    assert_eq!(press(app, key(KeyCode::Down)), []);
+}
+
 fn ctrl(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c), Modifiers::CONTROL)
 }
@@ -184,14 +207,14 @@ fn listed_worlds_are_the_worlds() {
         id: id.to_owned(),
         ..Default::default()
     });
-    let mut app = Model::from_listing(Ok(worlds.to_vec()));
+    let mut app = after_list(Ok(worlds.to_vec()));
     assert_eq!(top(&mut app), "[alpha/aria] beta/bryn");
 }
 
 const LIST_FAILED: &str = "-- could not list the worlds: unavailable: no server";
 
 fn failed_listing() -> Model {
-    Model::from_listing(Err("unavailable: no server".to_owned()))
+    after_list(Err("unavailable: no server".to_owned()))
 }
 
 #[test]
@@ -281,7 +304,7 @@ fn control_characters_are_replaced_in_every_part() {
 }
 
 #[test]
-fn enter_sends_to_world_in_focus() {
+fn a_line_goes_to_the_world_in_focus() {
     let mut app = two_worlds();
     press(&mut app, ctrl('n'));
     type_text(&mut app, "hi");
@@ -297,7 +320,7 @@ fn enter_sends_to_world_in_focus() {
 }
 
 #[test]
-fn empty_enter_sends_empty_line() {
+fn an_empty_line() {
     let mut app = two_worlds();
     let action = press(&mut app, key(KeyCode::Enter));
     assert_eq!(
@@ -324,7 +347,7 @@ fn enter_with_no_world() {
 }
 
 #[test]
-fn refused_line_keeps_input() {
+fn a_refused_line() {
     let mut app = two_worlds();
     type_text(&mut app, "hi");
     assert_ne!(press(&mut app, key(KeyCode::Enter)), [] as [Effect; 0]);
@@ -345,7 +368,7 @@ fn refused_line_keeps_input() {
 }
 
 #[test]
-fn refused_line_goes_before_the_typed_text() {
+fn a_refused_line_after_more_text() {
     let mut app = two_worlds();
     type_text(&mut app, "hi");
     assert_eq!(
@@ -354,7 +377,9 @@ fn refused_line_goes_before_the_typed_text() {
     );
     type_text(&mut app, "next");
     on_reply(&mut app, refused("alpha/aria", "hi"));
-    assert_eq!(app.input(), "hi\nnext");
+    assert_eq!(app.input(), "hi");
+    up(&mut app);
+    assert_eq!(app.input(), "next");
 }
 
 #[test]
@@ -986,7 +1011,7 @@ fn focus_moves_between_two_lines() {
 }
 
 #[test]
-fn refused_line_stops_the_rest() {
+fn a_line_that_the_server_refuses() {
     let mut app = two_worlds();
     type_lines(&mut app, &["one", "two", "three"]);
     assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
@@ -995,14 +1020,17 @@ fn refused_line_stops_the_rest() {
         [send("alpha/aria", "two")]
     );
     on_reply(&mut app, refused("alpha/aria", "two"));
-    assert_eq!(app.input(), "two\nthree");
+    assert_eq!(app.input(), "two");
     assert_eq!(sent(&mut app, "alpha/aria", "two"), []);
-    assert!(has_notice(&mut app, "not connected"));
-    assert_eq!(screen(&mut app)[22..], ["two", "three"]);
+    assert!(has_notice(&mut app, "not connected (1 in history)"));
+    up(&mut app);
+    assert_eq!(app.input(), "three");
+    up(&mut app);
+    assert_eq!(app.input(), "one\ntwo\nthree");
 }
 
 #[test]
-fn refused_last_line_goes_before_the_typed_text() {
+fn the_last_line_is_refused() {
     let mut app = two_worlds();
     type_lines(&mut app, &["one", "two"]);
     assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "one")]);
@@ -1012,7 +1040,9 @@ fn refused_last_line_goes_before_the_typed_text() {
     );
     type_text(&mut app, "later");
     on_reply(&mut app, refused("alpha/aria", "two"));
-    assert_eq!(app.input(), "two\nlater");
+    assert_eq!(app.input(), "two");
+    up(&mut app);
+    assert_eq!(app.input(), "later");
 }
 
 #[test]
@@ -1097,7 +1127,7 @@ fn send_to_another_world_does_not_wait() {
 }
 
 #[test]
-fn refused_send_stops_the_sends_after_it() {
+fn a_refused_send_of_enter_with_a_send_after_it() {
     let mut app = two_worlds();
     type_text(&mut app, "one");
     assert_eq!(
@@ -1108,13 +1138,36 @@ fn refused_send_stops_the_sends_after_it() {
     assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
     type_text(&mut app, "later");
     on_reply(&mut app, refused("alpha/aria", "one"));
-    assert_eq!(app.input(), "one\ntwo\nlater");
+    assert_eq!(app.input(), "one");
+    assert!(has_notice(&mut app, "not connected (2 in history)"));
+    up(&mut app);
+    assert_eq!(app.input(), "two");
+    up(&mut app);
+    assert_eq!(app.input(), "later");
     // No send of the world waits now, so a new send goes at once.
-    press(&mut app, ctrl('u'));
     assert_eq!(
         press(&mut app, key(KeyCode::Enter)),
-        [send("alpha/aria", "one\ntwo\n")]
+        [send("alpha/aria", "later")]
     );
+}
+
+#[test]
+fn the_sends_stay_apart() {
+    let mut app = two_worlds();
+    type_lines(&mut app, &["a", "b"]);
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [send("alpha/aria", "a\nb")]
+    );
+    type_text(&mut app, "c");
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    on_reply(&mut app, refused("alpha/aria", "a\nb"));
+    assert_eq!(app.input(), "a\nb");
+    // The returned `c` equals the newest entry, so the history keeps no new entry.
+    assert!(has_notice(&mut app, "not connected"));
+    assert!(!has_notice(&mut app, "in history"));
+    up(&mut app);
+    assert_eq!(app.input(), "c");
 }
 
 #[test]
@@ -1141,7 +1194,7 @@ fn line_break_that_the_editor_cannot_hold_is_no_line_break() {
             line_break: Some(line_break.to_owned()),
             ..Default::default()
         };
-        let mut app = Model::from_listing(Ok(vec![world]));
+        let mut app = after_list(Ok(vec![world]));
         type_lines(&mut app, &["one", "two"]);
         press(&mut app, alt_r());
         assert_eq!(app.input(), "one\ntwo", "{line_break:?}");
@@ -1156,7 +1209,7 @@ fn listed() -> Model {
         line_break: line_break.map(str::to_owned),
         ..Default::default()
     };
-    Model::from_listing(Ok(vec![
+    after_list(Ok(vec![
         world("alpha/aria", Some("%r")),
         world("beta/bryn", None),
     ]))
@@ -1212,18 +1265,23 @@ fn top_row_counts_the_sends_that_wait() {
 }
 
 #[test]
-fn lost_server_puts_the_waiting_lines_back() {
+fn the_stream_ends_while_lines_wait() {
     let mut app = three_lines_sent();
     type_text(&mut app, "later");
     on_event(&mut app, ClientEvent::Lost);
-    assert_eq!(app.input(), "two\nthree\nlater");
+    assert_eq!(app.input(), "two");
     assert!(has_notice(&mut app, "2 lines that waited went back"));
+    assert!(screen(&mut app).join(" ").contains("(2 in history)"));
+    up(&mut app);
+    assert_eq!(app.input(), "three");
+    up(&mut app);
+    assert_eq!(app.input(), "later");
     // The send with the server stays: its reply sends nothing more.
     assert_eq!(sent(&mut app, "alpha/aria", "one"), []);
 }
 
 #[test]
-fn reset_puts_the_waiting_lines_back() {
+fn the_server_resets_while_lines_wait() {
     let mut app = three_lines_sent();
     on_event(
         &mut app,
@@ -1231,16 +1289,22 @@ fn reset_puts_the_waiting_lines_back() {
             instance_id: "i".to_owned(),
         },
     );
-    assert_eq!(app.input(), "two\nthree");
+    assert_eq!(app.input(), "two");
     assert!(has_notice(&mut app, "the server started again"));
+    up(&mut app);
+    assert_eq!(app.input(), "three");
 }
 
 #[test]
-fn refusal_after_a_loss_puts_back_only_its_line() {
+fn a_refusal_after_the_stream_ended() {
     let mut app = three_lines_sent();
     on_event(&mut app, ClientEvent::Lost);
     on_reply(&mut app, refused("alpha/aria", "one"));
-    assert_eq!(app.input(), "one\ntwo\nthree");
+    assert_eq!(app.input(), "one");
+    up(&mut app);
+    assert_eq!(app.input(), "two");
+    up(&mut app);
+    assert_eq!(app.input(), "three");
 }
 
 #[test]
@@ -1363,7 +1427,7 @@ fn quit_with_only_the_line_with_the_server_asks_again() {
 }
 
 #[test]
-fn lost_server_puts_back_the_lines_in_the_order_of_the_worlds() {
+fn lines_of_two_worlds_wait() {
     // Each model has its own map of sends, so the 32 runs very likely see both orders of a hash
     // map.
     for _ in 0..32 {
@@ -1375,8 +1439,12 @@ fn lost_server_puts_back_the_lines_in_the_order_of_the_worlds() {
         type_lines(&mut app, &["a1", "a2"]);
         assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "a1")]);
         on_event(&mut app, ClientEvent::Lost);
-        assert_eq!(app.input(), "a2\nb2");
+        assert_eq!(app.input(), "a2");
         assert!(shows(&mut app, "1 line of alpha/aria, 1 line of beta/bryn"));
+        // Each editor was empty, and nothing went into history, so the hint has no count.
+        assert!(!shows(&mut app, "in history"), "{:?}", screen(&mut app));
+        press(&mut app, ctrl('n'));
+        assert_eq!(app.input(), "b2");
     }
 }
 
@@ -1433,4 +1501,887 @@ fn list_adds_a_world_that_the_client_did_not_hold() {
     };
     assert_eq!(update(&mut app, Msg::Listed(Ok(vec![beta]))), []);
     assert!(top(&mut app).contains("beta/bryn"));
+}
+
+// Alt and a digit give the focus by place, and Alt+Home and Alt+End scroll to the ends.
+
+fn alt(code: KeyCode) -> KeyEvent {
+    KeyEvent::new(code, Modifiers::ALT)
+}
+
+#[test]
+fn the_second_world() {
+    let mut app = two_worlds();
+    press(&mut app, alt(KeyCode::Char('2')));
+    assert_eq!(top(&mut app), "alpha/aria [beta/bryn]");
+}
+
+#[test]
+fn no_world_at_that_place() {
+    let mut app = two_worlds();
+    assert_eq!(press(&mut app, alt(KeyCode::Char('3'))), []);
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn*");
+}
+
+#[test]
+fn back_to_the_first_world() {
+    let mut app = two_worlds();
+    press(&mut app, ctrl('n'));
+    press(&mut app, alt(KeyCode::Char('1')));
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn");
+}
+
+#[test]
+fn top_and_bottom() {
+    let mut app = numbered(40);
+    press(&mut app, alt(KeyCode::Home));
+    let first = pane_rows(&mut app)[0].clone();
+    press(&mut app, alt(KeyCode::End));
+    assert_eq!(
+        (first.as_str(), pane_rows(&mut app).last().unwrap().as_str()),
+        ("1", "40")
+    );
+}
+
+// Client commands: a text of one line that starts with `/`.
+
+/// Types `text` and presses Enter.
+fn enter(app: &mut Model, text: &str) -> Vec<Effect> {
+    type_text(app, text);
+    press(app, key(KeyCode::Enter))
+}
+
+#[test]
+fn a_command_does_not_reach_the_game() {
+    let mut app = two_worlds();
+    assert_eq!(enter(&mut app, "/focus-next"), []);
+    assert_eq!(app.input(), "");
+}
+
+#[test]
+fn several_lines_are_not_a_command() {
+    let mut app = two_worlds();
+    type_lines(&mut app, &["/quit", "two"]);
+    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "/quit")]);
+    assert_eq!(
+        sent(&mut app, "alpha/aria", "/quit"),
+        [send("alpha/aria", "two")]
+    );
+}
+
+#[test]
+fn an_escaped_slash() {
+    let mut app = two_worlds();
+    assert_eq!(
+        enter(&mut app, "//me waves"),
+        [send("alpha/aria", "/me waves")]
+    );
+}
+
+/// The editor text and whether a notice holds `text`, after `command` and Enter.
+fn bad_command(app: &mut Model, command: &str, text: &str) -> (String, bool) {
+    let effects = enter(app, command);
+    assert_eq!(effects, []);
+    (app.input(), has_notice(app, text))
+}
+
+#[test]
+fn an_unknown_command() {
+    let mut app = two_worlds();
+    assert_eq!(
+        bad_command(&mut app, "/fly", "unknown command"),
+        ("/fly".to_owned(), true)
+    );
+}
+
+#[test]
+fn a_missing_world() {
+    let mut app = two_worlds();
+    assert_eq!(
+        bad_command(&mut app, "/focus", "needs a world"),
+        ("/focus".to_owned(), true)
+    );
+}
+
+#[test]
+fn an_unknown_world() {
+    let mut app = two_worlds();
+    assert_eq!(
+        bad_command(&mut app, "/focus gamma/gil", "gamma/gil"),
+        ("/focus gamma/gil".to_owned(), true)
+    );
+}
+
+#[test]
+fn an_argument_to_an_entry_that_takes_none() {
+    let mut app = two_worlds();
+    assert_eq!(
+        bad_command(&mut app, "/quit now", "takes no argument"),
+        ("/quit now".to_owned(), true)
+    );
+}
+
+#[test]
+fn an_editing_entry_is_not_a_command() {
+    let mut app = two_worlds();
+    assert_eq!(
+        bad_command(&mut app, "/undo", "not a command"),
+        ("/undo".to_owned(), true)
+    );
+}
+
+#[test]
+fn connect_with_no_world_in_focus() {
+    let mut app = app(&[]);
+    assert_eq!(
+        bad_command(&mut app, "/connect", "no world"),
+        ("/connect".to_owned(), true)
+    );
+}
+
+#[test]
+fn a_command_with_no_world_in_focus() {
+    let mut app = app(&[]);
+    assert_eq!(enter(&mut app, "/help"), []);
+    assert!(
+        screen(&mut app)
+            .iter()
+            .any(|row| row.starts_with("-- ") && row.contains("connect"))
+    );
+}
+
+#[test]
+fn focus_by_name() {
+    let mut app = two_worlds();
+    enter(&mut app, "/focus beta/bryn");
+    assert_eq!(top(&mut app), "alpha/aria [beta/bryn]");
+}
+
+#[test]
+fn a_world_with_a_trailing_space() {
+    let mut app = two_worlds();
+    enter(&mut app, "/focus beta/bryn ");
+    assert_eq!(top(&mut app), "alpha/aria [beta/bryn]");
+}
+
+#[test]
+fn help_lists_the_entries() {
+    let mut app = two_worlds();
+    assert_eq!(enter(&mut app, "/help"), []);
+    let rows = screen(&mut app);
+    let notice = |name: &str| {
+        rows.iter()
+            .any(|row| row.starts_with("-- ") && row.contains(name))
+    };
+    assert_eq!((notice("connect"), notice("focus-next")), (true, true));
+}
+
+#[test]
+fn a_key_runs_connect_on_the_world_in_focus() {
+    let app = two_worlds();
+    let mut keymap = mu_tui::Keymap::default();
+    keymap.bind(
+        mu_tui::Chord::with(KeyCode::Char('c'), Modifiers::ALT),
+        mu_tui::EntryId::named("connect").unwrap(),
+    );
+    let mut app = app.with_keymap(keymap);
+    assert_eq!(
+        press(&mut app, alt(KeyCode::Char('c'))),
+        [Effect::Connect {
+            world: "alpha/aria".to_owned()
+        }]
+    );
+}
+
+// The input history of each world, and its editor.
+
+/// Types `text` in the world in focus and presses Enter, and the server takes the send.
+fn send_and_take(app: &mut Model, world: &str, text: &str) {
+    type_text(app, text);
+    let effects = press(app, key(KeyCode::Enter));
+    assert_eq!(effects, [send(world, &text.replace("//", "/"))]);
+    assert_eq!(sent(app, world, &text.replace("//", "/")), []);
+}
+
+#[test]
+fn a_send_enters_the_history() {
+    let mut app = two_worlds();
+    send_and_take(&mut app, "alpha/aria", "one");
+    up(&mut app);
+    assert_eq!(app.input(), "one");
+}
+
+#[test]
+fn a_pose_is_one_entry() {
+    let mut app = two_worlds();
+    type_lines(&mut app, &["a", "b"]);
+    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "a")]);
+    up(&mut app);
+    assert_eq!(app.input(), "a\nb");
+}
+
+#[test]
+fn no_empty_entry() {
+    let mut app = two_worlds();
+    send_and_take(&mut app, "alpha/aria", "one");
+    press(&mut app, key(KeyCode::Enter));
+    up(&mut app);
+    assert_eq!(app.input(), "one");
+}
+
+#[test]
+fn each_world_has_its_own_history() {
+    let mut app = two_worlds();
+    send_and_take(&mut app, "alpha/aria", "one");
+    press(&mut app, ctrl('n'));
+    up(&mut app);
+    assert_eq!(app.input(), "");
+}
+
+#[test]
+fn no_repeat() {
+    let mut app = two_worlds();
+    for text in ["one", "one", "two"] {
+        send_and_take(&mut app, "alpha/aria", text);
+    }
+    assert_eq!(app.history("alpha/aria"), Some(vec!["one", "two"]));
+    up(&mut app);
+    up(&mut app);
+    assert_eq!(app.input(), "one");
+    up(&mut app);
+    assert_eq!(app.input(), "one");
+}
+
+#[test]
+fn an_escaped_slash_in_the_history() {
+    let mut app = two_worlds();
+    send_and_take(&mut app, "alpha/aria", "//me waves");
+    up(&mut app);
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [send("alpha/aria", "/me waves")]
+    );
+}
+
+#[test]
+fn down_with_no_walk() {
+    let mut app = two_worlds();
+    send_and_take(&mut app, "alpha/aria", "one");
+    type_text(&mut app, "draft");
+    down(&mut app);
+    assert_eq!(app.input(), "draft");
+    up(&mut app);
+    down(&mut app);
+    down(&mut app);
+    assert_eq!(app.input(), "draft");
+}
+
+#[test]
+fn up_on_an_empty_history() {
+    let mut app = two_worlds();
+    type_text(&mut app, "draft");
+    up(&mut app);
+    assert_eq!(app.input(), "draft");
+}
+
+#[test]
+fn back_to_the_draft() {
+    let mut app = two_worlds();
+    send_and_take(&mut app, "alpha/aria", "one");
+    type_text(&mut app, "draft");
+    up(&mut app);
+    assert_eq!(app.input(), "one");
+    down(&mut app);
+    assert_eq!(app.input(), "draft");
+}
+
+#[test]
+fn up_inside_a_pose_moves_the_cursor() {
+    let mut app = two_worlds();
+    send_and_take(&mut app, "alpha/aria", "one");
+    type_lines(&mut app, &["a", "b"]);
+    up(&mut app);
+    assert_eq!(app.input(), "a\nb");
+    // The cursor is after `a` now, so the next char goes there.
+    type_text(&mut app, "x");
+    assert_eq!(app.input(), "ax\nb");
+}
+
+#[test]
+fn shift_up_is_not_a_history_key() {
+    let mut app = two_worlds();
+    send_and_take(&mut app, "alpha/aria", "one");
+    type_text(&mut app, "draft");
+    for (code, modifiers) in [
+        (KeyCode::Up, Modifiers::SHIFT),
+        (KeyCode::Up, Modifiers::CONTROL),
+        (KeyCode::Down, Modifiers::SHIFT),
+    ] {
+        press(&mut app, KeyEvent::new(code, modifiers));
+        assert_eq!(app.input(), "draft", "{code:?} {modifiers:?}");
+    }
+}
+
+#[test]
+fn a_focus_change_keeps_each_editor() {
+    let mut app = two_worlds();
+    type_text(&mut app, "draft");
+    press(&mut app, ctrl('n'));
+    assert_eq!(app.input(), "");
+    type_text(&mut app, "other");
+    press(&mut app, ctrl('p'));
+    assert_eq!(app.input(), "draft");
+    press(&mut app, ctrl('n'));
+    assert_eq!(app.input(), "other");
+}
+
+#[test]
+fn a_walk_stays_with_its_world() {
+    let mut app = two_worlds();
+    send_and_take(&mut app, "alpha/aria", "one");
+    type_text(&mut app, "draft");
+    up(&mut app);
+    press(&mut app, ctrl('n'));
+    press(&mut app, ctrl('p'));
+    assert_eq!(app.input(), "one");
+    down(&mut app);
+    assert_eq!(app.input(), "draft");
+}
+
+#[test]
+fn a_send_during_a_walk() {
+    let mut app = two_worlds();
+    send_and_take(&mut app, "alpha/aria", "one");
+    type_text(&mut app, "draft");
+    up(&mut app);
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [send("alpha/aria", "one")]
+    );
+    up(&mut app);
+    up(&mut app);
+    assert_eq!(app.input(), "draft");
+}
+
+#[test]
+fn a_world_added_during_a_walk() {
+    let mut app = app(&["beta/bryn"]);
+    send_and_take(&mut app, "beta/bryn", "one");
+    type_text(&mut app, "draft");
+    up(&mut app);
+    on_event(&mut app, game("alpha/aria", "Welcome, aria."));
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [send("beta/bryn", "one")]
+    );
+    assert_eq!(app.history("beta/bryn").unwrap(), ["one", "draft", "one"]);
+    assert_eq!(app.history("alpha/aria").unwrap(), [] as [&str; 0]);
+}
+
+#[test]
+fn a_refusal_during_a_walk_of_the_history() {
+    let mut app = two_worlds();
+    send_and_take(&mut app, "alpha/aria", "old");
+    type_text(&mut app, "one");
+    press(&mut app, key(KeyCode::Enter));
+    type_text(&mut app, "draft");
+    up(&mut app);
+    on_reply(&mut app, refused("alpha/aria", "one"));
+    assert_eq!(app.input(), "one");
+    assert!(has_notice(&mut app, "(1 in history)"));
+    let history = app.history("alpha/aria").unwrap();
+    assert_eq!(history.iter().filter(|entry| **entry == "draft").count(), 1);
+    up(&mut app);
+    assert_eq!(app.input(), "draft");
+}
+
+#[test]
+fn a_refusal_out_of_focus() {
+    let mut app = two_worlds();
+    press(&mut app, ctrl('n'));
+    type_lines(&mut app, &["b1", "b2"]);
+    assert_eq!(press(&mut app, alt_enter()), [send("beta/bryn", "b1")]);
+    press(&mut app, ctrl('p'));
+    type_text(&mut app, "typed");
+    on_reply(&mut app, refused("beta/bryn", "b1"));
+    assert_eq!(app.input(), "typed");
+    assert_eq!(app.history("alpha/aria").unwrap(), [] as [&str; 0]);
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn*");
+    press(&mut app, ctrl('n'));
+    assert!(has_notice(&mut app, "(1 in history)"));
+    assert_eq!(app.input(), "b1");
+    up(&mut app);
+    assert_eq!(app.input(), "b2");
+}
+
+#[test]
+fn a_refusal_out_of_focus_during_a_walk() {
+    let mut app = two_worlds();
+    send_and_take(&mut app, "alpha/aria", "old");
+    type_text(&mut app, "one");
+    press(&mut app, key(KeyCode::Enter));
+    type_text(&mut app, "draft");
+    up(&mut app);
+    press(&mut app, ctrl('n'));
+    on_reply(&mut app, refused("alpha/aria", "one"));
+    assert_eq!(app.input(), "");
+    press(&mut app, ctrl('p'));
+    assert_eq!(app.input(), "one");
+    assert!(has_notice(&mut app, "(1 in history)"));
+    up(&mut app);
+    assert_eq!(app.input(), "draft");
+}
+
+proptest! {
+    #[test]
+    fn history_walk_returns_the_draft(
+        entries in proptest::collection::vec("[a-z]{1,6}", 0..6),
+        draft in "[a-z]{0,6}",
+        steps in 0usize..10,
+    ) {
+        let mut app = app(&["alpha/aria"]);
+        for entry in &entries {
+            send_and_take(&mut app, "alpha/aria", entry);
+        }
+        type_text(&mut app, &draft);
+        for _ in 0..steps {
+            up(&mut app);
+        }
+        for _ in 0..steps {
+            down(&mut app);
+        }
+        prop_assert_eq!(app.input(), draft);
+    }
+
+    #[test]
+    fn returned_texts_come_back_in_order(
+        texts in proptest::collection::hash_set("[a-z]{1,5}", 2..6),
+        held in "[A-Z]{1,5}",
+    ) {
+        let texts: Vec<String> = texts.into_iter().collect();
+        let mut app = two_worlds();
+        let lines: Vec<&str> = texts.iter().map(String::as_str).collect();
+        type_lines(&mut app, &lines);
+        assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", &texts[0])]);
+        type_text(&mut app, &held);
+        on_reply(&mut app, refused("alpha/aria", &texts[0]));
+        prop_assert_eq!(app.input(), texts[0].clone());
+        let in_history = format!("({} in history)", texts.len());
+        prop_assert!(has_notice(&mut app, &in_history));
+        for text in texts[1..].iter().chain([&held]) {
+            up(&mut app);
+            prop_assert_eq!(&app.input(), text);
+        }
+    }
+}
+
+#[test]
+fn returned_texts_past_the_limit_keep_the_draft() {
+    let texts: Vec<String> = (0..=HISTORY_LIMIT + 100).map(|n| format!("t{n}")).collect();
+    let mut app = two_worlds();
+    let lines: Vec<&str> = texts.iter().map(String::as_str).collect();
+    type_lines(&mut app, &lines);
+    assert_eq!(
+        press(&mut app, alt_enter()),
+        [send("alpha/aria", &texts[0])]
+    );
+    type_text(&mut app, "DRAFT");
+    on_reply(&mut app, refused("alpha/aria", &texts[0]));
+    assert_eq!(app.input(), texts[0]);
+    assert!(has_notice(
+        &mut app,
+        &format!("({HISTORY_LIMIT} in history)")
+    ));
+    let history = app.history("alpha/aria").unwrap();
+    assert_eq!(history.len(), HISTORY_LIMIT);
+    assert_eq!(history[0], "DRAFT");
+    assert_eq!(history[HISTORY_LIMIT - 1], texts[1]);
+}
+
+#[derive(Clone, Debug)]
+enum HistoryStep {
+    Type(String),
+    Newline,
+    Enter,
+    Up,
+    Down,
+    Next,
+    Previous,
+    Accept(usize),
+    Refuse(usize),
+}
+
+impl HistoryStep {
+    /// True for a key that can change the editor of the world in focus.
+    const fn edits(&self) -> bool {
+        matches!(
+            self,
+            Self::Type(_) | Self::Newline | Self::Enter | Self::Up | Self::Down
+        )
+    }
+}
+
+fn history_step() -> impl Strategy<Value = HistoryStep> {
+    prop_oneof![
+        "[a-c]{1,2}".prop_map(HistoryStep::Type),
+        Just(HistoryStep::Newline),
+        Just(HistoryStep::Enter),
+        Just(HistoryStep::Up),
+        Just(HistoryStep::Down),
+        Just(HistoryStep::Next),
+        Just(HistoryStep::Previous),
+        any::<usize>().prop_map(HistoryStep::Accept),
+        any::<usize>().prop_map(HistoryStep::Refuse),
+    ]
+}
+
+/// The sends of `effects`, as world and text.
+fn sends_of(effects: Vec<Effect>) -> Vec<(String, String)> {
+    effects
+        .into_iter()
+        .filter_map(|effect| match effect {
+            Effect::Send { world, text } => Some((world, text)),
+            _ => None,
+        })
+        .collect()
+}
+
+proptest! {
+    #[test]
+    fn history_keeps_its_invariants(steps in proptest::collection::vec(history_step(), 0..60)) {
+        let mut app = two_worlds();
+        let ids = ["alpha/aria", "beta/bryn"];
+        // The sends with the server, as world and text.
+        let mut with_server: Vec<(String, String)> = Vec::new();
+        for step in steps {
+            let before: Vec<Option<String>> = ids.iter().map(|id| app.input_of(id)).collect();
+            let focused = app.focused().map(str::to_owned);
+            let mut put_back = None;
+            match &step {
+                HistoryStep::Type(text) => type_text(&mut app, text),
+                HistoryStep::Newline => { press(&mut app, ctrl('j')); }
+                HistoryStep::Enter => {
+                    with_server.extend(sends_of(press(&mut app, key(KeyCode::Enter))));
+                }
+                HistoryStep::Up => { press(&mut app, key(KeyCode::Up)); }
+                HistoryStep::Down => { press(&mut app, key(KeyCode::Down)); }
+                HistoryStep::Next => { press(&mut app, ctrl('n')); }
+                HistoryStep::Previous => { press(&mut app, ctrl('p')); }
+                HistoryStep::Accept(pick) if !with_server.is_empty() => {
+                    let (world, text) = with_server.remove(pick % with_server.len());
+                    with_server.extend(sends_of(sent(&mut app, &world, &text)));
+                }
+                HistoryStep::Refuse(pick) if !with_server.is_empty() => {
+                    let (world, text) = with_server.remove(pick % with_server.len());
+                    on_reply(&mut app, refused(&world, &text));
+                    put_back = Some(world);
+                }
+                HistoryStep::Accept(_) | HistoryStep::Refuse(_) => {}
+            }
+            for (id, before) in ids.iter().zip(before) {
+                let history = app.history(id).unwrap();
+                prop_assert!(history.iter().all(|entry| !entry.is_empty()));
+                prop_assert!(history.windows(2).all(|pair| pair[0] != pair[1]), "{history:?}");
+                if let Some((place, len)) = app.walk(id) {
+                    prop_assert!(place < len);
+                }
+                let typed_here = step.edits() && focused.as_deref() == Some(*id);
+                if !typed_here && put_back.as_deref() != Some(*id) {
+                    prop_assert_eq!(app.input_of(id), before, "{:?} changed {}", step, id);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_command_enters_the_history_of_the_world_before_it() {
+    let mut app = two_worlds();
+    type_text(&mut app, "/focus beta/bryn");
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    assert_eq!(app.focused(), Some("beta/bryn"));
+    assert_eq!(
+        (
+            app.history("alpha/aria").unwrap(),
+            app.history("beta/bryn").unwrap()
+        ),
+        (vec!["/focus beta/bryn"], vec![])
+    );
+}
+
+// The echo line.
+
+fn player(world: &str, text: &str) -> ClientEvent {
+    event(world, Source::SOURCE_PLAYER, text)
+}
+
+#[test]
+fn the_default_dims() {
+    let mut app = two_worlds();
+    on_event(&mut app, player("alpha/aria", "hello"));
+    let cells = cells_of(&mut app, "> hello");
+    assert!(
+        cells
+            .iter()
+            .all(|cell| cell.modifier.contains(Modifier::DIM)),
+        "{cells:?}"
+    );
+}
+
+#[test]
+fn hide() {
+    let mut app = two_worlds().with_echo(mu_tui::Echo::Hide);
+    on_event(&mut app, player("alpha/aria", "hello"));
+    on_event(&mut app, game("alpha/aria", "You say, \"hello\""));
+    assert!(shows(&mut app, "You say, \"hello\""));
+    assert!(!screen(&mut app).iter().any(|row| row.starts_with("> ")));
+}
+
+#[test]
+fn a_hidden_echo_marks_a_world_out_of_focus() {
+    let mut app = two_worlds().with_echo(mu_tui::Echo::Hide);
+    press(&mut app, ctrl('n'));
+    press(&mut app, ctrl('p'));
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn");
+    on_event(&mut app, player("beta/bryn", "hello"));
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn*");
+}
+
+#[test]
+fn the_echo_of_a_pose_of_two_lines() {
+    let mut app = listed();
+    on_event(&mut app, player("alpha/aria", "one%rtwo"));
+    let screen = screen(&mut app);
+    let at = screen
+        .iter()
+        .position(|row| row == "> one")
+        .unwrap_or_else(|| panic!("{screen:?}"));
+    assert_eq!(screen[at + 1], "  two");
+    assert!(
+        !screen
+            .iter()
+            .any(|row| row.starts_with("> ") && row.contains("one%rtwo"))
+    );
+}
+
+#[test]
+fn an_echo_with_no_line_break() {
+    // `alpha/aria` of `app` is in no list, and `beta/bryn` of `listed` has no line break.
+    for (mut app, world) in [
+        (app(&["alpha/aria"]), "alpha/aria"),
+        (listed(), "beta/bryn"),
+    ] {
+        if world == "beta/bryn" {
+            press(&mut app, ctrl('n'));
+        }
+        on_event(&mut app, player(world, "one%rtwo"));
+        let rows: Vec<String> = rows(&mut app)
+            .into_iter()
+            .filter(|row| row.starts_with("> ") || row.starts_with("  "))
+            .collect();
+        assert_eq!(rows, ["> one%rtwo"], "{world}");
+    }
+}
+
+proptest! {
+    #[test]
+    fn echo_rows_join_back(
+        text in prop_oneof![any::<String>(), "[a-z \\t\\x01\\x1b\\x7f\\u{10EEEE}é]{0,40}"],
+        line_break in "[^\\p{Cc}]{1,16}",
+    ) {
+        let rows = mu_tui::echo_rows(&text, Some(&line_break));
+        prop_assert!(rows[0].starts_with("> "));
+        let parts: Vec<&str> = rows
+            .iter()
+            .enumerate()
+            .map(|(index, row)| row.strip_prefix(if index == 0 { "> " } else { "  " }).unwrap())
+            .collect();
+        // The screen shows a tab as a space, and each other control character as U+FFFD.
+        let cleaned: String = text
+            .chars()
+            .map(|c| match c {
+                '\t' => ' ',
+                '\u{10EEEE}' => '\u{FFFD}',
+                c if c.is_control() => '\u{FFFD}',
+                c => c,
+            })
+            .collect();
+        prop_assert_eq!(parts.join(&line_break), cleaned);
+    }
+}
+
+// The first list of the worlds.
+
+fn world_of(id: &str) -> World {
+    World {
+        id: id.to_owned(),
+        ..Default::default()
+    }
+}
+
+fn list_ends(app: &mut Model, listed: Result<Vec<World>, String>) {
+    assert_eq!(update(app, Msg::Listed(listed)), []);
+}
+
+#[test]
+fn before_the_first_list() {
+    let mut app = starting();
+    assert_eq!(top(&mut app), "listing worlds");
+    list_ends(&mut app, Ok(vec![world_of("alpha/aria")]));
+    assert_eq!(top(&mut app), "[alpha/aria]");
+}
+
+#[test]
+fn a_send_before_the_first_list() {
+    let mut app = starting();
+    type_text(&mut app, "hi");
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    assert!(has_notice(&mut app, "no world"), "{:?}", rows(&mut app));
+    assert_eq!(app.input(), "hi");
+}
+
+#[test]
+fn text_typed_before_the_first_list() {
+    let mut app = starting();
+    type_text(&mut app, "hi");
+    list_ends(&mut app, Ok(vec![world_of("alpha/aria")]));
+    assert_eq!(app.input(), "hi");
+    assert_eq!(
+        press(&mut app, key(KeyCode::Enter)),
+        [Effect::Send {
+            world: "alpha/aria".to_owned(),
+            text: "hi".to_owned()
+        }]
+    );
+}
+
+#[test]
+fn up_before_the_first_list() {
+    let mut app = starting();
+    type_text(&mut app, "hi");
+    press(&mut app, key(KeyCode::Up));
+    press(&mut app, key(KeyCode::Down));
+    assert_eq!(app.input(), "hi");
+}
+
+#[test]
+fn an_event_before_the_first_list() {
+    let mut app = starting();
+    on_event(&mut app, game("alpha/aria", "Welcome, aria."));
+    assert_eq!(top(&mut app), "listing worlds");
+    type_text(&mut app, "hi");
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    assert!(has_notice(&mut app, "no world"), "{:?}", rows(&mut app));
+}
+
+#[test]
+fn a_focus_key_before_the_first_list() {
+    let mut app = starting();
+    on_event(&mut app, game("alpha/aria", "Welcome, aria."));
+    press(&mut app, alt(KeyCode::Char('1')));
+    type_text(&mut app, "hi");
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    assert!(has_notice(&mut app, "no world"), "{:?}", rows(&mut app));
+}
+
+#[test]
+fn a_failed_first_list_after_an_event() {
+    let mut app = starting();
+    on_event(&mut app, game("alpha/aria", "Welcome, aria."));
+    list_ends(&mut app, Err("boom".to_owned()));
+    assert_eq!(top(&mut app), "[alpha/aria]");
+}
+
+#[test]
+fn a_notice_before_the_first_list() {
+    let mut app = starting();
+    let outcome = mu_tui::probe::Outcome {
+        complete: true,
+        ..Default::default()
+    };
+    assert_eq!(update(&mut app, Msg::Probe(outcome)), []);
+    list_ends(&mut app, Ok(vec![world_of("alpha/aria")]));
+    assert_eq!(top(&mut app), "[alpha/aria]");
+    assert!(
+        has_notice(&mut app, "the terminal gave no character widths"),
+        "{:?}",
+        rows(&mut app)
+    );
+}
+
+#[test]
+fn the_first_list_fails() {
+    let mut app = starting();
+    list_ends(&mut app, Err("boom".to_owned()));
+    assert_eq!(top(&mut app), "no worlds");
+    assert!(has_notice(&mut app, "boom"), "{:?}", rows(&mut app));
+}
+
+#[test]
+fn a_reset_during_the_first_list() {
+    let mut app = starting();
+    let reset = ClientEvent::Reset {
+        instance_id: "i".to_owned(),
+    };
+    assert_eq!(update(&mut app, Msg::Client(reset)), []);
+    let alpha = || Ok(vec![world_of("alpha/aria")]);
+    assert_eq!(update(&mut app, Msg::Listed(alpha())), [Effect::ListWorlds]);
+    assert_eq!(top(&mut app), "listing worlds");
+    list_ends(&mut app, alpha());
+    assert_eq!(top(&mut app), "[alpha/aria]");
+}
+
+#[test]
+fn an_entry_that_needs_a_world_runs_with_none() {
+    let mut app = two_worlds();
+    let focus = mu_tui::EntryId::named("focus").unwrap();
+    assert_eq!(
+        update(
+            &mut app,
+            Msg::Run {
+                entry: focus,
+                arg: None
+            }
+        ),
+        []
+    );
+    assert!(
+        has_notice(&mut app, "focus needs a world"),
+        "{:?}",
+        screen(&mut app)
+    );
+    let next = mu_tui::EntryId::named("focus-next").unwrap();
+    let arg = Some("beta/bryn".to_owned());
+    assert_eq!(update(&mut app, Msg::Run { entry: next, arg }), []);
+    assert!(
+        has_notice(&mut app, "focus-next takes no argument"),
+        "{:?}",
+        screen(&mut app)
+    );
+}
+
+#[test]
+fn the_hint_of_returned_lines_counts_what_history_kept() {
+    let mut app = two_worlds();
+    type_lines(&mut app, &["x", "y", "y"]);
+    assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", "x")]);
+    type_text(&mut app, "y");
+    on_event(&mut app, ClientEvent::Lost);
+    // The held `y` goes into history, and the second returned `y` equals it, so Up has one.
+    assert!(has_notice(&mut app, "2 lines that waited"));
+    let joined = screen(&mut app).join(" ");
+    assert!(joined.contains("(1 in history)"), "{joined}");
+}
+
+#[test]
+fn a_focus_command_before_the_first_list() {
+    let mut app = starting();
+    on_event(&mut app, game("alpha/aria", "Welcome, aria."));
+    type_text(&mut app, "/focus alpha/aria");
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    assert!(
+        has_notice(&mut app, "the worlds are not listed yet"),
+        "{:?}",
+        rows(&mut app)
+    );
 }

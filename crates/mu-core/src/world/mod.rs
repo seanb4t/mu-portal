@@ -20,7 +20,7 @@ mod parse;
 mod resolve;
 
 pub use builtin::{BUILT_IN_TYPES, built_in_layers, parse_quirks};
-pub use dir::{SERVER_FILE, TomlDirSource};
+pub use dir::{CLIENT_FILE, SERVER_FILE, TomlDirSource};
 pub use error::{ConfigError, FieldError};
 pub use layer::{
     KeepaliveFields, Layer, LayerFields, LayerKey, LayerOrigin, LayerSource, LoginFields,

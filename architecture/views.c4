@@ -19,7 +19,7 @@ views {
 
   view terminalClient of mu.terminal {
     title 'Terminal client'
-    description 'The parts of mu-tui: the event loop, the keymap, update, the model, view and the output pane.'
+    description 'The parts of mu-tui: the event loop, the keymap, the registry, update, the model, view and the output pane.'
     include *
   }
 
@@ -28,7 +28,8 @@ views {
     description 'Enter sends the text of the pose editor to the world in focus.'
     player -> mu.terminal.loop 'presses Enter'
     mu.terminal.loop -> mu.terminal.keymap 'looks up the key'
-    mu.terminal.keymap -> mu.terminal.update 'Submit'
+    mu.terminal.keymap -> mu.terminal.update 'the entry send'
+    mu.terminal.update -> mu.terminal.registry 'builds the Action Submit'
     mu.terminal.update -> mu.terminal.state 'clears the pose editor and returns the pane to the bottom'
     mu.terminal.update -> mu.terminal.loop 'the effect Send'
     mu.terminal.loop -> mu.server.api 'sends the line'

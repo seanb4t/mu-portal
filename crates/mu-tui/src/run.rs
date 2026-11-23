@@ -11,6 +11,7 @@ use termina::escape::osc::{Osc, Selection};
 use termina::{EventReader, EventStream};
 use tokio::sync::mpsc;
 
+use crate::config::Settings;
 use crate::kitty;
 use crate::model::Model;
 use crate::probe;
@@ -18,26 +19,19 @@ use crate::screen::{self, Restore, Screen};
 use crate::update::{Effect, Msg, Reply, update};
 use crate::view::view;
 
-/// Runs the client on the alternate screen until the Quit action or the end of terminal input.
+/// Runs the client with `settings` on the alternate screen until the Quit action or the end of
+/// terminal input. Each of `notices` is a notice line from the start.
 /// The terminal comes back on exit,
 /// and on a panic through the panic hook of Termina.
 ///
 /// # Errors
 ///
 /// An I/O error of the terminal.
-pub async fn run(client: PortalClient) -> io::Result<()> {
-    let listed = within(
-        async {
-            client
-                .list_worlds()
-                .await
-                .map_err(|error| error.to_string())
-        },
-        CALL_LIMIT,
-        "",
-    )
-    .await;
-    let mut model = Model::from_listing(listed);
+pub async fn run(client: PortalClient, settings: Settings, notices: Vec<String>) -> io::Result<()> {
+    let mut model = Model::starting(settings);
+    for notice in &notices {
+        model.notice(notice);
+    }
     // The probe sets mode 2027, so a panic before its replies turns the mode off.
     let restore = Arc::new(Restore::default());
     restore.set_grapheme_mode(true);
@@ -83,6 +77,8 @@ async fn event_loop(
     let mut terminal_events = EventStream::new(reader, |_| true);
     let mut events = Box::pin(client.events());
     let (replies, mut reply) = mpsc::unbounded_channel();
+    // The first list of the worlds, which `Model::starting` marks as asked.
+    spawn_reply(&replies, listed_of(client.clone()));
     loop {
         // No frame is drawn while an early message waits.
         let msg = if let Some(msg) = early.pop_front() {
@@ -125,18 +121,13 @@ async fn event_loop(
                         Msg::Reply(answer)
                     });
                 }
-                Effect::ListWorlds => {
-                    let client = client.clone();
-                    spawn_reply(&replies, async move {
-                        let call = async {
-                            client
-                                .list_worlds()
-                                .await
-                                .map_err(|error| error.to_string())
-                        };
-                        Msg::Listed(within(call, CALL_LIMIT, "").await)
-                    });
+                Effect::Connect { world } => {
+                    spawn_reply(&replies, control(client.clone(), world, true));
                 }
+                Effect::Disconnect { world } => {
+                    spawn_reply(&replies, control(client.clone(), world, false));
+                }
+                Effect::ListWorlds => spawn_reply(&replies, listed_of(client.clone())),
             }
         }
     }
@@ -147,6 +138,31 @@ async fn event_loop(
 /// in `mu_core::session`. The limit is above that, so the server's own answer comes first when
 /// the game is slow.
 pub const CALL_LIMIT: Duration = Duration::from_secs(30);
+
+/// The [`Msg::Control`] of a connect of `world` if `connect` is true, else of a disconnect,
+/// within [`CALL_LIMIT`].
+async fn control(client: PortalClient, world: String, connect: bool) -> Msg {
+    let call = async {
+        let result = if connect {
+            client.connect(&world).await
+        } else {
+            client.disconnect(&world).await
+        };
+        result.map_err(|error| error.to_string())
+    };
+    control_of(call, world.clone(), CALL_LIMIT).await
+}
+
+/// The list of the worlds of `client`, within [`CALL_LIMIT`].
+async fn listed_of(client: PortalClient) -> Msg {
+    let call = async {
+        client
+            .list_worlds()
+            .await
+            .map_err(|error| error.to_string())
+    };
+    Msg::Listed(within(call, CALL_LIMIT, "").await)
+}
 
 /// Runs `call` on a task, and gives its message to the loop.
 fn spawn_reply(
@@ -195,4 +211,15 @@ pub async fn reply_of<T>(
             reason,
         },
     }
+}
+
+/// The [`Msg::Control`] of a connect or a disconnect of `world` that `call` makes. A call with
+/// no answer within `limit` gives that as its reason.
+pub async fn control_of(
+    call: impl Future<Output = Result<(), String>>,
+    world: String,
+    limit: Duration,
+) -> Msg {
+    let result = within(call, limit, "").await;
+    Msg::Control { world, result }
 }

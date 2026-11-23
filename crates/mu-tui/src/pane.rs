@@ -354,6 +354,22 @@ impl PaneState {
         self.anchor = None;
     }
 
+    /// Scrolls to the oldest line, at the size of the last render. If every line fits on the
+    /// screen, the pane stays at the bottom.
+    pub fn to_top(&mut self) {
+        if self.store.is_empty() {
+            return;
+        }
+        let top = Position {
+            line: self.store.first_id(),
+            byte: 0,
+        };
+        self.anchor = match self.geometry {
+            Some(geometry) if self.bottom_shows((top.line, 0), geometry) => None,
+            _ => Some(top),
+        };
+    }
+
     /// The rows of `line` at `width`. With kitty graphics, the rows of an image line are its
     /// row indexes, `n..n + 1` for the row `n`. Without, an image line is one row of its URL.
     fn rows_of(&self, line: LineId, width: u16) -> Vec<Row> {

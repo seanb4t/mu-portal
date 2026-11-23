@@ -1,5 +1,6 @@
 //! The scenarios of `mu client` on the built binary, in a pseudo-terminal of 80 by 24.
 
+use std::path::Path;
 use std::time::Duration;
 
 use mu_client::PortalClient;
@@ -7,8 +8,8 @@ use mu_proto::{EventKind, WorldState};
 
 use mu_fake_server::{Listening, Script, ScriptedGame};
 use support::process::{
-    Answers, BOUND, PtyClient, PtyOn, Reaper, Relay, SERVING, ServerBuilder, Session, TWO_WORLDS,
-    mu_on_pty, private_tempdir,
+    Answers, BOUND, PtyClient, PtyOn, Reaper, Relay, SERVING, ServerBuilder, ServerProcess,
+    Session, TWO_WORLDS, mu_on_pty, private_tempdir,
 };
 use support::{ConfigDir, mode, stderr};
 
@@ -71,6 +72,36 @@ async fn two_clients_start_one_server() {
 }
 
 #[tokio::test]
+async fn two_clients_with_other_directories_start_at_once() {
+    let dir = private_tempdir();
+    let run = dir.path().join("run");
+    let _reaper = Reaper(run.join("server.log"));
+    let socket = run.join("mu.sock");
+    let start = |name: &str| {
+        let own = dir.path().join(name);
+        std::fs::create_dir(&own).unwrap();
+        PtyClient::start_args(
+            &socket,
+            dir.path(),
+            Answers::Default,
+            &["--config".as_ref(), own.as_os_str()],
+            &[],
+        )
+    };
+    let clients = [start("a"), start("b")];
+    let mut noted = 0;
+    for client in &clients {
+        client
+            .wait_top("no worlds", |top| top.trim() == "no worlds")
+            .await;
+        let screen: String = client.contents().split_whitespace().collect();
+        noted += usize::from(screen.contains("readsitsworldsfrom"));
+    }
+    // The one server has the directory of one client, so only the other client notes it.
+    assert_eq!(noted, 1);
+}
+
+#[tokio::test]
 async fn client_gives_up_after_five_seconds() {
     let dir = private_tempdir();
     let socket = dir.path().join("s.sock");
@@ -88,6 +119,7 @@ async fn client_gives_up_after_five_seconds() {
         .await
         .expect("the client exits within 7 seconds");
     assert_eq!(status.exit_code(), 1);
+    client.wait_line("mu client: ").await;
     let screen = client.contents().replace('\n', "");
     let log = dir.path().join("server.log");
     for name in [socket.display().to_string(), log.display().to_string()] {
@@ -498,7 +530,7 @@ fn last_rows(rows: &[String], count: usize) -> Vec<&str> {
 }
 
 #[tokio::test]
-async fn pose_of_two_lines() {
+async fn a_pose_of_two_lines() {
     let (_session, mut client) = attached().await;
     // Ctrl+J is the byte LF.
     client.send(b"one\ntwo\r");
@@ -528,7 +560,7 @@ async fn alt_enter_sends_each_line() {
 }
 
 #[tokio::test]
-async fn line_break_that_the_world_refuses() {
+async fn a_line_break_that_the_world_refuses() {
     let game = ScriptedGame::new(Script::new().silent());
     let listening = game.listen().await.unwrap();
     let port = listening.addr().port();
@@ -715,4 +747,756 @@ async fn late_kitty_keyboard_answer() {
         .wait_output("the exit from the alternate screen", b"\x1b[?1049l")
         .await;
     assert!(!holds(&client.output(), PUSH_FLAG));
+}
+
+// Client commands on the built binary.
+
+/// True if the server of `session` reports `world` as connected.
+async fn connected(session: &Session, world: &str) -> bool {
+    session
+        .client
+        .list_worlds()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|each| each.id == world)
+        .expect("the world exists")
+        .state
+        == WorldState::WORLD_STATE_CONNECTED
+}
+
+/// The client of [`attached`] after a test disconnected `alpha/aria` through the API.
+async fn alpha_disconnected() -> (Session, PtyClient) {
+    let (mut session, client) = attached().await;
+    session.client.disconnect("alpha/aria").await.unwrap();
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    (session, client)
+}
+
+/// Sends `text` and Enter to `client`, and waits until the server connects `alpha/aria` and
+/// the screen shows its greeting twice.
+async fn connects_alpha(text: &[u8]) {
+    let (mut session, mut client) = alpha_disconnected().await;
+    let after = session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await
+        .seq;
+    client.send(text);
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_CONNECTED, after)
+        .await;
+    client
+        .wait_rows("the greeting after the disconnect", |rows| {
+            rows.iter()
+                .filter(|row| row.trim() == "Welcome, aria.")
+                .count()
+                == 2
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn connect_the_world_in_focus() {
+    connects_alpha(b"/connect\r").await;
+}
+
+#[tokio::test]
+async fn a_trailing_space_is_no_argument() {
+    connects_alpha(b"/connect \r").await;
+}
+
+#[tokio::test]
+async fn disconnect_a_named_world() {
+    let (mut session, mut client) = attached().await;
+    client.send(b"/disconnect beta/bryn\r");
+    session
+        .kind("beta/bryn", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    assert_eq!(
+        (
+            connected(&session, "beta/bryn").await,
+            connected(&session, "alpha/aria").await
+        ),
+        (false, true)
+    );
+}
+
+#[tokio::test]
+async fn disconnect_an_unknown_world() {
+    let (session, mut client) = attached().await;
+    client.send(b"/disconnect gamma/gil\r");
+    client
+        .wait_rows("a hint that names the world", |rows| {
+            rows.iter()
+                .any(|row| row.starts_with("-- ") && row.contains("gamma/gil"))
+        })
+        .await;
+    assert!(connected(&session, "alpha/aria").await);
+}
+
+#[tokio::test]
+async fn a_key_and_a_command_give_the_same_focus() {
+    for input in [&b"\x0e"[..], b"/focus-next\r"] {
+        let (_session, mut client) = attached().await;
+        client.send(input);
+        client
+            .wait_top("the focus on beta/bryn", |top| top.contains("[beta/bryn]"))
+            .await;
+    }
+}
+
+#[tokio::test]
+async fn quit_by_command() {
+    let (session, mut client) = attached().await;
+    client.send(b"/quit\r");
+    let status = client.exit_within(BOUND).await.expect("the client exits");
+    assert!(status.success(), "{status:?}");
+    assert_eq!(session.client.list_worlds().await.unwrap().len(), 2);
+}
+
+/// A client on a relay that stalls after the greeting, with the text `hi` of `alpha/aria`
+/// waiting for the server.
+async fn a_text_waits() -> (ServerProcess, Relay, PtyClient) {
+    let server = ServerBuilder::new().fake_worlds(TWO_WORLDS).start().await;
+    let relay = Relay::start(&server.dir().path().join("relay.sock"), server.socket());
+    let mut client = PtyClient::start(relay.socket(), server.dir().path());
+    client.wait_greeting().await;
+    relay.stall();
+    client.send(b"hi\r");
+    client
+        .wait_top("the text that waits", |top| top.contains("alpha/aria"))
+        .await;
+    (server, relay, client)
+}
+
+#[tokio::test]
+async fn quit_twice_while_a_text_waits() {
+    let (_server, _relay, mut client) = a_text_waits().await;
+    client.send(b"/quit\r");
+    client
+        .wait_rows("the quit hint", |rows| {
+            rows.iter()
+                .any(|row| row.starts_with("-- ") && row.contains("1 line not sent yet"))
+        })
+        .await;
+    client.send(b"/quit\r");
+    let status = client.exit_within(BOUND).await.expect("the client exits");
+    assert!(status.success(), "{status:?}");
+}
+
+/// True if the last hint of `rows` holds `text`.
+fn last_hint_holds(rows: &[String], text: &str) -> bool {
+    rows.iter()
+        .rev()
+        .find(|row| row.starts_with("-- "))
+        .is_some_and(|row| row.contains(text))
+}
+
+/// Sends `/quit`, then `between`, waits until `settled` holds, clears the editor with Ctrl+U,
+/// and sends `/quit` again. Then waits for the hint `waiting` after the last Enter: a client
+/// that quit would show no new hint.
+async fn quit_cancelled_by(between: &[u8], settled: impl Fn(&[String]) -> bool, waiting: &str) {
+    let (_server, _relay, mut client) = a_text_waits().await;
+    client.send(b"/quit\r");
+    client
+        .wait_rows("the first quit hint", |rows| {
+            last_hint_holds(rows, "1 line not sent yet")
+        })
+        .await;
+    client.send(between);
+    client
+        .wait_rows("the text between the quits", settled)
+        .await;
+    client.send(b"\x15/quit\r");
+    client
+        .wait_rows("the quit hint after the last Enter", |rows| {
+            last_hint_holds(rows, waiting)
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn another_command_cancels_the_quit() {
+    quit_cancelled_by(
+        b"/fly\r",
+        |rows| last_hint_holds(rows, "unknown command"),
+        "1 line not sent yet",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_game_text_cancels_the_quit() {
+    quit_cancelled_by(
+        b"hello\r",
+        |rows| rows.last().is_some_and(|row| row.trim().is_empty()),
+        "2 lines not sent yet",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_good_command_cancels_the_quit() {
+    quit_cancelled_by(
+        b"/focus-next\r",
+        |rows| rows[0].contains("[beta/bryn]"),
+        "1 line not sent yet",
+    )
+    .await;
+}
+
+// client.toml.
+
+/// A configuration directory with `client.toml` that holds `text`.
+fn client_file(text: &str) -> ConfigDir {
+    ConfigDir::empty().file("client.toml", text)
+}
+
+/// A client with `--config <config>` on the server of `session`, after the greeting.
+async fn configured(session: &Session, config: &Path, answers: Answers) -> PtyClient {
+    let client = PtyClient::start_args(
+        session.server.socket(),
+        session.server.dir().path(),
+        answers,
+        &["--config".as_ref(), config.as_os_str()],
+        &[],
+    );
+    client.wait_greeting().await;
+    client
+}
+
+/// A server with `worlds`, and a client on it with `client.toml` that holds `text`.
+async fn with_file(worlds: &[&str], text: &str) -> (Session, PtyClient, ConfigDir) {
+    let session = Session::with_worlds(worlds).await;
+    let config = client_file(text);
+    let client = configured(&session, config.path(), Answers::Default).await;
+    (session, client, config)
+}
+
+/// Sends `hello` and Enter, and waits for the echo line.
+async fn echo_of_hello(client: &mut PtyClient) {
+    client.send(b"hello\r");
+    client
+        .wait_rows("the echo line", |rows| {
+            rows.iter().any(|row| row.starts_with("> hello"))
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn a_file_that_sets_the_echo() {
+    let (_session, mut client, _config) = with_file(&["alpha/aria"], "echo = \"show\"\n").await;
+    echo_of_hello(&mut client).await;
+    assert_eq!(client.dims("> hello"), [false; 7]);
+}
+
+#[tokio::test]
+async fn a_file_that_sets_dim() {
+    let (_session, mut client, _config) = with_file(&["alpha/aria"], "echo = \"dim\"\n").await;
+    echo_of_hello(&mut client).await;
+    assert_eq!(client.dims("> hello"), [true; 7]);
+}
+
+#[tokio::test]
+async fn no_file() {
+    let session = Session::with_worlds(&["alpha/aria"]).await;
+    let config = ConfigDir::empty();
+    let client = configured(&session, config.path(), Answers::Default).await;
+    client
+        .wait_top("the world", |top| top.contains("[alpha/aria]"))
+        .await;
+}
+
+/// Starts `mu client --config` on a directory with `client.toml` that holds `text`, with no
+/// server, and returns the screen after the exit with status 1. The client never enters the
+/// alternate screen.
+async fn refused_file(config: &ConfigDir) -> String {
+    let dir = private_tempdir();
+    let socket = dir.path().join("s.sock");
+    let mut client = PtyClient::start_args(
+        &socket,
+        dir.path(),
+        Answers::Default,
+        &["--config".as_ref(), config.path().as_os_str()],
+        &[],
+    );
+    let status = client.exit_within(BOUND).await.expect("the client exits");
+    assert_eq!(status.exit_code(), 1);
+    assert!(
+        !client
+            .output()
+            .windows(8)
+            .any(|bytes| bytes == b"\x1b[?1049h"),
+        "the client entered the alternate screen"
+    );
+    assert!(!socket.exists(), "the client started a server");
+    client.wait_line("mu client: ").await;
+    client.contents().replace('\n', "")
+}
+
+/// Asserts that a client with `client.toml` holding `text` stops, and that its message names
+/// each of `names`.
+async fn stops_naming(text: &str, names: &[&str]) {
+    let screen = refused_file(&client_file(text)).await;
+    for name in names {
+        assert!(
+            screen.contains(name),
+            "{name} is not on the screen:\n{screen}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn an_unknown_key() {
+    stops_naming("colour = \"red\"\n", &["client.toml", "colour"]).await;
+}
+
+#[tokio::test]
+async fn a_bad_echo_value() {
+    stops_naming("echo = \"loud\"\n", &["client.toml", "echo"]).await;
+}
+
+#[tokio::test]
+async fn a_file_that_cannot_be_read() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let config = client_file("");
+    let path = config.path().join("client.toml");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+    // A user who can read every file, such as root, gets no read error.
+    if std::fs::File::open(&path).is_ok() {
+        return;
+    }
+    let screen = refused_file(&config).await;
+    assert!(screen.contains("client.toml"), "{screen}");
+}
+
+#[tokio::test]
+async fn not_toml() {
+    stops_naming("echo = \n", &["client.toml:1:"]).await;
+}
+
+#[tokio::test]
+async fn the_client_takes_the_flag() {
+    let dir = private_tempdir();
+    let env = ConfigDir::empty().file("client.toml", "echo = \"loud\"\n");
+    let flag = ConfigDir::base();
+    let run = dir.path().join("run");
+    let _reaper = Reaper(run.join("server.log"));
+    let socket = run.join("mu.sock");
+    let client = PtyClient::start_args(
+        &socket,
+        dir.path(),
+        Answers::Default,
+        &["--config".as_ref(), flag.path().as_os_str()],
+        &[("MU_CONFIG", Some(env.path().as_os_str()))],
+    );
+    client
+        .wait_top("the world of the flag", |top| top.contains("[alpha/aria]"))
+        .await;
+    let worlds = PortalClient::unix(&socket).list_worlds().await.unwrap();
+    assert_eq!(
+        worlds
+            .iter()
+            .map(|world| world.id.as_str())
+            .collect::<Vec<_>>(),
+        ["alpha/aria"]
+    );
+}
+
+#[tokio::test]
+async fn a_started_server_takes_a_directory_that_starts_with_a_dash() {
+    let dir = private_tempdir();
+    let base = ConfigDir::base();
+    std::os::unix::fs::symlink(base.path(), dir.path().join("-conf")).unwrap();
+    let run = dir.path().join("run");
+    let _reaper = Reaper(run.join("server.log"));
+    let socket = run.join("mu.sock");
+    // A relative directory, read from the directory where the client starts. MU_CONFIG is
+    // unset, so the server can find the directory only through the flag.
+    let client = PtyClient::start_args(
+        &socket,
+        dir.path(),
+        Answers::Default,
+        &["--config=-conf".as_ref()],
+        &[("MU_CONFIG", None)],
+    );
+    client
+        .wait_top("the world of the directory", |top| {
+            top.contains("[alpha/aria]")
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn the_client_warns_of_a_missing_directory() {
+    let session = Session::with_worlds(&["alpha/aria"]).await;
+    let missing = private_tempdir().path().join("none");
+    let client = configured(&session, &missing, Answers::Default).await;
+    client
+        .wait_top("the world", |top| top.contains("[alpha/aria]"))
+        .await;
+    let output = String::from_utf8_lossy(&client.output()).into_owned();
+    assert!(output.contains(&missing.display().to_string()), "{output}");
+}
+
+#[tokio::test]
+async fn the_client_with_no_directory() {
+    let session = Session::with_worlds(&["alpha/aria"]).await;
+    let mut client = PtyClient::start_args(
+        session.server.socket(),
+        session.server.dir().path(),
+        Answers::Default,
+        &[],
+        &[
+            ("MU_CONFIG", None),
+            ("XDG_CONFIG_HOME", None),
+            ("HOME", Some("".as_ref())),
+        ],
+    );
+    client.wait_greeting().await;
+    echo_of_hello(&mut client).await;
+    assert_eq!(client.dims("> hello"), [true; 7]);
+}
+
+/// A socket in a private directory where a test listens, and gives each connection to `serve`.
+fn listening(
+    serve: fn(tokio::net::UnixStream, &mut Vec<tokio::net::UnixStream>),
+) -> (
+    tempfile::TempDir,
+    std::path::PathBuf,
+    tokio::task::JoinHandle<()>,
+) {
+    let dir = private_tempdir();
+    let socket = dir.path().join("s.sock");
+    let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+    let task = tokio::spawn(async move {
+        let mut open = Vec::new();
+        while let Ok((stream, _)) = listener.accept().await {
+            serve(stream, &mut open);
+        }
+    });
+    (dir, socket, task)
+}
+
+#[tokio::test]
+async fn a_server_that_does_not_answer() {
+    // Each connection stays open with no answer.
+    let (dir, socket, task) = listening(|stream, open| open.push(stream));
+    let config = client_file("[server]\nconnect_wait_seconds = 0.2\n");
+    let mut client = PtyClient::start_args(
+        &socket,
+        dir.path(),
+        Answers::Default,
+        &["--config".as_ref(), config.path().as_os_str()],
+        &[],
+    );
+    let status = client.exit_within(BOUND).await.expect("the client exits");
+    assert_eq!(status.exit_code(), 1);
+    client.wait_line("mu client: ").await;
+    let screen = client.contents().replace('\n', "");
+    assert!(screen.contains(&socket.display().to_string()), "{screen}");
+    assert!(screen.contains("0.2 s"), "{screen}");
+    task.abort();
+}
+
+#[tokio::test]
+async fn a_server_that_closes_the_connection() {
+    let (dir, socket, task) = listening(|stream, _| drop(stream));
+    let mut client = PtyClient::start(&socket, dir.path());
+    let status = client.exit_within(BOUND).await.expect("the client exits");
+    assert_eq!(status.exit_code(), 1);
+    client.wait_line("mu client: ").await;
+    let screen = client.contents().replace('\n', "");
+    assert!(screen.contains(&socket.display().to_string()), "{screen}");
+    assert!(
+        !dir.path().join("server.log").exists(),
+        "the client started a server"
+    );
+    task.abort();
+}
+
+#[tokio::test]
+async fn a_wait_of_zero() {
+    stops_naming(
+        "[server]\nconnect_wait_seconds = 0\n",
+        &["client.toml", "server.connect_wait_seconds"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn the_started_server_finds_the_default_directory() {
+    let dir = private_tempdir();
+    let xdg = dir.path().join("xdg");
+    let run = dir.path().join("run");
+    let log = run.join("server.log");
+    let _reaper = Reaper(log.clone());
+    let mut client = PtyClient::start_args(
+        &run.join("s.sock"),
+        dir.path(),
+        Answers::Default,
+        &[],
+        &[
+            ("MU_CONFIG", None),
+            ("XDG_CONFIG_HOME", Some(xdg.as_os_str())),
+        ],
+    );
+    client
+        .wait_top("no worlds", |top| top.trim() == "no worlds")
+        .await;
+    client.send(b"\x03");
+    client.exit_within(BOUND).await.expect("the client exits");
+    // The server writes any warning before it serves, and the client waited until it served.
+    let log = std::fs::read_to_string(&log).unwrap();
+    assert!(log.lines().any(|line| line.starts_with(SERVING)), "{log}");
+    let xdg = xdg.display().to_string();
+    assert!(!log.lines().any(|line| line.contains(&xdg)), "{log}");
+}
+
+// The keys table of client.toml.
+
+const THREE_WORLDS: &[&str] = &["alpha/aria", "beta/bryn", "gamma/gil"];
+
+/// Presses `key` on a client with `[keys]` holding `bindings`, and waits until the top row shows
+/// `[<world>]`.
+async fn key_gives_focus(worlds: &[&str], bindings: &str, key: &[u8], world: &str) {
+    let text = format!("[keys]\n{bindings}\n");
+    let (_session, mut client, _config) = with_file(worlds, &text).await;
+    client.send(key);
+    let focus = format!("[{world}]");
+    client
+        .wait_top("the focus", |top| top.contains(&focus))
+        .await;
+}
+
+#[tokio::test]
+async fn a_new_binding() {
+    key_gives_focus(
+        TWO_WORLDS,
+        "\"alt+n\" = \"focus-next\"",
+        b"\x1bn",
+        "beta/bryn",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn the_default_keys_stay() {
+    key_gives_focus(
+        TWO_WORLDS,
+        "\"alt+n\" = \"focus-next\"",
+        b"\x0e",
+        "beta/bryn",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_binding_of_shift_tab() {
+    key_gives_focus(
+        THREE_WORLDS,
+        "\"shift+tab\" = \"focus-prev\"",
+        b"\x1b[Z",
+        "gamma/gil",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_binding_replaces_a_default() {
+    key_gives_focus(
+        THREE_WORLDS,
+        "\"ctrl+n\" = \"focus-prev\"",
+        b"\x0e",
+        "gamma/gil",
+    )
+    .await;
+}
+
+/// Waits until the editor row, the last row of the screen, is `text`.
+async fn editor_holds(client: &PtyClient, text: &str) {
+    client
+        .wait_rows("the editor", |rows| {
+            rows.last().is_some_and(|row| row.trim_end() == text)
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn a_removed_binding() {
+    let (_session, mut client, _config) =
+        with_file(TWO_WORLDS, "[keys]\n\"ctrl+n\" = \"none\"\n").await;
+    client.send(b"\x0ex");
+    // The `x` after Ctrl+N shows that the client read the key.
+    editor_holds(&client, "x").await;
+    assert!(
+        client.rows()[0].contains("[alpha/aria]"),
+        "{:?}",
+        client.rows()
+    );
+}
+
+#[tokio::test]
+async fn none_on_a_key_with_a_modifier() {
+    let (mut session, mut client, _config) =
+        with_file(&["alpha/aria"], "[keys]\n\"alt+enter\" = \"none\"\n").await;
+    client.send(b"hi\x1b\r!");
+    editor_holds(&client, "hi!").await;
+    client.send(b"\r");
+    let event = session
+        .until("the player event", |event| {
+            event.kind.as_known() == Some(EventKind::EVENT_KIND_INPUT)
+        })
+        .await;
+    assert_eq!(event.text, "hi!");
+}
+
+#[tokio::test]
+async fn a_binding_of_ctrl_shift_z() {
+    let session = Session::with_worlds(&["alpha/aria"]).await;
+    let config = client_file("[keys]\n\"ctrl+shift+z\" = \"none\"\n");
+    let mut client = configured(&session, config.path(), Answers::Kitty).await;
+    client.send(b"h");
+    editor_holds(&client, "h").await;
+    // Ctrl+Z, then Ctrl+Shift+Z in the kitty protocol, then `x`. The default redo would bring
+    // `h` back before the `x`.
+    client.send(b"\x1a\x1b[122;6ux");
+    editor_holds(&client, "x").await;
+}
+
+#[tokio::test]
+async fn two_names_of_one_key() {
+    stops_naming(
+        "[keys]\n\"ctrl+shift+z\" = \"redo\"\n\"shift+ctrl+z\" = \"undo\"\n",
+        &["client.toml", "ctrl+shift+z", "shift+ctrl+z"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn shift_with_a_digit() {
+    stops_naming(
+        "[keys]\n\"shift+1\" = \"quit\"\n",
+        &["client.toml", "shift+1"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn an_uppercase_key() {
+    stops_naming(
+        "[keys]\n\"ctrl+N\" = \"quit\"\n",
+        &["client.toml", "ctrl+N"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn an_unknown_entry() {
+    stops_naming(
+        "[keys]\n\"alt+n\" = \"fly\"\n",
+        &["client.toml", "alt+n", "fly"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn an_unknown_key_name() {
+    stops_naming(
+        "[keys]\n\"hyper+n\" = \"quit\"\n",
+        &["client.toml", "hyper+n"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn an_entry_that_needs_an_argument() {
+    stops_naming(
+        "[keys]\n\"alt+f\" = \"focus\"\n",
+        &["client.toml", "alt+f", "focus"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_control_character() {
+    stops_naming("[keys]\n\"alt+\\u007f\" = \"quit\"\n", &["client.toml"]).await;
+}
+
+#[tokio::test]
+async fn a_key_bound_to_connect_with_no_world_in_focus() {
+    let session = Session::with_worlds(&[]).await;
+    let config = client_file("[keys]\n\"alt+c\" = \"connect\"\n");
+    let mut client = PtyClient::start_args(
+        session.server.socket(),
+        session.server.dir().path(),
+        Answers::Default,
+        &["--config".as_ref(), config.path().as_os_str()],
+        &[],
+    );
+    client
+        .wait_top("no worlds", |top| top.trim() == "no worlds")
+        .await;
+    client.send(b"\x1bc");
+    client
+        .wait_rows("the hint", |rows| {
+            rows.iter()
+                .any(|row| row.starts_with("-- ") && row.contains("no world"))
+        })
+        .await;
+    // The client still reads keys.
+    client.send(b"x");
+    editor_holds(&client, "x").await;
+}
+
+/// A server with the fake world `alpha/aria` and `--config <dir>/a`, and a client on it with
+/// `--config <dir>/<client>`, after the top row shows the world. `<dir>/link` is a symbolic
+/// link to `<dir>/a`. The screen with no whitespace, because a wrap drops spaces, and the
+/// resolved paths of `<dir>/a` and `<dir>/b`.
+async fn other_server(client: &str) -> (String, String, String) {
+    let dir = private_tempdir();
+    let real = dir.path().join("a");
+    std::fs::create_dir(&real).unwrap();
+    std::fs::create_dir(dir.path().join("b")).unwrap();
+    std::os::unix::fs::symlink(&real, dir.path().join("link")).unwrap();
+    let mut flag = std::ffi::OsString::from("--config=");
+    flag.push(&real);
+    let server = ServerBuilder::new()
+        .fake_worlds(&["alpha/aria"])
+        .arg(flag)
+        .start()
+        .await;
+    let own = dir.path().join(client);
+    let client = PtyClient::start_args(
+        server.socket(),
+        dir.path(),
+        Answers::Default,
+        &["--config".as_ref(), own.as_os_str()],
+        &[],
+    );
+    client
+        .wait_top("the world", |top| top.contains("alpha/aria"))
+        .await;
+    let shown = |path: &Path| std::fs::canonicalize(path).unwrap().display().to_string();
+    let screen = client.contents();
+    (
+        screen.split_whitespace().collect(),
+        shown(&real),
+        shown(&dir.path().join("b")),
+    )
+}
+
+#[tokio::test]
+async fn a_server_with_another_directory() {
+    let (screen, real, own) = other_server("b").await;
+    let notice = format!("readsitsworldsfrom{real},notfrom{own}");
+    assert!(screen.contains(&notice), "{screen}");
+}
+
+#[tokio::test]
+async fn a_server_with_the_same_directory() {
+    let (screen, _, _) = other_server("link").await;
+    assert!(!screen.contains("readsitsworldsfrom"), "{screen}");
 }

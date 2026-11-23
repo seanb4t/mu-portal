@@ -58,9 +58,14 @@ The top row lists the worlds. The world in focus is in square brackets: `[alpha/
 | PageDown | Scrolls the lines forward by the height of the pane less one row |
 | Ctrl+N | Moves the focus to the next world |
 | Ctrl+P | Moves the focus to the world before |
+| Alt+1 to Alt+9 | Moves the focus to that world of the top row |
+| Up, Down | Walks through the texts that you sent to the world in focus |
+| Alt+Home, Alt+End | Scrolls the lines to the oldest line, or back to the bottom |
 | Ctrl+C | Quits the client. The server and its worlds keep running. If lines are not sent yet, the first Ctrl+C shows their count, and a second Ctrl+C quits and drops them. |
 
-The [input editor decision](/decisions/input-editor/) lists the other keys of the pose editor.
+The [input editor decision](/decisions/input-editor/) lists the other keys of the pose editor. The guide [The client file](/guides/client/) tells how to change the keys.
+
+A text that starts with `/` is a client command, for example `/focus beta/bryn` or `/quit`. The command `/help` lists each command and each key. To send a text that starts with `/` to the game, start it with `//`.
 
 Type `hello` and press Enter. The screen shows `> hello`, and then the answer of the fake world, `You say, "hello"`. A line from the system has the prefix `-- `, for example `-- connect aria ****`. The server replaced the password with `****`.
 

@@ -9,6 +9,17 @@ use mu_core::world::{ConfigError, TomlDirSource, resolve};
 
 use crate::env_path::{PathValue, parse_path, xdg_base};
 
+/// `dir` as an absolute path, with each symbolic link resolved if `dir` exists, for the
+/// comparison of the directories of a client and a server.
+#[must_use]
+pub fn shown_dir(dir: &Path) -> String {
+    let absolute = std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf());
+    std::fs::canonicalize(&absolute)
+        .unwrap_or(absolute)
+        .to_string_lossy()
+        .into_owned()
+}
+
 /// The variable that names the configuration directory.
 pub const CONFIG_ENV: &str = "MU_CONFIG";
 
@@ -44,16 +55,15 @@ impl ConfigArgs {
         )
     }
 
-    /// The resolved worlds of the directory, read from the environment of the process. With no
-    /// directory, or a missing one, there are no worlds. If `--config` or `MU_CONFIG` names a
-    /// missing directory, a warning of `verb` on stderr names it.
-    ///
-    /// # Errors
-    ///
-    /// A [`ConfigError`] that names the file or the world, and the field.
-    pub fn worlds(&self, verb: &str) -> Result<Vec<ResolvedWorld>, ConfigError> {
-        let dir = self.dir_from_env();
-        if let Some(named) = self.config.as_ref().and_then(PathValue::path)
+    /// The directory that `--config` or `MU_CONFIG` names, if the user named one.
+    #[must_use]
+    pub fn named(&self) -> Option<&Path> {
+        self.config.as_ref().and_then(PathValue::path)
+    }
+
+    /// Warns on stderr, as `verb`, if `--config` or `MU_CONFIG` names a missing directory.
+    pub fn warn_missing(&self, verb: &str) {
+        if let Some(named) = self.named()
             && matches!(named.try_exists(), Ok(false))
         {
             crate::warn(
@@ -64,7 +74,18 @@ impl ConfigArgs {
                 ),
             );
         }
-        match dir {
+    }
+
+    /// The resolved worlds of the directory, read from the environment of the process. With no
+    /// directory, or a missing one, there are no worlds. It warns as [`Self::warn_missing`]
+    /// does.
+    ///
+    /// # Errors
+    ///
+    /// A [`ConfigError`] that names the file or the world, and the field.
+    pub fn worlds(&self, verb: &str) -> Result<Vec<ResolvedWorld>, ConfigError> {
+        self.warn_missing(verb);
+        match self.dir_from_env() {
             Some(dir) => resolve_dir(&dir),
             None => Ok(Vec::new()),
         }

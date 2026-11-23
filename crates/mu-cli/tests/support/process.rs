@@ -1,7 +1,7 @@
 //! Helpers that run the built binary as a server, relay its socket, or give it a
 //! pseudo-terminal on one stream.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fmt::Display;
 use std::fs::File;
 use std::future::Future;
@@ -293,13 +293,14 @@ impl ServerProcess {
     }
 }
 
-/// A relay of a Unix socket. It can cut each open connection, and hold, which refuses each
-/// new connection until the test releases it.
+/// A relay of a Unix socket. It can cut each open connection, hold, which refuses each new
+/// connection until the test releases it, and stall, which forwards no byte from then on.
 #[derive(Clone)]
 pub struct Relay {
     front: PathBuf,
     live: Arc<Mutex<JoinSet<()>>>,
     held: Arc<watch::Sender<bool>>,
+    stalled: Arc<watch::Sender<bool>>,
 }
 
 impl Relay {
@@ -310,20 +311,27 @@ impl Relay {
             front: front.to_owned(),
             live: Arc::default(),
             held: Arc::new(watch::channel(false).0),
+            stalled: Arc::new(watch::channel(false).0),
         };
         let back = back.to_owned();
         let task = relay.clone();
         tokio::spawn(async move {
-            while let Ok((mut client, _)) = listener.accept().await {
+            while let Ok((client, _)) = listener.accept().await {
                 if *task.held.borrow() {
                     continue;
                 }
                 let back = back.clone();
+                let stalled = task.stalled.subscribe();
                 task.live.lock().unwrap().spawn(async move {
-                    let Ok(mut server) = UnixStream::connect(&back).await else {
+                    let Ok(server) = UnixStream::connect(&back).await else {
                         return;
                     };
-                    let _ = tokio::io::copy_bidirectional(&mut client, &mut server).await;
+                    let (client_read, client_write) = client.into_split();
+                    let (server_read, server_write) = server.into_split();
+                    tokio::join!(
+                        forward(client_read, server_write, stalled.clone()),
+                        forward(server_read, client_write, stalled),
+                    );
                 });
             }
         });
@@ -352,6 +360,35 @@ impl Relay {
     pub fn release(&self) {
         self.held.send_replace(false);
     }
+
+    /// Forwards no byte on any connection from now on. A call through the relay then gets no
+    /// answer.
+    pub fn stall(&self) {
+        self.stalled.send_replace(true);
+    }
+}
+
+/// Copies `from` to `to` until either one closes. A read waits while `stalled` is true before
+/// it goes on.
+async fn forward(
+    mut from: impl tokio::io::AsyncRead + Unpin,
+    mut to: impl tokio::io::AsyncWrite + Unpin,
+    mut stalled: watch::Receiver<bool>,
+) {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let mut buffer = vec![0; 8192];
+    loop {
+        let read = match from.read(&mut buffer).await {
+            Ok(0) | Err(_) => break,
+            Ok(read) => read,
+        };
+        if stalled.wait_for(|stalled| !*stalled).await.is_err()
+            || to.write_all(&buffer[..read]).await.is_err()
+        {
+            return;
+        }
+    }
+    let _ = to.shutdown().await;
 }
 
 /// The one stream of [`mu_on_pty`] that gets the pseudo-terminal.
@@ -672,6 +709,29 @@ impl PtyClient {
         answers: Answers,
         (rows, cols): (u16, u16),
     ) -> Self {
+        Self::spawn(socket, cwd, answers, (rows, cols), &[], &[])
+    }
+
+    /// Starts `mu client` as [`Self::start_with`] does, with `args` after the socket, and with
+    /// `env` after [`super::test_env`]. A `None` value removes the variable.
+    pub fn start_args(
+        socket: &Path,
+        cwd: &Path,
+        answers: Answers,
+        args: &[&OsStr],
+        env: &[(&str, Option<&OsStr>)],
+    ) -> Self {
+        Self::spawn(socket, cwd, answers, (24, 80), args, env)
+    }
+
+    fn spawn(
+        socket: &Path,
+        cwd: &Path,
+        answers: Answers,
+        (rows, cols): (u16, u16),
+        args: &[&OsStr],
+        env: &[(&str, Option<&OsStr>)],
+    ) -> Self {
         use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
         let pair = native_pty_system()
@@ -685,8 +745,13 @@ impl PtyClient {
         let mut command = CommandBuilder::new(env!("CARGO_BIN_EXE_mu"));
         command.args(["client", "--socket"]);
         command.arg(socket);
+        command.args(args);
         command.cwd(cwd);
-        for (name, value) in super::test_env() {
+        let changes = super::test_env().into_iter().chain(
+            env.iter()
+                .map(|(name, value)| ((*name).into(), value.map(OsStr::to_owned))),
+        );
+        for (name, value) in changes {
             match value {
                 Some(value) => command.env(name, value),
                 None => command.env_remove(name),
@@ -749,9 +814,21 @@ impl PtyClient {
         self.screen.borrow().screen().rows(0, 80).collect()
     }
 
+    /// The dim flag of each cell of the first row that starts with `text`, one for each char of
+    /// `text`.
+    pub fn dims(&self, text: &str) -> Vec<bool> {
+        self.cells_of(text, vt100::Cell::dim)
+    }
+
     /// The foreground color and the bold flag of each cell of the first row that starts with
     /// `text`, one for each char of `text`.
     pub fn looks(&self, text: &str) -> Vec<(vt100::Color, bool)> {
+        self.cells_of(text, |cell| (cell.fgcolor(), cell.bold()))
+    }
+
+    /// `read` of each cell of the first row that starts with `text`, one for each char of
+    /// `text`.
+    fn cells_of<T>(&self, text: &str, read: impl Fn(&vt100::Cell) -> T) -> Vec<T> {
         let parser = self.screen.borrow();
         let screen = parser.screen();
         let row = screen
@@ -760,10 +837,7 @@ impl PtyClient {
             .unwrap_or_else(|| panic!("no row starts with {text:?}"));
         let row = u16::try_from(row).unwrap();
         (0..u16::try_from(text.chars().count()).unwrap())
-            .map(|col| {
-                let cell = screen.cell(row, col).unwrap();
-                (cell.fgcolor(), cell.bold())
-            })
+            .map(|col| read(screen.cell(row, col).unwrap()))
             .collect()
     }
 
@@ -774,16 +848,31 @@ impl PtyClient {
 
     /// Waits until the bytes that the client wrote hold `needle`. A failure prints the screen.
     pub async fn wait_output(&self, what: &str, needle: &[u8]) {
+        self.wait_bytes(what, |all| find(all, needle).is_some())
+            .await;
+    }
+
+    /// Waits until the client wrote a whole line that starts with `prefix`, such as the error
+    /// line of a client that stops. The reader of the terminal can still be behind when the
+    /// client exits, so a test waits for this before it reads the screen.
+    pub async fn wait_line(&self, prefix: &str) {
+        let prefix = prefix.as_bytes();
+        self.wait_bytes(&format!("a line that starts with {prefix:?}"), |all| {
+            find(all, prefix).is_some_and(|at| all[at..].contains(&b'\n'))
+        })
+        .await;
+    }
+
+    /// Waits until `check` holds for the bytes that the client wrote. A failure prints the
+    /// screen.
+    async fn wait_bytes(&self, what: &str, check: impl Fn(&[u8]) -> bool) {
         let mut receiver = self.output.subscribe();
         let note = ScreenNote {
             what,
             screen: &self.screen,
         };
         wait_until(BOUND, note, async {
-            receiver
-                .wait_for(|all| all.windows(needle.len()).any(|window| window == needle))
-                .await
-                .is_ok()
+            receiver.wait_for(|all| check(all)).await.is_ok()
         })
         .await;
     }
@@ -849,6 +938,12 @@ impl PtyClient {
             Err(_elapsed) => None,
         }
     }
+}
+
+/// The place of the first `needle` in `all`.
+fn find(all: &[u8], needle: &[u8]) -> Option<usize> {
+    all.windows(needle.len())
+        .position(|window| window == needle)
 }
 
 /// The name of a wait on the screen. It shows the screen as it is when the wait fails.

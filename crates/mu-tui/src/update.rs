@@ -7,29 +7,38 @@ use std::sync::Arc;
 
 use mu_client::ClientEvent;
 use mu_proto::{EventKind, Source, World as ProtoWorld};
-use ratatui::style::Style;
-use ratatui_textarea::{Input, Key};
+use ratatui::style::{Modifier, Style};
+use ratatui_textarea::{CursorMove, Input, Key};
 use termina::Event as TermEvent;
 use termina::escape::csi::{Csi, DecPrivateMode, DecPrivateModeCode, Device, Mode};
 use termina::event::{
     KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 
+use crate::command::{self, Parse};
+use crate::config::Echo;
 use crate::convert::convert;
+use crate::history::HISTORY_LIMIT;
 use crate::keymap::Wheel;
-use crate::model::{Late, Listing, Model, PaneId};
+use crate::model::{Late, Listing, Model, PaneId, QuitArm};
 use crate::pane::{Caps, PaneState};
 use crate::probe::{self, Outcome};
+use crate::registry::{ArgKind, EntryId, candidates};
 use crate::store::Image;
-use crate::text::{clean, clean_paste, line};
+use crate::text::{clean, clean_paste, echo_rows, line};
 
 /// One input of the model.
 #[derive(Clone, Debug)]
 pub enum Msg {
     /// An event of the terminal.
     Terminal(TermEvent),
-    /// An action from a source other than the keymap.
-    Action(Action),
+    /// Run an entry of the registry with its argument.
+    Run {
+        /// The entry to run.
+        entry: EntryId,
+        /// Its argument, or `None` for no argument.
+        arg: Option<String>,
+    },
     /// An item of the event stream of the server.
     Client(ClientEvent),
     /// The result of the startup probe.
@@ -41,10 +50,19 @@ pub enum Msg {
     Reply(Reply),
     /// The list of the worlds after an [`Effect::ListWorlds`], or the reason that it failed.
     Listed(Result<Vec<ProtoWorld>, String>),
+    /// The result of an [`Effect::Connect`] or an [`Effect::Disconnect`].
+    Control {
+        /// The world of the call.
+        world: String,
+        /// `Ok` if the server took the call, else the reason that it failed: a refusal, an error
+        /// of the connection, or no answer in time.
+        result: Result<(), String>,
+    },
 }
 
-/// What a key or a client command means.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// What an entry of the registry does. [`Entry::build`](crate::registry::Entry::build) of each
+/// entry makes the action of that entry.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Action {
     /// Leave the client.
     Quit,
@@ -78,6 +96,27 @@ pub enum Action {
     /// Scroll the pane in focus by this many rows: back for a negative count, forward for a
     /// positive one.
     ScrollRows(i32),
+    /// Give the focus to the world at this place of the top row, from 1. With no world at that
+    /// place, do nothing.
+    FocusIndex(u8),
+    /// Scroll the pane in focus to its oldest line.
+    ScrollTop,
+    /// Return the pane in focus to the bottom.
+    ScrollBottom,
+    /// Ask the server to connect this world, or the world in focus for `None`.
+    Connect(Option<String>),
+    /// Ask the server to disconnect this world, or the world in focus for `None`.
+    Disconnect(Option<String>),
+    /// Give the focus to this world. For a world that the model does not hold, add a hint.
+    Focus(String),
+    /// Show one line for each entry of the registry.
+    Help,
+    /// On the first line of the pose editor, put the previous entry of the history of the world
+    /// in focus in the editor. On another line, move the cursor up.
+    HistoryPrev,
+    /// On the last line of the pose editor, put the next entry of the history, or the draft
+    /// after the newest entry, in the editor. On another line, move the cursor down.
+    HistoryNext,
 }
 
 /// What the loop must do after an update.
@@ -94,6 +133,16 @@ pub enum Effect {
     Quit,
     /// Ask the server for the list of the worlds, and give it back as a [`Msg::Listed`].
     ListWorlds,
+    /// Ask the server to connect `world`, and give the result back as a [`Msg::Control`].
+    Connect {
+        /// The world to connect.
+        world: String,
+    },
+    /// Ask the server to disconnect `world`, and give the result back as a [`Msg::Control`].
+    Disconnect {
+        /// The world to disconnect.
+        world: String,
+    },
     /// Write `text` to the clipboard of the terminal.
     ClipboardWrite(String),
     /// Send the PNG `png` to the terminal as `image`, with a virtual placement of its size,
@@ -152,7 +201,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
             Vec::new()
         }
         Msg::Terminal(_) => Vec::new(),
-        Msg::Action(action) => act(model, action),
+        Msg::Run { entry, arg } => run_entry(model, entry, arg),
         Msg::Client(item) => on_client(model, item),
         Msg::Listed(listed) => {
             let again = model.listing == Listing::AskedBeforeReset;
@@ -164,11 +213,21 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
                     model.list_failure = None;
                     model.learn(worlds);
                 }
-                Err(reason) => model.list_failure = Some(reason),
+                Err(reason) => {
+                    if model.first_list && !again {
+                        model.notice(&format!("could not list the worlds: {reason}"));
+                    }
+                    model.list_failure = Some(reason);
+                }
             }
             if again {
+                // The reply can be of the server before the reset, so it does not end the first
+                // list.
                 list_worlds(model).into_iter().collect()
             } else {
+                if model.first_list {
+                    model.end_first_list();
+                }
                 Vec::new()
             }
         }
@@ -183,6 +242,12 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
             Vec::new()
         }
         Msg::Reply(reply) => on_reply(model, reply),
+        Msg::Control { world, result } => {
+            if let Err(reason) = result {
+                model.hint(&format!("{world}: {reason}"));
+            }
+            Vec::new()
+        }
     }
 }
 
@@ -300,13 +365,12 @@ fn on_cut_reply_key(model: &mut Model, mut bytes: Vec<u8>, key: KeyEvent) -> Vec
 }
 
 fn on_input_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
-    let action = model.keymap.get(&key);
-    if action != Some(Action::Quit) {
-        model.quit_armed = false;
-    }
-    if let Some(action) = action {
-        act(model, action)
+    if let Some(entry) = model.keymap.get(&key) {
+        run_entry(model, entry, None)
     } else {
+        if model.quit_arm == Some(QuitArm::Key) {
+            model.quit_arm = None;
+        }
         model.pose().textarea().input(input_key(key));
         Vec::new()
     }
@@ -348,19 +412,137 @@ fn on_mouse(model: &mut Model, mouse: MouseEvent) -> Vec<Effect> {
 
 fn wheel(model: &mut Model, step: Wheel) -> Vec<Effect> {
     match model.keymap.wheel(step) {
-        Some(action) => act(model, action),
+        Some(entry) => run_entry(model, entry, None),
         None => Vec::new(),
     }
 }
 
-fn act(model: &mut Model, action: Action) -> Vec<Effect> {
-    match action {
+/// Builds the action of `entry` with `arg` and runs it. An entry that needs an argument and has
+/// none, or that takes none and has one, runs nothing and gives a hint. Every action but a quit
+/// cancels a quit that a key armed.
+fn run_entry(model: &mut Model, entry: EntryId, arg: Option<String>) -> Vec<Effect> {
+    let name = entry.entry().name;
+    let arg = match arity(entry, arg, name) {
+        Ok(arg) => arg,
+        Err(reason) => {
+            model.hint(&reason);
+            return Vec::new();
+        }
+    };
+    let action = (entry.entry().build)(arg);
+    if action != Action::Quit && model.quit_arm == Some(QuitArm::Key) {
+        model.quit_arm = None;
+    }
+    act(model, &action)
+}
+
+/// The text ` (<kept> in history)`, or nothing if the history kept no entry.
+fn in_history(kept: usize) -> String {
+    if kept > 0 {
+        format!(" ({kept} in history)")
+    } else {
+        String::new()
+    }
+}
+
+/// The text `no world has the focus, so <what>`.
+fn no_world(what: &str) -> String {
+    format!("no world has the focus, so {what}")
+}
+
+/// The world that an argument names, or the world in focus for `None`. `name` is the entry,
+/// for the text of a refusal.
+///
+/// # Errors
+///
+/// The text of a hint if no world has the focus, or if the client holds no world `world`.
+fn world_arg(model: &Model, arg: Option<String>, name: &str) -> Result<String, String> {
+    match arg {
+        None => model
+            .focused()
+            .map(str::to_owned)
+            .ok_or_else(|| no_world(&format!("{name} needs a {}", ArgKind::World.word()))),
+        Some(world) if candidates(model, ArgKind::World).contains(&world) => Ok(world),
+        Some(world) => Err(format!("no world is named {world}")),
+    }
+}
+
+/// Runs the command `parse`. A bad command leaves the editor as it is and adds a hint. A good
+/// command clears the editor before it runs. Any command but `/quit` cancels an armed quit.
+fn run_command(model: &mut Model, text: &str, parse: Parse<'_>) -> Vec<Effect> {
+    let checked = check_command(model, parse);
+    let entry = match checked {
+        Ok((entry, _)) => Some(entry),
+        Err(_) => None,
+    };
+    let quit = EntryId::of("quit");
+    if entry != Some(quit) {
+        model.quit_arm = None;
+    }
+    match checked {
+        Err(reason) => {
+            model.hint(&reason);
+            Vec::new()
+        }
+        Ok((entry, arg)) => {
+            record(model, text);
+            model.set_input("");
+            let effects = run_entry(model, entry, arg);
+            if entry == quit && model.quit_arm.is_some() {
+                model.quit_arm = Some(QuitArm::Command);
+            }
+            effects
+        }
+    }
+}
+
+/// The entry and the argument of the command `parse`, after the checks of a command.
+///
+/// # Errors
+///
+/// The text of a hint that says why the command is bad.
+fn check_command(model: &Model, parse: Parse<'_>) -> Result<(EntryId, Option<String>), String> {
+    let name = parse.name;
+    let Some(id) = EntryId::named(name) else {
+        return Err(format!("unknown command /{name}"));
+    };
+    let entry = id.entry();
+    if entry.edits {
+        return Err(format!(
+            "/{name} is not a command, because it edits the text"
+        ));
+    }
+    let shown = format!("/{name}");
+    let arg = match (entry.arg, arity(id, parse.arg.map(str::to_owned), &shown)?) {
+        (Some(arg), given) => match arg.kind {
+            ArgKind::World => Some(world_arg(model, given, &shown)?),
+        },
+        (None, given) => given,
+    };
+    Ok((id, arg))
+}
+
+/// `given`, if it fits the argument of `entry`. `shown` names the entry in the text of a hint.
+///
+/// # Errors
+///
+/// The text of a hint if `entry` takes no argument and has one, or needs one and has none.
+fn arity(entry: EntryId, given: Option<String>, shown: &str) -> Result<Option<String>, String> {
+    match (entry.entry().arg, given) {
+        (None, Some(_)) => Err(format!("{shown} takes no argument")),
+        (Some(arg), None) if arg.required => Err(format!("{shown} needs a {}", arg.kind.word())),
+        (_, given) => Ok(given),
+    }
+}
+
+fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
+    match *action {
         Action::Quit => {
             let waiting: usize = model.sends.values().map(VecDeque::len).sum();
-            if waiting == 0 || model.quit_armed {
+            if waiting == 0 || model.quit_arm.is_some() {
                 return vec![Effect::Quit];
             }
-            model.quit_armed = true;
+            model.quit_arm = Some(QuitArm::Key);
             model.hint(&format!(
                 "{} not sent yet, quit again to leave and drop them",
                 line_count(waiting)
@@ -376,15 +558,11 @@ fn act(model: &mut Model, action: Action) -> Vec<Effect> {
             Vec::new()
         }
         Action::Submit | Action::SubmitLines => {
-            let effects = if action == Action::Submit {
-                submit(model)
-            } else {
-                submit_lines(model)
-            };
+            let effects = submit(model, *action == Action::SubmitLines);
             if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
                 state.to_bottom();
             }
-            effects.into_iter().collect()
+            effects
         }
         Action::Newline => {
             model.pose().textarea().insert_newline();
@@ -408,18 +586,139 @@ fn act(model: &mut Model, action: Action) -> Vec<Effect> {
             Vec::new()
         }
         Action::Ignore => Vec::new(),
-        Action::ScrollPage(pages) => {
-            if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
-                state.scroll_pages(pages);
+        Action::ScrollPage(pages) => in_pane(model, |state| state.scroll_pages(pages)),
+        Action::ScrollRows(rows) => in_pane(model, |state| state.scroll_rows(rows)),
+        Action::FocusIndex(place) => {
+            if let Some(index) = usize::from(place).checked_sub(1)
+                && index < model.worlds.len()
+            {
+                model.set_focus(index);
             }
             Vec::new()
         }
-        Action::ScrollRows(rows) => {
-            if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
-                state.scroll_rows(rows);
+        Action::ScrollTop => in_pane(model, PaneState::to_top),
+        Action::ScrollBottom => in_pane(model, PaneState::to_bottom),
+        Action::Connect(ref world) => control(model, world.clone(), true),
+        Action::Disconnect(ref world) => control(model, world.clone(), false),
+        Action::Focus(ref world) => {
+            if model.first_list {
+                model.hint("the worlds are not listed yet, so the focus does not move");
+                return Vec::new();
+            }
+            match world_arg(model, Some(world.clone()), "/focus") {
+                Ok(world) => {
+                    if let Some(index) = model.find(&world) {
+                        model.set_focus(index);
+                    }
+                }
+                Err(reason) => model.hint(&reason),
             }
             Vec::new()
         }
+        Action::Help => {
+            help(model);
+            Vec::new()
+        }
+        Action::HistoryPrev => {
+            history_prev(model);
+            Vec::new()
+        }
+        Action::HistoryNext => {
+            history_next(model);
+            Vec::new()
+        }
+    }
+}
+
+/// Up: the previous entry of the history of the world in focus. The first Up saves the text of
+/// the editor as the draft of a new walk. With no older entry, nothing changes.
+fn history_prev(model: &mut Model) {
+    let textarea = model.pose().textarea();
+    if textarea.cursor().0 > 0 {
+        textarea.move_cursor(CursorMove::Up);
+        return;
+    }
+    let Some(index) = model.focus else {
+        return;
+    };
+    let draft = model.input();
+    let Some(text) = model.worlds[index]
+        .history
+        .older(|| draft)
+        .map(str::to_owned)
+    else {
+        return;
+    };
+    model.pose().set_text_at_start(&text);
+}
+
+/// Down: the next entry of the history of the world in focus, or after the newest entry the
+/// draft, which ends the walk. With no walk, nothing changes.
+fn history_next(model: &mut Model) {
+    let textarea = model.pose().textarea();
+    if textarea.cursor().0 + 1 < textarea.lines().len() {
+        textarea.move_cursor(CursorMove::Down);
+        return;
+    }
+    let Some(index) = model.focus else {
+        return;
+    };
+    let Some(text) = model.worlds[index].history.newer() else {
+        return;
+    };
+    model.pose().set_text(&text);
+}
+
+/// Adds `text` to the history of the world in focus. An open walk ends first, and its draft goes
+/// into the history before `text`.
+fn record(model: &mut Model, text: &str) {
+    let Some(index) = model.focus else {
+        return;
+    };
+    let history = &mut model.worlds[index].history;
+    if let Some(draft) = history.end_walk() {
+        history.push(&draft);
+    }
+    history.push(text);
+}
+
+/// Runs `change` on the state of the pane in focus.
+fn in_pane(model: &mut Model, change: impl FnOnce(&mut PaneState)) -> Vec<Effect> {
+    if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
+        change(state);
+    }
+    Vec::new()
+}
+
+/// The effect that connects `world`, or for `connect` false disconnects it. `None` is the world
+/// in focus. With no such world, a hint and no effect.
+fn control(model: &mut Model, world: Option<String>, connect: bool) -> Vec<Effect> {
+    let name = if connect { "connect" } else { "disconnect" };
+    match world_arg(model, world, name) {
+        Ok(world) if connect => vec![Effect::Connect { world }],
+        Ok(world) => vec![Effect::Disconnect { world }],
+        Err(reason) => {
+            model.hint(&reason);
+            Vec::new()
+        }
+    }
+}
+
+/// Adds one hint for each entry of the registry: its name, its argument and its description.
+fn help(model: &mut Model) {
+    for entry in crate::registry::ENTRIES {
+        let arg = match entry.arg {
+            None => String::new(),
+            Some(arg) => {
+                let kind = arg.kind.word();
+                if arg.required {
+                    format!(" <{kind}>")
+                } else {
+                    format!(" [{kind}]")
+                }
+            }
+        };
+        model.hint(&format!("{}{arg}: {}", entry.name, entry.description));
     }
 }
 
@@ -429,7 +728,7 @@ fn world_to_send_to(model: &mut Model) -> Option<String> {
     if world.is_none() {
         model.push(
             PaneId::NOTICES,
-            "-- no world has the focus, so the line goes nowhere",
+            &format!("-- {}", no_world("the line goes nowhere")),
         );
     }
     world
@@ -450,21 +749,31 @@ fn enqueue(
     Some(Effect::Send { world, text })
 }
 
-/// Sends the text of the pose editor as one line to the world in focus.
-fn submit(model: &mut Model) -> Option<Effect> {
-    let world = world_to_send_to(model)?;
+/// Runs the text of the pose editor as a command, or sends it to the world in focus: as one
+/// line, or for `lines` as one line for each line of the text. A text of one line that starts
+/// with `//` goes without its first `/`. Each line goes to the world that has the focus now,
+/// also if the focus moves before the last line goes.
+fn submit(model: &mut Model, lines: bool) -> Vec<Effect> {
     let text = model.input();
+    if let Some(parse) = command::parse(&text, text.len()) {
+        return run_command(model, &text, parse);
+    }
+    model.quit_arm = None;
+    let Some(world) = world_to_send_to(model) else {
+        return Vec::new();
+    };
+    record(model, &text);
     model.set_input("");
-    enqueue(model, world, [text])
-}
-
-/// Sends each line of the pose editor as its own line. Each line goes to the world in focus
-/// now, also if the focus moves before the last line goes.
-fn submit_lines(model: &mut Model) -> Option<Effect> {
-    let world = world_to_send_to(model)?;
-    let text = model.input();
-    model.set_input("");
-    enqueue(model, world, text.split('\n').map(str::to_owned))
+    let text = match text.strip_prefix('/') {
+        Some(rest) if rest.starts_with('/') && !text.contains('\n') => rest.to_owned(),
+        _ => text,
+    };
+    let effect = if lines {
+        enqueue(model, world, text.split('\n').map(str::to_owned))
+    } else {
+        enqueue(model, world, [text])
+    };
+    effect.into_iter().collect()
 }
 
 /// Replaces each line break of the pose editor with the line break of the world in focus. The
@@ -473,7 +782,7 @@ fn submit_lines(model: &mut Model) -> Option<Effect> {
 /// the client asks for the list of the worlds.
 fn join_lines(model: &mut Model) -> Option<Effect> {
     let Some(world) = model.focused_world() else {
-        model.hint("no world has the focus, so no line break joins the lines");
+        model.hint(&no_world("no line break joins the lines"));
         return None;
     };
     let (listed, line_break) = (world.listed, world.line_break.clone());
@@ -523,8 +832,7 @@ fn move_focus(model: &mut Model, forward: bool) {
     } else {
         focus - 1
     };
-    model.focus = Some(next);
-    model.worlds[next].unseen = false;
+    model.set_focus(next);
 }
 
 /// The effects of an item of the event stream: a list of the worlds after a Reset, or after
@@ -543,9 +851,7 @@ fn on_client(model: &mut Model, item: ClientEvent) -> Vec<Effect> {
             // The Reset does not clear the notices pane, so its notices are still there.
             let pane = model.focused_pane();
             if pane != PaneId::NOTICES {
-                for line in model.notices.clone() {
-                    model.push(pane, &line);
-                }
+                model.replay_notices(pane);
             }
             return_waiting(model, "the server started again");
             if model.listing == Listing::Asked {
@@ -580,7 +886,17 @@ fn on_client(model: &mut Model, item: ClientEvent) -> Vec<Effect> {
                 .or_insert_with(|| PaneState::with_caps(Arc::clone(&model.caps)));
             let prompt = event.kind.as_known() == Some(EventKind::EVENT_KIND_PROMPT);
             match event.source.as_known() {
-                Some(Source::SOURCE_PLAYER | Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => {
+                Some(Source::SOURCE_PLAYER) => {
+                    let spans = match model.echo {
+                        Echo::Show => Vec::new(),
+                        Echo::Dim => vec![(0, Style::default().add_modifier(Modifier::DIM))],
+                        Echo::Hide => return effects,
+                    };
+                    for row in echo_rows(&event.text, world.line_break.as_deref()) {
+                        pane.push_styled(&row, &spans);
+                    }
+                }
+                Some(Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => {
                     pane.push(&line(&event));
                 }
                 _ if prompt => {
@@ -609,13 +925,6 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
             reason,
         } => (world, text, reason),
     };
-    let notice = format!("-- {}", clean(&reason));
-    let pane = model
-        .worlds
-        .iter()
-        .find(|each| each.id == world)
-        .map_or(PaneId::NOTICES, |world| world.pane);
-    model.push(pane, &notice);
     let waits = model
         .sends
         .get(&world)
@@ -625,7 +934,12 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
     } else {
         vec![text]
     };
-    put_back(model, lines);
+    let kept = put_back(model, &world, lines);
+    let notice = format!("-- {}{}", clean(&reason), in_history(kept));
+    let pane = model
+        .find(&world)
+        .map_or(PaneId::NOTICES, |index| model.worlds[index].pane);
+    model.push(pane, &notice);
     Vec::new()
 }
 
@@ -638,43 +952,69 @@ fn line_count(count: usize) -> String {
     }
 }
 
-/// Puts `lines` back in the pose editor, before the text that the player typed since.
-fn put_back(model: &mut Model, mut lines: Vec<String>) {
-    let typed = model.input();
-    if !typed.is_empty() {
-        lines.push(typed);
+/// Gives `texts` back to `world`. The first goes alone into the editor of that world, with the
+/// cursor at its start. The others, and then the text that the editor held, go into the history
+/// of that world, so each Up gives the next one. During a walk, the held text is the draft of
+/// the walk. A world out of focus gets its unseen mark. The history keeps the held text and at
+/// most [`HISTORY_LIMIT`] less one of the others, the first ones, so no push of this call drops
+/// the held text. Returns the count of entries that the history kept.
+fn put_back(model: &mut Model, world: &str, texts: Vec<String>) -> usize {
+    let Some(index) = model.find(world) else {
+        return 0;
+    };
+    let mut texts = texts.into_iter();
+    let Some(first) = texts.next() else {
+        return 0;
+    };
+    let held = match model.worlds[index].history.end_walk() {
+        Some(draft) => draft,
+        None => model.pose_of(world).text(),
+    };
+    model.pose_of(world).set_text_at_start(&first);
+    let rest: Vec<String> = texts.take(HISTORY_LIMIT - 1).collect();
+    let entry = &mut model.worlds[index];
+    let mut kept = usize::from(entry.history.push(&held));
+    for text in rest.iter().rev() {
+        kept += usize::from(entry.history.push(text));
     }
-    model.set_input(&lines.join("\n"));
+    if model.focus != Some(index) {
+        entry.unseen = true;
+    }
+    kept
 }
 
-/// Puts the sends that wait behind the send with the server back in the pose editor, in the
-/// order of the worlds, with a hint that names `why` and the count of each world. The send with
+/// Gives the sends that wait behind the send with the server back to their worlds, in the
+/// order of the worlds, with a hint that names `why`, the count of each world, and the count of
+/// the entries that the histories kept. The send with
 /// the server stays, so its reply still moves on or puts back only that send.
 fn return_waiting(model: &mut Model, why: &str) {
-    let mut lines = Vec::new();
-    let mut counts = Vec::new();
+    let mut returned = Vec::new();
     for world in &model.worlds {
         if let Some(queue) = model.sends.get_mut(&world.id) {
-            let before = lines.len();
-            lines.extend(queue.drain(1..));
-            if lines.len() > before {
-                counts.push(format!(
-                    "{} of {}",
-                    line_count(lines.len() - before),
-                    world.id
-                ));
+            let texts: Vec<String> = queue.drain(1..).collect();
+            if !texts.is_empty() {
+                returned.push((world.id.clone(), texts));
             }
         }
     }
-    if lines.is_empty() {
+    if returned.is_empty() {
         return;
     }
+    let total = returned.iter().map(|(_, texts)| texts.len()).sum();
+    let counts: Vec<String> = returned
+        .iter()
+        .map(|(world, texts)| format!("{} of {world}", line_count(texts.len())))
+        .collect();
+    let kept: usize = returned
+        .into_iter()
+        .map(|(world, texts)| put_back(model, &world, texts))
+        .sum();
     model.hint(&format!(
-        "{why}, so {} that waited went back to the editor: {}",
-        line_count(lines.len()),
-        counts.join(", ")
+        "{why}, so {} that waited went back to the editor: {}{}",
+        line_count(total),
+        counts.join(", "),
+        in_history(kept)
     ));
-    put_back(model, lines);
 }
 
 /// The next send of `world`, after the server took `text`. Only the reply of the first send

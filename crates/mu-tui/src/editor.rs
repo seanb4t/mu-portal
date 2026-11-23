@@ -66,6 +66,14 @@ impl EditorState {
         self.textarea = textarea(&lines, &self.caps);
     }
 
+    /// Puts `text` in the editor as [`Self::set_text`] does, with the cursor at the start of its
+    /// first line.
+    pub(crate) fn set_text_at_start(&mut self, text: &str) {
+        self.set_text(text);
+        self.textarea.move_cursor(CursorMove::Top);
+        self.textarea.move_cursor(CursorMove::Head);
+    }
+
     /// The rows that the text takes in an area of `width` columns.
     #[must_use]
     pub fn rows(&self, width: u16) -> usize {
