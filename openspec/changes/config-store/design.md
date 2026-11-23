@@ -63,7 +63,7 @@ The merge of the client layers uses `figment2`, as the world merge does. The fun
 
 `server.toml` stays parsed in `mu-cli`, because the telemetry export must start before the server. The start runs `server_config::read` and then the value checks of `telemetry::export`. The change moves those two steps into one function, `server_config::check`, and the start calls it before it builds the exporter. `mu-cli` gives the same function to the store, which calls it at each reload. So the start and the reload refuse the same files.
 
-The store writes nothing to stderr. It returns its notices, and `mu-cli` writes each one through `warn`, which turns control characters into U+FFFD. So a file name under `clients/` cannot send an escape sequence to the terminal.
+The store writes nothing to stderr. It returns its notices, and `mu-cli` writes each one through `warn`, which turns control characters into U+FFFD. So a file name under `clients/` cannot send an escape sequence to the terminal. `mu config show` and `mu config reload` print the notices of their reply through `warn` too.
 
 A reload builds a new snapshot and compares it with the current one:
 

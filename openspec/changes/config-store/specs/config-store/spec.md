@@ -161,12 +161,17 @@ The revision SHALL be a text. A change to the content of a layer that applies to
 - **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --os linux --device laptop`
 - **THEN** stdout holds `echo = "hide"` with the source `clients/os/linux.toml`
 
-### Requirement: mu config reload reads the directory again
-`mu config reload` SHALL ask the server to read and check the configuration directory again. The server SHALL apply the new client layers. It SHALL NOT apply a change to a world or to `server.toml`. For each such changed file, the command SHALL print one line that says that the change applies at restart. The command SHALL print one line for each bad file to stderr. If every file is good, the exit status SHALL be 0. If a file is bad, it SHALL be 1. The good layers SHALL apply in both cases.
-
 #### Scenario: An unknown OS flag
 - **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop --os windows`
 - **THEN** the exit status is 1, and stderr contains `windows`
+
+#### Scenario: Show filters a control character in a notice
+- **GIVEN** `<dir>/clients/` holds a file whose name is `glo`, the character ESC, and `bal.toml`, and a server serves `<dir>` on `<dir>/s.sock`
+- **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
+- **THEN** stderr holds no ESC character, and holds the character U+FFFD
+
+### Requirement: mu config reload reads the directory again
+`mu config reload` SHALL ask the server to read and check the configuration directory again. The server SHALL apply the new client layers. It SHALL NOT apply a change to a world or to `server.toml`. For each such changed file, the command SHALL print one line that says that the change applies at restart. The command SHALL print one line for each bad file to stderr. If every file is good, the exit status SHALL be 0. If a file is bad, it SHALL be 1. The good layers SHALL apply in both cases.
 
 #### Scenario: A reload applies a client layer
 - **GIVEN** a server serves `<dir>` on `<dir>/s.sock`, and `<dir>` holds no `clients` directory
