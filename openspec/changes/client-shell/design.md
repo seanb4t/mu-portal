@@ -11,6 +11,7 @@ Facts from the code at e96b221:
 - `mu_tui::run` takes only the `PortalClient`. `Model::new` always uses `Keymap::default`, and it writes the focus directly.
 - `mu-cli` lists the worlds once before `mu_tui::run`. If no server answers, it starts one. That first call has no time limit. Only the wait after a start has `START_LIMIT` of 5 s. `start_server` passes only `--socket` to the server.
 - `run.rs` lists the worlds a second time before `screen::open`, and builds the model with `Model::from_listing`. That wait can keep the terminal blank for up to 30 s (#161).
+- The model has one pose editor, the entry `EditorId::POSE` of `Model::editors`, and the layout names that id in its editor leaf. All worlds share it.
 - `return_waiting` and `put_back` (`update.rs`) join the returned texts into one editor text. The notice of a refusal holds only the reason.
 - The model has two kinds of `-- ` line. `Model::notice` keeps a line, which shows again after a reset. `Model::hint` is for one moment.
 - `text::line` gives the `> ` and `-- ` prefixes of each source, and cleans the text.
@@ -104,35 +105,39 @@ The quit arm: today each key that is not `Quit` clears `quit_armed`. A `Quit` fr
 
 Enforced by: the spec tests of `client-commands`, and unit tests of the parser in `tests/update.rs` for `/connect `, `/`, `/ focus` and `/quit now`. The registry test `edits_flag_matches_the_editing_rows` checks that `edits` is set exactly on the rows that build `Submit`, `SubmitLines`, `Newline`, `JoinLines`, `DeleteToLineStart`, `Undo`, `Redo`, `Ignore`, `HistoryPrev` and `HistoryNext`.
 
-### D5. History is a state of each world
+### D5. Each world has its own editor and history
 
-`World` gains `history: History`. `History` holds a `VecDeque<String>` of at most 1000 entries. Its one push drops an empty text and a text equal to the newest entry, for every caller: a send, a command, a focus change and `put_back`. History keeps a text as the player typed it. So `//me waves` stays with both slashes, and a recall sends `/me waves` again. The walk state is in the model, not in a world, because one pose editor serves all worlds. It holds the world of the walk by its id, such as `alpha/aria`, the place in the history, and the draft that the first Up saved. It holds the id and not the place of the world in the list, because an event can add a world before it. A send ends the walk.
+`World` gains three fields: `editor: EditorState`, `history: History` and `walk: Option<Walk>`. So the pose editor follows the focus. A half-typed pose stays with its world when the focus moves, and a text that comes back to a world goes into the editor of that world. The model keeps one more editor, `loose`, for the time when no world has the focus: before the first list ends, or with no world at all. The layout keeps its one slot `EditorId::POSE`. The view draws the editor of the world in focus in that slot, or `loose` when no world has the focus. `Model::input`, `Model::set_input` and the key path of the editor all go through one method `Model::pose_mut`, which gives that editor. `Model::editors` keeps only the editors that are not the pose editor. A change of the capabilities of the terminal reaches every world editor and `loose`.
 
-`HistoryPrev` and `HistoryNext` are bound to Up and Down. Up acts only on the first logical line of the pose editor, and Down only on the last. On other lines, `update` gives the key to the editor as before. A logical line is a line between line breaks, not a wrapped row. The fallback of `Keymap::get` from a modified chord to the plain key skips `history-prev` and `history-next`. So Shift+Up, Ctrl+Up and Shift+Down reach the editor with their modifiers, as at head.
+`History` holds a `VecDeque<String>` of at most 1000 entries. Its one push drops an empty text and a text equal to the newest entry, for every caller: a send, a command and `put_back`. History keeps a text as the player typed it. So `//me waves` stays with both slashes, and a recall sends `/me waves` again. `Walk` holds the place in the history and the draft that the first Up saved. A walk belongs to its world, so a focus change and a new world in the list do not touch it.
 
-One method `Model::set_focus(index)` changes the focus. It sets the index, clears the unseen mark of that world, and ends a walk. If no world had the focus, it also copies the kept notices into the pane of that world, as `Model::world` does at head. While `first_list` is set, it does nothing. `move_focus`, `focus-1` to `focus-9`, `/focus`, the `None` arm of `Model::world` and the end of the first list all call it. When a walk ends, the editor keeps its text, and the draft goes into the history of the world of the walk. `put_back` is the one exception (D6).
+`HistoryPrev` and `HistoryNext` are bound to Up and Down. They act on the world in focus. Up acts only on the first logical line of the pose editor, and Down only on the last. On other lines, `update` gives the key to the editor as before. A logical line is a line between line breaks, not a wrapped row. The fallback of `Keymap::get` from a modified chord to the plain key skips `history-prev` and `history-next`. So Shift+Up, Ctrl+Up and Shift+Down reach the editor with their modifiers, as at head.
 
-Down with no walk does nothing. It does not restore an empty draft. With no older entry, Up leaves the text and opens no walk. With no world in focus, Up and Down open no walk and leave the text, also before the first list ends.
+Down with no walk does nothing. It does not restore an empty draft. With no older entry, Up leaves the text and opens no walk. With no world in focus, Up and Down open no walk and leave the text of `loose`, also before the first list ends.
 
-A send or a command during a walk also ends the walk. The saved draft goes into the history of the world of the walk first, and then the sent text. So Up gives the sent text, and then the draft.
+A send or a command during a walk ends the walk. The saved draft goes into the history of that world first, and then the sent text. So Up gives the sent text, and then the draft.
 
-Enforced by: the spec tests of the history requirements, and a property test that a walk of Up and Down with no send gives back the draft.
+One method `Model::set_focus(index)` changes the focus. It sets the index and clears the unseen mark of that world. If no world had the focus, it also moves the text of `loose` into the editor of that world, and copies the kept notices into its pane, as `Model::world` does at head. The editor of that world is empty then, because no key reached it before it had the focus. While `first_list` is set, it does nothing. `move_focus`, `focus-1` to `focus-9`, `/focus`, the `None` arm of `Model::world` and the end of the first list all call it.
+
+The alternative was one pose editor for all worlds, as TinyFugue has one input line. It was rejected, because a text that comes back from a world out of focus then lands in the editor of another world, and a plain Enter sends it there. Each world already keeps its own history for the same reason.
+
+Enforced by: the spec tests of the history and editor requirements, a property test that a walk of Up and Down with no send gives back the draft, and the test `a_focus_change_keeps_each_editor`.
 
 ### D6. Returned sends go to history (#151)
 
-`put_back` changes, for a refusal of the world in focus and for `return_waiting` alike:
+`put_back(world, texts)` changes, for a refusal and for `return_waiting` alike. It acts on the editor and the history of `world` only, whether or not that world has the focus:
 
-1. It ends a walk first, but it does not push the draft. The saved draft becomes the held text, not the entry on screen, and step 3 pushes it once. So the count of the refusal line includes the draft.
-2. The first returned text goes alone into the editor, with the cursor at the start of its first line. So the next Up recalls history at once.
-3. The other returned texts, and then the held text, go into the history of their world. They are pushed in reverse order, so the first Up gives the next one. A stream end or a reset puts the held text into the history of the world in focus.
+1. It ends a walk of that world first, but it does not push the draft. The saved draft becomes the held text, not the entry on screen, and step 3 pushes it once. So the count of the refusal line includes the draft.
+2. The first returned text goes alone into the editor of that world, with the cursor at the start of its first line. So the next Up recalls history at once.
+3. The other returned texts, and then the held text, go into the history of that world. They are pushed in reverse order, so the first Up gives the next one.
 
-A refusal of a world out of focus does not touch the editor, its text or a walk. The refused text and the texts that waited behind it all go into the history of the refused world, pushed in reverse order, so the first Up in that world gives the refused text. So a plain Enter cannot send the refused text to the world in focus, and all the returned texts are in one history.
+A stream end or a reset calls `put_back` once for each world that has texts that waited. A world out of focus shows its returned text when it gets the focus, and its line sets its unseen mark, as any line does.
 
-The line of a refusal in `on_reply` stays a push to the pane of the refused world, as at head. It holds the reason. If texts went into history, it also holds their count, as `(<n> in history)`. The line is in the pane of the refused world, and the count is of the history of that world, so Up in that world gives exactly that count. The count is of the entries that the push kept, because Up gives only those. A returned text equal to the newest entry is not counted. With none, it holds the reason alone. The line of `return_waiting` stays a hint, as at head. It keeps its count of each world and adds `Up recalls the rest`.
+The line of a refusal in `on_reply` stays a push to the pane of the refused world, as at head. It holds the reason. If texts went into history, it also holds their count, as `(<n> in history)`. The count is of the entries that the push kept, because Up gives only those. A returned text equal to the newest entry is not counted. With none, it holds the reason alone. The line of `return_waiting` stays a hint, as at head. It keeps its count of each world and adds `Up recalls the rest`.
 
 The alternative was a marker line between the texts in the editor. #151 says that the client has no line that it keeps in the editor but does not send, and that an empty line does not work, because Alt+Enter sends it as an empty command. A marker would need such a line, so this change keeps the texts apart in history instead.
 
-Enforced by: the spec scenarios of "A refused text stops the sends after it" in `tests/app.rs`. The test `a_refusal_during_a_walk_of_the_history` asserts the count `(1 in history)` and one entry `draft`.
+Enforced by: the spec scenarios of "A refused text stops the sends after it" in `tests/app.rs`. The test `a_refusal_during_a_walk_of_the_history` asserts the count `(1 in history)` and one entry `draft`. The test `a_refusal_out_of_focus` asserts that the editor of the world in focus does not change.
 
 ### D7. Echo
 
@@ -176,6 +181,7 @@ Enforced by: the tests of `world_config.rs` for `client.toml` in another case, u
 
 ## Risks / Trade-offs
 
+- [The editor follows the focus] A player who types half a pose and moves the focus finds an empty editor in the other world. → The text waits in the editor of the first world, and the focus key brings it back.
 - [Up and Down now have two meanings] In a pose of several lines, an Up on the first line recalls history. A player can do that by mistake. → The draft comes back with Down, so nothing is lost.
 - [`Action` loses `Copy`] Each match on `Action` that copies it now needs a clone. → The keymap holds an `EntryId` (D1), so only `build` makes an `Action`, once for each key.
 - [The echo default changes to dim] A player who wants the old look sets `echo = "show"`. → The configuration page says so (#164).

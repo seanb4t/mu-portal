@@ -14,10 +14,10 @@ This change is the first of two that #101 splits into. It gives the client a con
 - One registry names each thing that the player can ask the client to do. Each entry has a name, a description and its argument. The keymap, the client commands and the later palette all read the registry.
 - The `[keys]` table of `client.toml` binds a key to a registry entry, or unbinds it with `"none"`. The bindings change the default keymap. They do not replace it.
 - A one-line text that starts with `/` is a client command. The commands are `/connect [world]`, `/disconnect [world]`, `/focus <world>`, `/quit` and `/help`. A text that starts with `//` goes to the game with one `/` removed. An unknown command shows a line with the prefix `-- `, and its text stays in the editor.
-- Each world has its own input history in memory. Up on the first line of the editor recalls the older send, and Down on the last line the newer one.
+- Each world has its own pose editor and its own input history in memory. The editor on screen is the editor of the world in focus. Up on the first line of the editor recalls the older send, and Down on the last line the newer one.
 - Alt+1 to Alt+9 give the focus to the world at that place in the top row. Alt+Home and Alt+End scroll the pane to its first and last line.
 - The echo line of a send (#140) follows `echo` in `client.toml`: `show`, `dim` or `hide`. The default is `dim`. A joined pose shows as one row for each of its lines, split at the `line_break` of its world.
-- A change to existing behavior (no release yet): after a refusal, a timeout, a stream end or a reset, only the first returned send goes back in the editor. The other returned sends and the text of the editor go into the history of their world. Up then recalls them one at a time (#151). A notice says how many wait there.
+- A change to existing behavior (no release yet): after a refusal, a timeout, a stream end or a reset, only the first returned send goes back in the editor of its world. The other returned sends and the text of that editor go into the history of that world. Up then recalls them one at a time (#151). A notice says how many wait there.
 - The client opens the screen before the first list of the worlds and shows `listing worlds` in the top row while it waits (#161, third item).
 
 ## Choices you will notice
@@ -31,7 +31,8 @@ This change is the first of two that #101 splits into. It gives the client a con
 - Up and Down recall history only from the first and the last line of the editor. On other lines they move the cursor.
 - A bad `client.toml` stops the client. The client does not start with the defaults and a warning.
 - After a refusal, the editor gets one send back, not all of them. The rest wait in history.
-- A refusal from a world out of focus leaves the editor alone. Its texts all wait in the history of that world.
+- Each world has its own pose editor. A half-typed pose stays with its world when the focus moves, and the other world shows its own editor. Text typed before any world has the focus goes to the first world that gets it.
+- A refusal from a world out of focus does not touch the editor on screen. The refused text waits in the editor of its world.
 - The key names of `[keys]` are lowercase and joined with `+`, for example `alt+enter` and `ctrl+shift+z`. The `+` key is `plus`. `"none"` makes a key do nothing.
 - A key in `[keys]` cannot run an entry that needs a world, such as `focus`. A control character is not a key name.
 - Shift+Up, Ctrl+Up and Shift+Down keep their editor moves. Only plain Up and Down recall history.
@@ -51,6 +52,7 @@ This change is the first of two that #101 splits into. It gives the client a con
 
 ## Where it differs from the convention of the field
 
+- TinyFugue keeps one input line for all worlds. This client keeps one pose editor for each world, so a text that comes back from a world cannot be sent to another by mistake.
 - TinyFugue and BeipMU keep one input history for all worlds. This client keeps one for each world, because a pose for one game is rarely right for another.
 - TinyFugue lets a multi-line paste run several `/` commands. Here only a text of one line runs a command, so a pasted pose cannot run a command by accident.
 

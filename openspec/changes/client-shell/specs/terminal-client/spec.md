@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Enter sends the input to the world in focus
-If the user presses Enter, the client SHALL send the whole text of the editor to the world in focus and clear the editor. Ctrl+M SHALL do the same as Enter. A line break of the text SHALL go to the server as LF. An empty editor SHALL send an empty line. If the server refuses the text, the client SHALL put the text back in the editor. The requirement "A refused text stops the sends after it" gives the rule. It SHALL show the reason as a line with the prefix `-- `.
+If the user presses Enter, the client SHALL send the whole text of the editor to the world in focus and clear the editor. Ctrl+M SHALL do the same as Enter. A line break of the text SHALL go to the server as LF. An empty editor SHALL send an empty line. If the server refuses the text, the client SHALL put the text back in the editor of that world. The requirement "A refused text stops the sends after it" gives the rule. It SHALL show the reason as a line with the prefix `-- `.
 
 #### Scenario: A line goes to the world in focus
 - **GIVEN** the world in focus is `beta/bryn`
@@ -51,7 +51,7 @@ If the user presses Enter, the client SHALL send the whole text of the editor to
 - **AND** the editor still holds `one` and `two` on 2 rows
 
 ### Requirement: A refused text stops the sends after it
-If the server refuses a text, the client SHALL send none of the texts that wait for the same world. A send with no reply in time counts as a refusal. The requirement "A send with no reply is refused" gives the time. If the refused world has the focus, the client SHALL put the refused text alone in the editor, with the cursor at its start. It SHALL put each text that waited behind it, and then the text that the editor held, into the input history of that world. Up SHALL then give them in that order. If the refused world does not have the focus, the client SHALL NOT change the editor. It SHALL put the refused text and each text that waited behind it into the input history of the refused world, and Up in that world SHALL give them in that order. It SHALL show the reason as a line with the prefix `-- `. If texts went into the history, the line SHALL also hold their count, as `(<n> in history)`. The line SHALL be in the pane of the refused world, and the count SHALL be of the history of that world. A key that sends after that SHALL send at once. If the event stream ends, or the server resets, the client SHALL take back each text that waits behind the text with the server. The first of them, in the order of the worlds, SHALL go alone in the editor, with the cursor at its start. Each other one SHALL go into the input history of its world. The text that the editor held SHALL go into the history of the world in focus. During a walk of the history, the text that the editor held is the draft that the walk saved, not the entry on screen. The client SHALL show a line with the prefix `-- ` that holds their count and the count of each world. The text with the server SHALL stay, and its reply SHALL act on it alone.
+If the server refuses a text, the client SHALL send none of the texts that wait for the same world. A send with no reply in time counts as a refusal. The requirement "A send with no reply is refused" gives the time. The client SHALL put the refused text alone in the editor of the refused world, with the cursor at its start. It SHALL put each text that waited behind it, and then the text that this editor held, into the input history of that world. Up in that world SHALL then give them in that order. The client SHALL NOT change the editor or the history of another world. It SHALL show the reason as a line with the prefix `-- ` in the pane of the refused world. If texts went into the history, the line SHALL also hold their count, as `(<n> in history)`. A key that sends after that SHALL send at once. If the event stream ends, or the server resets, the client SHALL take back each text that waits behind the text with the server. For each world, the first of them SHALL go alone in the editor of that world, with the cursor at its start, and the others and the text that this editor held SHALL go into the input history of that world. During a walk of the history, the text that an editor held is the draft that the walk saved, not the entry on screen. The client SHALL show a line with the prefix `-- ` that holds their count and the count of each world. The text with the server SHALL stay, and its reply SHALL act on it alone.
 
 #### Scenario: A line that the server refuses
 - **GIVEN** the editor holds the lines `one`, `two` and `three`, and a test server that accepts `one` and refuses `two`
@@ -94,7 +94,14 @@ If the server refuses a text, the client SHALL send none of the texts that wait 
 - **WHEN** the event stream ends
 - **THEN** the editor holds `a2`
 - **AND** the screen shows `1 line of alpha/aria, 1 line of beta/bryn`
-- **AND** after Ctrl+N to `beta/bryn` and Up, the editor holds `b2`
+- **AND** after Ctrl+N to `beta/bryn`, the editor holds `b2`
+
+#### Scenario: A refusal out of focus
+- **GIVEN** the world in focus is `alpha/aria`, and the line `b2` waits behind the send `b1` in `beta/bryn`
+- **WHEN** the user types `typed`, and the server refuses `b1`
+- **THEN** the editor holds `typed`
+- **AND** after Ctrl+N to `beta/bryn`, the editor holds `b1` alone
+- **AND** after Up the editor holds `b2`
 
 #### Scenario: The server resets while lines wait
 - **GIVEN** the user pressed Alt+Enter on the lines `one`, `two` and `three`, and the server did not answer `one` yet
@@ -169,8 +176,8 @@ A line here is a line between line breaks, not a wrapped row. If the cursor is o
 - **WHEN** the user presses Up
 - **THEN** the editor still holds `a` and `b`, and the cursor is on `a`
 
-### Requirement: A focus change ends a walk
-A change of the focus SHALL end a walk of the history. The editor SHALL keep its text. The saved draft, if not empty, SHALL go into the history of the world that had the focus. A send or a command during a walk SHALL also end it, and the draft SHALL go into the history before the sent text.
+### Requirement: Each world keeps its own editor
+The client SHALL keep a pose editor for each world, with its text, its cursor and its walk of the history. The editor on screen SHALL be the editor of the world in focus. A change of the focus SHALL NOT change the text of an editor, and SHALL NOT end a walk. A send or a command during a walk SHALL end it, and the draft SHALL go into the history before the sent text. The text typed while no world has the focus SHALL go into the editor of the first world that gets the focus.
 
 #### Scenario: A send during a walk
 - **GIVEN** the user sent `one` to `alpha/aria`, typed `draft` and pressed Up
@@ -178,12 +185,19 @@ A change of the focus SHALL end a walk of the history. The editor SHALL keep its
 - **THEN** the server records the player event `one` twice for `alpha/aria`
 - **AND** the editor holds `draft`
 
-#### Scenario: A focus change ends a walk
-- **GIVEN** the user sent `one` to `alpha/aria`, typed `draft` and pressed Up
-- **WHEN** the user presses Ctrl+N to `beta/bryn`
-- **THEN** the editor holds `one`
-- **WHEN** the user presses Ctrl+P to `alpha/aria` and presses Up
+#### Scenario: A focus change keeps each editor
+- **GIVEN** a server with the fake worlds `alpha/aria` and `beta/bryn`, and the world in focus is `alpha/aria`
+- **WHEN** the user types `draft` and presses Ctrl+N to `beta/bryn`
+- **THEN** the editor is empty
+- **WHEN** the user types `other` and presses Ctrl+P to `alpha/aria`
 - **THEN** the editor holds `draft`
+- **AND** after Ctrl+N the editor holds `other`
+
+#### Scenario: A walk stays with its world
+- **GIVEN** the user sent `one` to `alpha/aria`, typed `draft` and pressed Up
+- **WHEN** the user presses Ctrl+N to `beta/bryn` and Ctrl+P to `alpha/aria`
+- **THEN** the editor holds `one`
+- **AND** after Down the editor holds `draft`
 
 ### Requirement: Alt and a digit give the focus to a world
 Alt+1 to Alt+9 SHALL give the focus to the world at that place in the top row. If no world is at that place, the key SHALL do nothing.
@@ -223,7 +237,7 @@ The client SHALL split the echo line of a send at each `line_break` of its world
 - **AND** the screen shows no row that holds `one%rtwo` and starts with `> `
 
 ### Requirement: The top row shows the first list
-The client SHALL open the screen before its first list of the worlds for the screen. `mu client` can list the worlds once before, within its limit of 5 s, to decide whether to start a server. Until that list ends, the top row SHALL show `listing worlds`, and no world SHALL have the focus, also if events of a world arrive. Keys typed in that time SHALL edit the editor, and a key that sends SHALL show that no world is in focus.
+The client SHALL open the screen before its first list of the worlds for the screen. `mu client` can list the worlds once before, within its limit of 5 s, to decide whether to start a server. Until that list ends, the top row SHALL show `listing worlds`, and no world SHALL have the focus, also if events of a world arrive. Keys typed in that time SHALL edit an editor of no world, and a key that sends SHALL show that no world is in focus.
 
 #### Scenario: Before the first list
 - **GIVEN** the client opened the screen, and its first list of the worlds did not end yet
@@ -237,6 +251,13 @@ The client SHALL open the screen before its first list of the worlds for the scr
 - **WHEN** the user types `hi` and presses Enter
 - **THEN** the screen shows a line that starts with `-- ` and contains `no world`
 - **AND** the server records no player event, and the editor holds `hi`
+
+#### Scenario: Text typed before the first list
+- **GIVEN** the client opened the screen, and its first list of the worlds did not end yet
+- **WHEN** the user types `hi`, and the list ends with the world `alpha/aria`
+- **THEN** the editor holds `hi`
+- **WHEN** the user presses Enter
+- **THEN** the server records a player event `hi` for `alpha/aria`
 
 #### Scenario: An event before the first list
 - **GIVEN** the client opened the screen, and its first list of the worlds did not end yet
