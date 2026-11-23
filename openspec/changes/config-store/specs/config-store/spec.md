@@ -54,6 +54,17 @@ At the start, `mu server` SHALL read and check each file under `clients/` in the
 - **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
 - **THEN** stderr holds exactly one line that contains `clients/devices/lap`
 
+#### Scenario: A line break in a binding
+- **GIVEN** `<dir>/clients/global.toml` holds `[keys]` with `"alt+\n" = "quit"`
+- **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
+- **THEN** stderr holds exactly one line that contains `clients/global.toml`
+
+#### Scenario: A link to an unreadable directory under clients
+- **GIVEN** the test runs as a user that is not root, `<dir>/locked` is a directory with mode 000, and `<dir>/clients/devices/x` is a symbolic link to `<dir>/locked`
+- **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
+- **THEN** stderr holds a line that contains `clients/devices/x`
+- **AND** an API call on `<dir>/s.sock` succeeds
+
 #### Scenario: A file that is not TOML
 - **GIVEN** `<dir>/clients/notes.txt` exists
 - **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
@@ -160,7 +171,7 @@ The call `GetClientConfig` SHALL take a kind, an OS and a device name. It SHALL 
 The revision SHALL be a text. A change to the content of a layer that applies to the client SHALL change it. So SHALL an added or a removed layer of that client. Without such a change, the revision SHALL stay the same, also across a restart of the server. `mu config show` SHALL print the revision on its first line, as `# revision <text>`.
 
 #### Scenario: The same files give the same revision
-- **GIVEN** a server serves `<dir>` on `<dir>/s.sock`
+- **GIVEN** `<dir>/clients/devices/laptop.toml` holds `echo = "hide"`, and a server serves `<dir>` on `<dir>/s.sock`
 - **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop` twice, with a restart of the server between the two runs
 - **THEN** both first lines are the same
 
@@ -218,6 +229,12 @@ The revision SHALL be a text. A change to the content of a layer that applies to
 - **WHEN** the user writes `extends = "tinymux"`, `host = "localhost"` and `port = 4201` to `<dir>/games/beta.toml`, writes an empty `<dir>/characters/beta/bryn.toml`, and runs `mu config reload --server unix://<dir>/s.sock`
 - **THEN** stdout holds a line that contains `characters/beta/bryn.toml` and `restart`
 - **AND** an API call on `<dir>/s.sock` lists `alpha/aria` and not `beta/bryn`
+
+#### Scenario: A reload with two bad world files
+- **GIVEN** a server serves `<dir>` with the worlds `alpha/aria` and `beta/bryn` on `<dir>/s.sock`
+- **WHEN** the user writes `port = 0` to `<dir>/characters/alpha/aria.toml` and to `<dir>/characters/beta/bryn.toml`, and runs `mu config reload --server unix://<dir>/s.sock`
+- **THEN** stderr holds a line that contains `characters/alpha/aria.toml` and a line that contains `characters/beta/bryn.toml`
+- **AND** the exit status is 1
 
 #### Scenario: A reload with a bad world file
 - **GIVEN** a server serves `<dir>` with the world `alpha/aria` on `<dir>/s.sock`

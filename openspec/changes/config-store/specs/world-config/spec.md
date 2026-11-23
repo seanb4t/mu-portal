@@ -57,11 +57,11 @@ The flag `--config <dir>` of `mu server` and `mu world` SHALL name the configura
 - **AND** `<dir>/run/server.log` names `<dir>/none`
 
 #### Scenario: The client takes the flag
-- **GIVEN** no server runs, and `<dir>/flag` holds the world `alpha/aria`
+- **GIVEN** `XDG_RUNTIME_DIR` is `<dir>/run`, `<dir>/run` does not exist, and `<dir>/flag` holds the world `alpha/aria`
 - **WHEN** the user runs `mu client --config <dir>/flag` in a terminal
 - **THEN** stderr contains `--config`
 - **AND** the exit status is 2
-- **AND** no server runs
+- **AND** `<dir>/run` does not exist
 
 ### Requirement: Each character file makes one world
 The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml` and `characters/<game>/<character>.toml`, and each file SHALL be optional. It can also hold `server.toml` at its top level, the configuration of the server, and the directory `clients`, the configuration of the clients. Neither SHALL make a world or a layer of a world. Each character file SHALL make the world `<game>/<character>`, and its game SHALL be `games/<game>.toml`. A file name that is not a part of a world id SHALL be an error that names the file. So SHALL a character with no game file, and any other file that ends in `.toml`. So SHALL an entry that cannot be read, such as a link to nothing.
@@ -84,9 +84,27 @@ The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml`
 - **AND** the exit status is 1
 
 #### Scenario: A stray file
-- **GIVEN** a directory with one of `worlds.toml`, `characters/alpha.toml`, `games/old/alpha.toml` and `characters/alpha/aria/x.toml`
+- **GIVEN** `<dir>` holds `worlds.toml`
 - **WHEN** the user runs `mu world list --config <dir>`
-- **THEN** stderr names that path
+- **THEN** stderr contains `worlds.toml`
+- **AND** the exit status is 1
+
+#### Scenario: A stray character file
+- **GIVEN** `<dir>` holds `characters/alpha.toml`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr contains `characters/alpha.toml`
+- **AND** the exit status is 1
+
+#### Scenario: A stray game file
+- **GIVEN** `<dir>` holds `games/old/alpha.toml`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr contains `games/old/alpha.toml`
+- **AND** the exit status is 1
+
+#### Scenario: A stray file under a character
+- **GIVEN** `<dir>` holds `characters/alpha/aria/x.toml`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr contains `characters/alpha/aria/x.toml`
 - **AND** the exit status is 1
 
 #### Scenario: A link to nothing

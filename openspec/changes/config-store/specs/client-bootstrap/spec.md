@@ -153,6 +153,16 @@ The query option `connect_wait` SHALL be the longest time, in seconds, that a cl
 ### Requirement: The client names itself to the server
 `mu client` SHALL ask the server for the configuration of the kind `tui`, the OS of the machine, and its device name. The OS SHALL be `macos` on macOS and `linux` on Linux.
 
+#### Scenario: The kind layer applies
+- **GIVEN** `clients/kinds/tui.toml` holds `echo = "hide"`, and a server serves that directory with the fake world `alpha/aria`
+- **WHEN** the user starts `mu client --device laptop`, types `hello` and presses Enter
+- **THEN** the screen shows no row that starts with `> `
+
+#### Scenario: The device layer applies
+- **GIVEN** `clients/devices/laptop.toml` holds `echo = "hide"`, and a server serves that directory with the fake world `alpha/aria`
+- **WHEN** the user starts `mu client --device laptop`, types `hello` and presses Enter
+- **THEN** the screen shows no row that starts with `> `
+
 #### Scenario: The OS layer applies
 - **GIVEN** `clients/os/<os>.toml` for the OS of the test holds `echo = "hide"`, and a server serves that directory with the fake world `alpha/aria`
 - **WHEN** the user starts `mu client --device laptop`, types `hello` and presses Enter

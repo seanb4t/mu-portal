@@ -51,13 +51,13 @@ The entry table in `mu-config` and the registry in `mu-tui` name the same entrie
 
 ### D2. The store lives in `mu-server` and keeps a snapshot
 
-The directory is read once for each start and each reload. `mu-core` gets a snapshot type, `DirSnapshot`. It walks the directory with the walk and the top-file rule of `TomlDirSource`, and keeps each relative path with its bytes. It keeps every file under `clients/`, whatever its name ends with, so the store can report a file that is not a layer file. The scan skips `clients` at the top level with the case rule of the top files. So `Clients/` on a file system that ignores case is the same directory. The snapshot also keeps the bytes of `server.toml`, only so that a reload can see a change to it. The walk stops today at the first entry that it cannot read, stat or list. The snapshot does not stop. It keeps each such entry as a path with its error, and the reader of that path decides:
+The directory is read once for each start and each reload. `mu-core` gets a snapshot type, `DirSnapshot`. It walks the directory with `walkdir` and keeps the top-file rule of `TomlDirSource`. It keeps each relative path with its bytes. It keeps every file under `clients/`, whatever its name ends with, so the store can report a file that is not a layer file. The scan skips `clients` at the top level with the case rule of the top files. So `Clients/` on a file system that ignores case is the same directory. The snapshot also keeps the bytes of `server.toml`, only so that a reload can see a change to it. The walk stops today at the first entry that it cannot read, stat or list. The snapshot does not stop. It keeps each such entry as a path with its error, and the reader of that path decides:
 
 - Under `clients/`, the directory `clients/` itself included, the entry is a bad client layer.
 - A world file or a world directory with an error stops the world resolve, as today. At a reload, that error is reported and the client layers still apply.
 - `server.toml` keeps its own reader, as today. A read error of `server.toml` is kept with its path, and the world read ignores it. So `mu world list` does not change when `server.toml` cannot be read.
 
-The snapshot walks with the `walkdir` crate, which already is in `Cargo.lock`, with `follow_links(true)`. `walkdir` returns an error for each entry that it cannot read and goes on with the next entry. It also returns a loop of links as an error of the entry that closes the loop. So two links back to `.` end the walk. The top-file rule and the skip of `clients` stay as a filter on the entries. `walkdir` enters the `mu-core` row of `ALLOWED_CRATES` and `[workspace.dependencies]`. `DirSnapshot` implements `LayerSource`, and `TomlDirSource` becomes a snapshot followed by its layers. So the store resolves the worlds with `mu_core::world::resolve` from the same bytes that it keeps. `Store::open` returns the store, the resolved worlds and the notices. `mu-cli` builds each `WorldSetup` from those worlds, and checks the fake ids against them, as it does today with the result of `resolve`.
+The snapshot walks with the `walkdir` crate, which already is in `Cargo.lock`, with `follow_links(true)`. `walkdir` returns an error for each entry that it cannot read and goes on with the next entry. It also returns a loop of links as an error of the entry that closes the loop. So two links back to `.` end the walk. An error of `walkdir` with no path comes from a directory that it failed to open. The snapshot keeps that error at the path of the last entry that the walk returned, which is that directory. The top-file rule and the skip of `clients` stay as a filter on the entries. `walkdir` enters the `mu-core` row of `ALLOWED_CRATES` and `[workspace.dependencies]`. `DirSnapshot` implements `LayerSource`, and `TomlDirSource` becomes a snapshot followed by its layers. So the store resolves the worlds with `mu_core::world::resolve` from the same bytes that it keeps. `Store::open` returns the store, the resolved worlds and the notices. `mu-cli` builds each `WorldSetup` from those worlds, and checks the fake ids against them, as it does today with the result of `resolve`.
 
 The store parses each file under `clients/` with `mu_core::world::parse_toml` into the types of `mu-config`, so the line of an error comes from one parser. A client layer parses with `Hidden::All`, so no error quotes a value. Then it checks the `[keys]` table with `mu-config`. The fields of a client layer skip an unset value when they serialize, as the world types do. The reason is that `figment2` takes an empty later value over an earlier one. A good client layer keeps its parsed fields. A bad client layer keeps a reason that names the file, the field or the binding, and the line when there is one.
 
@@ -65,15 +65,15 @@ The merge of the client layers uses `figment2`, as the world merge does. The fun
 
 `server.toml` stays parsed in `mu-cli`, because the telemetry export must start before the server. The start runs `server_config::read` and then the value checks of `telemetry::export`. The change moves those two steps into one function, `server_config::check`, and the start calls it before it builds the exporter. `mu-cli` gives the same function to the store, which calls it at each reload. So the start and the reload refuse the same files.
 
-The store writes nothing to stderr. It returns its notices, and `mu-cli` writes each one through `warn`, which turns control characters into U+FFFD. So a file name under `clients/` cannot send an escape sequence to the terminal. `warn` keeps a line break, so the store also writes the path of each notice with each control character, the line break included, as U+FFFD. One bad layer then gives one line. `mu config show` and `mu config reload` print the notices of their reply through `warn` too. The restart lines of a reload name a file, so they go to stdout through the same filter.
+The store writes nothing to stderr. It returns its notices, and `mu-cli` writes each one through `warn`, which turns control characters into U+FFFD. So a file name under `clients/` cannot send an escape sequence to the terminal. `warn` keeps a line break. So the store also writes the whole text of each notice, the path and the reason, with each control character as U+FFFD. That includes the line break. One bad layer then gives one line. Today `report_to` in `mu-cli` and `printable` in `mu-tui` each have their own filter. The change moves the filter to one function in `mu-config` that takes the characters to keep. `report_to` keeps the line break and the tab, `printable` keeps the tab, and the store keeps nothing. `mu config show` and `mu config reload` print the notices of their reply through `warn` too. The restart lines of a reload name a file, so they go to stdout through the same filter.
 
 A reload builds a new snapshot and compares it with the current one:
 
 - Changed, added or removed client layers replace the client part of the snapshot.
 - A changed world file or `server.toml` is listed as "applies at restart" and does not replace anything. The compare is always against the snapshot of the start, so each later reload lists the change again until a restart.
-- Every file is checked. A bad world file is reported by the reload, and the running worlds stay.
+- Every file is checked. `mu_core::world::resolve` stops at its first error. So the reload resolves each world on its own, from its character file and the game files that it names. Each bad world file is then reported once, and the running worlds stay.
 
-One mutex serializes reloads. A reload swaps the client part as one value, so a `GetClientConfig` call sees the old or the new layers, never a mix. The client part holds its store hash (D5), computed from its own entries before the swap. `GetClientConfig` takes one reference to the client part, and reads the store hash and the layers of its reply from that one value.
+One mutex serializes reloads. The client part, with its store hash (D5), is one `Arc` value in a `tokio::sync::watch` channel, as the world status of `Portal` is. A reload sends the new value with `send_if_modified`, which skips a value with the same store hash. `GetClientConfig` borrows the current value, and reads the store hash and the layers of its reply from it. `WatchConfig` subscribes to the channel. A receiver wakes only after the new value is visible, so no hash goes out before its configuration.
 
 Alternative: keep `mu-cli` as the reader and pass a callback to the server for reloads. Rejected: the reader and the reload then live in two crates, and #173 needs one owner. The `server.toml` check is the one callback, because its types belong to the telemetry code of `mu-cli`.
 
@@ -114,7 +114,7 @@ ReloadConfig()
   -> notices[{path, reason}], restart[{path}]
 ```
 
-The store hash is a hash of the whole `clients/` part of the snapshot, with the framing of D4. Its input is every path under `clients/` with its bytes or its read error, and the error of `clients/` itself. A reload computes it again. The server publishes the new hash only after the new client part is visible to `GetClientConfig`.
+The store hash is a hash of the whole `clients/` part of the snapshot, with the framing of D4. Its input is every path under `clients/` with its bytes or its read error, and the error of `clients/` itself. A reload computes it again. The watch channel of D2 sends it to each watcher.
 
 The server keeps no state about a client. `WatchConfig` sends the current store hash when it opens, and every watcher gets the same later hashes. The watch stream ends on the stopping receiver, as the event stream does, so a graceful shutdown does not wait for it. The client decides:
 
@@ -136,7 +136,7 @@ The `revision` of D4 stays for each client. `mu config show` prints it, and the 
 
 Alternatives:
 
-- A `config_changed` message on the journal stream, and a fetch on each `Hello`. Rejected: a client misses the message in each gap of the stream, and two fetches can finish in the wrong order.
+- A `config_changed` message on the journal stream, and a fetch on each `Hello`. Rejected: two fetches can finish in the wrong order, and nothing in a reply tells the client which one is newer.
 - A watch stream that sends the configuration of one client. Rejected: the server then keeps the kind, the OS and the device of each stream, and decides which clients a reload affects.
 
 ### D6. The bootstrap values
@@ -145,7 +145,7 @@ The URL parser is the `url` crate, which already is in `Cargo.lock` through othe
 
 `sha2` enters the `mu-server` row of `ALLOWED_CRATES` and `[workspace.dependencies]`. `proptest` enters the `mu-server` row for the property test of D4, as it is in the rows of `mu-core`, `mu-tui` and `mu-cli`. The rows of `ALLOWED_CRATES` cover every dependency table, so the change adds no other check.
 
-The host name comes from `rustix::system::uname().nodename()`. `rustix` is already a workspace dependency, and the change adds its `system` feature. A host name that is not a valid device name after the change to lowercase stops the command, and the message says to set `--device`.
+Every flag of `mu-cli` with a variable is one `clap` argument with `env` and the value parser `parse_path`, which turns an empty value into none. The device rule needs the two apart: an empty `MU_DEVICE` counts as unset, but an empty `--device` is an error. So `--device` is a `clap` argument with no `env`, and `mu-cli` reads `MU_DEVICE` itself. The host name comes from `rustix::system::uname().nodename()`. `rustix` is already a workspace dependency, and the change adds its `system` feature. A host name that is not a valid device name after the change to lowercase stops the command, and the message says to set `--device`.
 
 `mu config show` and `mu config reload` take the same `--server` and `--device` flags, and never start a server. `mu config show` also takes `--kind`, with the default `tui`, and `--os`, with the default of the machine. Both values are checked with `mu-config` before the call. Each waits for the answer of its call at most the time of `connect_wait`. A message about a server that did not answer names the URL and that time. Today that timeout and its message are inline in the start of `mu client`. They move to one function in `crates/mu-cli/src/client.rs` that takes the URL, the wait and a future. `mu client`, `mu config show` and `mu config reload` all call it.
 
@@ -161,7 +161,7 @@ The order becomes:
 
 ### D8. A live change in the client
 
-`mu-tui` gets a message for `ClientEvent::StoreHash` (D5). The `Echo` type and its default leave `mu-tui`, and the model holds the echo type of `mu-config`. If the hash differs from the store hash of its configuration, the effect calls `GetClientConfig`. A reply applies only if its store hash equals the latest hash. A reply with a new revision replaces the keymap and the echo setting of the model. The model keeps the notices that it showed, and shows only a notice that is not among them. So a notice that stays the same across two revisions shows once. A reply with the same revision changes nothing. A key that is held during the swap uses the old or the new keymap, never a mix.
+`mu-tui` gets a message for `ClientEvent::StoreHash` (D5). The `Echo` type and its default leave `mu-tui`, and the model holds the echo type of `mu-config`. If the hash differs from the store hash of its configuration, the effect calls `GetClientConfig`. A reply applies only if its store hash equals the latest hash. A reply with a new revision replaces the keymap and the echo setting of the model. The model keeps the notices of the last reply that it applied. It adds to `Model::notices`, the existing list that a `Reset` replays, each notice of the new reply that the last reply did not hold. So a notice that stays the same across two revisions shows once. A layer that goes bad again after a fix shows its notice again. No other record of shown notices exists. A reply with the same revision changes nothing. A key that is held during the swap uses the old or the new keymap, never a mix.
 
 ### D9. The documentation and the diagrams
 
@@ -193,7 +193,7 @@ The diagrams follow `docs/src/content/docs/contributing/diagrams.md`: LikeC4 for
 ## Risks / Trade-offs
 
 - [A skipped device layer brings back a binding that the user removed with `none`] → The client shows a notice that names the file. Every entry is a client action, and none sends text to a game.
-- [The user misses the notice] → The prominent notice of #172 is the follow-up.
+- [The user misses the notice] → The server writes a line to stderr, and `mu config show` prints the notice. The client shows it at attach (task 6.2) and after a reload (task 7.1). The prominent notice of #172 is the follow-up.
 - [A new store hash reaches clients whose revision did not change] → Each such client makes one call and keeps its configuration. The number of clients of one server is small.
 - [A reload reads a file while an editor writes it] → The file is bad for that reload, and the next reload fixes it. The command reports the bad file, so the user sees it.
 - [A host name with characters that a device name refuses] → The command stops and names the host name and `--device`.
