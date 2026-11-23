@@ -2054,3 +2054,18 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn a_command_enters_the_history_of_the_world_before_it() {
+    let mut app = two_worlds();
+    type_text(&mut app, "/focus beta/bryn");
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    assert_eq!(app.focused(), Some("beta/bryn"));
+    assert_eq!(
+        (
+            app.history("alpha/aria").unwrap(),
+            app.history("beta/bryn").unwrap()
+        ),
+        (vec!["/focus beta/bryn"], vec![])
+    );
+}

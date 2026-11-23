@@ -1297,3 +1297,29 @@ async fn an_entry_that_needs_an_argument() {
 async fn a_control_character() {
     stops_naming("[keys]\n\"alt+\\u007f\" = \"quit\"\n", &["client.toml"]).await;
 }
+
+#[tokio::test]
+async fn a_key_bound_to_connect_with_no_world_in_focus() {
+    let session = Session::with_worlds(&[]).await;
+    let config = client_file("[keys]\n\"alt+c\" = \"connect\"\n");
+    let mut client = PtyClient::start_args(
+        session.server.socket(),
+        session.server.dir().path(),
+        Answers::Default,
+        &["--config".as_ref(), config.path().as_os_str()],
+        &[],
+    );
+    client
+        .wait_top("no worlds", |top| top.trim() == "no worlds")
+        .await;
+    client.send(b"\x1bc");
+    client
+        .wait_rows("the hint", |rows| {
+            rows.iter()
+                .any(|row| row.starts_with("-- ") && row.contains("no world"))
+        })
+        .await;
+    // The client still reads keys.
+    client.send(b"x");
+    editor_holds(&client, "x").await;
+}
