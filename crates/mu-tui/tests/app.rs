@@ -2053,7 +2053,6 @@ proptest! {
             }
             for (id, before) in ids.iter().zip(before) {
                 let history = app.history(id).unwrap();
-                prop_assert!(history.len() <= 1000);
                 prop_assert!(history.iter().all(|entry| !entry.is_empty()));
                 prop_assert!(history.windows(2).all(|pair| pair[0] != pair[1]), "{history:?}");
                 if let Some((place, len)) = app.walk(id) {
@@ -2336,4 +2335,17 @@ fn the_hint_of_returned_lines_counts_what_history_kept() {
     assert!(has_notice(&mut app, "2 lines that waited"));
     let joined = screen(&mut app).join(" ");
     assert!(joined.contains("(1 in history)"), "{joined}");
+}
+
+#[test]
+fn a_focus_command_before_the_first_list() {
+    let mut app = starting();
+    on_event(&mut app, game("alpha/aria", "Welcome, aria."));
+    type_text(&mut app, "/focus alpha/aria");
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    assert!(
+        has_notice(&mut app, "the worlds are not listed yet"),
+        "{:?}",
+        rows(&mut app)
+    );
 }

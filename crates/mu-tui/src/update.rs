@@ -460,13 +460,13 @@ fn world_arg(model: &Model, arg: Option<String>, name: &str) -> Result<String, S
 /// Runs the command `parse`. A bad command leaves the editor as it is and adds a hint. A good
 /// command clears the editor before it runs. Any command but `/quit` cancels an armed quit.
 fn run_command(model: &mut Model, text: &str, parse: Parse<'_>) -> Vec<Effect> {
-    let name = parse.name;
     let checked = check_command(model, parse);
     let entry = match checked {
         Ok((entry, _)) => Some(entry),
         Err(_) => None,
     };
-    if entry.is_none_or(|entry| entry.entry().name != "quit") {
+    let quit = EntryId::of("quit");
+    if entry != Some(quit) {
         model.quit_arm = None;
     }
     match checked {
@@ -478,7 +478,7 @@ fn run_command(model: &mut Model, text: &str, parse: Parse<'_>) -> Vec<Effect> {
             record(model, text);
             model.set_input("");
             let effects = run_entry(model, entry, arg);
-            if name == "quit" && model.quit_arm.is_some() {
+            if entry == quit && model.quit_arm.is_some() {
                 model.quit_arm = Some(QuitArm::Command);
             }
             effects
@@ -593,6 +593,10 @@ fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
         Action::Connect(ref world) => control(model, world.clone(), true),
         Action::Disconnect(ref world) => control(model, world.clone(), false),
         Action::Focus(ref world) => {
+            if model.first_list {
+                model.hint("the worlds are not listed yet, so the focus does not move");
+                return Vec::new();
+            }
             match model.worlds.iter().position(|each| each.id == *world) {
                 Some(index) => model.set_focus(index),
                 None => model.hint(&format!("no world is named {world}")),
@@ -692,9 +696,17 @@ fn control(model: &mut Model, world: Option<String>, connect: bool) -> Vec<Effec
 fn help(model: &mut Model) {
     for entry in crate::registry::ENTRIES {
         let arg = match entry.arg {
-            None => "",
-            Some(arg) if arg.required => " <world>",
-            Some(_) => " [world]",
+            None => String::new(),
+            Some(arg) => {
+                let kind = match arg.kind {
+                    ArgKind::World => "world",
+                };
+                if arg.required {
+                    format!(" <{kind}>")
+                } else {
+                    format!(" [{kind}]")
+                }
+            }
         };
         model.hint(&format!("{}{arg}: {}", entry.name, entry.description));
     }
@@ -760,7 +772,7 @@ fn submit(model: &mut Model, lines: bool) -> Vec<Effect> {
 /// the client asks for the list of the worlds.
 fn join_lines(model: &mut Model) -> Option<Effect> {
     let Some(world) = model.focused_world() else {
-        model.hint("no world has the focus, so no line break joins the lines");
+        model.hint(&no_world("no line break joins the lines"));
         return None;
     };
     let (listed, line_break) = (world.listed, world.line_break.clone());

@@ -88,3 +88,7 @@ The client does not open the screen for a bad file. It writes the error and exit
 - An unknown field, or an `echo` value that is not `show`, `dim` or `hide`. The error names `client.toml` and the field.
 - A `connect_wait_seconds` value of 0 or less, or a value that is not finite. The error names `client.toml` and `server.connect_wait_seconds`.
 - A bad binding. The error names `client.toml` and the key. A binding is bad if its key name is bad, or if its entry is unknown or needs a world. Two names of the same key are also bad, such as `ctrl+shift+z` and `shift+ctrl+z`.
+
+## Before a downgrade
+
+An earlier `mu` does not know `client.toml`. It reads the file as a stray file, and `mu world` and `mu server` stop with an error. Before you install an earlier binary, remove or rename `client.toml`.

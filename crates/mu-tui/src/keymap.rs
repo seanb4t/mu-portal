@@ -58,7 +58,13 @@ impl Chord {
             let (_, modifier) = MODIFIERS
                 .iter()
                 .find(|(each, _)| *each == part)
-                .ok_or_else(|| error(format!("{part:?} is no modifier")))?;
+                .ok_or_else(|| {
+                    error(if part.is_empty() {
+                        "the key + is named plus".to_owned()
+                    } else {
+                        format!("{part:?} is no modifier: use ctrl, alt, shift or super")
+                    })
+                })?;
             if modifiers.contains(*modifier) {
                 return Err(error(format!("{part} is there twice")));
             }

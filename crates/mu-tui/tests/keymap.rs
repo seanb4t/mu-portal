@@ -150,6 +150,14 @@ fn f1_and_f12_are_read() {
 }
 
 #[test]
+fn a_bad_modifier_names_the_good_ones() {
+    let error = Chord::parse("hyper+n").expect_err("hyper").to_string();
+    assert!(error.ends_with("use ctrl, alt, shift or super"), "{error}");
+    let error = Chord::parse("ctrl++").expect_err("ctrl++").to_string();
+    assert!(error.ends_with("the key + is named plus"), "{error}");
+}
+
+#[test]
 fn bad_key_names_are_refused_with_the_name() {
     for name in [
         "ctrl+N",
