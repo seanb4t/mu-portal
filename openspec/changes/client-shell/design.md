@@ -46,7 +46,7 @@ Non-goals:
 
 The keymap binds a chord to an `EntryId`, the place of an entry in the table. The wheel does the same. At a key, the loop builds the `Action` from the entry with no argument. So the palette of `client-layout` and the tests can read the key of an entry with no map back from an `Action`.
 
-Three front ends feed one path. The keymap gives an entry for a chord. A command is parsed to an entry and an argument. The picker of `client-layout` will give a chosen row. Each one sends `Msg::Run { entry: EntryId, arg: Option<String> }`, which replaces `Msg::Action(Action)`. `update` calls `build` and then runs one `act(model, Action)`. No message takes an `Action` from outside, so no front end can skip the registry, and the result cannot differ by front end.
+Three front ends feed one path. The keymap gives an entry for a chord. A command is parsed to an entry and an argument. The picker of `client-layout` will give a chosen row. Each one reaches `run_entry(model, EntryId, Option<String>)` in `update`: a key and a command call it directly, and `Msg::Run { entry: EntryId, arg: Option<String> }` calls it for a front end outside `update`, such as the picker. `Msg::Run` replaces `Msg::Action(Action)`. `run_entry` checks the argument against the entry, calls `build`, and then runs one `act(model, Action)`. No message takes an `Action` from outside, so no front end can skip the registry, and the result cannot differ by front end.
 
 Names that take a number become one entry for each value: `scroll-page-up` and `scroll-page-down`, `scroll-up` and `scroll-down` (3 rows), `focus-1` to `focus-9`. The nine rows `focus-1` to `focus-9` come from one helper over the digit. So the name, the description and the `FocusIndex` value of a row come from one number.
 
@@ -110,7 +110,7 @@ The check runs before `build`, in this order:
 3. A required argument must be present.
 4. For `ArgKind::World`, an omitted optional world becomes the world in focus. With no world in focus, the command is bad. A given world must be in `candidates` (D10). This holds for `/connect`, `/disconnect` and `/focus` alike.
 
-One function `world_arg(model, Option<String>) -> Result<String, Refusal>` in `update.rs` resolves a world argument. It gives the world in focus for an omitted world, and refuses an unknown world or no world in focus. Step 4 of the command check and `act`, for a key bound to `connect` or `disconnect`, both call it. On a refusal, `act` adds the hint and sends nothing. The command check only adds that the text stays in the editor.
+One function `world_arg(model, Option<String>, name) -> Result<String, String>` in `update.rs` resolves a world argument. `name` names the entry in the text of a refusal, and the error is the text of the hint. It gives the world in focus for an omitted world, and refuses an unknown world or no world in focus. Step 4 of the command check and `act`, for a key bound to `connect` or `disconnect`, both call it. On a refusal, `act` adds the hint and sends nothing. The command check only adds that the text stays in the editor.
 
 One helper `no_world(what)` gives the text `no world has the focus, so <what>`. The send, the join, the key and the command all use it.
 
@@ -120,7 +120,7 @@ A bad command adds a hint with `Model::hint` and leaves the editor as it is. A g
 
 `Help` adds one hint line for each entry. The line holds the name, the argument of the entry, and the description.
 
-The quit arm: today each key that is not `Quit` clears `quit_armed`. A `Quit` from a command sets the arm with the mark `by_command`. With that mark, no key clears the arm by itself: a key that edits the editor, and the Enter or Alt+Enter that submits, leave it. The parse of the submitted text decides. A `/quit` quits. A text that goes to a game, or any other command, clears the arm. A bad command also clears it, so a mistyped `/qiut` never leaves the client. So the Enter of the second `/quit` cannot clear the arm before the parse.
+The quit arm: today each key that is not `Quit` clears `quit_armed`. A `Quit` from a command sets the arm to `QuitArm::Command`, and a key sets it to `QuitArm::Key`. With `QuitArm::Command`, no key clears the arm by itself: a key that edits the editor, and the Enter or Alt+Enter that submits, leave it. The parse of the submitted text decides. A `/quit` quits. A text that goes to a game, or any other command, clears the arm. A bad command also clears it, so a mistyped `/qiut` never leaves the client. So the Enter of the second `/quit` cannot clear the arm before the parse.
 
 Enforced by: the spec tests of `client-commands`, and unit tests of the parser in `tests/update.rs` for `/connect `, `/`, `/ focus` and `/quit now`. The registry test `edits_flag_matches_the_editing_rows` checks that `edits` is set exactly on the rows that build `Submit`, `SubmitLines`, `Newline`, `JoinLines`, `DeleteToLineStart`, `Undo`, `Redo`, `Ignore`, `HistoryPrev` and `HistoryNext`.
 
@@ -160,7 +160,7 @@ Enforced by: the spec scenarios of "A refused text stops the sends after it" in 
 
 ### D7. Echo
 
-`text::echo_rows` takes the text of a player event and the `line_break` of its world. It returns the rows: the first part with `> `, and each other part with two spaces. A world with no known `line_break` gives one row. So the prefix rule stays in one place. `update` only chooses the style by `echo`. With `Echo::Dim` the rows get `Modifier::DIM`. With `Echo::Hide` the client adds no row, but the event still sets the unseen mark of a world out of focus. The server keeps each sent line in the journal as before.
+`text::echo_rows` takes the text of a player event and the `line_break` of its world. It returns the rows: the first part with `> `, and each other part with two spaces. A world with no known `line_break` gives one row. So the prefix rule stays in one place: `text::line` gives only the line of the system or a credential. `update` only chooses the style by `echo`. With `Echo::Dim` the rows get `Modifier::DIM`. With `Echo::Hide` the client adds no row, but the event still sets the unseen mark of a world out of focus. The server keeps each sent line in the journal as before.
 
 Enforced by: the spec scenarios of the echo requirements on `TestBackend`, and the property test `echo_rows_join_back`. A test checks that a hidden echo in a world out of focus sets its mark.
 
@@ -213,4 +213,4 @@ No migration. No release exists, and `client.toml` is new. An existing `MU_CONFI
 
 ## Open Questions
 
-- The exact text of each description in the registry. It changes no spec and no task.
+None. The registry in `registry.rs` gives the text of each description.
