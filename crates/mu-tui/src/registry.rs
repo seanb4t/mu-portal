@@ -1,6 +1,7 @@
 //! The registry: one table of the entries that the player can run. A key of the keymap and a
 //! client command both choose an entry, and [`update`](crate::update) builds its [`Action`].
 
+use crate::model::Model;
 use crate::update::Action;
 
 /// The kind of value that an argument takes.
@@ -29,7 +30,8 @@ pub struct Entry {
     /// The argument, or `None` for an entry that takes none.
     pub arg: Option<Arg>,
     /// Whether the entry acts on the text of the pose editor. Such an entry does not run as a
-    /// command, because the command is that text.
+    /// command, because the command is that text. `ignore` has it too, so `/ignore` is no
+    /// command.
     pub edits: bool,
     /// The action of the entry with its argument.
     pub build: fn(Option<String>) -> Action,
@@ -155,7 +157,7 @@ pub static ENTRIES: &[Entry] = &[
         true,
         |_| Action::Redo,
     ),
-    plain("ignore", "do nothing", false, |_| Action::Ignore),
+    plain("ignore", "do nothing", true, |_| Action::Ignore),
     plain(
         "scroll-page-up",
         "scroll the pane back one page",
@@ -193,3 +195,12 @@ pub static ENTRIES: &[Entry] = &[
         |_| Action::ScrollBottom,
     ),
 ];
+
+/// The values that an argument of `kind` can take now. For [`ArgKind::World`] they are the
+/// worlds in the order of the top row.
+#[must_use]
+pub fn candidates(model: &Model, kind: ArgKind) -> Vec<String> {
+    match kind {
+        ArgKind::World => model.world_ids().into_iter().map(str::to_owned).collect(),
+    }
+}

@@ -96,7 +96,20 @@ fn edits_flag_matches_the_editing_rows() {
             "join-lines",
             "delete-to-line-start",
             "undo",
-            "redo"
+            "redo",
+            "ignore"
         ]
     );
+}
+
+#[test]
+fn default_keymap_leaves_tab_free() {
+    use termina::event::{KeyCode, KeyEvent, Modifiers};
+    let keymap = Keymap::default();
+    let keys = [
+        KeyEvent::new(KeyCode::Tab, Modifiers::NONE),
+        KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT),
+        KeyEvent::new(KeyCode::Char(' '), Modifiers::CONTROL),
+    ];
+    assert_eq!(keys.map(|key| keymap.get(&key)), [None, None, None]);
 }

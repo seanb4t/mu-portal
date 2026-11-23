@@ -4,6 +4,7 @@
 //! the [`Model`] and returns the [`Effect`]s for the loop to perform, and [`view`] draws the
 //! model by walking its layout tree.
 
+pub mod command;
 pub mod convert;
 mod diacritics;
 mod editor;
@@ -28,7 +29,7 @@ pub use keymap::{Chord, Keymap, Wheel};
 pub use layout::{Leaf, Node, Size};
 pub use model::{Model, PaneId};
 pub use pane::{Caps, OutputPane, PaneState, Position};
-pub use registry::{Arg, ArgKind, ENTRIES, Entry, EntryId};
+pub use registry::{Arg, ArgKind, ENTRIES, Entry, EntryId, candidates};
 pub use run::{CALL_LIMIT, reply_of, run, within};
 pub use update::{Action, Effect, Msg, Reply, update};
 pub use view::view;

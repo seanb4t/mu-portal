@@ -382,3 +382,38 @@ fn mode_reply_with_no_late_wait_changes_nothing() {
     feed(&mut model, b"\x1b[?2027;1$y");
     assert!(!model.keeps_grapheme_mode());
 }
+
+// The seams for completion: the candidates of an argument and the place of the cursor.
+
+#[test]
+fn world_candidates_follow_the_top_row() {
+    let model = Model::new(["beta/bryn".to_owned(), "alpha/aria".to_owned()]);
+    assert_eq!(
+        mu_tui::candidates(&model, mu_tui::ArgKind::World),
+        model.world_ids()
+    );
+}
+
+#[test]
+fn parse_knows_the_place_of_the_cursor() {
+    use mu_tui::command::{CursorAt, parse};
+    let text = "/focus  beta/bryn ";
+    let places: Vec<CursorAt> = [0, 6, 7, 8, 17, 18]
+        .into_iter()
+        .map(|cursor| parse(text, cursor).expect("a command").cursor)
+        .collect();
+    assert_eq!(
+        (parse(text, 0).and_then(|parse| parse.arg), places),
+        (
+            Some("beta/bryn"),
+            vec![
+                CursorAt::Name,
+                CursorAt::Name,
+                CursorAt::Arg,
+                CursorAt::Arg,
+                CursorAt::Arg,
+                CursorAt::Past
+            ]
+        )
+    );
+}
