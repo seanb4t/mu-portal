@@ -52,7 +52,7 @@ Test files: `crates/mu-tui/tests/app.rs` holds the tests of `update` and `view` 
 - [x] 7.5 Start a server only if nothing listens on the socket (D8). Make sure that `a_server_that_closes_the_connection` in `client.rs` passes, and that `client_starts_a_server`, `two_clients_start_one_server` and `client_gives_up_after_five_seconds` still pass.
 - [x] 7.6 Pass `--config` to a started server only if the user named a directory (D8). Make sure that `the_started_server_finds_the_default_directory` and `the_client_takes_the_flag` in `client.rs` pass.
 - [x] 7.7 Move the walk into `History` (D5), and make `Walk` private to the crate. Make sure that every test of the history in `app.rs` still passes, and that a unit test in `tests/history.rs` shows that a push during a walk ends it.
-- [x] 7.8 Add `config_dir` to `ListWorldsResponse`, set it from `mu server`, and show a notice in `mu client` when the directory of a running server differs (D8). Replace the attach sentence of `guides/client.md` with the notice. Make sure that `the_server_names_its_directory` and `a_server_with_no_directory_names_none` in `server.rs`, and `a_server_with_another_directory` and `a_server_with_the_same_directory` in `client.rs`, pass.
+- [x] 7.8 Add `config_dir` to `ListWorldsResponse`, set it from `mu server`, and show a notice in `mu client` when the directory of a running server differs (D8). Replace the attach sentence of `guides/client.md` with the notice. Make sure that `the_server_names_its_directory` and `a_server_with_no_directory_names_none` in `server.rs`, and `a_server_with_another_directory`, `a_server_with_the_same_directory` and `two_clients_with_other_directories_start_at_once` in `client.rs`, pass.
 
 ## 8. Review and integration
 

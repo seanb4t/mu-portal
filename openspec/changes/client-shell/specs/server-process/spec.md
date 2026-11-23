@@ -62,3 +62,9 @@ If `mu client` attaches to a server that it did not start, and the `config_dir` 
 - **WHEN** the user runs `mu client --config <dir>/link --socket <dir>/s.sock` in a terminal
 - **THEN** the top row shows `alpha/aria`
 - **AND** the screen shows no notice with `reads its worlds from`
+
+#### Scenario: Two clients with other directories start at once
+- **GIVEN** nothing serves `<dir>/run/mu.sock`
+- **WHEN** the user runs `mu client --config <dir>/a --socket <dir>/run/mu.sock` and `mu client --config <dir>/b --socket <dir>/run/mu.sock` at the same time, each in its own terminal
+- **THEN** each top row shows `no worlds`
+- **AND** exactly one of the two screens shows a notice with `reads its worlds from`
