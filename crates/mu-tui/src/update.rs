@@ -25,7 +25,7 @@ use crate::pane::{Caps, PaneState};
 use crate::probe::{self, Outcome};
 use crate::registry::{ArgKind, EntryId, candidates};
 use crate::store::Image;
-use crate::text::{clean, clean_paste, line};
+use crate::text::{clean, clean_paste, echo_rows, line};
 
 /// One input of the model.
 #[derive(Clone, Debug)]
@@ -852,14 +852,16 @@ fn on_client(model: &mut Model, item: ClientEvent) -> Vec<Effect> {
                 .or_insert_with(|| PaneState::with_caps(Arc::clone(&model.caps)));
             let prompt = event.kind.as_known() == Some(EventKind::EVENT_KIND_PROMPT);
             match event.source.as_known() {
-                Some(Source::SOURCE_PLAYER) => match model.echo {
-                    Echo::Show => pane.push(&line(&event)),
-                    Echo::Dim => pane.push_styled(
-                        &line(&event),
-                        &[(0, Style::default().add_modifier(Modifier::DIM))],
-                    ),
-                    Echo::Hide => {}
-                },
+                Some(Source::SOURCE_PLAYER) => {
+                    let spans = match model.echo {
+                        Echo::Show => Vec::new(),
+                        Echo::Dim => vec![(0, Style::default().add_modifier(Modifier::DIM))],
+                        Echo::Hide => return effects,
+                    };
+                    for row in echo_rows(&event.text, world.line_break.as_deref()) {
+                        pane.push_styled(&row, &spans);
+                    }
+                }
                 Some(Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => {
                     pane.push(&line(&event));
                 }

@@ -158,7 +158,7 @@ Enforced by: the spec scenarios of "A refused text stops the sends after it" in 
 
 ### D7. Echo
 
-`text::line` takes the `line_break` of the world of the event. For a player event it returns the rows: the first part with `> `, and each other part with two spaces. A world with no known `line_break` gives one row. So the prefix rule stays in one place. `update` only chooses the style by `echo`. With `Echo::Dim` the rows get `Modifier::DIM`. With `Echo::Hide` the client adds no row, but the event still sets the unseen mark of a world out of focus. The server keeps each sent line in the journal as before.
+`text::echo_rows` takes the text of a player event and the `line_break` of its world. It returns the rows: the first part with `> `, and each other part with two spaces. A world with no known `line_break` gives one row. So the prefix rule stays in one place. `update` only chooses the style by `echo`. With `Echo::Dim` the rows get `Modifier::DIM`. With `Echo::Hide` the client adds no row, but the event still sets the unseen mark of a world out of focus. The server keeps each sent line in the journal as before.
 
 Enforced by: the spec scenarios of the echo requirements on `TestBackend`, and the property test `echo_rows_join_back`. A test checks that a hidden echo in a world out of focus sets its mark.
 

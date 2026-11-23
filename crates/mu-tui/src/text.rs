@@ -78,6 +78,26 @@ pub(crate) fn clean_styled<'a>(
     (Cow::Owned(out), Cow::Owned(moved))
 }
 
+/// The rows of the echo line of a player event, with the control characters of `text` replaced.
+/// With a `line_break`, the text splits at each one: the first part goes after `> `, and each
+/// other part after two spaces. With none, the text is one row after `> `.
+#[must_use]
+pub fn echo_rows(text: &str, line_break: Option<&str>) -> Vec<String> {
+    let text = clean(text);
+    let parts: Vec<&str> = match line_break {
+        Some(line_break) if !line_break.is_empty() => text.split(line_break).collect(),
+        _ => vec![text.as_str()],
+    };
+    parts
+        .iter()
+        .enumerate()
+        .map(|(index, part)| {
+            let prefix = if index == 0 { "> " } else { "  " };
+            format!("{prefix}{part}")
+        })
+        .collect()
+}
+
 /// The text of an event on the screen with its control characters replaced: a player line
 /// after `> `, a line of the system or a credential after `-- `, and any other line alone.
 pub(crate) fn line(event: &Event) -> String {

@@ -2069,3 +2069,95 @@ fn a_command_enters_the_history_of_the_world_before_it() {
         (vec!["/focus beta/bryn"], vec![])
     );
 }
+
+// The echo line.
+
+fn player(world: &str, text: &str) -> ClientEvent {
+    event(world, Source::SOURCE_PLAYER, text)
+}
+
+#[test]
+fn the_default_dims() {
+    let mut app = two_worlds();
+    on_event(&mut app, player("alpha/aria", "hello"));
+    let cells = cells_of(&mut app, "> hello");
+    assert!(
+        cells
+            .iter()
+            .all(|cell| cell.modifier.contains(Modifier::DIM)),
+        "{cells:?}"
+    );
+}
+
+#[test]
+fn hide() {
+    let mut app = two_worlds().with_echo(mu_tui::Echo::Hide);
+    on_event(&mut app, player("alpha/aria", "hello"));
+    on_event(&mut app, game("alpha/aria", "You say, \"hello\""));
+    assert!(shows(&mut app, "You say, \"hello\""));
+    assert!(!screen(&mut app).iter().any(|row| row.starts_with("> ")));
+}
+
+#[test]
+fn a_hidden_echo_marks_a_world_out_of_focus() {
+    let mut app = two_worlds().with_echo(mu_tui::Echo::Hide);
+    press(&mut app, ctrl('n'));
+    press(&mut app, ctrl('p'));
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn");
+    on_event(&mut app, player("beta/bryn", "hello"));
+    assert_eq!(top(&mut app), "[alpha/aria] beta/bryn*");
+}
+
+#[test]
+fn the_echo_of_a_pose_of_two_lines() {
+    let mut app = listed();
+    on_event(&mut app, player("alpha/aria", "one%rtwo"));
+    let screen = screen(&mut app);
+    let at = screen
+        .iter()
+        .position(|row| row == "> one")
+        .unwrap_or_else(|| panic!("{screen:?}"));
+    assert_eq!(screen[at + 1], "  two");
+    assert!(
+        !screen
+            .iter()
+            .any(|row| row.starts_with("> ") && row.contains("one%rtwo"))
+    );
+}
+
+#[test]
+fn an_echo_with_no_line_break() {
+    // `alpha/aria` of `app` is in no list, and `beta/bryn` of `listed` has no line break.
+    for (mut app, world) in [
+        (app(&["alpha/aria"]), "alpha/aria"),
+        (listed(), "beta/bryn"),
+    ] {
+        if world == "beta/bryn" {
+            press(&mut app, ctrl('n'));
+        }
+        on_event(&mut app, player(world, "one%rtwo"));
+        let rows: Vec<String> = rows(&mut app)
+            .into_iter()
+            .filter(|row| row.starts_with("> ") || row.starts_with("  "))
+            .collect();
+        assert_eq!(rows, ["> one%rtwo"], "{world}");
+    }
+}
+
+proptest! {
+    #[test]
+    fn echo_rows_join_back(
+        text in any::<String>(),
+        line_break in "[^\\p{Cc}]{1,16}",
+    ) {
+        let rows = mu_tui::echo_rows(&text, Some(&line_break));
+        prop_assert!(rows[0].starts_with("> "));
+        let parts: Vec<&str> = rows
+            .iter()
+            .enumerate()
+            .map(|(index, row)| row.strip_prefix(if index == 0 { "> " } else { "  " }).unwrap())
+            .collect();
+        let cleaned = mu_tui::echo_rows(&text, None).remove(0);
+        prop_assert_eq!(parts.join(&line_break), cleaned.strip_prefix("> ").unwrap());
+    }
+}
