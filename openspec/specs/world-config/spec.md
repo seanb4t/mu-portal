@@ -8,7 +8,7 @@ Each scenario starts from a base directory `<dir>`, and names only what it chang
 ## Requirements
 
 ### Requirement: The configuration directory
-The flag `--config <dir>` of `mu server`, `mu world` and `mu client` SHALL name the configuration directory, then `MU_CONFIG`. An empty `MU_CONFIG` SHALL count as unset. Next comes `mu` under `XDG_CONFIG_HOME`, then `.config/mu` under `HOME`. Each of these two SHALL count only with an absolute path. With none, there SHALL be no directory. A missing directory SHALL hold no worlds and SHALL NOT be an error. If `--config` or `MU_CONFIG` names a missing directory, stderr SHALL name it.
+The flag `--config <dir>` of `mu server` and `mu world` SHALL name the configuration directory, then `MU_CONFIG`. An empty `MU_CONFIG` SHALL count as unset. Next comes `mu` under `XDG_CONFIG_HOME`, then `.config/mu` under `HOME`. Each of these two SHALL count only with an absolute path. With none, there SHALL be no directory. A missing directory SHALL hold no worlds and SHALL NOT be an error. If `--config` or `MU_CONFIG` names a missing directory, stderr SHALL name it.
 
 #### Scenario: The flag wins over the environment
 - **GIVEN** `MU_CONFIG` is `<dir>/env` with the world `alpha/aria`, and `<dir>/flag` holds the world `beta/bryn`
@@ -49,26 +49,27 @@ The flag `--config <dir>` of `mu server`, `mu world` and `mu client` SHALL name 
 - **AND** stderr names `<dir>/none`
 - **AND** the exit status is 0
 
-#### Scenario: The client warns of a missing directory
-- **GIVEN** a server with the fake world `alpha/aria`
-- **WHEN** the user starts `mu client --config <dir>/none`
-- **THEN** stderr names `<dir>/none`
-- **AND** the top row shows `[alpha/aria]`
-
 #### Scenario: A missing default directory
 - **GIVEN** `XDG_CONFIG_HOME` is `<dir>`, `<dir>/mu` does not exist, and neither `MU_CONFIG` nor `--config` is given
 - **WHEN** the user runs `mu world list`
 - **THEN** stdout and stderr are empty
 - **AND** the exit status is 0
 
+#### Scenario: The client warns of a missing directory
+- **GIVEN** `MU_CONFIG` is `<dir>/none`, and nothing serves `<dir>/run/s.sock`
+- **WHEN** the user runs `mu client --server unix://<dir>/run/s.sock` in a terminal
+- **THEN** the top row shows `no worlds`
+- **AND** `<dir>/run/server.log` names `<dir>/none`
+
 #### Scenario: The client takes the flag
-- **GIVEN** no server runs, `MU_CONFIG` is `<dir>/env` with a `client.toml` that holds `echo = "loud"`, and `<dir>/flag` holds the world `alpha/aria` and no `client.toml`
-- **WHEN** the user starts `mu client --config <dir>/flag`
-- **THEN** the top row shows `[alpha/aria]`
-- **AND** the server that the client started holds the world `alpha/aria`
+- **GIVEN** `XDG_RUNTIME_DIR` is `<dir>/run`, `<dir>/run` does not exist, and `<dir>/flag` holds the world `alpha/aria`
+- **WHEN** the user runs `mu client --config <dir>/flag` in a terminal
+- **THEN** stderr contains `--config`
+- **AND** the exit status is 2
+- **AND** `<dir>/run` does not exist
 
 ### Requirement: Each character file makes one world
-The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml` and `characters/<game>/<character>.toml`, and each file SHALL be optional. It can also hold `server.toml` at its top level, the configuration of the server, and `client.toml`, the configuration of the terminal client. Neither file SHALL make a world or a layer. Each character file SHALL make the world `<game>/<character>`, and its game SHALL be `games/<game>.toml`. A file name that is not a part of a world id SHALL be an error that names the file. So SHALL a character with no game file, and any other file that ends in `.toml`. So SHALL an entry that cannot be read, such as a link to nothing.
+The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml` and `characters/<game>/<character>.toml`, and each file SHALL be optional. It can also hold `server.toml` at its top level, the configuration of the server, and the directory `clients`, the configuration of the clients. Neither SHALL make a world or a layer of a world. Each character file SHALL make the world `<game>/<character>`, and its game SHALL be `games/<game>.toml`. A file name that is not a part of a world id SHALL be an error that names the file. So SHALL a character with no game file, and any other file that ends in `.toml`. So SHALL an entry that cannot be read, such as a link to nothing.
 
 #### Scenario: Worlds from character files
 - **GIVEN** a directory with `games/alpha.toml`, `games/beta.toml`, `characters/alpha/aria.toml`, `characters/alpha/ann.toml` and `characters/beta/bryn.toml`
@@ -88,9 +89,27 @@ The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml`
 - **AND** the exit status is 1
 
 #### Scenario: A stray file
-- **GIVEN** a directory with one of `worlds.toml`, `characters/alpha.toml`, `games/old/alpha.toml` and `characters/alpha/aria/x.toml`
+- **GIVEN** `<dir>` holds `worlds.toml`
 - **WHEN** the user runs `mu world list --config <dir>`
-- **THEN** stderr names that path
+- **THEN** stderr contains `worlds.toml`
+- **AND** the exit status is 1
+
+#### Scenario: A stray character file
+- **GIVEN** `<dir>` holds `characters/alpha.toml`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr contains `characters/alpha.toml`
+- **AND** the exit status is 1
+
+#### Scenario: A stray game file
+- **GIVEN** `<dir>` holds `games/old/alpha.toml`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr contains `games/old/alpha.toml`
+- **AND** the exit status is 1
+
+#### Scenario: A stray file under a character
+- **GIVEN** `<dir>` holds `characters/alpha/aria/x.toml`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr contains `characters/alpha/aria/x.toml`
 - **AND** the exit status is 1
 
 #### Scenario: A link to nothing
@@ -112,10 +131,34 @@ The directory SHALL hold `global.toml`, `types/<name>.toml`, `games/<game>.toml`
 - **AND** the exit status is 0
 
 #### Scenario: The file of the client
-- **GIVEN** a directory with `games/alpha.toml`, `characters/alpha/aria.toml` and a `client.toml` that holds `echo = "hide"`
+- **GIVEN** a directory with `games/alpha.toml`, `characters/alpha/aria.toml` and `clients/global.toml` that holds `echo = "hide"`
 - **WHEN** the user runs `mu world list --config <dir>`
 - **THEN** stdout holds the line `alpha/aria`
 - **AND** the exit status is 0
+
+#### Scenario: An unreadable server file leaves world list
+- **GIVEN** the test runs as a user that is not root, the directory holds the world `alpha/aria`, and `server.toml` exists with mode 000
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stdout holds the line `alpha/aria`
+- **AND** the exit status is 0
+
+#### Scenario: A game named clients
+- **GIVEN** a directory with `games/clients.toml` and `characters/clients/aria.toml`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stdout holds the line `clients/aria`
+- **AND** the exit status is 0
+
+#### Scenario: A bad client layer does not stop the worlds
+- **GIVEN** a directory with `games/alpha.toml`, `characters/alpha/aria.toml` and `clients/global.toml` that holds `echo = "loud"`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stdout holds the line `alpha/aria`
+- **AND** the exit status is 0
+
+#### Scenario: A leftover client.toml
+- **GIVEN** a directory with `games/alpha.toml`, `characters/alpha/aria.toml` and a `client.toml` at its top level
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr names `client.toml`
+- **AND** the exit status is 1
 
 ### Requirement: Layers merge from global to character
 The layers of a world SHALL merge in this order: the defaults, `global.toml`, the type chain from the most general type to the most specific, the game and the character. A field SHALL take its value from the last layer that sets it. A table SHALL merge field by field.
