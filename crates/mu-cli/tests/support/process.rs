@@ -424,6 +424,12 @@ pub fn mu_on_pty(args: &[&str], on: PtyOn, cwd: &Path) -> Output {
     output
 }
 
+/// The server URL of `socket`, with each byte that a URL path cannot hold as a percent escape.
+pub fn server_url(socket: &Path) -> String {
+    let url = url::Url::from_file_path(socket).expect("the socket path is absolute");
+    format!("unix://{}", url.path())
+}
+
 /// A server with its client and one open event stream, and every event the stream gave.
 pub struct Session {
     /// The server.
@@ -689,7 +695,7 @@ pub struct PtyClient {
 }
 
 impl PtyClient {
-    /// Starts `mu client` with `--socket <socket>` in `cwd`, with [`super::test_env`] and the
+    /// Starts `mu client` with `--server` and the URL of `socket` in `cwd`, with [`super::test_env`] and the
     /// default answers to the probe.
     pub fn start(socket: &Path, cwd: &Path) -> Self {
         Self::start_with(socket, cwd, Answers::Default)
@@ -724,8 +730,30 @@ impl PtyClient {
         Self::spawn(socket, cwd, answers, (24, 80), args, env)
     }
 
+    /// Starts `mu client --server <url>` as [`Self::start_args`] does.
+    pub fn start_url(
+        url: &str,
+        cwd: &Path,
+        answers: Answers,
+        args: &[&OsStr],
+        env: &[(&str, Option<&OsStr>)],
+    ) -> Self {
+        Self::spawn_url(url, cwd, answers, (24, 80), args, env)
+    }
+
     fn spawn(
         socket: &Path,
+        cwd: &Path,
+        answers: Answers,
+        size: (u16, u16),
+        args: &[&OsStr],
+        env: &[(&str, Option<&OsStr>)],
+    ) -> Self {
+        Self::spawn_url(&server_url(socket), cwd, answers, size, args, env)
+    }
+
+    fn spawn_url(
+        url: &str,
         cwd: &Path,
         answers: Answers,
         (rows, cols): (u16, u16),
@@ -743,8 +771,7 @@ impl PtyClient {
             })
             .unwrap();
         let mut command = CommandBuilder::new(env!("CARGO_BIN_EXE_mu"));
-        command.args(["client", "--socket"]);
-        command.arg(socket);
+        command.args(["client", "--server", url]);
         command.args(args);
         command.cwd(cwd);
         let changes = super::test_env().into_iter().chain(

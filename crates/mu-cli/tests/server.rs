@@ -10,9 +10,7 @@ use mu_proto::__buffa::oneof::subscribe_response::Message;
 use mu_proto::EventKind;
 use rustix::process::Signal;
 
-use support::process::{
-    BOUND, PtyOn, ServerBuilder, TWO_WORLDS, mu_on_pty, private_tempdir, wait_until,
-};
+use support::process::{BOUND, ServerBuilder, TWO_WORLDS, private_tempdir, wait_until};
 use support::{mode, mu_with, stderr};
 
 mod support;
@@ -251,20 +249,6 @@ async fn sigterm_stops_server() {
 #[tokio::test]
 async fn sigint_stops_server() {
     stops_on(Signal::INT).await;
-}
-
-#[test]
-fn client_needs_a_terminal() {
-    for on in [PtyOn::Stdin, PtyOn::Stdout] {
-        let dir = tempfile::tempdir().unwrap();
-        let socket = text(&dir.path().join("s.sock"));
-        let output = mu_on_pty(&["client", "--socket", &socket], on, dir.path());
-        let stderr = stderr(&output);
-        assert_eq!(output.status.code(), Some(1), "{on:?}");
-        assert!(stderr.contains("terminal"), "{on:?}: {stderr}");
-        assert!(!stderr.contains("not implemented"), "{on:?}");
-        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0, "{on:?}");
-    }
 }
 
 #[tokio::test]

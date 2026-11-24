@@ -1,95 +1,49 @@
-//! `client.toml`, the configuration of the terminal client. `mu-cli` reads and parses the
-//! file, and this module turns it into the [`Settings`] of a run.
+//! The client configuration that the server sends, and how the model applies it.
 
 use std::collections::BTreeMap;
 
-use serde::Deserialize;
+pub use mu_config::Echo;
+use mu_proto::GetClientConfigResponse;
 
 use crate::keymap::Keymap;
+use crate::model::Model;
 
-/// How the client shows the echo line of a send.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Echo {
-    /// With no dim attribute.
-    Show,
-    /// With the dim attribute.
-    #[default]
-    Dim,
-    /// Not at all.
-    Hide,
-}
-
-/// The table `[server]` of `client.toml`: how `mu client` waits for a server.
-#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ServerTable {
-    /// The longest time, in seconds, that `mu client` waits for a server to answer. `mu-cli`
-    /// refuses a value that is not finite or not above 0.
-    #[serde(default = "ServerTable::default_wait")]
-    pub connect_wait_seconds: f64,
-}
-
-impl ServerTable {
-    const fn default_wait() -> f64 {
-        5.0
-    }
-}
-
-impl Default for ServerTable {
-    fn default() -> Self {
-        Self {
-            connect_wait_seconds: Self::default_wait(),
+impl Model {
+    /// Applies the client configuration `reply`. A reply with a new revision replaces the keymap
+    /// and the echo, and each of its notices that the last applied reply did not hold becomes a
+    /// notice line. A reply with the revision of the last applied reply changes nothing.
+    pub fn apply_config(&mut self, reply: GetClientConfigResponse) {
+        let last = self.config.take();
+        if let Some(last) = last.as_ref()
+            && last.revision == reply.revision
+        {
+            self.config = Some(reply);
+            return;
         }
-    }
-}
-
-/// The content of `client.toml`. A missing file is the default.
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ClientConfig {
-    /// How the client shows the echo line of a send.
-    #[serde(default)]
-    pub echo: Echo,
-    /// Each key name and the name of the entry that it runs, or `none`.
-    #[serde(default)]
-    pub keys: BTreeMap<String, String>,
-    /// How `mu client` waits for a server.
-    #[serde(default)]
-    pub server: ServerTable,
-}
-
-/// What a run of the client takes from its configuration.
-#[derive(Clone, Debug, Default)]
-pub struct Settings {
-    /// The default keymap with the bindings of `[keys]`.
-    pub keymap: Keymap,
-    /// How the client shows the echo line of a send.
-    pub echo: Echo,
-}
-
-pub use mu_config::KeyError;
-
-impl ClientConfig {
-    /// The default keymap with each binding of `[keys]` in place of the default of its key.
-    /// `none` binds the key to `ignore`.
-    ///
-    /// # Errors
-    ///
-    /// The [`KeyError`] of [`mu_config::check_keys`].
-    pub fn keymap(&self) -> Result<Keymap, KeyError> {
-        Ok(Keymap::with_bindings(&mu_config::check_keys(&self.keys)?))
-    }
-
-    /// The settings of a run: the keymap of [`Self::keymap`] and the echo.
-    ///
-    /// # Errors
-    ///
-    /// The [`KeyError`] of [`Self::keymap`].
-    pub fn settings(&self) -> Result<Settings, KeyError> {
-        Ok(Settings {
-            keymap: self.keymap()?,
-            echo: self.echo,
-        })
+        let keys: BTreeMap<String, String> = reply
+            .bindings
+            .iter()
+            .map(|binding| (binding.key.clone(), binding.entry.clone()))
+            .collect();
+        match mu_config::check_keys(&keys) {
+            Ok(bindings) => self.keymap = Keymap::with_bindings(&bindings),
+            Err(error) => self.notice(&format!(
+                "the server sent the bad binding {}: {error}",
+                error.key
+            )),
+        }
+        match Echo::named(&reply.echo) {
+            Some(echo) => self.echo = echo,
+            None => self.notice(&format!("the server sent the bad echo {:?}", reply.echo)),
+        }
+        for notice in &reply.notices {
+            let shown = last
+                .as_ref()
+                .is_some_and(|last| last.notices.iter().any(|each| each.text == notice.text));
+            if !shown {
+                self.notice(&notice.text);
+            }
+        }
+        self.config = Some(reply);
     }
 }

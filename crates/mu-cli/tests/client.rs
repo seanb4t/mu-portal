@@ -1,6 +1,5 @@
 //! The scenarios of `mu client` on the built binary, in a pseudo-terminal of 80 by 24.
 
-use std::path::Path;
 use std::time::Duration;
 
 use mu_client::PortalClient;
@@ -9,14 +8,14 @@ use mu_proto::{EventKind, WorldState};
 use mu_fake_server::{Listening, Script, ScriptedGame};
 use support::process::{
     Answers, BOUND, PtyClient, PtyOn, Reaper, Relay, SERVING, ServerBuilder, ServerProcess,
-    Session, TWO_WORLDS, mu_on_pty, private_tempdir,
+    Session, TWO_WORLDS, mu_on_pty, private_tempdir, server_url,
 };
 use support::{ConfigDir, mode, stderr};
 
 mod support;
 
 #[tokio::test]
-async fn client_starts_a_server() {
+async fn a_client_with_no_server_starts_one() {
     let dir = private_tempdir();
     let run = dir.path().join("run");
     let log = run.join("server.log");
@@ -49,7 +48,7 @@ async fn client_starts_a_server() {
 }
 
 #[tokio::test]
-async fn two_clients_start_one_server() {
+async fn two_clients_start_at_the_same_time() {
     let dir = private_tempdir();
     let run = dir.path().join("run");
     let log = run.join("server.log");
@@ -72,37 +71,7 @@ async fn two_clients_start_one_server() {
 }
 
 #[tokio::test]
-async fn two_clients_with_other_directories_start_at_once() {
-    let dir = private_tempdir();
-    let run = dir.path().join("run");
-    let _reaper = Reaper(run.join("server.log"));
-    let socket = run.join("mu.sock");
-    let start = |name: &str| {
-        let own = dir.path().join(name);
-        std::fs::create_dir(&own).unwrap();
-        PtyClient::start_args(
-            &socket,
-            dir.path(),
-            Answers::Default,
-            &["--config".as_ref(), own.as_os_str()],
-            &[],
-        )
-    };
-    let clients = [start("a"), start("b")];
-    let mut noted = 0;
-    for client in &clients {
-        client
-            .wait_top("no worlds", |top| top.trim() == "no worlds")
-            .await;
-        let screen: String = client.contents().split_whitespace().collect();
-        noted += usize::from(screen.contains("readsitsworldsfrom"));
-    }
-    // The one server has the directory of one client, so only the other client notes it.
-    assert_eq!(noted, 1);
-}
-
-#[tokio::test]
-async fn client_gives_up_after_five_seconds() {
+async fn no_server_answers_in_time() {
     let dir = private_tempdir();
     let socket = dir.path().join("s.sock");
     // The held lock makes the server that the client starts refuse to serve.
@@ -173,19 +142,44 @@ async fn empty_enter_reaches_the_server() {
     );
 }
 
-#[test]
-fn client_needs_a_terminal_on_stdin() {
+/// Runs `mu client` with the URL of a socket in a new empty directory, and a terminal on `on`
+/// only, and asserts the refusal and the empty directory.
+fn refused_without_terminal(on: PtyOn) {
     let dir = private_tempdir();
-    let run = dir.path().join("run");
-    let socket = run.join("mu.sock").display().to_string();
-    let output = mu_on_pty(&["client", "--socket", &socket], PtyOn::Stdout, dir.path());
-    assert_eq!(output.status.code(), Some(1));
+    let url = server_url(&dir.path().join("s.sock"));
+    let output = mu_on_pty(&["client", "--server", &url], on, dir.path());
+    let stderr = stderr(&output);
+    assert_eq!(output.status.code(), Some(1), "{on:?}");
+    assert!(stderr.contains("terminal"), "{on:?}: {stderr}");
+    assert!(!stderr.contains("not implemented"), "{on:?}");
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0, "{on:?}");
+}
+
+#[test]
+fn no_terminal() {
+    refused_without_terminal(PtyOn::Stdin);
+}
+
+#[test]
+fn no_terminal_on_stdin() {
+    refused_without_terminal(PtyOn::Stdout);
+}
+
+#[test]
+fn the_socket_flag() {
+    let dir = private_tempdir();
+    let socket = dir.path().join("s.sock");
+    let output = mu_on_pty(
+        &["client", "--socket", socket.to_str().unwrap()],
+        PtyOn::Stdin,
+        dir.path(),
+    );
     assert!(
-        stderr(&output).contains("must be a terminal"),
+        output.status.code() == Some(2) && stderr(&output).contains("--socket"),
         "{}",
         stderr(&output)
     );
-    assert!(!run.exists(), "the client created {}", run.display());
+    assert!(!socket.exists());
 }
 
 #[tokio::test]
@@ -947,217 +941,208 @@ async fn a_good_command_cancels_the_quit() {
     .await;
 }
 
-// client.toml.
+// The client layers of the server.
 
-/// A configuration directory with `client.toml` that holds `text`.
-fn client_file(text: &str) -> ConfigDir {
-    ConfigDir::empty().file("client.toml", text)
-}
-
-/// A client with `--config <config>` on the server of `session`, after the greeting.
-async fn configured(session: &Session, config: &Path, answers: Answers) -> PtyClient {
+/// A server with `worlds` over `config`, and a client on it with `--device laptop`, after the
+/// greeting of the first world, with `answers` to the probe.
+async fn attached_with(
+    worlds: &[&str],
+    config: &ConfigDir,
+    answers: Answers,
+) -> (Session, PtyClient) {
+    let mut session = Session::start(
+        ServerBuilder::new()
+            .fake_worlds(worlds)
+            .arg("--config")
+            .arg(config.path()),
+    )
+    .await;
+    for world in worlds {
+        session.welcome(world).await;
+    }
     let client = PtyClient::start_args(
         session.server.socket(),
         session.server.dir().path(),
         answers,
-        &["--config".as_ref(), config.as_os_str()],
+        &["--device".as_ref(), "laptop".as_ref()],
         &[],
     );
-    client.wait_greeting().await;
-    client
+    if worlds.is_empty() {
+        client
+            .wait_top("no worlds", |top| top.trim() == "no worlds")
+            .await;
+    } else {
+        client.wait_greeting().await;
+    }
+    (session, client)
 }
 
-/// A server with `worlds`, and a client on it with `client.toml` that holds `text`.
-async fn with_file(worlds: &[&str], text: &str) -> (Session, PtyClient, ConfigDir) {
-    let session = Session::with_worlds(worlds).await;
-    let config = client_file(text);
-    let client = configured(&session, config.path(), Answers::Default).await;
+/// A server with `worlds` and `clients/global.toml` that holds `text`, and a client on it.
+async fn with_layer(worlds: &[&str], text: &str) -> (Session, PtyClient, ConfigDir) {
+    let config = ConfigDir::empty().file("clients/global.toml", text);
+    let (session, client) = attached_with(worlds, &config, Answers::Default).await;
     (session, client, config)
 }
 
-/// Sends `hello` and Enter, and waits for the echo line.
-async fn echo_of_hello(client: &mut PtyClient) {
+/// Sends `hello` and Enter, and waits for the reply of the fake game.
+async fn hello(client: &mut PtyClient) {
     client.send(b"hello\r");
     client
-        .wait_rows("the echo line", |rows| {
-            rows.iter().any(|row| row.starts_with("> hello"))
+        .wait_rows("the reply", |rows| {
+            rows.iter().any(|row| row.contains("You say, \"hello\""))
         })
         .await;
 }
 
-#[tokio::test]
-async fn a_file_that_sets_the_echo() {
-    let (_session, mut client, _config) = with_file(&["alpha/aria"], "echo = \"show\"\n").await;
-    echo_of_hello(&mut client).await;
-    assert_eq!(client.dims("> hello"), [false; 7]);
+/// Whether a row starts with `> `.
+fn has_echo(client: &PtyClient) -> bool {
+    client.rows().iter().any(|row| row.starts_with("> "))
 }
 
 #[tokio::test]
-async fn a_file_that_sets_dim() {
-    let (_session, mut client, _config) = with_file(&["alpha/aria"], "echo = \"dim\"\n").await;
-    echo_of_hello(&mut client).await;
+async fn the_default_dims() {
+    let (_session, mut client, _config) = with_layer(&["alpha/aria"], "").await;
+    hello(&mut client).await;
     assert_eq!(client.dims("> hello"), [true; 7]);
 }
 
 #[tokio::test]
-async fn no_file() {
-    let session = Session::with_worlds(&["alpha/aria"]).await;
-    let config = ConfigDir::empty();
-    let client = configured(&session, config.path(), Answers::Default).await;
-    client
-        .wait_top("the world", |top| top.contains("[alpha/aria]"))
-        .await;
+async fn show() {
+    let (_session, mut client, _config) = with_layer(&["alpha/aria"], "echo = \"show\"\n").await;
+    hello(&mut client).await;
+    assert_eq!(client.dims("> hello"), [false; 7]);
 }
 
-/// Starts `mu client --config` on a directory with `client.toml` that holds `text`, with no
-/// server, and returns the screen after the exit with status 1. The client never enters the
-/// alternate screen.
-async fn refused_file(config: &ConfigDir) -> String {
-    let dir = private_tempdir();
-    let socket = dir.path().join("s.sock");
-    let mut client = PtyClient::start_args(
-        &socket,
-        dir.path(),
-        Answers::Default,
-        &["--config".as_ref(), config.path().as_os_str()],
-        &[],
-    );
-    let status = client.exit_within(BOUND).await.expect("the client exits");
-    assert_eq!(status.exit_code(), 1);
+#[tokio::test]
+async fn hide() {
+    let (_session, mut client, _config) = with_layer(&["alpha/aria"], "echo = \"hide\"\n").await;
+    hello(&mut client).await;
+    assert!(!has_echo(&client), "{:?}", client.rows());
+}
+
+/// Asserts that the layer `path` with `echo = "hide"` applies to `mu client --device laptop`.
+async fn hides_with(path: &str) {
+    let config = ConfigDir::empty().file(path, "echo = \"hide\"\n");
+    let (_session, mut client) = attached_with(&["alpha/aria"], &config, Answers::Default).await;
+    hello(&mut client).await;
+    assert!(!has_echo(&client), "{:?}", client.rows());
+}
+
+#[tokio::test]
+async fn the_kind_layer_applies() {
+    hides_with("clients/kinds/tui.toml").await;
+}
+
+#[tokio::test]
+async fn the_device_layer_applies() {
+    hides_with("clients/devices/laptop.toml").await;
+}
+
+#[tokio::test]
+async fn the_os_layer_applies() {
+    hides_with(&format!(
+        "clients/os/{}.toml",
+        mu_config::Os::current().name()
+    ))
+    .await;
+}
+
+#[tokio::test]
+async fn a_bad_device_layer_at_attach() {
+    let config = ConfigDir::empty()
+        .file("clients/global.toml", "echo = \"show\"\n")
+        .file("clients/devices/laptop.toml", "echo = \"loud\"\n");
+    let (_session, mut client) = attached_with(&["alpha/aria"], &config, Answers::Default).await;
+    hello(&mut client).await;
+    let screen: String = client.contents().split_whitespace().collect();
     assert!(
-        !client
-            .output()
-            .windows(8)
-            .any(|bytes| bytes == b"\x1b[?1049h"),
-        "the client entered the alternate screen"
+        screen.contains("clients/devices/laptop.toml") && screen.contains("echo"),
+        "{screen}"
     );
-    assert!(!socket.exists(), "the client started a server");
-    client.wait_line("mu client: ").await;
-    client.contents().replace('\n', "")
-}
-
-/// Asserts that a client with `client.toml` holding `text` stops, and that its message names
-/// each of `names`.
-async fn stops_naming(text: &str, names: &[&str]) {
-    let screen = refused_file(&client_file(text)).await;
-    for name in names {
-        assert!(
-            screen.contains(name),
-            "{name} is not on the screen:\n{screen}"
-        );
-    }
-}
-
-#[tokio::test]
-async fn an_unknown_key() {
-    stops_naming("colour = \"red\"\n", &["client.toml", "colour"]).await;
-}
-
-#[tokio::test]
-async fn a_bad_echo_value() {
-    stops_naming("echo = \"loud\"\n", &["client.toml", "echo"]).await;
-}
-
-#[tokio::test]
-async fn a_file_that_cannot_be_read() {
-    use std::os::unix::fs::PermissionsExt as _;
-    let config = client_file("");
-    let path = config.path().join("client.toml");
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
-    // A user who can read every file, such as root, gets no read error.
-    if std::fs::File::open(&path).is_ok() {
-        return;
-    }
-    let screen = refused_file(&config).await;
-    assert!(screen.contains("client.toml"), "{screen}");
-}
-
-#[tokio::test]
-async fn not_toml() {
-    stops_naming("echo = \n", &["client.toml:1:"]).await;
+    assert_eq!(client.dims("> hello"), [false; 7]);
 }
 
 #[tokio::test]
 async fn the_client_takes_the_flag() {
     let dir = private_tempdir();
-    let env = ConfigDir::empty().file("client.toml", "echo = \"loud\"\n");
     let flag = ConfigDir::base();
     let run = dir.path().join("run");
-    let _reaper = Reaper(run.join("server.log"));
-    let socket = run.join("mu.sock");
-    let client = PtyClient::start_args(
-        &socket,
-        dir.path(),
-        Answers::Default,
-        &["--config".as_ref(), flag.path().as_os_str()],
-        &[("MU_CONFIG", Some(env.path().as_os_str()))],
+    let output = support::mu_with(
+        &["client", "--config", flag.path().to_str().unwrap()],
+        &[("XDG_RUNTIME_DIR", Some(run.to_str().unwrap()))],
     );
-    client
-        .wait_top("the world of the flag", |top| top.contains("[alpha/aria]"))
-        .await;
-    let worlds = PortalClient::unix(&socket).list_worlds().await.unwrap();
-    assert_eq!(
-        worlds
-            .iter()
-            .map(|world| world.id.as_str())
-            .collect::<Vec<_>>(),
-        ["alpha/aria"]
+    assert!(
+        output.status.code() == Some(2) && stderr(&output).contains("--config"),
+        "{}",
+        stderr(&output)
     );
-}
-
-#[tokio::test]
-async fn a_started_server_takes_a_directory_that_starts_with_a_dash() {
-    let dir = private_tempdir();
-    let base = ConfigDir::base();
-    std::os::unix::fs::symlink(base.path(), dir.path().join("-conf")).unwrap();
-    let run = dir.path().join("run");
-    let _reaper = Reaper(run.join("server.log"));
-    let socket = run.join("mu.sock");
-    // A relative directory, read from the directory where the client starts. MU_CONFIG is
-    // unset, so the server can find the directory only through the flag.
-    let client = PtyClient::start_args(
-        &socket,
-        dir.path(),
-        Answers::Default,
-        &["--config=-conf".as_ref()],
-        &[("MU_CONFIG", None)],
-    );
-    client
-        .wait_top("the world of the directory", |top| {
-            top.contains("[alpha/aria]")
-        })
-        .await;
+    assert!(!run.exists());
 }
 
 #[tokio::test]
 async fn the_client_warns_of_a_missing_directory() {
-    let session = Session::with_worlds(&["alpha/aria"]).await;
-    let missing = private_tempdir().path().join("none");
-    let client = configured(&session, &missing, Answers::Default).await;
+    let dir = private_tempdir();
+    let missing = dir.path().join("none");
+    let run = dir.path().join("run");
+    let log = run.join("server.log");
+    let _reaper = Reaper(log.clone());
+    let client = PtyClient::start_args(
+        &run.join("s.sock"),
+        dir.path(),
+        Answers::Default,
+        &[],
+        &[("MU_CONFIG", Some(missing.as_os_str()))],
+    );
     client
-        .wait_top("the world", |top| top.contains("[alpha/aria]"))
+        .wait_top("no worlds", |top| top.trim() == "no worlds")
         .await;
-    let output = String::from_utf8_lossy(&client.output()).into_owned();
-    assert!(output.contains(&missing.display().to_string()), "{output}");
+    let log = std::fs::read_to_string(&log).unwrap();
+    assert!(log.contains(&missing.display().to_string()), "{log}");
 }
 
 #[tokio::test]
-async fn the_client_with_no_directory() {
-    let session = Session::with_worlds(&["alpha/aria"]).await;
-    let mut client = PtyClient::start_args(
-        session.server.socket(),
-        session.server.dir().path(),
+async fn the_started_server_inherits_mu_config() {
+    let dir = private_tempdir();
+    let conf = ConfigDir::base();
+    let run = dir.path().join("run");
+    let _reaper = Reaper(run.join("server.log"));
+    let client = PtyClient::start_args(
+        &run.join("s.sock"),
+        dir.path(),
         Answers::Default,
         &[],
-        &[
-            ("MU_CONFIG", None),
-            ("XDG_CONFIG_HOME", None),
-            ("HOME", Some("".as_ref())),
-        ],
+        &[("MU_CONFIG", Some(conf.path().as_os_str()))],
     );
-    client.wait_greeting().await;
-    echo_of_hello(&mut client).await;
-    assert_eq!(client.dims("> hello"), [true; 7]);
+    client
+        .wait_top("the world", |top| top.contains("alpha/aria"))
+        .await;
+}
+
+#[tokio::test]
+async fn no_notice_about_another_directory() {
+    let dir = private_tempdir();
+    let b = dir.path().join("b");
+    std::fs::create_dir(&b).unwrap();
+    let server = ServerBuilder::new()
+        .fake_worlds(&["alpha/aria"])
+        .arg("--config")
+        .arg(&b)
+        .start()
+        .await;
+    let a = dir.path().join("a");
+    let client = PtyClient::start_args(
+        server.socket(),
+        dir.path(),
+        Answers::Default,
+        &[],
+        &[("MU_CONFIG", Some(a.as_os_str()))],
+    );
+    client
+        .wait_top("the world", |top| top.contains("alpha/aria"))
+        .await;
+    let screen: String = client.contents().split_whitespace().collect();
+    let b: String = b.display().to_string().split_whitespace().collect();
+    assert!(!screen.contains(&b), "{screen}");
 }
 
 /// A socket in a private directory where a test listens, and gives each connection to `serve`.
@@ -1184,14 +1169,8 @@ fn listening(
 async fn a_server_that_does_not_answer() {
     // Each connection stays open with no answer.
     let (dir, socket, task) = listening(|stream, open| open.push(stream));
-    let config = client_file("[server]\nconnect_wait_seconds = 0.2\n");
-    let mut client = PtyClient::start_args(
-        &socket,
-        dir.path(),
-        Answers::Default,
-        &["--config".as_ref(), config.path().as_os_str()],
-        &[],
-    );
+    let url = format!("{}?connect_wait=0.2", server_url(&socket));
+    let mut client = PtyClient::start_url(&url, dir.path(), Answers::Default, &[], &[]);
     let status = client.exit_within(BOUND).await.expect("the client exits");
     assert_eq!(status.exit_code(), 1);
     client.wait_line("mu client: ").await;
@@ -1215,15 +1194,6 @@ async fn a_server_that_closes_the_connection() {
         "the client started a server"
     );
     task.abort();
-}
-
-#[tokio::test]
-async fn a_wait_of_zero() {
-    stops_naming(
-        "[server]\nconnect_wait_seconds = 0\n",
-        &["client.toml", "server.connect_wait_seconds"],
-    )
-    .await;
 }
 
 #[tokio::test]
@@ -1255,7 +1225,7 @@ async fn the_started_server_finds_the_default_directory() {
     assert!(!log.lines().any(|line| line.contains(&xdg)), "{log}");
 }
 
-// The keys table of client.toml.
+// The keys table of the client layers.
 
 const THREE_WORLDS: &[&str] = &["alpha/aria", "beta/bryn", "gamma/gil"];
 
@@ -1263,7 +1233,7 @@ const THREE_WORLDS: &[&str] = &["alpha/aria", "beta/bryn", "gamma/gil"];
 /// `[<world>]`.
 async fn key_gives_focus(worlds: &[&str], bindings: &str, key: &[u8], world: &str) {
     let text = format!("[keys]\n{bindings}\n");
-    let (_session, mut client, _config) = with_file(worlds, &text).await;
+    let (_session, mut client, _config) = with_layer(worlds, &text).await;
     client.send(key);
     let focus = format!("[{world}]");
     client
@@ -1327,7 +1297,7 @@ async fn editor_holds(client: &PtyClient, text: &str) {
 #[tokio::test]
 async fn a_removed_binding() {
     let (_session, mut client, _config) =
-        with_file(TWO_WORLDS, "[keys]\n\"ctrl+n\" = \"none\"\n").await;
+        with_layer(TWO_WORLDS, "[keys]\n\"ctrl+n\" = \"none\"\n").await;
     client.send(b"\x0ex");
     // The `x` after Ctrl+N shows that the client read the key.
     editor_holds(&client, "x").await;
@@ -1341,7 +1311,7 @@ async fn a_removed_binding() {
 #[tokio::test]
 async fn none_on_a_key_with_a_modifier() {
     let (mut session, mut client, _config) =
-        with_file(&["alpha/aria"], "[keys]\n\"alt+enter\" = \"none\"\n").await;
+        with_layer(&["alpha/aria"], "[keys]\n\"alt+enter\" = \"none\"\n").await;
     client.send(b"hi\x1b\r!");
     editor_holds(&client, "hi!").await;
     client.send(b"\r");
@@ -1355,9 +1325,11 @@ async fn none_on_a_key_with_a_modifier() {
 
 #[tokio::test]
 async fn a_binding_of_ctrl_shift_z() {
-    let session = Session::with_worlds(&["alpha/aria"]).await;
-    let config = client_file("[keys]\n\"ctrl+shift+z\" = \"none\"\n");
-    let mut client = configured(&session, config.path(), Answers::Kitty).await;
+    let config = ConfigDir::empty().file(
+        "clients/global.toml",
+        "[keys]\n\"ctrl+shift+z\" = \"none\"\n",
+    );
+    let (_session, mut client) = attached_with(&["alpha/aria"], &config, Answers::Kitty).await;
     client.send(b"h");
     editor_holds(&client, "h").await;
     // Ctrl+Z, then Ctrl+Shift+Z in the kitty protocol, then `x`. The default redo would bring
@@ -1367,78 +1339,10 @@ async fn a_binding_of_ctrl_shift_z() {
 }
 
 #[tokio::test]
-async fn two_names_of_one_key() {
-    stops_naming(
-        "[keys]\n\"ctrl+shift+z\" = \"redo\"\n\"shift+ctrl+z\" = \"undo\"\n",
-        &["client.toml", "ctrl+shift+z", "shift+ctrl+z"],
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn shift_with_a_digit() {
-    stops_naming(
-        "[keys]\n\"shift+1\" = \"quit\"\n",
-        &["client.toml", "shift+1"],
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn an_uppercase_key() {
-    stops_naming(
-        "[keys]\n\"ctrl+N\" = \"quit\"\n",
-        &["client.toml", "ctrl+N"],
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn an_unknown_entry() {
-    stops_naming(
-        "[keys]\n\"alt+n\" = \"fly\"\n",
-        &["client.toml", "alt+n", "fly"],
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn an_unknown_key_name() {
-    stops_naming(
-        "[keys]\n\"hyper+n\" = \"quit\"\n",
-        &["client.toml", "hyper+n"],
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn an_entry_that_needs_an_argument() {
-    stops_naming(
-        "[keys]\n\"alt+f\" = \"focus\"\n",
-        &["client.toml", "alt+f", "focus"],
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn a_control_character() {
-    stops_naming("[keys]\n\"alt+\\u007f\" = \"quit\"\n", &["client.toml"]).await;
-}
-
-#[tokio::test]
 async fn a_key_bound_to_connect_with_no_world_in_focus() {
-    let session = Session::with_worlds(&[]).await;
-    let config = client_file("[keys]\n\"alt+c\" = \"connect\"\n");
-    let mut client = PtyClient::start_args(
-        session.server.socket(),
-        session.server.dir().path(),
-        Answers::Default,
-        &["--config".as_ref(), config.path().as_os_str()],
-        &[],
-    );
-    client
-        .wait_top("no worlds", |top| top.trim() == "no worlds")
-        .await;
+    let config =
+        ConfigDir::empty().file("clients/global.toml", "[keys]\n\"alt+c\" = \"connect\"\n");
+    let (_session, mut client) = attached_with(&[], &config, Answers::Default).await;
     client.send(b"\x1bc");
     client
         .wait_rows("the hint", |rows| {
@@ -1449,54 +1353,4 @@ async fn a_key_bound_to_connect_with_no_world_in_focus() {
     // The client still reads keys.
     client.send(b"x");
     editor_holds(&client, "x").await;
-}
-
-/// A server with the fake world `alpha/aria` and `--config <dir>/a`, and a client on it with
-/// `--config <dir>/<client>`, after the top row shows the world. `<dir>/link` is a symbolic
-/// link to `<dir>/a`. The screen with no whitespace, because a wrap drops spaces, and the
-/// resolved paths of `<dir>/a` and `<dir>/b`.
-async fn other_server(client: &str) -> (String, String, String) {
-    let dir = private_tempdir();
-    let real = dir.path().join("a");
-    std::fs::create_dir(&real).unwrap();
-    std::fs::create_dir(dir.path().join("b")).unwrap();
-    std::os::unix::fs::symlink(&real, dir.path().join("link")).unwrap();
-    let mut flag = std::ffi::OsString::from("--config=");
-    flag.push(&real);
-    let server = ServerBuilder::new()
-        .fake_worlds(&["alpha/aria"])
-        .arg(flag)
-        .start()
-        .await;
-    let own = dir.path().join(client);
-    let client = PtyClient::start_args(
-        server.socket(),
-        dir.path(),
-        Answers::Default,
-        &["--config".as_ref(), own.as_os_str()],
-        &[],
-    );
-    client
-        .wait_top("the world", |top| top.contains("alpha/aria"))
-        .await;
-    let shown = |path: &Path| std::fs::canonicalize(path).unwrap().display().to_string();
-    let screen = client.contents();
-    (
-        screen.split_whitespace().collect(),
-        shown(&real),
-        shown(&dir.path().join("b")),
-    )
-}
-
-#[tokio::test]
-async fn a_server_with_another_directory() {
-    let (screen, real, own) = other_server("b").await;
-    let notice = format!("readsitsworldsfrom{real},notfrom{own}");
-    assert!(screen.contains(&notice), "{screen}");
-}
-
-#[tokio::test]
-async fn a_server_with_the_same_directory() {
-    let (screen, _, _) = other_server("link").await;
-    assert!(!screen.contains("readsitsworldsfrom"), "{screen}");
 }

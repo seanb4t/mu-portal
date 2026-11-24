@@ -8,7 +8,7 @@ use std::sync::Arc;
 use mu_proto::World as ProtoWorld;
 use ratatui::style::Style;
 
-use crate::config::{Echo, Settings};
+use crate::config::Echo;
 use crate::editor::{EditorId, EditorState};
 use crate::history::History;
 use crate::keymap::Keymap;
@@ -95,6 +95,8 @@ pub struct Model {
     pub(crate) echo: Echo,
     /// The reason of the last list of the worlds, if it failed.
     pub(crate) list_failure: Option<String>,
+    /// The client configuration that the model applied last.
+    pub(crate) config: Option<mu_proto::GetClientConfigResponse>,
 }
 
 /// Whether a list of the worlds is with the server, so a second one does not go.
@@ -156,6 +158,7 @@ impl Model {
             list_failure: None,
             first_list: false,
             echo: Echo::default(),
+            config: None,
         };
         for id in worlds {
             model.world(&id);
@@ -166,14 +169,12 @@ impl Model {
         model
     }
 
-    /// A model with no world, and the keymap and the echo of `settings`, that waits for its
-    /// first list of the worlds. The caller asks for that list. Until the first list ends, the top
-    /// row shows `listing worlds` and no world gets the focus.
+    /// A model with no world that waits for its first list of the worlds. The caller asks for
+    /// that list. Until the first list ends, the top row shows `listing worlds` and no world gets
+    /// the focus.
     #[must_use]
-    pub fn starting(settings: Settings) -> Self {
-        let mut model = Self::new([])
-            .with_keymap(settings.keymap)
-            .with_echo(settings.echo);
+    pub fn starting() -> Self {
+        let mut model = Self::new([]);
         model.listing = Listing::Asked;
         model.first_list = true;
         model
