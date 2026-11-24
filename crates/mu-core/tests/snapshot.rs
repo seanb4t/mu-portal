@@ -175,3 +175,14 @@ fn a_broken_link_named_server_toml_is_the_server_file() {
     let snapshot = take(dir.path());
     assert!(is_error(snapshot.server_file()) && snapshot.world_entries().count() == 0);
 }
+
+#[test]
+fn a_fifo_named_server_toml_in_another_case_is_not_opened() {
+    let dir = tempfile::tempdir().expect("dir");
+    let status = Command::new("mkfifo")
+        .arg(dir.path().join("Server.toml"))
+        .status()
+        .expect("mkfifo");
+    assert!(status.success());
+    assert!(DirSnapshot::take(dir.path()).is_ok());
+}

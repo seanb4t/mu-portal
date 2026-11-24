@@ -1894,7 +1894,6 @@ dependencies = [
  "miniz_oxide",
  "mu-fake-server",
  "proptest",
- "same-file",
  "secrecy",
  "serde",
  "serde_path_to_error",

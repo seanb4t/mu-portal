@@ -369,7 +369,13 @@ fn unreadable_server_file_in_another_case_names_the_error() {
         fs::File::open(&path).is_err(),
         "the mode 000 does not keep this user out: run the tests as a user that is not root"
     );
-    fails_naming(&config.list(), &["SERVER.toml", "Permission denied"]);
+    if config.path().join("server.toml").exists() {
+        // A volume that ignores case: the file is server.toml, whose read error the world
+        // read ignores.
+        has_line(&succeeds(&config.list()), "alpha/aria");
+    } else {
+        fails_naming(&config.list(), &["SERVER.toml", "Permission denied"]);
+    }
 }
 
 /// A hard link of `name` under another name is a stray file.

@@ -307,8 +307,7 @@ impl Walker<'_> {
         if let Some(first) = parts.first_mut()
             && first != CLIENTS_DIR
             && first.eq_ignore_ascii_case(CLIENTS_DIR)
-            && same_file::is_same_file(self.root.join(&*first), self.root.join(CLIENTS_DIR))
-                .unwrap_or(false)
+            && same_entry(&self.root.join(&*first), &self.root.join(CLIENTS_DIR)).unwrap_or(false)
         {
             CLIENTS_DIR.clone_into(first);
         }
@@ -327,9 +326,16 @@ fn is_top_file(root: &Path, name: &str) -> io::Result<bool> {
     if name == file {
         return Ok(true);
     }
-    match same_file::is_same_file(root.join(name), root.join(file)) {
+    match same_entry(&root.join(name), &root.join(file)) {
         Ok(same) => Ok(same),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
         Err(error) => Err(error),
     }
+}
+
+/// Whether `a` and `b` are one entry: the same device and inode. It reads the metadata of each
+/// and opens neither, so a FIFO cannot block it.
+fn same_entry(a: &Path, b: &Path) -> io::Result<bool> {
+    let (a, b) = (fs::metadata(a)?, fs::metadata(b)?);
+    Ok((a.dev(), a.ino()) == (b.dev(), b.ino()))
 }
