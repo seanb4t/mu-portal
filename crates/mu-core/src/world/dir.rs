@@ -1,6 +1,6 @@
 //! The layers of a configuration directory of TOML files.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use crate::id::{PART_RULE, WorldId, is_part};
@@ -144,8 +144,10 @@ impl LayerSource for ReadLayers {
 
 /// Every error of the world files of `snapshot`, at most one for each path, in the order of the
 /// paths. It reports each entry that cannot be read, each stray file and each name outside the
-/// id rule, parses each world file once, and resolves each world on its own, so a bad game of
-/// two worlds gives one error.
+/// id rule, and parses each world file once. It resolves the shared files without a character
+/// and drops each one that fails, so a later shared file gets its own check. Then it resolves
+/// each character on its own with the good shared files. A character of a bad game gives no
+/// error of its own, so a bad game of two worlds gives one error.
 #[must_use]
 pub fn world_errors(snapshot: &DirSnapshot) -> Vec<ConfigError> {
     let mut errors: BTreeMap<String, ConfigError> = BTreeMap::new();
@@ -153,6 +155,7 @@ pub fn world_errors(snapshot: &DirSnapshot) -> Vec<ConfigError> {
         errors.entry(error.path().to_owned()).or_insert(error);
     };
     let mut layers = Vec::new();
+    let mut bad_games = BTreeSet::new();
     for (path, entry) in snapshot.world_entries() {
         let read = match entry {
             SnapEntry::Error { text, .. } => Err(ConfigError::new(path, text.clone())),
@@ -160,13 +163,39 @@ pub fn world_errors(snapshot: &DirSnapshot) -> Vec<ConfigError> {
         };
         match read {
             Ok(layer) => layers.push(layer),
-            Err(error) => add(error),
+            Err(error) => {
+                if let Some(game) = path
+                    .strip_prefix("games/")
+                    .and_then(|file| file.strip_suffix(".toml"))
+                {
+                    bad_games.insert(game.to_owned());
+                }
+                add(error);
+            }
         }
     }
-    let (characters, shared): (Vec<Layer>, Vec<Layer>) = layers
+    let (characters, mut shared): (Vec<Layer>, Vec<Layer>) = layers
         .into_iter()
         .partition(|layer| matches!(layer.key, LayerKey::Character(_)));
+    while let Err(error) = resolve(&[&ReadLayers(shared.clone())]) {
+        let Some(place) = shared
+            .iter()
+            .position(|layer| layer.origin.to_string() == error.path())
+        else {
+            add(error);
+            break;
+        };
+        if let LayerKey::Game(game) = &shared.remove(place).key {
+            bad_games.insert(game.clone());
+        }
+        add(error);
+    }
     for character in characters {
+        if let LayerKey::Character(id) = &character.key
+            && bad_games.contains(id.game())
+        {
+            continue;
+        }
         let mut set = shared.clone();
         set.push(character);
         if let Err(error) = resolve(&[&ReadLayers(set)]) {

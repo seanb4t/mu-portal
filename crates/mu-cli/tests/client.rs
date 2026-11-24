@@ -1480,10 +1480,11 @@ async fn a_clients_directory_that_turns_unlistable() {
     let clients = config.path().join("clients");
     let (session, client) = attached_with(&["alpha/aria"], &config, Answers::Default).await;
     std::fs::set_permissions(&clients, std::fs::Permissions::from_mode(0o000)).unwrap();
-    // A user who can list every directory, such as root, gets no error.
     if std::fs::read_dir(&clients).is_ok() {
         std::fs::set_permissions(&clients, std::fs::Permissions::from_mode(0o755)).unwrap();
-        return;
+        panic!(
+            "the mode 000 does not keep this user out: run the tests as a user that is not root"
+        );
     }
     reload(session.server.socket()).await;
     client

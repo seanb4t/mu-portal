@@ -10,7 +10,7 @@ use crate::key::KeyName;
 
 /// How the client shows the echo line of a send.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(into = "&'static str", try_from = "String")]
 pub enum Echo {
     /// With no dim attribute.
     Show,
@@ -22,6 +22,9 @@ pub enum Echo {
 }
 
 impl Echo {
+    /// Every value.
+    pub const ALL: [Self; 3] = [Self::Show, Self::Dim, Self::Hide];
+
     /// The name of the value, as a layer writes it.
     #[must_use]
     pub const fn name(self) -> &'static str {
@@ -35,9 +38,26 @@ impl Echo {
     /// The value named `name`.
     #[must_use]
     pub fn named(name: &str) -> Option<Self> {
-        [Self::Show, Self::Dim, Self::Hide]
-            .into_iter()
-            .find(|echo| echo.name() == name)
+        crate::names::by_name(&Self::ALL, Self::name, name)
+    }
+}
+
+impl From<Echo> for &'static str {
+    fn from(echo: Echo) -> Self {
+        echo.name()
+    }
+}
+
+impl TryFrom<String> for Echo {
+    type Error = String;
+
+    fn try_from(name: String) -> Result<Self, String> {
+        Self::named(&name).ok_or_else(|| {
+            format!(
+                "{name:?} is no echo value: the values are {}",
+                crate::listed(&Self::ALL.map(Self::name))
+            )
+        })
     }
 }
 

@@ -10,8 +10,8 @@ use std::sync::Arc;
 use mu_config::{ClientLayer, DeviceName, Echo, Kind, NameError, Os, STORE, check_keys, filter};
 use mu_core::ResolvedWorld;
 use mu_core::world::{
-    CLIENTS_DIR, ConfigError, DirSnapshot, Hidden, SnapEntry, merge_layers, parse_toml, resolve,
-    world_errors,
+    CLIENTS_DIR, ConfigError, DirSnapshot, Hidden, SnapEntry, is_under_clients, merge_layers,
+    parse_toml, resolve, world_errors,
 };
 use sha2::{Digest as _, Sha256};
 use tokio::sync::{Mutex, watch};
@@ -477,9 +477,7 @@ fn changed(before: &DirSnapshot, after: &DirSnapshot) -> Vec<String> {
     let outside = |snapshot: &DirSnapshot| -> BTreeMap<String, SnapEntry> {
         snapshot
             .entries()
-            .filter(|(path, _)| {
-                *path != CLIENTS_DIR && !path.starts_with(&format!("{CLIENTS_DIR}/"))
-            })
+            .filter(|(path, _)| !is_under_clients(path))
             .map(|(path, entry)| (path.to_owned(), entry.clone()))
             .collect()
     };

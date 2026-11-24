@@ -4,7 +4,7 @@
 use std::path::Path;
 use std::process::Output;
 
-use support::process::{ServerBuilder, ServerProcess, private_tempdir};
+use support::process::{ServerBuilder, ServerProcess, private_tempdir, server_url};
 use support::{ConfigDir, mu_async, stderr, stdout};
 use tokio::net::UnixListener;
 
@@ -15,11 +15,6 @@ async fn show(args: &[&str], env: &[(&str, Option<&str>)]) -> Output {
     let mut all = vec!["config", "show"];
     all.extend_from_slice(args);
     mu_async(&all, env).await
-}
-
-/// The URL of `socket`.
-fn url(socket: &Path) -> String {
-    format!("unix://{}", socket.display())
 }
 
 /// A server over `dir` on its own socket.
@@ -40,11 +35,12 @@ fn refused(output: &Output, texts: &[&str]) {
     );
 }
 
-/// Asserts that `mu config show --server <url> --device laptop` is refused with `texts`.
-async fn refused_url(url: &str, texts: &[&str]) {
+/// Asserts that `mu config show --server <url> --device laptop` is refused with the text that
+/// names `url` and `reason`.
+async fn refused_url(url: &str, reason: &str) {
     refused(
         &show(&["--server", url, "--device", "laptop"], &[]).await,
-        texts,
+        &[&format!("{url}: {reason}")],
     );
 }
 
@@ -77,8 +73,13 @@ async fn the_server_flag_wins() {
     let server = ServerBuilder::new().start().await;
     let other = server.dir().path().join("env.sock");
     let output = show(
-        &["--server", &url(server.socket()), "--device", "laptop"],
-        &[("MU_SERVER", Some(&url(&other)))],
+        &[
+            "--server",
+            &server_url(server.socket()),
+            "--device",
+            "laptop",
+        ],
+        &[("MU_SERVER", Some(&server_url(&other)))],
     )
     .await;
     succeeds(&output);
@@ -89,7 +90,7 @@ async fn the_server_variable() {
     let server = ServerBuilder::new().start().await;
     let output = show(
         &["--device", "laptop"],
-        &[("MU_SERVER", Some(&url(server.socket())))],
+        &[("MU_SERVER", Some(&server_url(server.socket())))],
     )
     .await;
     succeeds(&output);
@@ -150,89 +151,120 @@ async fn a_path_with_a_space() {
         .socket_flag(Some(socket.clone()))
         .start()
         .await;
-    let encoded = url(server.socket()).replace(' ', "%20");
-    succeeds(&show(&["--server", &encoded, "--device", "laptop"], &[]).await);
+    succeeds(
+        &show(
+            &[
+                "--server",
+                &server_url(server.socket()),
+                "--device",
+                "laptop",
+            ],
+            &[],
+        )
+        .await,
+    );
 }
 
 #[tokio::test]
 async fn another_scheme() {
-    refused_url("https://example.com", &["https", "unix"]).await;
-}
-
-#[tokio::test]
-async fn a_host() {
-    refused_url("unix://host/tmp/s.sock", &["unix://host/tmp/s.sock"]).await;
-}
-
-#[tokio::test]
-async fn a_user() {
-    refused_url("unix://me@/tmp/s.sock", &["unix://me@/tmp/s.sock"]).await;
-}
-
-#[tokio::test]
-async fn a_password() {
-    refused_url("unix://me:pw@/tmp/s.sock", &["unix://me:pw@/tmp/s.sock"]).await;
-}
-
-#[tokio::test]
-async fn a_fragment() {
-    let server = ServerBuilder::new().start().await;
-    refused_url(&format!("{}#x", url(server.socket())), &["#x"]).await;
-}
-
-#[tokio::test]
-async fn no_double_slash() {
-    refused_url("unix:/tmp/s.sock", &["unix:/tmp/s.sock"]).await;
-}
-
-#[tokio::test]
-async fn a_relative_path() {
-    refused_url("unix:s.sock", &["unix:s.sock"]).await;
-}
-
-/// Asserts that the URL of a socket in a new directory with `query` is refused with `texts`.
-async fn refused_query(query: &str, texts: &[&str]) {
-    let dir = private_tempdir();
     refused_url(
-        &format!("{}?{query}", url(&dir.path().join("s.sock"))),
-        texts,
+        "https://example.com",
+        "the scheme is https: a server URL is unix:// and the path of a socket",
     )
     .await;
 }
 
 #[tokio::test]
+async fn a_host() {
+    refused_url("unix://host/tmp/s.sock", "a server URL has no host").await;
+}
+
+#[tokio::test]
+async fn a_user() {
+    refused_url("unix://me@/tmp/s.sock", "empty host").await;
+}
+
+#[tokio::test]
+async fn a_password() {
+    refused_url("unix://me:pw@/tmp/s.sock", "empty host").await;
+}
+
+#[tokio::test]
+async fn a_fragment() {
+    let server = ServerBuilder::new().start().await;
+    refused_url(
+        &format!("{}#x", server_url(server.socket())),
+        "a server URL has no fragment",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn no_double_slash() {
+    refused_url("unix:/tmp/s.sock", "write unix:// and an absolute path").await;
+}
+
+#[tokio::test]
+async fn a_relative_path() {
+    refused_url("unix:s.sock", "write unix:// and an absolute path").await;
+}
+
+/// Asserts that the URL of a socket in a new directory with `query` is refused with `reason`.
+async fn refused_query(query: &str, reason: &str) {
+    let dir = private_tempdir();
+    refused_url(
+        &format!("{}?{query}", server_url(&dir.path().join("s.sock"))),
+        reason,
+    )
+    .await;
+}
+
+/// The reason that refuses the wait `shown`.
+fn bad_wait(shown: &str) -> String {
+    format!("connect_wait: {shown} is not a finite number of seconds of 1 ns or more")
+}
+
+#[tokio::test]
 async fn a_wait_of_zero() {
-    refused_query("connect_wait=0", &["connect_wait"]).await;
+    refused_query("connect_wait=0", &bad_wait("0")).await;
 }
 
 #[tokio::test]
 async fn a_negative_wait() {
-    refused_query("connect_wait=-1", &["connect_wait"]).await;
+    refused_query("connect_wait=-1", &bad_wait("-1")).await;
 }
 
 #[tokio::test]
 async fn a_wait_that_is_not_a_number() {
-    refused_query("connect_wait=nan", &["connect_wait"]).await;
+    refused_query("connect_wait=nan", &bad_wait("NaN")).await;
 }
 
 #[tokio::test]
 async fn an_infinite_wait() {
-    refused_query("connect_wait=inf", &["connect_wait"]).await;
+    refused_query("connect_wait=inf", &bad_wait("inf")).await;
 }
 
 #[tokio::test]
 async fn a_wait_under_one_nanosecond() {
-    refused_query("connect_wait=1e-10", &["connect_wait"]).await;
+    refused_query("connect_wait=1e-10", &bad_wait("0.0000000001")).await;
 }
 
 #[tokio::test]
 async fn an_unknown_option() {
-    refused_query("colour=red", &["colour"]).await;
+    refused_query(
+        "colour=red",
+        "colour is no option: the only option is connect_wait",
+    )
+    .await;
 }
 
 #[tokio::test]
 async fn an_option_twice() {
-    refused_query("connect_wait=1&connect_wait=2", &["connect_wait"]).await;
+    refused_query(
+        "connect_wait=1&connect_wait=2",
+        "connect_wait is there twice",
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -249,7 +281,7 @@ async fn a_short_wait() {
     let output = show(
         &[
             "--server",
-            &format!("{}?connect_wait=0.2", url(&socket)),
+            &format!("{}?connect_wait=0.2", server_url(&socket)),
             "--device",
             "laptop",
         ],
@@ -265,7 +297,7 @@ async fn the_device_variable() {
     let dir = ConfigDir::empty().file("clients/devices/laptop.toml", "echo = \"hide\"\n");
     let server = serve(&dir).await;
     let output = show(
-        &["--server", &url(server.socket())],
+        &["--server", &server_url(server.socket())],
         &[("MU_DEVICE", Some("laptop"))],
     )
     .await;
@@ -277,7 +309,12 @@ async fn the_device_flag_wins() {
     let dir = ConfigDir::empty().file("clients/devices/laptop.toml", "echo = \"hide\"\n");
     let server = serve(&dir).await;
     let output = show(
-        &["--server", &url(server.socket()), "--device", "laptop"],
+        &[
+            "--server",
+            &server_url(server.socket()),
+            "--device",
+            "laptop",
+        ],
         &[("MU_DEVICE", Some("desk"))],
     )
     .await;
@@ -290,7 +327,7 @@ async fn an_empty_device_variable() {
     let dir = ConfigDir::empty().file(&format!("clients/devices/{host}.toml"), "echo = \"hide\"\n");
     let server = serve(&dir).await;
     let output = show(
-        &["--server", &url(server.socket())],
+        &["--server", &server_url(server.socket())],
         &[("MU_DEVICE", Some(""))],
     )
     .await;
@@ -302,7 +339,7 @@ async fn the_host_name() {
     let host = host();
     let dir = ConfigDir::empty().file(&format!("clients/devices/{host}.toml"), "echo = \"hide\"\n");
     let server = serve(&dir).await;
-    let output = show(&["--server", &url(server.socket())], &[]).await;
+    let output = show(&["--server", &server_url(server.socket())], &[]).await;
     hides_for(&output, &host);
 }
 
@@ -312,7 +349,7 @@ async fn a_bad_name() {
     let output = show(
         &[
             "--server",
-            &url(&dir.path().join("s.sock")),
+            &server_url(&dir.path().join("s.sock")),
             "--device",
             "my laptop",
         ],
@@ -326,7 +363,13 @@ async fn a_bad_name() {
 async fn a_name_of_64_characters() {
     let server = serve(&ConfigDir::empty()).await;
     let name = "a".repeat(64);
-    succeeds(&show(&["--server", &url(server.socket()), "--device", &name], &[]).await);
+    succeeds(
+        &show(
+            &["--server", &server_url(server.socket()), "--device", &name],
+            &[],
+        )
+        .await,
+    );
 }
 
 #[tokio::test]
@@ -336,7 +379,7 @@ async fn a_name_of_65_characters() {
     let output = show(
         &[
             "--server",
-            &url(&dir.path().join("s.sock")),
+            &server_url(&dir.path().join("s.sock")),
             "--device",
             &name,
         ],
@@ -350,7 +393,12 @@ async fn a_name_of_65_characters() {
 async fn an_empty_device_flag() {
     let dir = private_tempdir();
     let output = show(
-        &["--server", &url(&dir.path().join("s.sock")), "--device", ""],
+        &[
+            "--server",
+            &server_url(&dir.path().join("s.sock")),
+            "--device",
+            "",
+        ],
         &[],
     )
     .await;

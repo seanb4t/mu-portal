@@ -10,7 +10,7 @@ use mu_config::DeviceName;
 use url::Url;
 
 use crate::client::{DEFAULT_WAIT, connect_wait};
-use crate::socket::{current_uid, default_socket};
+use crate::socket::SocketArgs;
 
 /// The variable that names the server URL.
 pub const SERVER_ENV: &str = "MU_SERVER";
@@ -58,7 +58,7 @@ impl BootstrapArgs {
         if let Some(url) = self.server.as_deref().filter(|url| !url.is_empty()) {
             return parse_url(url);
         }
-        let socket = default_socket(std::env::var_os("XDG_RUNTIME_DIR"), current_uid());
+        let socket = SocketArgs::default().resolve();
         Ok(Server {
             url: format!("unix://{}", socket.display()),
             socket,
@@ -135,9 +135,6 @@ pub fn parse_url(text: &str) -> Result<Server, String> {
     }
     if url.host_str().is_some_and(|host| !host.is_empty()) {
         return Err(refused("a server URL has no host"));
-    }
-    if !url.username().is_empty() || url.password().is_some() {
-        return Err(refused("a server URL has no user and no password"));
     }
     if url.fragment().is_some() {
         return Err(refused("a server URL has no fragment"));

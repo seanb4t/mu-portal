@@ -338,15 +338,37 @@ fn an_unreadable_server_file_leaves_world_list() {
 }
 
 #[test]
+fn a_fifo_named_server_toml_leaves_world_list() {
+    let config = Config::base();
+    let status = std::process::Command::new("mkfifo")
+        .arg(config.path().join("server.toml"))
+        .status()
+        .unwrap();
+    assert!(status.success());
+    has_line(&succeeds(&config.list()), "alpha/aria");
+}
+
+#[test]
+fn a_broken_link_named_server_toml_leaves_world_list() {
+    let config = Config::base();
+    std::os::unix::fs::symlink(
+        config.path().join("nothing"),
+        config.path().join("server.toml"),
+    )
+    .unwrap();
+    has_line(&succeeds(&config.list()), "alpha/aria");
+}
+
+#[test]
 fn unreadable_server_file_in_another_case_names_the_error() {
     use std::os::unix::fs::PermissionsExt as _;
     let config = Config::base().file("SERVER.toml", "");
     let path = config.path().join("SERVER.toml");
     fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
-    // A user who can read every file, such as root, gets no read error to name.
-    if fs::File::open(&path).is_ok() {
-        return;
-    }
+    assert!(
+        fs::File::open(&path).is_err(),
+        "the mode 000 does not keep this user out: run the tests as a user that is not root"
+    );
     fails_naming(&config.list(), &["SERVER.toml", "Permission denied"]);
 }
 

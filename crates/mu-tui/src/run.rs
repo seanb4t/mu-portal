@@ -206,12 +206,25 @@ pub async fn within<T>(
     limit: Duration,
     late: &str,
 ) -> Result<T, String> {
-    tokio::time::timeout(limit, call).await.unwrap_or_else(|_| {
-        Err(format!(
-            "the server gave no answer in {} s{late}",
-            limit.as_secs()
-        ))
+    timed(call, limit, || {
+        format!("the server gave no answer in {} s{late}", limit.as_secs())
     })
+    .await
+}
+
+/// The answer of `call`, or the text of `late` when `limit` ends first.
+///
+/// # Errors
+///
+/// The error of `call`, or the text of `late`.
+pub async fn timed<T>(
+    call: impl Future<Output = Result<T, String>>,
+    limit: Duration,
+    late: impl FnOnce() -> String,
+) -> Result<T, String> {
+    tokio::time::timeout(limit, call)
+        .await
+        .unwrap_or_else(|_| Err(late()))
 }
 
 /// The reply to a send of `text` to `world` that `call` makes. A call that fails is a refusal

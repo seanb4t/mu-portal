@@ -50,17 +50,6 @@ pub(crate) fn no_answer(url: &str, wait: Duration) -> String {
     format!("the server on {url} did not answer within {}", shown(wait))
 }
 
-/// The answer of `steps`, or the text of `late` when `wait` ends first.
-pub(crate) async fn within<T>(
-    wait: Duration,
-    steps: impl Future<Output = Result<T, String>>,
-    late: impl FnOnce() -> String,
-) -> Result<T, String> {
-    tokio::time::timeout(wait, steps)
-        .await
-        .unwrap_or_else(|_| Err(late()))
-}
-
 /// The answer of `call` to the server at `url`, or the error to print: the error of the call,
 /// or a server that did not answer within `wait`.
 pub(crate) async fn answered<T>(
@@ -69,7 +58,7 @@ pub(crate) async fn answered<T>(
     call: impl Future<Output = Result<T, ClientError>>,
 ) -> Result<T, String> {
     let call = async { call.await.map_err(|error| format!("{url}: {error}")) };
-    within(wait, call, || no_answer(url, wait)).await
+    mu_tui::timed(call, wait, || no_answer(url, wait)).await
 }
 
 /// What answered on the socket before the first list.
@@ -187,7 +176,7 @@ async fn in_one_wait<A, B, C>(
         hash.await?;
         config.await
     };
-    within(wait, steps, late).await
+    mu_tui::timed(steps, wait, late).await
 }
 
 /// Starts `mu server` for `socket` in its own process group, with stdout and stderr appended to

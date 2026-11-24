@@ -89,6 +89,7 @@ impl DirSnapshot {
         let mut walker = Walker {
             root,
             snapshot: &mut snapshot,
+            linked_dirs: 0,
         };
         walker.walk(root, &[], &[(metadata.dev(), metadata.ino())])?;
         Ok(snapshot)
@@ -127,16 +128,21 @@ impl DirSnapshot {
 }
 
 /// Whether `path` is the directory of the client layers or under it.
-fn is_under_clients(path: &str) -> bool {
+#[must_use]
+pub fn is_under_clients(path: &str) -> bool {
     path == CLIENTS_DIR
         || path
             .strip_prefix(CLIENTS_DIR)
             .is_some_and(|rest| rest.starts_with('/'))
 }
 
+/// The most directories that the walk enters through a link, in one snapshot.
+pub const LINKED_DIRS_MAX: usize = 64;
+
 struct Walker<'a> {
     root: &'a Path,
     snapshot: &'a mut DirSnapshot,
+    linked_dirs: usize,
 }
 
 impl Walker<'_> {
@@ -219,6 +225,20 @@ impl Walker<'_> {
                 );
                 return Ok(());
             }
+            if self.linked_dirs == LINKED_DIRS_MAX {
+                self.keep(
+                    parts,
+                    SnapEntry::Error {
+                        kind: "limit".to_owned(),
+                        text: format!(
+                            "the walk entered {LINKED_DIRS_MAX} directories through links, \
+                             so it does not enter this one"
+                        ),
+                    },
+                );
+                return Ok(());
+            }
+            self.linked_dirs += 1;
             chain.push(target);
             self.walk(path, parts, &chain)?;
         } else {
@@ -232,25 +252,11 @@ impl Walker<'_> {
         if !Self::kept(parts) {
             return;
         }
-        let mut parts = parts.to_vec();
-        if let [name] = parts.as_mut_slice() {
-            match is_top_file(self.root, name) {
-                Ok(true) => {
-                    super::SERVER_FILE.clone_into(name);
-                    self.snapshot.top_files.insert(name.clone());
-                }
-                Ok(false) => {}
-                Err(error) => {
-                    self.keep(&parts, SnapEntry::of_io(&error));
-                    return;
-                }
-            }
-        }
         let entry = match fs::read(path) {
             Ok(bytes) => SnapEntry::File(bytes),
             Err(error) => SnapEntry::of_io(&error),
         };
-        self.keep(&parts, entry);
+        self.keep(parts, entry);
     }
 
     /// Keeps an entry that is neither a file nor a directory, if the snapshot keeps its path.
@@ -269,8 +275,22 @@ impl Walker<'_> {
                 .is_some_and(|name| name.to_ascii_lowercase().ends_with(".toml"))
     }
 
-    fn keep(&mut self, parts: &[String], entry: SnapEntry) {
-        self.snapshot.entries.insert(parts.join("/"), entry);
+    /// Keeps `entry` at `parts`. A top-level entry that is
+    /// [`SERVER_FILE`](super::SERVER_FILE) in any case is kept under that name as a top file,
+    /// whatever kind of entry it is.
+    fn keep(&mut self, parts: &[String], mut entry: SnapEntry) {
+        let mut path = parts.join("/");
+        if let [name] = parts {
+            match is_top_file(self.root, name) {
+                Ok(true) => {
+                    super::SERVER_FILE.clone_into(&mut path);
+                    self.snapshot.top_files.insert(path.clone());
+                }
+                Ok(false) => {}
+                Err(error) => entry = SnapEntry::of_io(&error),
+            }
+        }
+        self.snapshot.entries.insert(path, entry);
     }
 
     /// The parts of `path`, which is under `directory`, relative to the root. A top-level

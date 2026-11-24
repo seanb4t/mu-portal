@@ -5,7 +5,7 @@ use std::os::unix::fs::{PermissionsExt as _, symlink};
 use std::path::Path;
 use std::process::Command;
 
-use mu_core::world::{DirSnapshot, SnapEntry};
+use mu_core::world::{DirSnapshot, LINKED_DIRS_MAX, SnapEntry};
 
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
@@ -59,9 +59,10 @@ fn a_link_to_an_unreadable_directory_keeps_its_path() {
     let readable = fs::read_dir(&locked).is_ok();
     let snapshot = take(dir.path());
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o700)).expect("chmod back");
-    if readable {
-        return;
-    }
+    assert!(
+        !readable,
+        "the mode 000 does not keep this user out: run the tests as a user that is not root"
+    );
     assert!(is_error(snapshot.get("clients/devices/x")));
 }
 
@@ -119,4 +120,58 @@ fn a_root_that_is_a_file_is_an_error() {
     fs::write(&file, "").unwrap();
     let error = DirSnapshot::take(&file).unwrap_err().to_string();
     assert!(error.contains(&file.display().to_string()), "{error}");
+}
+
+#[test]
+fn a_mesh_of_linked_directories_stops_at_the_limit() {
+    let dir = tempfile::tempdir().expect("dir");
+    let devices = dir.path().join("clients/devices");
+    let names = ["a", "b", "c", "d", "e", "f"];
+    for name in names {
+        fs::create_dir_all(dir.path().join("mesh").join(name)).expect("mkdir");
+    }
+    fs::create_dir_all(&devices).expect("mkdir");
+    for from in names {
+        symlink(dir.path().join("mesh").join(from), devices.join(from)).expect("link");
+        for to in names.iter().filter(|to| **to != from) {
+            symlink(
+                dir.path().join("mesh").join(to),
+                dir.path().join("mesh").join(from).join(to),
+            )
+            .expect("link");
+        }
+    }
+    let snapshot = take(dir.path());
+    let limits = snapshot
+        .entries()
+        .filter(|(_, entry)| matches!(entry, SnapEntry::Error { kind, .. } if kind == "limit"))
+        .count();
+    let walked = snapshot.entries().count();
+    assert!(
+        limits > 0 && walked <= LINKED_DIRS_MAX * names.len() + limits,
+        "{limits} {walked}"
+    );
+}
+
+#[test]
+fn a_fifo_named_server_toml_is_the_server_file() {
+    let dir = tempfile::tempdir().expect("dir");
+    let status = Command::new("mkfifo")
+        .arg(dir.path().join("server.toml"))
+        .status()
+        .expect("mkfifo");
+    assert!(status.success());
+    let snapshot = take(dir.path());
+    assert!(
+        snapshot.server_file() == Some(&SnapEntry::NotRegular)
+            && snapshot.world_entries().count() == 0
+    );
+}
+
+#[test]
+fn a_broken_link_named_server_toml_is_the_server_file() {
+    let dir = tempfile::tempdir().expect("dir");
+    symlink(dir.path().join("nothing"), dir.path().join("server.toml")).expect("link");
+    let snapshot = take(dir.path());
+    assert!(is_error(snapshot.server_file()) && snapshot.world_entries().count() == 0);
 }

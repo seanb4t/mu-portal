@@ -5,7 +5,7 @@ use std::os::unix::fs::{PermissionsExt as _, symlink};
 use std::path::Path;
 use std::process::{Command, Output};
 
-use support::process::{ServerBuilder, ServerProcess};
+use support::process::{ServerBuilder, ServerProcess, server_url};
 use support::{BASE_GAME, ConfigDir, mu_async, stderr, stdout};
 
 mod support;
@@ -231,7 +231,7 @@ async fn a_bad_world_still_stops_the_start() {
 
 /// The URL of the socket of `server`.
 fn url(server: &ServerProcess) -> String {
-    format!("unix://{}", server.socket().display())
+    server_url(server.socket())
 }
 
 /// Runs `mu config show` on `server` for the device `device`, on the OS of the test.
@@ -492,7 +492,7 @@ async fn a_layer_of_another_device_leaves_the_revision() {
 async fn no_server() {
     let dir = support::process::private_tempdir();
     let socket = dir.path().join("s.sock");
-    let url = format!("unix://{}", socket.display());
+    let url = server_url(&socket);
     let output = mu_async(
         &["config", "show", "--server", &url, "--device", "laptop"],
         &[],
@@ -697,6 +697,25 @@ async fn a_reload_with_a_bad_game_of_two_worlds() {
 }
 
 #[tokio::test]
+async fn a_bad_game_does_not_hide_a_bad_character_of_another_game() {
+    let dir = ConfigDir::base();
+    let server = start(dir.path()).await;
+    let dir = dir
+        .file("games/alpha.toml", "extends = \"nothing\"\n")
+        .file("characters/gamma/gil.toml", "");
+    let reloaded = reload(&server).await;
+    let text = stderr(&reloaded);
+    assert!(
+        reloaded.status.code() == Some(1)
+            && text.contains("games/alpha.toml")
+            && text.contains("characters/gamma/gil.toml")
+            && !text.contains("characters/alpha/aria.toml"),
+        "{text}"
+    );
+    drop(dir);
+}
+
+#[tokio::test]
 async fn a_reload_with_two_stray_files() {
     let dir = ConfigDir::base();
     let server = start(dir.path()).await;
@@ -794,7 +813,7 @@ async fn a_reload_filters_a_control_character_in_a_restart_line() {
 async fn a_reload_with_no_server() {
     let dir = support::process::private_tempdir();
     let socket = dir.path().join("s.sock");
-    let url = format!("unix://{}", socket.display());
+    let url = server_url(&socket);
     let output = mu_async(&["config", "reload", "--server", &url], &[]).await;
     assert!(
         output.status.code() == Some(1)

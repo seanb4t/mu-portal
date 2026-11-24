@@ -21,6 +21,11 @@ impl fmt::Display for NameError {
 
 impl std::error::Error for NameError {}
 
+/// The value of `all` whose name is `name`.
+pub(crate) fn by_name<T: Copy>(all: &[T], name_of: fn(T) -> &'static str, name: &str) -> Option<T> {
+    all.iter().copied().find(|each| name_of(*each) == name)
+}
+
 /// `names` as a list in text, such as `a`, `a and b` or `a, b and c`.
 #[must_use]
 pub fn listed<S: AsRef<str>>(names: &[S]) -> String {
@@ -59,17 +64,14 @@ impl Kind {
     ///
     /// A [`NameError`] that lists the kinds.
     pub fn parse(name: &str) -> Result<Self, NameError> {
-        Self::ALL
-            .into_iter()
-            .find(|kind| kind.name() == name)
-            .ok_or_else(|| NameError {
-                what: "kind",
-                name: name.to_owned(),
-                reason: format!(
-                    "is no kind: the kinds are {}",
-                    listed(&Self::ALL.map(Self::name))
-                ),
-            })
+        by_name(&Self::ALL, Self::name, name).ok_or_else(|| NameError {
+            what: "kind",
+            name: name.to_owned(),
+            reason: format!(
+                "is no kind: the kinds are {}",
+                listed(&Self::ALL.map(Self::name))
+            ),
+        })
     }
 }
 
@@ -101,17 +103,14 @@ impl Os {
     ///
     /// A [`NameError`] that lists the OS names.
     pub fn parse(name: &str) -> Result<Self, NameError> {
-        Self::ALL
-            .into_iter()
-            .find(|os| os.name() == name)
-            .ok_or_else(|| NameError {
-                what: "os",
-                name: name.to_owned(),
-                reason: format!(
-                    "is no OS: the OS names are {}",
-                    listed(&Self::ALL.map(Self::name))
-                ),
-            })
+        by_name(&Self::ALL, Self::name, name).ok_or_else(|| NameError {
+            what: "os",
+            name: name.to_owned(),
+            reason: format!(
+                "is no OS: the OS names are {}",
+                listed(&Self::ALL.map(Self::name))
+            ),
+        })
     }
 
     /// The OS of this machine.
