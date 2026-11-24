@@ -154,6 +154,7 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "tracing",
             "tracing-opentelemetry",
             "tracing-subscriber",
+            "url",
             "vt100",
         ],
     ),

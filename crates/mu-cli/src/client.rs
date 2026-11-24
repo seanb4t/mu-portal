@@ -8,7 +8,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::time::Duration;
 
 use clap::Args;
-use mu_client::PortalClient;
+use mu_client::{ClientError, PortalClient};
 use mu_core::world::Hidden;
 
 /// The file of the terminal client.
@@ -55,8 +55,11 @@ fn settings(dir: Option<&Path>) -> Result<FileSettings, String> {
     Ok(FileSettings { settings, wait })
 }
 
+/// The longest wait for a server to answer, when nothing sets one.
+pub(crate) const DEFAULT_WAIT: Duration = Duration::from_secs(5);
+
 /// The wait of `seconds`, or the reason that it is no wait. A value under 1 ns is no wait.
-fn connect_wait(seconds: f64) -> Result<Duration, String> {
+pub(crate) fn connect_wait(seconds: f64) -> Result<Duration, String> {
     Some(seconds)
         .filter(|seconds| *seconds >= 1e-9)
         .and_then(|seconds| Duration::try_from_secs_f64(seconds).ok())
@@ -64,8 +67,25 @@ fn connect_wait(seconds: f64) -> Result<Duration, String> {
 }
 
 /// The wait as the messages print it, such as `5 s` or `0.2 s`.
-fn shown(wait: Duration) -> String {
+pub(crate) fn shown(wait: Duration) -> String {
     format!("{} s", wait.as_secs_f64())
+}
+
+/// The answer of `call` to the server at `url`, or the error to print: the error of the call,
+/// or a server that did not answer within `wait`.
+pub(crate) async fn answered<T>(
+    url: &str,
+    wait: Duration,
+    call: impl Future<Output = Result<T, ClientError>>,
+) -> Result<T, String> {
+    match tokio::time::timeout(wait, call).await {
+        Ok(Ok(answer)) => Ok(answer),
+        Ok(Err(error)) => Err(format!("{url}: {error}")),
+        Err(_) => Err(format!(
+            "the server on {url} did not answer within {}",
+            shown(wait)
+        )),
+    }
 }
 
 /// What answered on the socket before the first list.
@@ -129,18 +149,10 @@ pub fn run(args: &ClientArgs) -> ExitCode {
                 Ok(Found::Listener) => {}
                 Err(error) => return Err(format!("{}: {error}", socket.display())),
             }
-            match tokio::time::timeout(wait, client.config_dir()).await {
-                Ok(Ok(server)) => {
-                    let own = config.as_deref().map(shown_dir);
-                    Ok(other_dir(&socket, server.as_deref(), own.as_deref()))
-                }
-                Ok(Err(error)) => Err(format!("{}: {error}", socket.display())),
-                Err(_) => Err(format!(
-                    "the server on {} did not answer within {}",
-                    socket.display(),
-                    shown(wait)
-                )),
-            }
+            let url = socket.display().to_string();
+            let server = answered(&url, wait, client.config_dir()).await?;
+            let own = config.as_deref().map(shown_dir);
+            Ok(other_dir(&socket, server.as_deref(), own.as_deref()))
         };
         let notices = match first.await {
             Ok(notice) => notice.into_iter().collect(),

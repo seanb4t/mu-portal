@@ -870,6 +870,30 @@ async fn span_of_a_send() {
 }
 
 #[tokio::test]
+async fn get_client_config_has_a_span() {
+    let collector = Collector::start(Mode::Http).await;
+    let session = Setup::endpoint(&collector.url()).start().await;
+    session
+        .client
+        .client_config("tui", "linux", "laptop")
+        .await
+        .unwrap();
+    session
+        .client
+        .client_config("gui", "linux", "laptop")
+        .await
+        .unwrap_err();
+    stop(session.server).await;
+    let spans = spans_named(&collector, "mu.v1.PortalService/GetClientConfig");
+    let failed: Vec<_> = spans.iter().filter(|span| is_error(span)).collect();
+    assert_eq!((spans.len(), failed.len()), (2, 1), "{spans:?}");
+    assert_eq!(
+        attribute(failed[0], "rpc.connect_rpc.error_code").as_deref(),
+        Some("invalid_argument")
+    );
+}
+
+#[tokio::test]
 async fn span_of_a_subscribe() {
     let collector = Collector::start(Mode::Http).await;
     let mut session = Setup::endpoint(&collector.url()).start().await;

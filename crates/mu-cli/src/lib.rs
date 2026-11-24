@@ -1,8 +1,10 @@
 //! Command grammar of the `mu` binary.
 
+pub mod bootstrap;
 pub mod client;
 pub mod config;
 pub mod config_file;
+pub mod config_verb;
 pub mod env_path;
 pub mod server;
 pub mod server_config;
@@ -78,6 +80,8 @@ pub struct Cli {
 pub enum Verb {
     /// Start the terminal client (the default verb)
     Client(ClientArgs),
+    /// Show the configuration of one client, or reload the directory, on a running server
+    Config(config_verb::ConfigVerbArgs),
     /// Run the server
     Server(ServerArgs),
     /// Print the name and the version
@@ -100,6 +104,7 @@ pub fn run(cli: Cli) -> ExitCode {
     match cli.verb {
         None => client::run(&cli.client),
         Some(Verb::Client(args)) => client::run(&args),
+        Some(Verb::Config(args)) => config_verb::run(&args),
         Some(Verb::Server(args)) => server::run(&args),
         Some(Verb::World(args)) => world::run(&args),
         Some(Verb::Version) => print("version", &Cli::command().render_long_version()),

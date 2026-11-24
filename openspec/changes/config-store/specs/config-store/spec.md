@@ -215,7 +215,7 @@ The revision SHALL be a text. A change to the content of a layer that applies to
 - **THEN** the exit status is 1, and stderr contains `windows`
 
 #### Scenario: Show filters a control character in a notice
-- **GIVEN** `<dir>/clients/` holds a file whose name is `glo`, the character ESC, and `bal.toml`, and a server serves `<dir>` on `<dir>/s.sock`
+- **GIVEN** `<dir>/clients/global.toml` holds `[keys]` with `"alt+\u001b" = "quit"`, and a server serves `<dir>` on `<dir>/s.sock`
 - **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
 - **THEN** stderr holds no ESC character, and holds the character U+FFFD
 

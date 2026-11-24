@@ -70,6 +70,11 @@ type Events = ServerStream<
     proto::__buffa::view::SubscribeResponseView<'static>,
 >;
 
+type Hashes = ServerStream<
+    <Transport as connectrpc::client::ClientTransport>::ResponseBody,
+    proto::__buffa::view::WatchConfigResponseView<'static>,
+>;
+
 /// The client of one server, on its Unix socket.
 #[derive(Clone)]
 pub struct PortalClient {
@@ -157,6 +162,46 @@ impl PortalClient {
         Ok(())
     }
 
+    /// The configuration of the client of `kind`, `os` and `device`.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the call fails, such as `invalid_argument` for a bad name.
+    pub async fn client_config(
+        &self,
+        kind: &str,
+        os: &str,
+        device: &str,
+    ) -> Result<proto::GetClientConfigResponse, ClientError> {
+        let request = proto::GetClientConfigRequest {
+            kind: kind.to_owned(),
+            os: os.to_owned(),
+            device: device.to_owned(),
+            ..Default::default()
+        };
+        Ok(self.inner.get_client_config(request).await?.into_owned())
+    }
+
+    /// Asks the server to read its configuration directory again.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the call fails.
+    pub async fn reload_config(&self) -> Result<proto::ReloadConfigResponse, ClientError> {
+        let request = proto::ReloadConfigRequest::default();
+        Ok(self.inner.reload_config(request).await?.into_owned())
+    }
+
+    /// One watch of the store hash, with no resume: the current hash, then each new one.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the call fails.
+    pub async fn watch_config(&self) -> Result<HashStream, ClientError> {
+        let request = proto::WatchConfigRequest::default();
+        Ok(HashStream(self.inner.watch_config(request).await?))
+    }
+
     /// One stream from `from_seq`, with no resume: the `Hello`, then each event.
     ///
     /// # Errors
@@ -206,6 +251,24 @@ impl EventStream {
             .message()
             .await?
             .map(|message| message.to_owned_message()))
+    }
+}
+
+/// One stream of [`PortalClient::watch_config`].
+pub struct HashStream(Hashes);
+
+impl HashStream {
+    /// The next store hash. None means a clean end.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the stream ends with an error.
+    pub async fn next(&mut self) -> Result<Option<String>, ClientError> {
+        Ok(self
+            .0
+            .message()
+            .await?
+            .map(|message| message.to_owned_message().store_hash))
     }
 }
 
