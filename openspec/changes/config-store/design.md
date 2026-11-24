@@ -63,7 +63,7 @@ The snapshot reads only regular files. Any other entry under `clients/`, such as
 
 The store parses each file under `clients/` with `mu_core::world::parse_toml` into the types of `mu-config`, so the line of an error comes from one parser. A client layer parses with `Hidden::All`, so no error quotes a value. Then it checks the `[keys]` table with `mu-config`. The fields of a client layer skip an unset value when they serialize, as the world types do. The reason is that `figment2` takes an empty later value over an earlier one. A good client layer keeps its parsed fields. A bad client layer keeps a reason that names the file, the field or the binding, and the line when there is one.
 
-The merge of the client layers uses `figment2`, as the world merge does. The function `world` in `crates/mu-core/src/world/resolve.rs` merges named layers over the defaults. It also maps `find_metadata` back to a layer. That block moves to one helper in `mu-core`. The world resolve and the store both call it, so `mu-server` does not depend on `figment2`. A nested table merges key by key in `figment2` (`Value::coalesce` merges two dicts recursively, `src/coalesce.rs` in 0.11.5), so `[keys]` gets its rule from the library. Before the merge, each key name becomes its canonical name, so two names of one key in two layers meet as one key. `figment2` splits a key path at each `.` and has no escape, so no canonical name holds a dot. The key `.` has the canonical name `period`, as `+` has `plus`. The parser accepts both `.` and `period`.
+The merge of the client layers uses `figment2`, as the world merge does. The function `world` in `crates/mu-core/src/world/resolve.rs` merges named layers over the defaults. It also maps `find_metadata` back to a layer. That block moves to one helper in `mu-core`. The world resolve and the store both call it, so `mu-server` does not depend on `figment2`. A nested table merges key by key in `figment2` (`Value::coalesce` merges two dicts recursively, `src/coalesce.rs` in 0.11.5), so `[keys]` gets its rule from the library. `find_metadata` takes a key path, finds the value with `Value::find_ref`, which splits the path at each `.`, and returns the metadata of the tag of that value. So `find_metadata("keys.alt+period")` names the layer that set that binding. Before the merge, each key name becomes its canonical name, so two names of one key in two layers meet as one key. `figment2` splits a key path at each `.` and has no escape, so no canonical name holds a dot. The key `.` has the canonical name `period`, as `+` has `plus`. The parser accepts both `.` and `period`.
 
 `server.toml` stays parsed in `mu-cli`, because the telemetry export must start before the server. The start runs `server_config::read` and then the value checks of `telemetry::export`. The change moves those two steps into one function, `server_config::check`, and the start calls it before it builds the exporter. `mu-cli` gives the same function to the store, which calls it at each reload. So the start and the reload refuse the same files. `server_config::check` takes the bytes of `server.toml`, or its read error, from the snapshot, and does not read the disk. The start takes the snapshot first. So the check and the restart compare see the same bytes.
 
@@ -98,7 +98,7 @@ The revision of one client is a SHA-256 hash. Its input is the sorted list of th
 - for tag 0, the length of the bytes as 8 bytes, big-endian, then the bytes
 - for tag 1, the kind of the read error as text, with its length first
 
-A bad layer counts too, so a layer that turns bad changes the revision. The error of a directory on the path of a layer of the client also counts, as an entry with tag 1. These directories are `clients/`, `clients/kinds`, `clients/os` and `clients/devices`. So a client with no layer file gets a new revision, and its notice, when `clients/` turns unlistable. A layer that turns unreadable is not the same as an empty one. The text form is the first 16 hex digits.
+A bad layer counts too, so a layer that turns bad changes the revision. The error of a directory on the path of a layer of the client also counts, as an entry with tag 1. These directories are `clients/`, `clients/kinds`, `clients/os` and `clients/devices`. So a client with no layer file gets a new revision, and its notice, when `clients/` turns unlistable. A layer that turns unreadable is not the same as an empty one. The text form is the first 16 hex digits. The hash is `sha2::Sha256`: `Sha256::new()`, one `Digest::update` call for each slice, then `finalize()`.
 
 A hash keeps the revision the same across a restart, which a counter does not. A later write can also compare a revision with the files on disk after an edit by hand (#173).
 
@@ -147,9 +147,22 @@ Alternatives:
 
 The path of the URL takes the place of the `--socket` value of `mu client`. `mu client` passes it through `private_dir` of `crates/mu-cli/src/socket.rs`, which creates and checks the socket directory before the client opens `server.log`. The default URL is `unix://` and `default_socket`. `mu config show` and `mu config reload` never start a server, so they create no directory. The URL parser is the `url` crate, which already is in `Cargo.lock` through other crates. The change adds it to `[workspace.dependencies]` and to the `mu-cli` row of `ALLOWED_CRATES`. The path is percent-decoded. The value of `connect_wait` goes through the existing `connect_wait` function of `crates/mu-cli/src/client.rs`, and a message prints the time with its `shown` function. The command refuses a URL before any connection. It refuses a scheme that is not `unix`, no `//` after the scheme, a host, a user, a password, a fragment, or a path that is not absolute. The query is read with `Url::query_pairs`. A name other than `connect_wait` is refused, and so is a name that is there twice.
 
+`url` 2.5.9 gives these results, from a scratch test:
+
+| URL | Result |
+|---|---|
+| `unix:///tmp/a%20b/s.sock` | `path()` is `/tmp/a%20b/s.sock`, and `to_file_path()` is `/tmp/a b/s.sock` |
+| `unix:s.sock` | `cannot_be_a_base()` is true, and `to_file_path()` fails |
+| `unix:/tmp/s.sock` | Parses as `unix:///tmp/s.sock`, but `has_authority()` is false |
+| `unix://host/tmp/s.sock` | `host_str()` is `host`, and `to_file_path()` fails |
+| `unix:///tmp/s.sock?connect_wait=1&connect_wait=2` | `query_pairs()` gives both pairs, in order |
+| `unix://me@/tmp/s.sock` | `Url::parse` fails with `empty host` |
+
+So the parser uses `Url::parse`, `scheme`, `has_authority`, `host_str`, `username`, `password`, `fragment`, `query_pairs` and `to_file_path`. `to_file_path` gives the decoded path, and it is absolute for each URL that the other checks accept.
+
 `sha2` enters the `mu-server` row of `ALLOWED_CRATES` and `[workspace.dependencies]`. `proptest` enters the `mu-server` row for the property test of D4, as it is in the rows of `mu-core`, `mu-tui` and `mu-cli`. The rows of `ALLOWED_CRATES` cover every dependency table, so the change adds no other check.
 
-Every flag of `mu-cli` with a variable is one `clap` argument with `env` and the value parser `parse_path`, which turns an empty value into none. The device rule needs the two apart: an empty `MU_DEVICE` counts as unset, but an empty `--device` is an error. So `--device` is a `clap` argument with no `env`, and `mu-cli` reads `MU_DEVICE` itself. The host name comes from `rustix::system::uname().nodename()`. `rustix` is already a workspace dependency, and the change adds its `system` feature. A host name that is not a valid device name after the change to lowercase stops the command, and the message says to set `--device`.
+Every flag of `mu-cli` with a variable is one `clap` argument with `env` and the value parser `parse_path`, which turns an empty value into none. The device rule needs the two apart: an empty `MU_DEVICE` counts as unset, but an empty `--device` is an error. So `--device` is a `clap` argument with no `env`, and `mu-cli` reads `MU_DEVICE` itself. The host name comes from `rustix::system::uname().nodename()`. `rustix` is already a workspace dependency, and the change adds its `system` feature, which gates the module `rustix::system`. `nodename` is the `nodename` field of `uname(2)`. On Linux it is the host name of the kernel, as `hostname` prints it. On macOS it is the name that `hostname` prints, which can end in `.local`. Both are lowercased before the check. A host name that is not a valid device name after the change to lowercase stops the command, and the message says to set `--device`.
 
 `mu config show` and `mu config reload` take the same `--server` and `--device` flags, and never start a server. `mu config show` also takes `--kind`, with the default `tui`, and `--os`, with the default of the machine. Both values are checked with `mu-config` before the call. Each waits for the answer of its call at most the time of `connect_wait`. A message about a server that did not answer names the URL and that time. Today that timeout and its message are inline in the start of `mu client`. They move to one function in `crates/mu-cli/src/client.rs` that takes the URL, the wait and a future. `mu client`, `mu config show` and `mu config reload` all call it.
 
@@ -209,9 +222,4 @@ There is no release, so no automatic migration. The user moves the content of `c
 
 ## Third-party facts to check
 
-These facts are not checked against current documentation yet. A task reads the documentation before the work depends on each one:
-
-- How the `url` crate parses `unix:///path`, `unix:path` and `unix://host/path`, and how it exposes the percent-encoded path.
-- That `rustix::system::uname` needs the `system` feature, and what `nodename` returns on macOS and Linux.
-- The `sha2` API for hashing several byte slices.
-- That `find_metadata` names the provider of a key inside `[keys]`. The merge of a nested table is checked in D2.
+Tasks 1.1 to 1.4 checked these facts against the sources of the locked versions. D2, D4 and D6 state the results.

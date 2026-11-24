@@ -4,10 +4,10 @@ Test files: `crates/mu-cli/tests/config_store.rs` (new) holds the tests of `mu c
 
 ## 1. Facts to check first
 
-- [ ] 1.1 Read the current documentation of the `url` crate. In a scratch test, parse these URLs: `unix:///tmp/a%20b/s.sock`, `unix:s.sock`, `unix:/tmp/s.sock`, `unix://host/tmp/s.sock` and `unix:///tmp/s.sock?connect_wait=1&connect_wait=2`. Record the result of each one in design.md D6, and the call that gives the decoded path. Make sure that D6 names each call that the parser of task 5.2 uses.
-- [ ] 1.2 Read the current documentation of `rustix::system::uname` and its feature flags. Make sure that design.md D6 names the feature, and states what `nodename` returns on macOS and on Linux.
-- [ ] 1.3 Read the current documentation of `sha2` for a hash over several byte slices. Make sure that design.md D4 names the calls.
-- [ ] 1.4 Read the current documentation of `figment2` for the merge of a nested table and for `find_metadata` on a key inside a table. Make sure that design.md D2 states that `[keys]` merges key by key, or names the change that makes it so.
+- [x] 1.1 Read the current documentation of the `url` crate. In a scratch test, parse these URLs: `unix:///tmp/a%20b/s.sock`, `unix:s.sock`, `unix:/tmp/s.sock`, `unix://host/tmp/s.sock` and `unix:///tmp/s.sock?connect_wait=1&connect_wait=2`. Record the result of each one in design.md D6, and the call that gives the decoded path. Make sure that D6 names each call that the parser of task 5.2 uses.
+- [x] 1.2 Read the current documentation of `rustix::system::uname` and its feature flags. Make sure that design.md D6 names the feature, and states what `nodename` returns on macOS and on Linux.
+- [x] 1.3 Read the current documentation of `sha2` for a hash over several byte slices. Make sure that design.md D4 names the calls.
+- [x] 1.4 Read the current documentation of `figment2` for the merge of a nested table and for `find_metadata` on a key inside a table. Make sure that design.md D2 states that `[keys]` merges key by key, or names the change that makes it so.
 
 ## 2. The crate mu-config
 
