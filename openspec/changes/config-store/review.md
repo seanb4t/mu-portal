@@ -1,9 +1,9 @@
 ---
 verdict: changes-requested
 phase: implementation
-reviewed_at: 2026-11-24T16:30:06+00:00
-head: e1b97a9dade476dadab073a4331db2fc5dc26b1c
-round: 12
+reviewed_at: 2026-11-24T16:37:36+00:00
+head: 58e8c309326c197de4cb81c911c30cc9c45ff953
+round: 13
 next_id: 344
 lenses:
   spec-lint: not-applicable
@@ -20,7 +20,7 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-159 | verify | blocker | in-change | The fix of R-159 makes keep() run is_top_file for every top-level entry, a FIFO included. For a name such as Server.toml, is_top_file calls same_file::is_same_file, which opens the entry for reading. A top-level FIFO named server.toml in another case then blocks the open with no writer, so mu server, mu world list and a reload (under the reload mutex) hang. Before the fix such an entry was kept unread. | crates/mu-core/src/world/snapshot.rs:284 — "match is_top_file(self.root, name) {" | In keep(), call is_top_file only for a File or Error entry, or compare the entry with the root's server.toml by fs::symlink_metadata dev and inode instead of same_file, so no top-level entry is opened. Add a test with a FIFO named Server.toml. | regression |  | wrong-behaviour |
+| R-159 | verify | blocker | in-change | PARTIAL: the fix 5171768fabb86225e12a225f7726442cd4cd13c7 of R-159 did not hold. The snapshot marks server.toml as a top file only when it is a regular file. A FIFO or other non-regular entry named server.toml now stops mu world list and the server start with a stray-file error. The base scan skipped any top-level entry of that name. | crates/mu-core/src/world/snapshot.rs:339 — "let (a, b) = (fs::metadata(a)?, fs::metadata(b)?);" | fix it again | regression |  | wrong-behaviour |
 
 ## Repeats
 
@@ -59,6 +59,7 @@ None.
 | 10 | implementation | full | 0e6e8318e8c09c31fee92739a9c0f5b14019de2c | 0d267506f13a5af0063464d5f17d96624418b8bd7ed7dbe64695f8a3083339bb | changes-requested | 17 | 0 | 2 | 0 | 0 |  |
 | 11 | implementation | full | e512517e66af92850eb62599532b1016ba448d33 | 8a92d109df8a85d610c256437c1ef39b480aa6cb6a2f7e1606f023d0e4ad7e58 | changes-requested | 27 | 0 | 1 | 0 | 0 | the test-honesty lens of round 10 was partial |
 | 12 | implementation | follow-up | e1b97a9dade476dadab073a4331db2fc5dc26b1c | 2622986694bb01f0c8faebd284962f57f365bfcc0479c6670b37c4e8b285df03 | changes-requested | 0 | 0 | 1 | 26 | 0 |  |
+| 13 | implementation | follow-up | 58e8c309326c197de4cb81c911c30cc9c45ff953 | d0e2c9ddd4322ac6a9c7e4027bdbd9ddd4cf3f26774f056d8c8721cc5c8adfcf | changes-requested | 0 | 0 | 1 | 0 | 0 |  |
 
 ## Judge
 
@@ -398,8 +399,10 @@ None.
 
 ## Lens notes
 
-- verify: All 27 fixed rows with a basis share the fix commit db98ea07b5a72094dca2dfa5ab076edfbaf2d264, so each row's fix_hunks is the whole commit; each row was checked against the lines that its claim names.
-- verify: parse_url no longer calls username or password (bootstrap.rs hunk 138 0). A user or a password still stops the command, because url 2.5.9 refuses a user with an empty host and the host check refuses one with a host; the tests a_user and a_password assert the text empty host.
+- verify: R-159 at head: a FIFO or a link to nothing at the exact name server.toml is a top file (keep at snapshot.rs:283 gives Ok(true) for name == SERVER_FILE), and a FIFO named Server.toml is compared by stat and never opened. The rest of the defect is one case: a link to nothing named Server.toml on a volume that ignores case. same_entry at snapshot.rs:339 calls fs::metadata, which follows the link and fails NotFound. is_top_file at snapshot.rs:331 then returns Ok(false), so the entry stays in world_entries as an Error, and DirSnapshot::layers at dir.rs:44 stops mu world list and the server start on it. design.md D2 (fix hunk 62) says a link to nothing at that name, meaning server.toml in any case, is never a stray world file. symlink_metadata on both names would compare the link itself.
+- verify: The removal of the same-file dependency is consistent: mu-core/Cargo.toml, the mu-core row of ALLOWED_CRATES and the mu-core entry of Cargo.lock no longer name it, and same-file stays in Cargo.lock only as a dependency of walkdir.
+- verify: The fix_hunks of R-159 name design.md 62 1, but diff-hunks.txt has no design.md range. I read design.md line 62 at head as a fix line.
+- verify: I could not read the base version of the top-file rule, because this agent has no git access. So I cannot tell whether the base scan also failed on a link to nothing named Server.toml. The PARTIAL answer rests on the claim of R-159 and on the design line that the fix wrote.
 
 ## Ledger
 
@@ -563,7 +566,7 @@ None.
 | R-156 | 10 | 10 | suggestion | in-change |  | ["artifact",["design.md","D6. The bootstrap values"],"Every flag of `mu-cli` with a variable is one `clap` argument with `env` and the value parser `parse_path`, which turns an empty value into none."] | fixed | c23878086671b1a01ca1858a1dc8a5fa12246650 | 10 |  | severity? should-fix 0.75 | D6 says that every mu-cli flag with a variable is one clap argument with env and parse_path. At head, --server has env, but its value is a plain String, and its own filter makes an empty flag unset too. D6 names only --device as the exception. |
 | R-157 | 10 | 10 | suggestion | in-change |  | ["path","crates/mu-server/src/store.rs",145] | fixed | c23878086671b1a01ca1858a1dc8a5fa12246650 | 10 |  |  | digest hand-writes the hex form of the first 8 bytes of the hash. The output of Sha256::digest in sha2 0.10.9 is a GenericArray, whose LowerHex takes a precision, so format!("{:.16x}", ...) gives the first 16 hex digits. The design does not name it. |
 | R-158 | 10 | 10 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: none; reason: a full round 11 reruns the test-honesty lens over the files it did not read |  |  |  | lens test-honesty reported partial, gaps: 1 |
-| R-159 | 11 | 12 | blocker | in-change | wrong-behaviour | ["path","crates/mu-core/src/world/snapshot.rs",177] | fixed | 5171768fabb86225e12a225f7726442cd4cd13c7 | 12 |  | severity? should-fix 0.61 | The snapshot marks server.toml as a top file only when it is a regular file. A FIFO or other non-regular entry named server.toml now stops mu world list and the server start with a stray-file error. The base scan skipped any top-level entry of that name. |
+| R-159 | 11 | 13 | blocker | in-change | wrong-behaviour | ["path","crates/mu-core/src/world/snapshot.rs",177] |  | regressed from fixed 5171768fabb86225e12a225f7726442cd4cd13c7 | 12 |  | severity? should-fix 0.61 | The snapshot marks server.toml as a top file only when it is a regular file. A FIFO or other non-regular entry named server.toml now stops mu world list and the server start with a stray-file error. The base scan skipped any top-level entry of that name. |
 | R-160 | 11 | 12 | should-fix | in-change | drift | ["path","crates/mu-core/src/world/snapshot.rs",130] | resolved | resolved in round 12 from fixed db98ea07b5a72094dca2dfa5ab076edfbaf2d264 | 11 |  |  | The rule of which snapshot paths lie under clients/ is written twice: is_under_clients in snapshot.rs, and an inline copy in changed() of store.rs that picks the paths outside clients/ for the restart lines. |
 | R-161 | 11 | 12 | should-fix | in-change | drift | ["path","crates/mu-cli/tests/support/process.rs",428] | resolved | resolved in round 12 from fixed db98ea07b5a72094dca2dfa5ab076edfbaf2d264 | 11 |  |  | The change adds support::process::server_url, which percent-escapes the socket path, and four more test copies that build the server URL from the path with no escape, in bootstrap.rs and config_store.rs. |
 | R-162 | 11 | 12 | should-fix | in-change | drift | ["artifact",["design.md","D6. The bootstrap values"],"They move to one function in `crates/mu-cli/src/client.rs`, `within`, that takes the wait, a future and the message of a late answer."] | resolved | resolved in round 12 from fixed db98ea07b5a72094dca2dfa5ab076edfbaf2d264 | 11 |  | severity? suggestion 0.62 | D6 adds within to mu-cli: a timeout of a call that gives a late message. mu_tui::run::within already does this, with a different message and with whole seconds. D6 does not name it. |
@@ -595,8 +598,8 @@ None.
 
 | path | content |
 |---|---|
-| Cargo.lock | afd183ec681106c64855606c7b56223e53e3cb35 |
-| Cargo.toml | a0d540cef724429183777f196482e4b33679ef2e |
+| Cargo.lock | da757625112b543010527d675514531d0e51eebf |
+| Cargo.toml | e78f9d0a9c18451aa5b4841ae5b5ea19a9c9400b |
 | architecture/model.c4 | 57efc47d38ab8d091fc45278356f6225e52620e0 |
 | architecture/views.c4 | 089983f9b810713767ab80770a20d556455e046d |
 | crates/mu-cli/Cargo.toml | c1fc9f7c542a93a820e08f655f08e959133d0489 |
@@ -615,8 +618,8 @@ None.
 | crates/mu-cli/tests/support/mod.rs | e57098d333d767711dca52638d78d09c20df7f45 |
 | crates/mu-cli/tests/support/process.rs | d225da8fb069c0bc7a203792fc7590fc5db4dd6a |
 | crates/mu-cli/tests/telemetry.rs | 445b219fe1f0991b751a73a0257ce23d838c3dc7 |
-| crates/mu-cli/tests/workspace_boundary.rs | 82c3546982b2b2c4e8a6d3958e78f4860ea54044 |
-| crates/mu-cli/tests/world_config.rs | 579f265c572fc7b997429bb39245743618c91361 |
+| crates/mu-cli/tests/workspace_boundary.rs | 1aa13a2761dbb375d62c04084759758921e9b7b5 |
+| crates/mu-cli/tests/world_config.rs | 2196d6727d92719459c9df70a3be9ab6c2e7107e |
 | crates/mu-client/src/lib.rs | 21ce4039f91b5bec79d19b3dee96571015baacd7 |
 | crates/mu-config/Cargo.toml | 1722b06d6a745f0319e4abec6b6f640cee340627 |
 | crates/mu-config/src/entries.rs | c370c0fb5df7488f47598cb3c8743d35585d3b12 |
@@ -628,14 +631,14 @@ None.
 | crates/mu-config/tests/filter.rs | 079c8cbdae4bee04d58a50671e353d46978650bd |
 | crates/mu-config/tests/keys.rs | bb5cf24bf25e6493a4fb71a876935f74474077dc |
 | crates/mu-config/tests/names.rs | d638942e8bf197267f1c49b7a4bdeeed741e1fda |
-| crates/mu-core/Cargo.toml | c32a5392b5282a2797bae70223ace6ca9b8ffc47 |
+| crates/mu-core/Cargo.toml | b656a43167026ec80d8f3dcdbd3e814beb9e57a9 |
 | crates/mu-core/src/world/dir.rs | 377474856caadda99ec036cfa729261838d6ee68 |
 | crates/mu-core/src/world/error.rs | 03a6baeaed46cc964dcd214c32997d650b507387 |
 | crates/mu-core/src/world/merge.rs | 8a983e35e23556411e260bf2c031e1b8e6e07aee |
 | crates/mu-core/src/world/mod.rs | eda2e248b7ad3b0691a8c320a45fa27a724757f5 |
 | crates/mu-core/src/world/resolve.rs | 8a876532606736602185ecbc71d491f0f9b16f04 |
-| crates/mu-core/src/world/snapshot.rs | b549d15d847b991edb32ef24970f85a64ec6ca4c |
-| crates/mu-core/tests/snapshot.rs | 6461011ea16c167ba91b3391c875949ad7423bc6 |
+| crates/mu-core/src/world/snapshot.rs | 0e1bb66f02039032d693a3f63bf2b1ea9cfb06ea |
+| crates/mu-core/tests/snapshot.rs | 0bf6766e03b1f8fcd8651d15f73ab0d4e7eecbd9 |
 | crates/mu-proto/proto/mu/v1/portal.proto | 107477c1404403cfd81f4df255197c7781af7ac9 |
 | crates/mu-server/Cargo.toml | 7202d3211f25c2708f335f83cafa2a6b915543be |
 | crates/mu-server/src/lib.rs | 7ccb4a4323be6f54e245c1d774ddcb8ea753db6b |
@@ -670,7 +673,7 @@ None.
 | docs/src/content/docs/index.md | 94e8a3be6d9512c32b039819b4d07c1deeee46f0 |
 | mise.toml | 3483112b3eb01ff8abaf18c07f2a87193069e984 |
 | openspec/changes/config-store/.openspec.yaml | a0171eea41a9ef975ac5c180be78365a94f5bee0 |
-| openspec/changes/config-store/design.md | 652aeca810e0b9b243725e24a4e1325596aef872 |
+| openspec/changes/config-store/design.md | ace822e4783904f37bf7c0c0dbe281c6bfce29a4 |
 | openspec/changes/config-store/proposal.md | d459ab83ac317ba928f478856d2e07d050e79cb9 |
 | openspec/changes/config-store/specs/cli-entrypoint/spec.md | e58709b8a27afcfd635388b7e7982ac633245c70 |
 | openspec/changes/config-store/specs/client-bootstrap/spec.md | 195967911288c2fa7a8dbd622508f039a5277927 |

@@ -333,9 +333,9 @@ fn is_top_file(root: &Path, name: &str) -> io::Result<bool> {
     }
 }
 
-/// Whether `a` and `b` are one entry: the same device and inode. It reads the metadata of each
-/// and opens neither, so a FIFO cannot block it.
+/// Whether `a` and `b` are one entry: the same device and inode. It reads the metadata of each,
+/// not of the target of a link, and opens neither, so a FIFO or a broken link cannot stop it.
 fn same_entry(a: &Path, b: &Path) -> io::Result<bool> {
-    let (a, b) = (fs::metadata(a)?, fs::metadata(b)?);
+    let (a, b) = (fs::symlink_metadata(a)?, fs::symlink_metadata(b)?);
     Ok((a.dev(), a.ino()) == (b.dev(), b.ino()))
 }

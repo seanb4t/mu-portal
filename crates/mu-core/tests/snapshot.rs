@@ -186,3 +186,12 @@ fn a_fifo_named_server_toml_in_another_case_is_not_opened() {
     assert!(status.success());
     assert!(DirSnapshot::take(dir.path()).is_ok());
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_broken_link_named_server_toml_in_another_case_is_the_server_file() {
+    let dir = tempfile::tempdir().expect("dir");
+    symlink(dir.path().join("nothing"), dir.path().join("Server.toml")).expect("link");
+    let snapshot = take(dir.path());
+    assert!(is_error(snapshot.server_file()) && snapshot.world_entries().count() == 0);
+}
