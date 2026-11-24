@@ -4,6 +4,7 @@
 
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::time::Duration;
 
 use mu_client::ClientEvent;
 use mu_proto::{EventKind, Source, World as ProtoWorld};
@@ -20,7 +21,7 @@ use crate::config::Echo;
 use crate::convert::convert;
 use crate::history::HISTORY_LIMIT;
 use crate::keymap::Wheel;
-use crate::model::{Late, Listing, Model, PaneId, QuitArm};
+use crate::model::{ConfigRetry, Late, Listing, Model, PaneId, QuitArm};
 use crate::pane::{Caps, PaneState};
 use crate::probe::{self, Outcome};
 use crate::registry::{ArgKind, EntryId, candidates};
@@ -53,6 +54,8 @@ pub enum Msg {
     /// The client configuration after an [`Effect::FetchConfig`], or the reason that the call
     /// failed.
     Config(Result<mu_proto::GetClientConfigResponse, String>),
+    /// The wait of an [`Effect::RetryConfig`] ended.
+    RetryConfig,
     /// The result of an [`Effect::Connect`] or an [`Effect::Disconnect`].
     Control {
         /// The world of the call.
@@ -148,6 +151,11 @@ pub enum Effect {
     },
     /// Ask the server for the client configuration, and give it back as a [`Msg::Config`].
     FetchConfig,
+    /// Wait `after`, then give back a [`Msg::RetryConfig`].
+    RetryConfig {
+        /// The wait.
+        after: Duration,
+    },
     /// Write `text` to the clipboard of the terminal.
     ClipboardWrite(String),
     /// Send the PNG `png` to the terminal as `image`, with a virtual placement of its size,
@@ -211,12 +219,18 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
         Msg::Config(Ok(reply)) => {
             if model.latest_hash.as_ref() == Some(&reply.store_hash) {
                 model.apply_config(reply);
+                model.config_failures = 0;
             }
             Vec::new()
         }
-        Msg::Config(Err(reason)) => {
-            model.notice(&format!("could not get the client configuration: {reason}"));
-            Vec::new()
+        Msg::Config(Err(reason)) => config_failed(model, &reason),
+        Msg::RetryConfig => {
+            model.config_retry = ConfigRetry::Idle;
+            if config_stale(model) {
+                vec![Effect::FetchConfig]
+            } else {
+                Vec::new()
+            }
         }
         Msg::Listed(listed) => {
             let again = model.listing == Listing::AskedBeforeReset;
@@ -827,6 +841,31 @@ fn join_lines(model: &mut Model) -> Option<Effect> {
     None
 }
 
+/// True if the latest store hash is not the store hash of the applied configuration.
+fn config_stale(model: &Model) -> bool {
+    model.latest_hash.is_some()
+        && model.latest_hash.as_ref() != model.config.as_ref().map(|config| &config.store_hash)
+}
+
+/// The effects of a failed fetch of the configuration: a notice at the first failure since the
+/// last apply, and a fetch again after a wait by [`mu_client::backoff`] while the configuration
+/// is stale and no other wait runs.
+fn config_failed(model: &mut Model, reason: &str) -> Vec<Effect> {
+    if model.config_failures == 0 {
+        model.notice(&format!("could not get the client configuration: {reason}"));
+    }
+    let failures = model.config_failures;
+    model.config_failures = failures.saturating_add(1);
+    if model.config_retry == ConfigRetry::Waiting || !config_stale(model) {
+        return Vec::new();
+    }
+    model.config_retry = ConfigRetry::Waiting;
+    let after = mu_client::backoff()
+        .nth(failures)
+        .unwrap_or(Duration::from_secs(5));
+    vec![Effect::RetryConfig { after }]
+}
+
 /// A list of the worlds, unless one is with the server already.
 fn list_worlds(model: &mut Model) -> Option<Effect> {
     (model.listing == Listing::Idle).then(|| {
@@ -879,10 +918,8 @@ fn on_client(model: &mut Model, item: ClientEvent) -> Vec<Effect> {
             Vec::new()
         }
         ClientEvent::StoreHash(hash) => {
-            let applied = model.config.as_ref().map(|config| &config.store_hash);
-            let fetch = applied != Some(&hash);
             model.latest_hash = Some(hash);
-            if fetch {
+            if config_stale(model) {
                 vec![Effect::FetchConfig]
             } else {
                 Vec::new()

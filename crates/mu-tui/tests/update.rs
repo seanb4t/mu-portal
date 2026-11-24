@@ -3,6 +3,7 @@
 use mu_client::ClientEvent;
 use mu_proto::{Event, EventKind, Source};
 use std::num::NonZeroU16;
+use std::time::Duration;
 
 use mu_tui::probe::{Outcome, PENDING_MAX};
 use mu_tui::store::CAPACITY;
@@ -661,4 +662,62 @@ proptest::proptest! {
             }
         }
     }
+}
+
+#[test]
+fn a_failed_fetch_fetches_again() {
+    let mut model = configured(reply("h1", "r1", &[]));
+    store_hash(&mut model, "h2");
+    let failed = update(&mut model, Msg::Config(Err("unavailable".to_owned())));
+    let again = update(&mut model, Msg::RetryConfig);
+    assert_eq!(
+        (failed, again, notices_of(&model, "unavailable")),
+        (
+            vec![Effect::RetryConfig {
+                after: Duration::from_millis(100)
+            }],
+            vec![Effect::FetchConfig],
+            1
+        )
+    );
+}
+
+#[test]
+fn each_failed_fetch_waits_longer_until_an_apply() {
+    let mut model = configured(reply("h1", "r1", &[]));
+    store_hash(&mut model, "h2");
+    let mut effects = Vec::new();
+    for _ in 0..3 {
+        effects.extend(update(
+            &mut model,
+            Msg::Config(Err("unavailable".to_owned())),
+        ));
+        update(&mut model, Msg::RetryConfig);
+    }
+    update(&mut model, Msg::Config(Ok(reply("h2", "r2", &[]))));
+    store_hash(&mut model, "h3");
+    effects.extend(update(
+        &mut model,
+        Msg::Config(Err("unavailable".to_owned())),
+    ));
+    let millis: Vec<Option<u128>> = effects
+        .iter()
+        .map(|effect| match effect {
+            Effect::RetryConfig { after } => Some(after.as_millis()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        (millis, notices_of(&model, "unavailable")),
+        (vec![Some(100), Some(200), Some(400), Some(100)], 2)
+    );
+}
+
+#[test]
+fn a_failed_fetch_of_an_applied_hash_fetches_nothing() {
+    let mut model = configured(reply("h1", "r1", &[]));
+    store_hash(&mut model, "h1");
+    let failed = update(&mut model, Msg::Config(Err("unavailable".to_owned())));
+    let again = update(&mut model, Msg::RetryConfig);
+    assert_eq!((failed, again), (vec![], vec![]));
 }

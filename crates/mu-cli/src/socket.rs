@@ -134,6 +134,20 @@ pub fn private_dir(dir: &Path, owner: u32) -> Result<(), PrivateDirError> {
         Err(error) => return Err(io(error)),
         Ok(_) => {}
     }
+    checked_dir(dir, owner)
+}
+
+/// Checks that the directory `dir` is owned by `owner` and gives no access to the group or to
+/// others. It creates nothing.
+///
+/// # Errors
+///
+/// A [`PrivateDirError`] that names `dir`.
+pub fn checked_dir(dir: &Path, owner: u32) -> Result<(), PrivateDirError> {
+    let io = |source| PrivateDirError::Io {
+        path: dir.to_owned(),
+        source,
+    };
     let metadata = fs::symlink_metadata(dir).map_err(io)?;
     if !metadata.is_dir() {
         return Err(PrivateDirError::NotADirectory(dir.to_owned()));

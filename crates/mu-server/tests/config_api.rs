@@ -115,16 +115,20 @@ async fn a_fetch_on_a_new_hash_gets_the_new_revision() {
     let dir = tempfile::tempdir().unwrap();
     let store = open(dir.path());
     let before = client_config(&store.client(), "tui", "linux", "laptop").unwrap();
+    let (_stop, stopping) = watch::channel(false);
+    let mut stream = watch_stream(store.watch(), stopping);
+    stream.next().await.unwrap().unwrap();
     write(
         dir.path(),
         "clients/devices/laptop.toml",
         "echo = \"show\"\n",
     );
     store.reload().await;
+    let hash = stream.next().await.unwrap().unwrap().store_hash;
     let after = client_config(&store.client(), "tui", "linux", "laptop").unwrap();
     assert!(
-        after.revision != before.revision && after.echo == "show",
-        "{after:?}"
+        after.store_hash == hash && after.revision != before.revision && after.echo == "show",
+        "{hash} {after:?}"
     );
 }
 

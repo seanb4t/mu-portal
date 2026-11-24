@@ -2,15 +2,17 @@
 //! a running server. It never starts a server.
 
 use std::fmt::Write as _;
+use std::fs;
 use std::process::ExitCode;
 
 use clap::{Args, Subcommand};
 use mu_client::PortalClient;
-use mu_config::{Kind, Os};
+use mu_config::{Kind, Os, REPORT, STORE, filter};
 use mu_proto as proto;
 
 use crate::bootstrap::{BootstrapArgs, Server};
 use crate::client::answered;
+use crate::socket::{checked_dir, current_uid, socket_dir};
 
 /// Arguments of `mu config`.
 #[derive(Clone, Debug, Args)]
@@ -64,6 +66,10 @@ fn call<T, F: Future<Output = Result<T, mu_client::ClientError>>>(
     server: &Server,
     call: impl FnOnce(PortalClient) -> F,
 ) -> Result<T, String> {
+    let dir = socket_dir(&server.socket);
+    if fs::symlink_metadata(dir).is_ok() {
+        checked_dir(dir, current_uid()).map_err(|error| error.to_string())?;
+    }
     let runtime = tokio::runtime::Runtime::new().map_err(|error| error.to_string())?;
     runtime.block_on(async {
         let client = PortalClient::unix(&server.socket);
@@ -98,14 +104,7 @@ fn reload(bootstrap: &BootstrapArgs) -> Result<ExitCode, String> {
     for notice in &reply.notices {
         crate::warn(VERB, &notice.text);
     }
-    let text = reply.restart.iter().fold(String::new(), |mut text, path| {
-        let _ = writeln!(
-            text,
-            "{path}: the change applies at the restart of the server"
-        );
-        text
-    });
-    let printed = crate::print(VERB, &text);
+    let printed = crate::print(VERB, &restart_lines(&reply.restart));
     if reply.notices.is_empty() {
         Ok(printed)
     } else {
@@ -113,8 +112,22 @@ fn reload(bootstrap: &BootstrapArgs) -> Result<ExitCode, String> {
     }
 }
 
+/// One line for each path of `restart`, with each control character written as U+FFFD.
+#[must_use]
+pub fn restart_lines(restart: &[String]) -> String {
+    restart.iter().fold(String::new(), |mut text, path| {
+        let _ = writeln!(
+            text,
+            "{}: the change applies at the restart of the server",
+            filter(path, &STORE)
+        );
+        text
+    })
+}
+
 /// The configuration as TOML: the revision on the first line, then each field and each binding
-/// with a comment that names its source.
+/// with a comment that names its source. Each control character other than the line break and
+/// the tab is written as U+FFFD.
 #[must_use]
 pub fn render(reply: &proto::GetClientConfigResponse) -> String {
     let source = |path: &str| {
@@ -139,5 +152,5 @@ pub fn render(reply: &proto::GetClientConfigResponse) -> String {
             source(&format!("keys.{}", binding.key))
         );
     }
-    text
+    filter(&text, &REPORT)
 }

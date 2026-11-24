@@ -1,6 +1,6 @@
 //! The verb `mu client`.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::fs::{File, OpenOptions};
 use std::io::{self, IsTerminal as _};
 use std::os::unix::process::CommandExt as _;
@@ -86,8 +86,9 @@ async fn listener(socket: &Path) -> io::Result<Found> {
     }
 }
 
-/// Runs the terminal client. Nothing runs before the check of the terminal, so a client
-/// with no terminal creates no directory and no file. If nothing listens on the socket, the
+/// Runs the terminal client. Only the read of the server URL and of the device name runs
+/// before the check of the terminal, so a client with no terminal creates no directory and no
+/// file. If nothing listens on the socket, the
 /// client starts a server in the background. It makes the first list of the worlds, waits for
 /// the first store hash of `WatchConfig` and gets its client configuration, all within one wait
 /// of `connect_wait`, before the screen opens.
@@ -116,6 +117,7 @@ pub fn run(args: &ClientArgs) -> ExitCode {
         let name = socket.display().to_string();
         let log = dir.join(SERVER_LOG);
         let started = Cell::new(false);
+        let last_error = RefCell::new(None::<ClientError>);
         let failed = |error: ClientError| format!("{name}: {error}");
         let list = async {
             match listener(&socket).await {
@@ -123,13 +125,15 @@ pub fn run(args: &ClientArgs) -> ExitCode {
                     start_server(&socket, &log)
                         .map_err(|error| format!("{}: {error}", log.display()))?;
                     started.set(true);
-                    answers(&client).await;
+                    answers(&client, &last_error).await;
                     Ok(())
                 }
                 Ok(Found::Listener) => client.list_worlds().await.map(drop).map_err(failed),
                 Err(error) => Err(format!("{name}: {error}")),
             }
         };
+        // Opens the watch once to make sure that the server serves it; the event loop opens its
+        // own watch, whose first hash covers any reload in between.
         let hash = async {
             let mut hashes = client.watch_config().await.map_err(failed)?;
             hashes
@@ -146,7 +150,11 @@ pub fn run(args: &ClientArgs) -> ExitCode {
         let late = || {
             let late = no_answer(&server.url, server.wait);
             if started.get() {
-                format!("{late}; read {}", log.display())
+                let cause = last_error
+                    .borrow()
+                    .as_ref()
+                    .map_or_else(String::new, |error| format!("; the last error was {error}"));
+                format!("{late}{cause}; read {}", log.display())
             } else {
                 late
             }
@@ -194,10 +202,12 @@ fn start_server(socket: &Path, log: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Tries `ListWorlds` with the backoff of the resume until it succeeds.
-async fn answers(client: &PortalClient) {
+/// Tries `ListWorlds` with the backoff of the resume until it succeeds, and keeps the last
+/// error in `last`.
+async fn answers(client: &PortalClient, last: &RefCell<Option<ClientError>>) {
     let mut backoff = mu_client::backoff();
-    while client.list_worlds().await.is_err() {
+    while let Err(error) = client.list_worlds().await {
+        *last.borrow_mut() = Some(error);
         let step = backoff.next().unwrap_or(DEFAULT_WAIT);
         tokio::time::sleep(step).await;
     }

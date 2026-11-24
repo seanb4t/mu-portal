@@ -95,7 +95,7 @@ fn layer(path: &str, entry: &SnapEntry, key: LayerKey) -> Result<Layer, ConfigEr
 /// The file of the server at the top of the directory. It holds no layer.
 pub const SERVER_FILE: &str = "server.toml";
 
-/// The file of the terminal client that this version no longer reads.
+/// A top file that is an error: the client configuration is under `clients/`.
 const OLD_CLIENT_FILE: &str = "client.toml";
 
 /// The layer that the file at `path` holds.

@@ -291,6 +291,33 @@ The revision SHALL be a text. A change to the content of a layer that applies to
 - **THEN** the exit status is 1, and stderr contains `<dir>/s.sock`
 - **AND** no file `<dir>/server.log` exists
 
+### Requirement: The server keeps and writes the result of a reload
+If the configuration directory does not exist at a reload, the server SHALL keep the current client layers, and `mu config reload` SHALL print a line to stderr that names the directory and exit with status 1. The server SHALL write each notice of a reload to its own stderr.
+
+#### Scenario: A reload of a removed directory
+- **GIVEN** `<dir>/clients/global.toml` holds `echo = "show"`, and a server serves `<dir>`
+- **WHEN** the user moves `<dir>` away and runs `mu config reload`, and then runs `mu config show --device laptop`
+- **THEN** the exit status of the reload is 1, and stderr contains `the configuration directory does not exist`
+- **AND** stdout of the show holds `echo = "show" # clients/global.toml`
+
+#### Scenario: The server writes the notices of a reload
+- **GIVEN** a server serves `<dir>`
+- **WHEN** the user writes `echo = "loud"` to `<dir>/clients/devices/laptop.toml` and runs `mu config reload`
+- **THEN** stderr of the server gets a line with `clients/devices/laptop.toml` and `echo`
+
+### Requirement: mu config reaches only a private socket
+`mu config show` and `mu config reload` SHALL refuse a socket directory that exists and that another user owns, or whose mode gives access to the group or to others. The command SHALL write an error to stderr that names the directory and the mode, print nothing to stdout, and exit with status 1. Each command SHALL write the text that the server sends to stdout with each control character, other than the line break and the tab, as U+FFFD.
+
+#### Scenario: An open socket directory
+- **GIVEN** a server serves `<dir>`, and the directory of its socket has mode 0755
+- **WHEN** the user runs `mu config show --device laptop` on that socket
+- **THEN** the exit status is 1, stdout is empty, and stderr names the directory of the socket and the mode 0755
+
+#### Scenario: A control character in the reply
+- **GIVEN** a reply of `GetClientConfig` whose revision holds ESC, and a reload reply whose restart path holds ESC
+- **WHEN** `mu config show` and `mu config reload` render them
+- **THEN** neither output holds ESC, and the restart output is one line
+
 ### Requirement: An attached client gets a new configuration
 After a reload that changes `clients/`, the server SHALL send a new store hash to each watching client. The server SHALL keep no state about a client. A client SHALL fetch its configuration when the hash differs, and SHALL apply a new revision without a restart. After a gap in its watch stream, the client SHALL compare the hash again. If a layer that applies to the client is bad after the reload, the client SHALL show one notice for it.
 
@@ -321,6 +348,15 @@ After a reload that changes `clients/`, the server SHALL send a new store hash t
 - **GIVEN** the test runs as a user that is not root, and `mu client` runs with the device `laptop` on a server that serves `<dir>`
 - **WHEN** the user sets the mode of `<dir>/clients` to 000 and runs `mu config reload`
 - **THEN** the screen shows a notice that contains `clients`
+
+### Requirement: A failed fetch is tried again
+If the fetch of the configuration fails while the store hash still differs, the client SHALL show one notice and SHALL fetch again after a wait that grows with each failure.
+
+#### Scenario: A failed fetch is tried again
+- **GIVEN** an attached client got a store hash that differs from the hash of its configuration
+- **WHEN** the fetch of the configuration fails
+- **THEN** the client shows one notice, waits 100 ms, and fetches again
+- **AND** each later failure waits longer, and an applied configuration starts the waits again
 
 ### Requirement: A client gets the notices of its bad layers at attach
 When `mu client` attaches, it SHALL show one notice for each bad layer that applies to it, and SHALL run with the good layers.

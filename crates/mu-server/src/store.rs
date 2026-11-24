@@ -21,8 +21,8 @@ use tokio::sync::{Mutex, watch};
 /// the error.
 pub type ServerCheck = Box<dyn Fn(Option<&SnapEntry>) -> Result<(), String> + Send + Sync>;
 
-/// One bad file: its path relative to the configuration directory, and the whole text of the
-/// notice, which names the file. Neither holds a control character.
+/// One bad file or place: its path, relative to the configuration directory when it is under
+/// it, and the whole text of the notice. Neither holds a control character.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Notice {
     /// The path of the file.
@@ -37,7 +37,7 @@ impl Notice {
         Self::whole(path, &format!("{path}: {reason}"))
     }
 
-    /// A notice of `path` whose `text` already names the file.
+    /// A notice of `path` with the whole text `text`.
     fn whole(path: &str, text: &str) -> Self {
         Self {
             path: filter(path, &STORE),
@@ -87,7 +87,8 @@ pub struct ClientConfig {
     /// The path of each field, such as `echo` or `keys.alt+n`, and the layer that set it, or
     /// `default`.
     pub sources: BTreeMap<String, String>,
-    /// One notice for each bad layer that applies to the client.
+    /// One notice for each bad layer that applies to the client, and for each bad entry at the
+    /// path of a layer directory.
     pub notices: Vec<Notice>,
 }
 
@@ -322,9 +323,13 @@ impl ClientPart {
             .flat_map(BTreeMap::keys)
             .collect();
         paths.extend(keys.iter().map(|key| format!("keys.{key}")));
-        // Each layer is a checked value of the types of `mu-config`, so the merge cannot fail.
-        let (merged, places) =
-            merge_layers(&layers, &paths).unwrap_or_else(|_| (defaults.clone(), BTreeMap::new()));
+        let (merged, places) = merge_layers(&layers, &paths).unwrap_or_else(|error| {
+            notices.push(Notice::new(
+                CLIENTS_DIR,
+                &format!("the merge of the layers failed, so the defaults apply: {error}"),
+            ));
+            (defaults.clone(), BTreeMap::new())
+        });
         let sources = places
             .into_iter()
             .map(|(path, place)| {
@@ -361,8 +366,8 @@ pub struct Opened {
 pub struct Reloaded {
     /// One notice for each bad file.
     pub notices: Vec<Notice>,
-    /// The path of each world file and of `server.toml` that changed since the start. The
-    /// change applies at the next start. No path holds a control character.
+    /// The path of each world file and of `server.toml` that differs from the snapshot of the
+    /// start. The change applies at the next start. No path holds a control character.
     pub restart: Vec<String>,
 }
 
@@ -432,18 +437,30 @@ impl Store {
         let _one = self.reload.lock().await;
         let root = self.root.clone();
         let taken = tokio::task::spawn_blocking(move || match root {
-            Some(root) => DirSnapshot::take(&root),
+            Some(root) if matches!(root.try_exists(), Ok(false)) => {
+                let shown = root.display().to_string();
+                Err(Notice::new(
+                    &shown,
+                    "the configuration directory does not exist",
+                ))
+            }
+            Some(root) => DirSnapshot::take(&root)
+                .map_err(|error| Notice::whole(error.place(), &error.to_string())),
             None => Ok(DirSnapshot::default()),
         })
         .await;
-        let snapshot = match taken {
-            Ok(Ok(snapshot)) => snapshot,
-            Ok(Err(error)) => {
-                return Reloaded::failed(Notice::whole(error.place(), &error.to_string()));
+        let reloaded = match taken {
+            Ok(Ok(snapshot)) => self.reload_from(&snapshot),
+            Ok(Err(notice)) => Reloaded::failed(notice),
+            Err(error) => {
+                tracing::error!("the reload failed: {error}");
+                Reloaded::failed(Notice::new("reload", &error.to_string()))
             }
-            Err(error) => return Reloaded::failed(Notice::new("reload", &error.to_string())),
         };
-        self.reload_from(&snapshot)
+        for notice in &reloaded.notices {
+            tracing::warn!("{notice}");
+        }
+        reloaded
     }
 
     /// The reload of `snapshot`.

@@ -153,7 +153,8 @@ message GetClientConfigResponse {
   // The path of each field, such as `echo` or `keys.alt+n`, and the path of the layer that set
   // it, relative to the configuration directory, or `default`.
   map<string, string> sources = 5;
-  // One notice for each bad layer that applies to the client.
+  // One notice for each bad layer that applies to the client, and for each bad entry at the
+  // path of a layer directory.
   repeated Notice notices = 6;
 }
 
@@ -162,8 +163,8 @@ message Binding {
   string entry = 2;
 }
 
-// A bad file: its path relative to the configuration directory, and the whole text of the
-// notice, which names the file. Neither holds a control character.
+// A bad file or place: its path, relative to the configuration directory when it is under
+// it, and the whole text of the notice. Neither holds a control character.
 message Notice {
   string path = 1;
   string text = 2;
@@ -180,7 +181,7 @@ message ReloadConfigRequest {}
 message ReloadConfigResponse {
   // One notice for each bad file.
   repeated Notice notices = 1;
-  // The path of each world file and of `server.toml` that changed since the start of the
-  // server. The change applies at the next start.
+  // The path of each world file and of `server.toml` that differs from the snapshot of the
+  // start of the server. The change applies at the next start.
   repeated string restart = 2;
 }

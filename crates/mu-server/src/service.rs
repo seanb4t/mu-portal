@@ -30,8 +30,8 @@ pub struct PortalApi {
 
 impl PortalApi {
     /// The API over `portal` and the configuration `store`. Each stream ends when `stopping`
-    /// turns true. `ListWorlds`
-    /// returns `config_dir` as the configuration directory of the server.
+    /// turns true. `ListWorlds` returns `config_dir` as the configuration directory of the
+    /// server.
     #[must_use]
     pub fn new(
         portal: Portal,

@@ -137,6 +137,12 @@ async fn event_loop(
                 Effect::FetchConfig => {
                     spawn_reply(&replies, config_of(client.clone(), device.to_owned()));
                 }
+                Effect::RetryConfig { after } => {
+                    spawn_reply(&replies, async move {
+                        tokio::time::sleep(after).await;
+                        Msg::RetryConfig
+                    });
+                }
             }
         }
     }

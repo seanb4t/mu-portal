@@ -80,7 +80,7 @@ A layer holds only these fields:
 | `echo` | `show`, `dim` or `hide`. The default is `dim` |
 | `[keys]` | A table from a key name to the name of an entry, or to `none` |
 
-The server reads the layers at its start. If you change a layer while the server runs, run `mu config reload`. Each client that is attached gets the new configuration with no restart.
+The server reads the layers at its start. If you change a layer while the server runs, run `mu config reload`. Each attached client gets the new configuration with no restart.
 
 ## The echo line
 

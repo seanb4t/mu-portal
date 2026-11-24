@@ -21,7 +21,8 @@ pub enum SnapEntry {
     File(Vec<u8>),
     /// An entry that is not a regular file and not a directory, such as a FIFO. It is not read.
     NotRegular,
-    /// An entry that the walk could not read, stat or list.
+    /// An entry that the walk could not read, stat or list, or a link that it does not enter
+    /// because of a loop or of [`LINKED_DIRS_MAX`].
     Error {
         /// The kind of the error, as text, such as `permission denied`.
         kind: String,
@@ -55,7 +56,7 @@ impl SnapEntry {
 
 /// The files of a configuration directory, read once.
 ///
-/// The snapshot keeps every entry under [`CLIENTS_DIR`], each file outside it whose name ends
+/// The snapshot keeps every entry under [`CLIENTS_DIR`] that is not a directory, each file outside it whose name ends
 /// in `.toml` in any case, and each entry that the walk could not read. A path has `/` between
 /// its parts, and the directory of the client layers is always `clients`, in any case on disk.
 /// The walk follows a link itself, and a link to a directory on the path from the root to the

@@ -1181,6 +1181,30 @@ async fn a_server_that_does_not_answer() {
 }
 
 #[tokio::test]
+async fn a_started_server_that_does_not_answer_names_the_last_error() {
+    let dir = private_tempdir();
+    let conf = ConfigDir::base().file("characters/alpha/aria.toml", "port = 0\n");
+    let run = dir.path().join("run");
+    let _reaper = Reaper(run.join("server.log"));
+    let url = format!("{}?connect_wait=1", server_url(&run.join("s.sock")));
+    let mut client = PtyClient::start_url(
+        &url,
+        dir.path(),
+        Answers::Default,
+        &[],
+        &[("MU_CONFIG", Some(conf.path().as_os_str()))],
+    );
+    let status = client.exit_within(BOUND).await.expect("the client exits");
+    assert_eq!(status.exit_code(), 1);
+    client.wait_line("mu client: ").await;
+    let screen = client.contents().replace('\n', "");
+    assert!(
+        screen.contains("the last error was") && screen.contains("server.log"),
+        "{screen}"
+    );
+}
+
+#[tokio::test]
 async fn a_server_that_closes_the_connection() {
     let (dir, socket, task) = listening(|stream, _| drop(stream));
     let mut client = PtyClient::start(&socket, dir.path());

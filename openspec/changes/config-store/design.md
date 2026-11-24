@@ -201,10 +201,16 @@ The diagrams follow `docs/src/content/docs/contributing/diagrams.md`: LikeC4 for
 | Two different layer lists give two different revision inputs | A property test of the framing in `mu-server` |
 | The documentation and the LikeC4 model show the store and the new crate | `mise run docs:check` and `pnpm model:check`, in CI, and review |
 | A client never keeps an old revision after a gap in its watch stream | The tests of D5: `a_reload_while_the_stream_is_down`, `a_reload_across_a_server_restart`, and the unit tests of the store hash in `update.rs` |
-| A store hash goes out only after its configuration is visible | `a_fetch_on_a_new_hash_gets_the_new_revision` in `mu-server` |
+| A store hash goes out only after its configuration is visible | `a_fetch_on_a_new_hash_gets_the_new_revision` in `mu-server`, which fetches after the hash of the watch |
 | A bad client layer never stops the server | The tests of the scenarios of the `config-store` spec |
 | A reload never applies a world change | The test of "A reload does not apply a world change" |
 | The client reads no configuration file | The test of "The client takes the flag", and review |
+| A reload of a missing directory keeps the client layers, and a failed merge of the layers gives a notice | `a_reload_of_a_removed_directory_keeps_the_layers` in `mu-cli`, and review for the merge, which no checked layer can make fail |
+| The server writes each notice of a reload to its stderr | `the_server_logs_each_notice_of_a_reload` in `mu-cli` |
+| `mu config` reaches only a private socket directory and filters what it prints | `mu_config_refuses_an_open_socket_directory` and `mu_config_filters_what_it_prints` in `mu-cli` |
+| A failed fetch is tried again with a growing wait | `a_failed_fetch_fetches_again` and `each_failed_fetch_waits_longer_until_an_apply` in `mu-tui` |
+| The watch waits before it opens again | `the_watch_waits_before_each_open_after_a_loss` in `mu-client` |
+| A started server that does not answer names its last error | `a_started_server_that_does_not_answer_names_the_last_error` in `mu-cli` |
 | No secret in a URL | Review alone. The URL grammar has no field for one, and an unknown query option is refused. |
 
 ## Risks / Trade-offs

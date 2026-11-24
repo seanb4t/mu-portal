@@ -25,9 +25,15 @@ pub async fn fetch(
 }
 
 impl Model {
-    /// Applies the client configuration `reply`. A reply with a new revision replaces the keymap
-    /// and the echo, and each of its notices that the last applied reply did not hold becomes a
-    /// notice line. A reply with the revision of the last applied reply changes nothing.
+    /// Applies the client configuration `reply`, which becomes the last applied reply with its
+    /// store hash. A reply with the revision of the last applied reply changes nothing else. For
+    /// a reply with another revision:
+    ///
+    /// - The keymap takes its bindings if they pass [`mu_config::check_keys`]. Else the keymap
+    ///   stays, and a notice names the bad binding.
+    /// - The echo takes its echo if [`Echo::named`] knows the name. Else the echo stays, and a
+    ///   notice names it.
+    /// - Each of its notices that the last applied reply did not hold becomes a notice line.
     pub fn apply_config(&mut self, reply: GetClientConfigResponse) {
         let last = self.config.take();
         if let Some(last) = last.as_ref()

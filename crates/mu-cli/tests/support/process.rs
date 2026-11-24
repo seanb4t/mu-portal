@@ -695,8 +695,8 @@ pub struct PtyClient {
 }
 
 impl PtyClient {
-    /// Starts `mu client` with `--server` and the URL of `socket` in `cwd`, with [`super::test_env`] and the
-    /// default answers to the probe.
+    /// Starts `mu client` with `--server` and the URL of `socket` in `cwd`, with
+    /// [`super::test_env`] and the default answers to the probe.
     pub fn start(socket: &Path, cwd: &Path) -> Self {
         Self::start_with(socket, cwd, Answers::Default)
     }

@@ -151,8 +151,8 @@ async fn an_unlistable_clients_directory() {
 
 #[tokio::test]
 async fn a_link_to_an_unreadable_directory_under_clients() {
-    // The locked directory is outside the configuration directory: an unreadable directory
-    // among the world files stops the start.
+    // The locked directory is outside the configuration directory, and the link to it is
+    // under clients/.
     let dir = ConfigDir::empty();
     let outside = tempfile::tempdir().unwrap();
     let locked_dir = outside.path().join("locked");
@@ -588,6 +588,70 @@ async fn a_reload_applies_a_client_layer() {
         stderr(&reloaded),
         stdout(&output)
     );
+    drop(dir);
+}
+
+#[tokio::test]
+async fn mu_config_refuses_an_open_socket_directory() {
+    let dir = ConfigDir::base();
+    let server = start(dir.path()).await;
+    let socket_dir = server.socket().parent().unwrap().to_owned();
+    fs::set_permissions(&socket_dir, fs::Permissions::from_mode(0o755)).unwrap();
+    let output = show(&server, "laptop").await;
+    fs::set_permissions(&socket_dir, fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(
+        output.status.code() == Some(1)
+            && stdout(&output).is_empty()
+            && stderr(&output).contains(&format!("{} has the mode 0755", socket_dir.display())),
+        "{}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn mu_config_filters_what_it_prints() {
+    let reply = mu_proto::GetClientConfigResponse {
+        revision: "\u{1b}[31m".to_owned(),
+        ..Default::default()
+    };
+    let shown = mu_cli::config_verb::render(&reply);
+    let restart = mu_cli::config_verb::restart_lines(&["games/\u{1b}[2Ja.toml".to_owned()]);
+    assert!(
+        !shown.contains('\u{1b}') && !restart.contains('\u{1b}') && restart.lines().count() == 1,
+        "{shown:?} {restart:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_reload_of_a_removed_directory_keeps_the_layers() {
+    let dir = ConfigDir::base().file("clients/global.toml", "echo = \"show\"\n");
+    let server = start(dir.path()).await;
+    let moved = dir.path().with_extension("moved");
+    fs::rename(dir.path(), &moved).unwrap();
+    let reloaded = reload(&server).await;
+    let output = show(&server, "laptop").await;
+    fs::rename(&moved, dir.path()).unwrap();
+    assert!(
+        reloaded.status.code() == Some(1)
+            && stderr(&reloaded).contains("the configuration directory does not exist")
+            && has_line(&output, "echo = \"show\" # clients/global.toml"),
+        "{}{}",
+        stderr(&reloaded),
+        stdout(&output)
+    );
+}
+
+#[tokio::test]
+async fn the_server_logs_each_notice_of_a_reload() {
+    let dir = ConfigDir::base();
+    let server = start(dir.path()).await;
+    let dir = dir.file("clients/devices/laptop.toml", "echo = \"loud\"\n");
+    reload(&server).await;
+    server.signal(rustix::process::Signal::TERM);
+    let line = server
+        .wait_stderr(|line| line.contains("clients/devices/laptop.toml") && line.contains("echo"))
+        .await;
+    assert!(line.is_some(), "{:?}", server.stderr());
     drop(dir);
 }
 

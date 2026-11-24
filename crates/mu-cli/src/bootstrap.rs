@@ -31,8 +31,12 @@ pub struct BootstrapArgs {
                 connect_wait sets the seconds to wait for an answer"
     )]
     server: Option<String>,
-    /// The name of this device. The default is the host name in lowercase
-    #[arg(long, value_name = "NAME")]
+    /// The name of this device: `--device`, then `MU_DEVICE`, then the host name in lowercase.
+    #[arg(
+        long,
+        value_name = "NAME",
+        help = "The name of this device. The default is MU_DEVICE, then the host name in lowercase"
+    )]
     device: Option<String>,
 }
 

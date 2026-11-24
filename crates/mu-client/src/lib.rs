@@ -307,7 +307,7 @@ impl Reopen {
         self.wait = true;
     }
 
-    /// The first message of a stream came: the next open does not wait, and the backoff starts
+    /// A message of the open stream came: the next open does not wait, and the backoff starts
     /// again.
     fn reached(&mut self) {
         self.backoff = backoff();
@@ -509,6 +509,24 @@ mod tests {
         assert_eq!(
             (hashes, count.load(std::sync::atomic::Ordering::SeqCst)),
             (vec![hash("a"), hash("b")], 3)
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_watch_waits_before_each_open_after_a_loss() {
+        let count = std::sync::Arc::default();
+        let opens = vec![Some(vec!["a"]), None, Some(vec!["b"])];
+        let start = tokio::time::Instant::now();
+        let hashes: Vec<ClientEvent> = scripted(opens, count).take(2).collect().await;
+        // The timer of the paused clock rounds each sleep up to the next millisecond.
+        let waited = start.elapsed();
+        assert_eq!(
+            (
+                hashes,
+                waited >= Duration::from_millis(300),
+                waited < Duration::from_millis(310)
+            ),
+            (vec![hash("a"), hash("b")], true, true)
         );
     }
 

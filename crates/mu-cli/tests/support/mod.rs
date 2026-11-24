@@ -21,8 +21,7 @@ pub fn repo_root() -> &'static Path {
 /// `(name, Some(value))` to set a variable and `(name, None)` to remove one. They remove
 /// `MU_SOCKET`, `MU_SERVER` and `MU_DEVICE` and point `MU_CONFIG` at an empty directory, so
 /// that the socket, the server, the device and the configuration of the developer never reach
-/// a test. They also remove each variable whose
-/// name starts with `OTEL_`, so that the telemetry of the developer never reaches a test.
+/// a test. They also remove each variable whose name starts with `OTEL_`, so that the telemetry of the developer never reaches a test.
 pub fn test_env() -> Vec<(OsString, Option<OsString>)> {
     let mut changes: Vec<(OsString, Option<OsString>)> = vec![
         ("MU_SOCKET".into(), None),

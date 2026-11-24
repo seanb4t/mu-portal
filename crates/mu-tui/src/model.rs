@@ -99,6 +99,21 @@ pub struct Model {
     pub(crate) config: Option<mu_proto::GetClientConfigResponse>,
     /// The latest store hash of the watch of the configuration.
     pub(crate) latest_hash: Option<String>,
+    /// The count of the fetches of the configuration that failed since the last apply.
+    pub(crate) config_failures: usize,
+    pub(crate) config_retry: ConfigRetry,
+}
+
+/// Whether an [`Effect::RetryConfig`](crate::update::Effect::RetryConfig) waits, so a second
+/// one does not start.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum ConfigRetry {
+    /// No retry waits.
+    #[default]
+    Idle,
+    /// A retry waits, and its [`Msg::RetryConfig`](crate::update::Msg::RetryConfig) did not
+    /// come yet.
+    Waiting,
 }
 
 /// Whether a list of the worlds is with the server, so a second one does not go.
@@ -162,6 +177,8 @@ impl Model {
             echo: Echo::default(),
             config: None,
             latest_hash: None,
+            config_failures: 0,
+            config_retry: ConfigRetry::Idle,
         };
         for id in worlds {
             model.world(&id);
