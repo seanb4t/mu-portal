@@ -1,9 +1,9 @@
 ---
-verdict: approve-with-notes
+verdict: approve
 phase: implementation
-reviewed_at: 2026-11-24T18:35:07+00:00
-head: 57b0a353d2a9fd8d9b2bc80f618d1b0bfb74b9b3
-round: 17
+reviewed_at: 2026-11-24T19:54:37+00:00
+head: 4320f62b86578df29a04034fd82aba66321826c8
+round: 18
 next_id: 374
 lenses:
   spec-lint: not-applicable
@@ -12,42 +12,18 @@ lenses:
   test-coverage: partial
   test-honesty: ok
   invariants: partial
-  verify: not-applicable
+  verify: ok
 ---
 # Review
-
-## Incomplete lenses
-
-- test-coverage: partial, gaps: 2
-  - Matrix rows rest on test names matched to scenarios and tasks. The assertion bodies were read only for a_bad_*_in_a_call and the head of a_reload_while_the_stream_is_down, so 'covered' for the other rows is a name match (confidence 0.6).
-  - The tests were not run, by rule. The delta spec BREAKING markers were not re-read.
-- invariants: partial, gaps: 2
-  - The mapping of a neutral key to a termina chord in crates/mu-tui/src/keymap.rs was not read.
-  - The behaviour requirements of server-process, terminal-client, client-commands and cli-entrypoint were not read against code; they state no new universal invariant beyond those listed.
-
-The verdict covers only what the lenses checked. While the `ctl-lens` row of an incomplete lens is open, the verdict cannot be `approve`.
 
 ## Findings
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-363 | approach | should-fix | in-change | The requirement 'The client names itself to the server' (kind tui, the OS of the machine) has no decision for mu client. D6 gives the kind and OS defaults to mu config show only. D7 and D8 call GetClientConfig without naming its arguments. The code holds the rule in config::fetch. The other client kinds that the proposal plans (remote clients, an MCP server) have no decision to follow. | specs/client-bootstrap/spec.md > Requirement: The client names itself to the server — "`mu client` SHALL ask the server for the configuration of the kind `tui`, the OS of the machine, and its device name." | Add one sentence to D7 step 4: mu client asks for the kind tui and Os::current through mu_tui::config::fetch, the one builder of the request that the start and the event loop share. |  |  | next-change |
-| R-364 | fit | should-fix | in-change | render of mu config show writes the echo line from a literal path. mu world show instead loops over FIELD_PATHS with value_of and a guard test. FIELD_PATHS of mu-config says it gives the order of mu config show, but render never reads it, so mu config show silently leaves out any field that #172 adds to FIELD_PATHS. | crates/mu-cli/src/config_verb.rs:142 — "let _ = writeln!(text, "echo = {echo} # {}", source("echo"));" | Make render loop over mu_config::FIELD_PATHS, with a value_of for the reply, as render in world.rs does. Add a test that each path of FIELD_PATHS has a value in a reply. |  |  | next-change |
-| R-365 | fit | should-fix | in-change | The new test file bootstrap.rs adds its own helper refused, which asserts exit status 1 and a stderr that holds each text. This is the job of support::fails_naming, the shared helper that world_config.rs and telemetry.rs call 61 times. | crates/mu-cli/tests/bootstrap.rs:30 — "fn refused(output: &Output, texts: &[&str]) {" | Remove refused from bootstrap.rs, and call support::fails_naming in its five places. |  |  | drift |
-| R-366 | invariants | should-fix | in-change | The snapshot keys each path by its lossy UTF-8 text, so two non-UTF-8 file names under clients/ that differ only in their invalid bytes become one path. The second insert replaces the first, so two bad layers give one stderr line and one notice, and the shadowed file is not in the store hash. | crates/mu-core/src/world/snapshot.rs:306 — ".map(\|part\| part.as_os_str().to_string_lossy().into_owned())," | Keep a name that is not UTF-8 apart: escape its invalid bytes (for example as \\xNN) in place of U+FFFD, or keep a second entry when the path is already taken. Add a Linux-only test with two such files under clients/devices that asserts two notices. |  |  | unmet-requirement |
-| R-367 | invariants | should-fix | in-change | connect_wait refuses a finite value above about 1.8e19 s, because Duration::try_from_secs_f64 overflows, and the message then says it is not a finite number of 1 ns or more. The spec refuses only 0 or less, not finite, or under 1 ns. No test passes the upper edge. | crates/mu-cli/src/client.rs:39 — ".and_then(\|seconds\| Duration::try_from_secs_f64(seconds).ok())" | Saturate a value above Duration::MAX to Duration::MAX (tokio::time::timeout already handles a far deadline), or state the upper limit in the spec and the message. Add a unit test next to a_wait_of_one_nanosecond_is_a_wait that passes 1e20. |  |  | wrong-behaviour |
-| R-368 | invariants | should-fix | in-change | The spec makes shift with a character that is not a letter a bad binding, but the parser checks is_lowercase. shift+U+2170 (small roman numeral one, Nl) and shift+U+24D0 (circled small a, So) are Lowercase and pass, and shift with a caseless letter such as U+05D0 is refused. | crates/mu-config/src/key.rs:167 — "&& !c.is_lowercase()" | Make the rule and the spec say the same: check c.is_alphabetic() && !c.is_uppercase(), or reword the spec to a lowercase character. Add unit tests for shift+U+2170 and shift+U+05D0 beside shift_with_a_digit. |  | scope? beyond-scope 0.74 | unmet-requirement |
-| R-373 | test-coverage | should-fix | in-change | lens test-coverage reported partial, gaps: 2 | review > lens-status — "test-coverage partial" | rerun the lens or accept the gap in the review |  |  | unmet-requirement |
-| R-369 | approach | suggestion | in-change | D1 allows mu-config only serde, with a row of serde and proptest. At head the row also names toml, a dev-dependency of mu-config, and design.md records no deviation. | design.md > D1. A new crate, `mu-config`, holds the client fields and the key grammar — "The row of `mu-config` in `ALLOWED_CRATES` names `serde` and `proptest`, because that check also reads dev-dependencies." | Record in D1 that toml enters the mu-config row as a dev-dependency for the_defaults_set_each_field_path, or move that test so the row stays serde and proptest. |  |  |  |
-| R-370 | approach | suggestion | in-change | D2 says the store writes nothing to stderr itself and gives each notice to the sink. When the snapshot task of a reload fails, the store also logs through tracing::error, so one failure reaches the server log twice in two formats. | design.md > D2. The store lives in `mu-server` and keeps a snapshot — "The store writes nothing to stderr itself." | Drop the tracing::error call and let the sink report the notice, or record the exception in D2. |  | severity? should-fix 0.75 |  |
-| R-371 | approach | suggestion | in-change | D2 says a failed merge of the good layers makes the client part use the defaults with one notice. At head the merge runs for each client in ClientPart::resolve. Its notice goes only into that GetClientConfig reply. The reload notices and the server stderr never get it, and the reload still exits 0. | design.md > D2. The store lives in `mu-server` and keeps a snapshot — "If the merge of the good layers fails, the client part uses the defaults and gives one notice." | Reword D2 to say the merge runs for each client in GetClientConfig and its notice reaches that reply alone, or report it at the reload too. |  | severity? should-fix 0.74 |  |
-| R-372 | invariants | suggestion | in-change | The grammar accepts any one character that is not a control character, not uppercase and not +, and lets shift go with any lowercase character, but key_names_read_back draws its keys from ASCII only. The round trip, the no-dot rule and the shift rule over non-ASCII keys (such as é, a titlecase letter or a fullwidth stop) are never generated. | crates/mu-config/tests/keys.rs:189 — ""0123456789!@#$%^&*()-=[]{};:'\\",.<>/?`~\|\\\\_"" | In crates/mu-config/tests/keys.rs, add an arm to key_part that draws any::<char>() filtered by the grammar (not control, not uppercase, not +), with shift_ok set to c.is_lowercase(), using proptest as the existing test does. |  | severity? should-fix 0.60 |  |
 
 ## Repeats
 
-| id | lens | severity | claim | evidence |
-|---|---|---|---|---|
-| R-185 | invariants | should-fix | lens invariants reported partial, gaps: 2 | review > lens-status — "invariants partial" |
+None.
 
 ## Out of bound
 
@@ -89,10 +65,11 @@ None.
 | 15 | implementation | follow-up | c832ad0a3d3cda13bde36e6e777e79a398646f2e | c0b348b8c79099be88eb99a5a15d5fe4eb6655358d7a2b3f31e87a5882ee851a | approve-with-notes | 6 | 0 | 0 | 0 | 0 |  |
 | 16 | implementation | full | d85fc7781896e8bc9e85b411fd6b297f9fa4c909 | d0ae1b63adb43dc2d597e7a6d912cd35d6c539b4088a1ac5967d4f36d9a82e46 | approve-with-notes | 13 | 1 | 0 | 0 | 0 | the suite fixes added five scenarios that need coverage matrix rows (R-345 to R-349) |
 | 17 | implementation | full | 57b0a353d2a9fd8d9b2bc80f618d1b0bfb74b9b3 | 09a6e0a64c758b051002cda5f6bb79d46cee105e0cc06a38b1a845aa7f71da46 | approve-with-notes | 11 | 1 | 0 | 0 | 0 | the test-honesty lens of round 16 was partial, so its files are split over three agents |
+| 18 | implementation | follow-up | 4320f62b86578df29a04034fd82aba66321826c8 | e2782093d2745a67e8e000f2b2a4ec52c30fb1508bc2d975ace4066abe26c4bc | approve | 0 | 0 | 0 | 9 | 0 |  |
 
 ## Judge
 
-judge: 20 questions, 0.001 USD
+judge: 0 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -438,48 +415,9 @@ None.
 
 ## Lens notes
 
-- approach: Checked at head: D1 crate edges and entry-table test, D2 snapshot walk, link limit, sink, server_config::check, merge helper and reload, D3 skip and the client.toml branch, D4 framing and Sha256::digest, D5 proto, watch stream and name checks, D6 URL parser, device rule, checked_dir and answered, D7 start order, D8 apply and retry, D9 LikeC4 views and pages.
-- approach: Third-party facts confirmed in the local registry sources: walkdir 2.5.0 check_loop gives a path-less error through Error::from_io, and figment2 0.11.5 coalesce merges two dicts recursively.
-- approach: Every test named in the Enforcement table exists at head.
-- approach: app-1, app-2 and app-4 are suggestions, below the table severity. None has one of the five consequences, because the code holds each rule and only the document differs from it.
-- fit: The prompt names no path for the repository rows of the library-preference table, so only the generic rows of the rulebook applied.
-- fit: Checked against existing patterns, with no new finding: the shared Reopen of the two streams in mu-client; the merge_layers helper, which world() and ClientPart::resolve both call; the one ControlMap filter with its REPORT, STORE and SCREEN maps; server_config::check, which the start and the reload both call; the answered and timed helpers; and connect_wait and shown, which parse_url reuses.
-- fit: Two small copies are not reported, because their fallbacks cannot run (mu_client::backoff has no end): the literal 5 s fallback in config_failed of update.rs, and DEFAULT_WAIT as the fallback in answers of client.rs. LONGEST_WAIT of mu-client is the source of both.
-- fit: The test helpers start in config_store.rs and serve in bootstrap.rs repeat the same ServerBuilder chain, which worlds.rs and client.rs also write inline. They are not reported, because the chain is three builder calls.
-- invariants: I1: A device name is always 1 to 64 characters from a-z, 0-9, -, _ and . \| enforced at crates/mu-config/src/names.rs DeviceName::new, used by mu-cli and GetClientConfig (service.rs:143) \| boundary test a_device_name_of_64, a_device_name_of_65, an_empty_device_name
-- invariants: I2: A kind is always tui and an OS always macos or linux \| enforced at Kind::parse, Os::parse, and layer_rule for layer files \| boundary test an_unknown_kind, an_unknown_os, a_bad_kind_in_a_call, a_bad_os_in_a_call
-- invariants: I3: No canonical key name holds a dot \| enforced at KeyName Display with the NAMED row period \| boundary test a_dot_key_has_the_canonical_name_period and property key_names_read_back (ASCII keys only, see inv-3)
-- invariants: I4: Two names of one key are one key, in one layer and across layers \| enforced at check_keys and the canonical names in store.rs state() \| boundary test two_names_of_one_key_in_one_layer, two_names_across_layers_are_one_key, the shuffle of key_names_read_back
-- invariants: I5: shift goes only with a letter \| enforced at key.rs:167 as is_lowercase, not as the spec's letter rule \| boundary test shift_with_a_digit (see inv-4)
-- invariants: I6: Two different entry lists never give the same framed input \| enforced at store.rs framed() \| boundary test a_layer_that_holds_the_next_entry_changes_the_revision and property two_layer_lists_give_two_inputs
-- invariants: I7: The revision changes exactly when a layer or a layer directory entry of the client changes \| enforced at ClientPart::resolve over layer_dirs and the client files \| boundary test the_revision_ignores_other_devices, an_unreadable_layer_changes_the_revision, an_unlistable_clients_directory_changes_the_revision
-- invariants: I8: A notice and a restart path never hold a control character \| enforced at mu_config::filter with STORE in Notice::whole and changed() \| boundary test the_store_map_replaces_a_line_break and property the_filter_leaves_no_control_character. U+2028 and Cf characters are not Cc and pass, which the spec's control-character wording allows
-- invariants: I9: The snapshot holds one entry per file \| enforced at none for non-UTF-8 names (lossy path key) \| boundary test none (see inv-1)
-- invariants: I10: The walk enters at most LINKED_DIRS_MAX directories through links, and a link to an ancestor is an error \| enforced at snapshot.rs link() with == LINKED_DIRS_MAX and the chain of ancestors \| boundary test the_walk_enters_exactly_the_limit_of_linked_directories (64 and 65), a_loop_of_links_ends
-- invariants: I11: A bad client layer never stops the start \| enforced at DirSnapshot::take, which fails only at the root, and ClientPart::new, which cannot fail \| boundary test the config_store.rs scenario tests of the start
-- invariants: I12: connect_wait is a wait of 1 ns or more and finite \| enforced at client.rs connect_wait \| boundary test a_wait_of_one_nanosecond_is_a_wait, a_wait_under_one_nanosecond, a_wait_of_zero, a_negative_wait, an_infinite_wait. The upper edge has none (see inv-2)
-- invariants: I13: A reply applies only if its store hash is the latest hash \| enforced at update.rs Msg::Config \| boundary test a_stale_reply_is_dropped and property the_latest_hash_wins
-- invariants: I14: A reload with no change sends no hash \| enforced at store.rs send_if_modified on store_hash \| boundary test a_reload_with_no_change_sends_nothing
-- invariants: I15: A reload of a missing directory keeps the client layers \| enforced at Store::reload try_exists \| boundary test a_reload_of_a_removed_directory_keeps_the_layers
-- invariants: I16: The reload reports a world error whenever the start would stop on it \| enforced at dir.rs world_errors, which resolves each character alone \| boundary test a_reload_reports_a_bad_world_file and the two-file tests. resolve has no cross-character rule at head, so the equivalence holds by reading. No property test compares resolve and world_errors
-- invariants: I17: The merge of checked layers never fails \| enforced at none (review alone, as the Enforcement table says) \| boundary test none. The fallback to the defaults has a notice
-- invariants: I18: A failed fetch while stale shows one notice and waits by backoff, reset by an apply or a hash back to the applied one \| enforced at update.rs config_failed and the StoreHash arm \| boundary test each_failed_fetch_waits_longer_until_an_apply, a_hash_back_to_the_applied_one_resets_the_failures
-- invariants: I19: The watch never opens again without a wait after a loss \| enforced at mu-client Reopen::pause \| boundary test the_watch_waits_before_each_open_after_a_loss
-- invariants: The task 8.3 rg check was run at head: it lists the migration section of guides/client.md and one line of guides/configuration.md, as the task allows.
-- invariants: No enforcement point is a script, so no probe input was written. inv-2 and inv-4 rest on documented std behaviour: Duration::try_from_secs_f64 fails above u64::MAX seconds, and char::is_lowercase uses the Unicode Lowercase property, which includes Other_Lowercase.
-- test-coverage: All 163 scenario headings have a named test in a file that exists at head. No scenario lacks a test name.
-- test-coverage: Tasks 9.3 stays unchecked in tasks.md; its fix tests (a_reload_of_a_removed_directory_keeps_the_layers, the_server_logs_each_notice_of_a_reload, mu_config_refuses_an_open_socket_directory, mu_config_filters_what_it_prints, a_started_server_that_does_not_answer_names_the_last_error) exist in the test files.
-- test-honesty: Read every added test file: mu-server tests store.rs and config_api.rs, mu-core tests snapshot.rs, mu-config tests keys.rs, names.rs, filter.rs, layer.rs. No disabled test, no test without an assertion, no mock echo.
-- test-honesty: Weak spots judged not to be findings: a_reload_keeps_the_worlds is named for the worlds but asserts the restart lines, which is the spec THEN; a_fifo_named_server_toml_in_another_case_is_not_opened asserts only is_ok, and the failure it guards is a hang; a_reload_with_no_change_sends_nothing uses now_or_never, and a_reload_sends_a_new_hash proves the stream can emit.
-- test-honesty: The inline test modules of the changed src files (service.rs from line 411, world/mod.rs) lie outside the changed ranges and were not judged.
-- test-honesty: Read in full: tests/config_store.rs, tests/bootstrap.rs, the new tests of tests/client.rs (lines 944-1521), tests/world_config.rs 240-399, the two telemetry hunks and one server.rs hunk. No ignored or skipped test, no assert!(true), no \|\| true, no test without an assertion.
-- test-honesty: Every test drives the built binary or a real server process, so no mock-echo or tautology found. Expected values are literals from the spec, not output of the code under test.
-- test-honesty: tests/world_config.rs unreadable_top_file_makes_no_world sets mode 000 but, unlike lock() in config_store.rs, never checks that the mode keeps the user out. Run as root it passes with the read succeeding. A_fifo and a_broken_link siblings cover the same scenario, so it is not reported as a finding.
-- test-honesty: Read the changed tests in mu-tui/tests/update.rs (live config), tests/keymap.rs (key names, entry table parity, chord proptest), tests/app.rs (echo tests) and the mu-client unit tests. Each has an assertion that can fail for its named reason. No disabled, ignored or assertion-free test found.
-- test-honesty: Tests in the diff are the unit tests in bootstrap.rs, client.rs, server_config.rs and socket.rs. The tests/support helpers and workspace_boundary.rs are not test cases of their own and were not read line by line.
-- test-honesty: No disabled test, no test without an assertion, and no mock-echo found.
-- test-honesty: one_wait_covers_the_three_steps checks both the on-time and the late case with a paused clock, so it can fail for the reason it names.
-- test-honesty: combined from four agents over split file lists: th-a mu-cli tests, th-b mu-core mu-server mu-config, th-c mu-tui mu-client, th-d mu-cli support and src; th-d closes the gap of th-a
+- verify: D1 (design.md line 40) still says that the only allowed third-party crate of mu-config is serde, in the same paragraph that names the ALLOWED_CRATES row of serde, proptest and toml. The row and the dev-dependency reason are stated, so the claim of R-369 holds as fixed; the first sentence reads as the rule for normal dependencies only.
+- verify: The design.md ranges of the fix_hunks (lines 40, 70, 77, 175, 218) are not in diff-hunks.txt. They were read at head for R-363, R-369, R-370 and R-371.
+- verify: connect_wait now gives Duration::MAX for a finite value above the longest Duration. Its only consumer is mu_tui::timed, which calls tokio::time::timeout, and the start path in_one_wait goes through the same function, so no Instant addition with that value exists in mu-cli.
 
 ## Ledger
 
@@ -689,16 +627,16 @@ None.
 | R-360 | 16 | 16 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-tui/src/update.rs",222] | fixed | c91dfedc43728b96578685fcaf4237fcd9afdd2a | 16 |  |  | The failure count of a fetch resets only at an apply. If the hash returns to the applied one with no reply (a reverted file and a reload), the count stays. The next failed fetch then shows no notice and waits 200 ms, not 100 ms. |
 | R-361 | 16 | 16 | should-fix | in-change | false-test | ["path","crates/mu-server/tests/store.rs",283] | fixed | c91dfedc43728b96578685fcaf4237fcd9afdd2a | 16 |  |  | the_revision_frames_each_layer passes without length framing: path bytes between the two layers already make the unframed inputs differ. |
 | R-362 | 16 | 16 | suggestion | in-change |  | ["artifact",["design.md","D6. The bootstrap values"],"So the parser uses `Url::parse`, `scheme`, `has_authority`, `host_str`, `username`, `password`, `fragment`, `query_pairs` and `to_file_path`."] | fixed | c91dfedc43728b96578685fcaf4237fcd9afdd2a | 16 |  | severity? should-fix 0.74 | D6 lists username and password among the calls of the URL parser. parse_url at head calls neither; a user or a password is refused only because Url::parse fails on the empty host. |
-| R-363 | 17 | 17 | should-fix | in-change | next-change | ["artifact",["specs/client-bootstrap/spec.md","Requirement: The client names itself to the server"],"`mu client` SHALL ask the server for the configuration of the kind `tui`, the OS of the machine, and its device name."] | fixed | 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  |  | The requirement 'The client names itself to the server' (kind tui, the OS of the machine) has no decision for mu client. D6 gives the kind and OS defaults to mu config show only. D7 and D8 call GetClientConfig without naming its arguments. The code holds the rule in config::fetch. The other client kinds that the proposal plans (remote clients, an MCP server) have no decision to follow. |
-| R-364 | 17 | 17 | should-fix | in-change | next-change | ["path","crates/mu-cli/src/config_verb.rs",142] | fixed | 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  |  | render of mu config show writes the echo line from a literal path. mu world show instead loops over FIELD_PATHS with value_of and a guard test. FIELD_PATHS of mu-config says it gives the order of mu config show, but render never reads it, so mu config show silently leaves out any field that #172 adds to FIELD_PATHS. |
-| R-365 | 17 | 17 | should-fix | in-change | drift | ["path","crates/mu-cli/tests/bootstrap.rs",30] | fixed | 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  |  | The new test file bootstrap.rs adds its own helper refused, which asserts exit status 1 and a stderr that holds each text. This is the job of support::fails_naming, the shared helper that world_config.rs and telemetry.rs call 61 times. |
+| R-363 | 17 | 18 | should-fix | in-change | next-change | ["artifact",["specs/client-bootstrap/spec.md","Requirement: The client names itself to the server"],"`mu client` SHALL ask the server for the configuration of the kind `tui`, the OS of the machine, and its device name."] | resolved | resolved in round 18 from fixed 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  |  | The requirement 'The client names itself to the server' (kind tui, the OS of the machine) has no decision for mu client. D6 gives the kind and OS defaults to mu config show only. D7 and D8 call GetClientConfig without naming its arguments. The code holds the rule in config::fetch. The other client kinds that the proposal plans (remote clients, an MCP server) have no decision to follow. |
+| R-364 | 17 | 18 | should-fix | in-change | next-change | ["path","crates/mu-cli/src/config_verb.rs",142] | resolved | resolved in round 18 from fixed 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  |  | render of mu config show writes the echo line from a literal path. mu world show instead loops over FIELD_PATHS with value_of and a guard test. FIELD_PATHS of mu-config says it gives the order of mu config show, but render never reads it, so mu config show silently leaves out any field that #172 adds to FIELD_PATHS. |
+| R-365 | 17 | 18 | should-fix | in-change | drift | ["path","crates/mu-cli/tests/bootstrap.rs",30] | resolved | resolved in round 18 from fixed 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  |  | The new test file bootstrap.rs adds its own helper refused, which asserts exit status 1 and a stderr that holds each text. This is the job of support::fails_naming, the shared helper that world_config.rs and telemetry.rs call 61 times. |
 | R-366 | 17 | 17 | should-fix | in-change | unmet-requirement | ["path","crates/mu-core/src/world/snapshot.rs",306] | deferred | ticket: https://github.com/seanb4t/mu-portal/issues/182; reason: the same defect as QUAL-19 in issue #181: key the snapshot by OsString or give a non-UTF-8 name an error entry |  |  |  | The snapshot keys each path by its lossy UTF-8 text, so two non-UTF-8 file names under clients/ that differ only in their invalid bytes become one path. The second insert replaces the first, so two bad layers give one stderr line and one notice, and the shadowed file is not in the store hash. |
-| R-367 | 17 | 17 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-cli/src/client.rs",39] | fixed | 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  |  | connect_wait refuses a finite value above about 1.8e19 s, because Duration::try_from_secs_f64 overflows, and the message then says it is not a finite number of 1 ns or more. The spec refuses only 0 or less, not finite, or under 1 ns. No test passes the upper edge. |
-| R-368 | 17 | 17 | should-fix | in-change | unmet-requirement | ["path","crates/mu-config/src/key.rs",167] | fixed | 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  | scope? beyond-scope 0.74 | The spec makes shift with a character that is not a letter a bad binding, but the parser checks is_lowercase. shift+U+2170 (small roman numeral one, Nl) and shift+U+24D0 (circled small a, So) are Lowercase and pass, and shift with a caseless letter such as U+05D0 is refused. |
-| R-369 | 17 | 17 | suggestion | in-change |  | ["artifact",["design.md","D1. A new crate, `mu-config`, holds the client fields and the key grammar"],"The row of `mu-config` in `ALLOWED_CRATES` names `serde` and `proptest`, because that check also reads dev-dependencies."] | fixed | 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  |  | D1 allows mu-config only serde, with a row of serde and proptest. At head the row also names toml, a dev-dependency of mu-config, and design.md records no deviation. |
-| R-370 | 17 | 17 | suggestion | in-change |  | ["artifact",["design.md","D2. The store lives in `mu-server` and keeps a snapshot"],"The store writes nothing to stderr itself."] | fixed | 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  | severity? should-fix 0.75 | D2 says the store writes nothing to stderr itself and gives each notice to the sink. When the snapshot task of a reload fails, the store also logs through tracing::error, so one failure reaches the server log twice in two formats. |
-| R-371 | 17 | 17 | suggestion | in-change |  | ["artifact",["design.md","D2. The store lives in `mu-server` and keeps a snapshot"],"If the merge of the good layers fails, the client part uses the defaults and gives one notice."] | fixed | 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  | severity? should-fix 0.74 | D2 says a failed merge of the good layers makes the client part use the defaults with one notice. At head the merge runs for each client in ClientPart::resolve. Its notice goes only into that GetClientConfig reply. The reload notices and the server stderr never get it, and the reload still exits 0. |
-| R-372 | 17 | 17 | suggestion | in-change |  | ["path","crates/mu-config/tests/keys.rs",189] | fixed | 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  | severity? should-fix 0.60 | The grammar accepts any one character that is not a control character, not uppercase and not +, and lets shift go with any lowercase character, but key_names_read_back draws its keys from ASCII only. The round trip, the no-dot rule and the shift rule over non-ASCII keys (such as é, a titlecase letter or a fullwidth stop) are never generated. |
+| R-367 | 17 | 18 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-cli/src/client.rs",39] | resolved | resolved in round 18 from fixed 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  |  | connect_wait refuses a finite value above about 1.8e19 s, because Duration::try_from_secs_f64 overflows, and the message then says it is not a finite number of 1 ns or more. The spec refuses only 0 or less, not finite, or under 1 ns. No test passes the upper edge. |
+| R-368 | 17 | 18 | should-fix | in-change | unmet-requirement | ["path","crates/mu-config/src/key.rs",167] | resolved | resolved in round 18 from fixed 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  | scope? beyond-scope 0.74 | The spec makes shift with a character that is not a letter a bad binding, but the parser checks is_lowercase. shift+U+2170 (small roman numeral one, Nl) and shift+U+24D0 (circled small a, So) are Lowercase and pass, and shift with a caseless letter such as U+05D0 is refused. |
+| R-369 | 17 | 18 | suggestion | in-change |  | ["artifact",["design.md","D1. A new crate, `mu-config`, holds the client fields and the key grammar"],"The row of `mu-config` in `ALLOWED_CRATES` names `serde` and `proptest`, because that check also reads dev-dependencies."] | resolved | resolved in round 18 from fixed 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  |  | D1 allows mu-config only serde, with a row of serde and proptest. At head the row also names toml, a dev-dependency of mu-config, and design.md records no deviation. |
+| R-370 | 17 | 18 | suggestion | in-change |  | ["artifact",["design.md","D2. The store lives in `mu-server` and keeps a snapshot"],"The store writes nothing to stderr itself."] | resolved | resolved in round 18 from fixed 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  | severity? should-fix 0.75 | D2 says the store writes nothing to stderr itself and gives each notice to the sink. When the snapshot task of a reload fails, the store also logs through tracing::error, so one failure reaches the server log twice in two formats. |
+| R-371 | 17 | 18 | suggestion | in-change |  | ["artifact",["design.md","D2. The store lives in `mu-server` and keeps a snapshot"],"If the merge of the good layers fails, the client part uses the defaults and gives one notice."] | resolved | resolved in round 18 from fixed 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  | severity? should-fix 0.74 | D2 says a failed merge of the good layers makes the client part use the defaults with one notice. At head the merge runs for each client in ClientPart::resolve. Its notice goes only into that GetClientConfig reply. The reload notices and the server stderr never get it, and the reload still exits 0. |
+| R-372 | 17 | 18 | suggestion | in-change |  | ["path","crates/mu-config/tests/keys.rs",189] | resolved | resolved in round 18 from fixed 62a3d903b5451f1c20efaf650ab3295eb03587ff | 17 |  | severity? should-fix 0.60 | The grammar accepts any one character that is not a control character, not uppercase and not +, and lets shift go with any lowercase character, but key_names_read_back draws its keys from ASCII only. The round trip, the no-dot rule and the shift rule over non-ASCII keys (such as é, a titlecase letter or a fullwidth stop) are never generated. |
 | R-373 | 17 | 17 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-coverage partial"] | accepted | ticket: none; reason: every one of the 163 covering tests passed at head, test-honesty read every changed file over four agents, and the partial lenses only matched by name or skipped specs outside their focus |  |  |  | lens test-coverage reported partial, gaps: 2 |
 
 ## Reviewed files
@@ -711,17 +649,17 @@ None.
 | architecture/views.c4 | 089983f9b810713767ab80770a20d556455e046d |
 | crates/mu-cli/Cargo.toml | c1fc9f7c542a93a820e08f655f08e959133d0489 |
 | crates/mu-cli/src/bootstrap.rs | c8e408b4c725ace592611b9bcf03103c18c24623 |
-| crates/mu-cli/src/client.rs | ef79b53029a36bef21027a4557096893067ab22b |
+| crates/mu-cli/src/client.rs | 1a83a0456494b98326afa86e03349eba38275651 |
 | crates/mu-cli/src/config_file.rs | 0b4bb1bc1734e095a93da357efaa49defa239ee6 |
-| crates/mu-cli/src/config_verb.rs | df6b5446bd3ee8ffcb6bfbe16b0540d5752a97c8 |
+| crates/mu-cli/src/config_verb.rs | 6917bed4e9fe548e0d8f0c58b3890cea223b3ffd |
 | crates/mu-cli/src/lib.rs | 38821a654e56d33d606b0cb70d5c3c73a1f4d89b |
 | crates/mu-cli/src/server.rs | adb8596ed302c00a4c50077e523439040673563d |
 | crates/mu-cli/src/server_config.rs | 2cc909c126c791802487888bd92884f286f09f1b |
 | crates/mu-cli/src/socket.rs | 572e8c547719bb268ca9a06207f6a797cdf9c8e3 |
-| crates/mu-cli/tests/bootstrap.rs | 1eacbd505e4fff0d0da0843f7f37aae1b19135d2 |
+| crates/mu-cli/tests/bootstrap.rs | f7fcbba72b02eeef780f83f953180089e1056f56 |
 | crates/mu-cli/tests/cli.rs | b8d8d0c42184f67280cee6f03008a928cbc1b728 |
 | crates/mu-cli/tests/client.rs | 414dcdb06632cfaa82073e8cb912ce3dcbba18a1 |
-| crates/mu-cli/tests/config_store.rs | f159ddaa6dc567e294493a65324a8ac029040ad0 |
+| crates/mu-cli/tests/config_store.rs | 81d8867259c24c5677dcd109c8be2e660f09dea2 |
 | crates/mu-cli/tests/server.rs | c8187b3c41d4744438447579175527eedaf9a51c |
 | crates/mu-cli/tests/support/mod.rs | 3eb693474d9011199d0738076deb3d6cc318cef8 |
 | crates/mu-cli/tests/support/process.rs | 4c2dba2036cda6d3658a705cf39596d5a619848e |
@@ -732,12 +670,12 @@ None.
 | crates/mu-config/Cargo.toml | 88782c13c2b8ab6648fc876174beaf837d6aaaf2 |
 | crates/mu-config/src/entries.rs | c370c0fb5df7488f47598cb3c8743d35585d3b12 |
 | crates/mu-config/src/filter.rs | 1d9211887f44127409a7e3a4073e9061fbefd336 |
-| crates/mu-config/src/key.rs | 9118c919774ffb428d61ccf49c88c1f07f31a121 |
+| crates/mu-config/src/key.rs | e3f8d577576d4508031d87172ef3b94f830f2531 |
 | crates/mu-config/src/layer.rs | 82d2342512945626b14bf0a75ae491f392c46f54 |
 | crates/mu-config/src/lib.rs | a835025c0f895ecace18062dcc8411ab49dd0359 |
 | crates/mu-config/src/names.rs | 6ef3c9529a623bbe814b7253c58bf649ccc128af |
 | crates/mu-config/tests/filter.rs | 079c8cbdae4bee04d58a50671e353d46978650bd |
-| crates/mu-config/tests/keys.rs | bb5cf24bf25e6493a4fb71a876935f74474077dc |
+| crates/mu-config/tests/keys.rs | 78e20e9089d999997b320fc67301f4cc35f122c0 |
 | crates/mu-config/tests/layer.rs | cf435aaa15031c25cbcf7372cee807f2aae3dfb7 |
 | crates/mu-config/tests/names.rs | d638942e8bf197267f1c49b7a4bdeeed741e1fda |
 | crates/mu-core/Cargo.toml | b656a43167026ec80d8f3dcdbd3e814beb9e57a9 |
@@ -782,17 +720,17 @@ None.
 | docs/src/content/docs/index.md | 94e8a3be6d9512c32b039819b4d07c1deeee46f0 |
 | mise.toml | 3483112b3eb01ff8abaf18c07f2a87193069e984 |
 | openspec/changes/config-store/.openspec.yaml | a0171eea41a9ef975ac5c180be78365a94f5bee0 |
-| openspec/changes/config-store/design.md | e405e13b53b8baab3cb323a9380a889a9a3b57a1 |
+| openspec/changes/config-store/design.md | 536ae22371ae788919a4fd91ae71f921b7d40530 |
 | openspec/changes/config-store/proposal.md | d459ab83ac317ba928f478856d2e07d050e79cb9 |
 | openspec/changes/config-store/specs/cli-entrypoint/spec.md | e58709b8a27afcfd635388b7e7982ac633245c70 |
 | openspec/changes/config-store/specs/client-bootstrap/spec.md | 195967911288c2fa7a8dbd622508f039a5277927 |
 | openspec/changes/config-store/specs/client-commands/spec.md | 68a8762e8fc76955a5637ec22bba61a5039d5e5c |
-| openspec/changes/config-store/specs/client-config/spec.md | d4f770f9cafb6de690262ed42c28b1d39304757f |
+| openspec/changes/config-store/specs/client-config/spec.md | 3d919fb250b2a2bbe8ec2234e099be2f909b2a92 |
 | openspec/changes/config-store/specs/config-store/spec.md | 2f6f1e20df72d1901f99aad63cc060deb3e6399e |
 | openspec/changes/config-store/specs/server-process/spec.md | b042cd312cd519e5aad0413a62a18d3f38b10d23 |
 | openspec/changes/config-store/specs/terminal-client/spec.md | 161a454fcf502072a84ac2b52c10b782f2e6ecaf |
 | openspec/changes/config-store/specs/world-config/spec.md | 356551ef3788fafa9bb3434524b4138d12ce4f77 |
-| openspec/changes/config-store/tasks.md | sha256:eb582007a4968e65469b2c928134472c58d1aee6da3b29c84adb519207d2112b |
+| openspec/changes/config-store/tasks.md | sha256:9665e70fa5d3ab00c2c1fa609e2c93d6d715ab828ea715dd59d2364223825dce |
 | openspec/review.json | absent |
 
 ## Plan review (2026-11-23)
