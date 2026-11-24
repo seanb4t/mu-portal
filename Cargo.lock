@@ -1896,10 +1896,12 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_path_to_error",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "toml",
  "tracing",
+ "walkdir",
 ]
 
 [[package]]

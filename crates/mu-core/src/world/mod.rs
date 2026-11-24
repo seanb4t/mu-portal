@@ -18,9 +18,10 @@ mod error;
 mod layer;
 mod parse;
 mod resolve;
+mod snapshot;
 
 pub use builtin::{BUILT_IN_TYPES, built_in_layers, parse_quirks};
-pub use dir::{CLIENT_FILE, SERVER_FILE, TomlDirSource};
+pub use dir::{SERVER_FILE, TomlDirSource};
 pub use error::{ConfigError, FieldError};
 pub use layer::{
     KeepaliveFields, Layer, LayerFields, LayerKey, LayerOrigin, LayerSource, LoginFields,
@@ -28,6 +29,7 @@ pub use layer::{
 };
 pub use parse::{Hidden, parse as parse_toml};
 pub use resolve::{FIELD_PATHS, resolve};
+pub use snapshot::{CLIENTS_DIR, DirSnapshot, SnapEntry};
 
 /// The login template of a world whose layers set none.
 pub const DEFAULT_LOGIN_TEMPLATE: &str = "connect {login} {password}";

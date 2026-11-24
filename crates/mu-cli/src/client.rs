@@ -9,7 +9,10 @@ use std::time::Duration;
 
 use clap::Args;
 use mu_client::PortalClient;
-use mu_core::world::{CLIENT_FILE, Hidden};
+use mu_core::world::Hidden;
+
+/// The file of the terminal client.
+const CLIENT_FILE: &str = "client.toml";
 use mu_tui::config::{ClientConfig, Settings};
 use tokio::net::UnixStream;
 
