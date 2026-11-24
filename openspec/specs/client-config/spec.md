@@ -1,7 +1,7 @@
 # client-config Specification
 
 ## Purpose
-Defines the configuration file of the terminal client, `client.toml`: where the client finds it, how it checks it, and the fields that change keys and the echo line.
+Defines the fields of a client layer that the server serves to a client: the keys table and the echo line, and how a bad binding makes its layer bad.
 
 ## Requirements
 
