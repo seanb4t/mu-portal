@@ -78,6 +78,8 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "buffa",
             "connectrpc",
             "futures",
+            "proptest",
+            "sha2",
             "tempfile",
             "thiserror",
             "tokio",

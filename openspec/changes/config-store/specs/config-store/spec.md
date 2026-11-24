@@ -60,7 +60,7 @@ At the start, `mu server` SHALL read and check each file under `clients/` in the
 - **THEN** stderr holds exactly one line that contains `clients/global.toml`
 
 #### Scenario: A link to an unreadable directory under clients
-- **GIVEN** the test runs as a user that is not root, `<dir>/locked` is a directory with mode 000, and `<dir>/clients/devices/x` is a symbolic link to `<dir>/locked`
+- **GIVEN** the test runs as a user that is not root, `<other>/locked` is a directory with mode 000 outside `<dir>`, and `<dir>/clients/devices/x` is a symbolic link to `<other>/locked`
 - **WHEN** the user runs `mu server --config <dir> --socket <dir>/s.sock`
 - **THEN** stderr holds a line that contains `clients/devices/x`
 - **AND** an API call on `<dir>/s.sock` succeeds

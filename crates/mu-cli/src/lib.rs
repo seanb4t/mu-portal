@@ -27,16 +27,7 @@ fn report(line: &std::fmt::Arguments<'_>) {
 }
 
 fn report_to(out: &mut impl Write, line: &std::fmt::Arguments<'_>) -> std::io::Result<()> {
-    let text: String = format!("{line}")
-        .chars()
-        .map(|c| {
-            if c.is_control() && c != '\n' && c != '\t' {
-                char::REPLACEMENT_CHARACTER
-            } else {
-                c
-            }
-        })
-        .collect();
+    let text = mu_config::filter(&line.to_string(), &mu_config::REPORT);
     out.write_all(format!("{text}\n").as_bytes())
 }
 

@@ -111,3 +111,12 @@ fn every_file_under_clients_and_the_server_file_are_kept() {
         (true, Some(&SnapEntry::File(b"y".to_vec())), None)
     );
 }
+
+#[test]
+fn a_root_that_is_a_file_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("not-a-directory");
+    fs::write(&file, "").unwrap();
+    let error = DirSnapshot::take(&file).unwrap_err().to_string();
+    assert!(error.contains(&file.display().to_string()), "{error}");
+}

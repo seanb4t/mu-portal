@@ -15,6 +15,7 @@ use tokio::net::UnixListener;
 use tokio::sync::watch;
 
 use crate::service::PortalApi;
+use crate::store::Store;
 
 /// The start of the line that the server writes to stderr when it serves. The line goes on
 /// with the socket path and `(process <id>)`.
@@ -88,7 +89,8 @@ fn clear(socket: &Path) -> Result<(), ServeError> {
 }
 
 /// Runs steps 3 to 7 of the server: lock, clear, bind with mode 0600, write the line on
-/// stderr, build the `Portal`, connect each world, and serve until `shutdown` resolves.
+/// stderr, build the `Portal`, connect each world, and serve until `shutdown` resolves. The
+/// configuration calls of the API read `store`.
 /// Then it stops each world, ends each stream and removes the socket file. `ListWorlds`
 /// returns `config_dir`.
 ///
@@ -102,6 +104,7 @@ fn clear(socket: &Path) -> Result<(), ServeError> {
 pub async fn serve(
     socket: &Path,
     worlds: Vec<WorldSetup>,
+    store: Arc<Store>,
     config_dir: Option<String>,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> Result<(), ServeError> {
@@ -128,6 +131,7 @@ pub async fn serve(
         portal.clone(),
         uuid::Uuid::new_v4().to_string(),
         stop_receiver,
+        store,
         config_dir,
     );
     let served = axum::serve(listener, api.router())

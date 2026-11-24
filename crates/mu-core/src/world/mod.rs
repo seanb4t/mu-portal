@@ -16,17 +16,19 @@ mod check;
 mod dir;
 mod error;
 mod layer;
+mod merge;
 mod parse;
 mod resolve;
 mod snapshot;
 
 pub use builtin::{BUILT_IN_TYPES, built_in_layers, parse_quirks};
-pub use dir::{SERVER_FILE, TomlDirSource};
+pub use dir::{SERVER_FILE, TomlDirSource, world_errors};
 pub use error::{ConfigError, FieldError};
 pub use layer::{
     KeepaliveFields, Layer, LayerFields, LayerKey, LayerOrigin, LayerSource, LoginFields,
     ReconnectFields, Trust,
 };
+pub use merge::merge_layers;
 pub use parse::{Hidden, parse as parse_toml};
 pub use resolve::{FIELD_PATHS, resolve};
 pub use snapshot::{CLIENTS_DIR, DirSnapshot, SnapEntry};

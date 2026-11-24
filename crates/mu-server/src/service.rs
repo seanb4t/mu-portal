@@ -15,29 +15,35 @@ use tokio::sync::watch;
 use tracing::{Instrument as _, Span};
 
 use crate::convert;
+use crate::store::Store;
 
 /// The API of one server instance.
 pub struct PortalApi {
     portal: Portal,
     instance_id: String,
     stopping: watch::Receiver<bool>,
+    #[expect(dead_code, reason = "the configuration calls of the API read it")]
+    store: Arc<Store>,
     config_dir: Option<String>,
 }
 
 impl PortalApi {
-    /// The API over `portal`. Each stream ends when `stopping` turns true. `ListWorlds`
+    /// The API over `portal` and the configuration `store`. Each stream ends when `stopping`
+    /// turns true. `ListWorlds`
     /// returns `config_dir` as the configuration directory of the server.
     #[must_use]
     pub fn new(
         portal: Portal,
         instance_id: String,
         stopping: watch::Receiver<bool>,
+        store: Arc<Store>,
         config_dir: Option<String>,
     ) -> Self {
         Self {
             portal,
             instance_id,
             stopping,
+            store,
             config_dir,
         }
     }

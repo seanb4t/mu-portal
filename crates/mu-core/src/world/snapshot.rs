@@ -60,7 +60,7 @@ impl DirSnapshot {
     ///
     /// # Errors
     ///
-    /// A [`ConfigError`] that names `root`, when it exists and cannot be read.
+    /// A [`ConfigError`] that names `root`, when it exists and is no directory or cannot be read.
     pub fn take(root: &Path) -> Result<Self, ConfigError> {
         let mut snapshot = Self::default();
         let metadata = match fs::metadata(root) {
@@ -68,6 +68,10 @@ impl DirSnapshot {
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(snapshot),
             Err(error) => return Err(ConfigError::new(root.display(), error.to_string())),
         };
+        if !metadata.is_dir() {
+            let error = io::Error::from(io::ErrorKind::NotADirectory);
+            return Err(ConfigError::new(root.display(), error.to_string()));
+        }
         let mut walker = Walker {
             root,
             snapshot: &mut snapshot,

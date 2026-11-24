@@ -3,11 +3,13 @@
 //! layer with this crate, and the terminal client applies it.
 
 mod entries;
+mod filter;
 mod key;
 mod layer;
 mod names;
 
 pub use entries::{ENTRY_NAMES, EntryName};
+pub use filter::{ControlMap, REPORT, STORE, filter};
 pub use key::{Key, KeyName, KeyNameError, Modifiers};
 pub use layer::{Binding, ClientLayer, Echo, KeyError, NONE, check_keys};
 pub use names::{DEVICE_MAX, DeviceName, Kind, NameError, Os};

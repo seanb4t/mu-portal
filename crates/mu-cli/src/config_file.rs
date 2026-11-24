@@ -14,6 +14,14 @@ pub enum FileError {
     /// The file holds a bad table, field or value.
     #[error(transparent)]
     Parse(#[from] ConfigError),
+    /// The entry at `path` in the snapshot of the directory cannot be read.
+    #[error("{}: {text}", path.display())]
+    Unreadable {
+        /// The path of the file in the configuration directory.
+        path: PathBuf,
+        /// The error of the read.
+        text: String,
+    },
     /// The file at `path` cannot be read.
     #[error("{}: {source}", path.display())]
     Read {
