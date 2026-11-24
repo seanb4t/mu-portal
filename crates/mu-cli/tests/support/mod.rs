@@ -17,16 +17,19 @@ pub fn repo_root() -> &'static Path {
     Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
 }
 
+/// The device of each `mu` that a test starts, unless the test sets another.
+pub const TEST_DEVICE: &str = "test-device";
+
 /// The changes to the environment of each `mu` that a test starts, in the shape
 /// `(name, Some(value))` to set a variable and `(name, None)` to remove one. They remove
-/// `MU_SOCKET`, `MU_SERVER` and `MU_DEVICE` and point `MU_CONFIG` at an empty directory, so
-/// that the socket, the server, the device and the configuration of the developer never reach
-/// a test. They also remove each variable whose name starts with `OTEL_`, so that the telemetry of the developer never reaches a test.
+/// `MU_SOCKET` and `MU_SERVER`, set `MU_DEVICE` to [`TEST_DEVICE`] and point `MU_CONFIG` at an
+/// empty directory, so that the socket, the server, the device and the configuration of the
+/// developer never reach a test, and the host name of the machine is never the device. They also remove each variable whose name starts with `OTEL_`, so that the telemetry of the developer never reaches a test.
 pub fn test_env() -> Vec<(OsString, Option<OsString>)> {
     let mut changes: Vec<(OsString, Option<OsString>)> = vec![
         ("MU_SOCKET".into(), None),
         ("MU_SERVER".into(), None),
-        ("MU_DEVICE".into(), None),
+        ("MU_DEVICE".into(), Some(TEST_DEVICE.into())),
         (
             "MU_CONFIG".into(),
             Some(empty_config_dir().into_os_string()),

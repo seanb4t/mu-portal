@@ -340,7 +340,11 @@ async fn the_host_name() {
     let host = host();
     let dir = ConfigDir::empty().file(&format!("clients/devices/{host}.toml"), "echo = \"hide\"\n");
     let server = serve(&dir).await;
-    let output = show(&["--server", &server_url(server.socket())], &[]).await;
+    let output = show(
+        &["--server", &server_url(server.socket())],
+        &[("MU_DEVICE", None)],
+    )
+    .await;
     uses_the_host(&output, &host);
 }
 
