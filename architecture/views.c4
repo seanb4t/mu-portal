@@ -2,7 +2,7 @@ views {
   view index {
     title 'System context'
     description 'The player, the clients, the server, the games and the collector.'
-    include player, games, collector, mu, mu.terminal, mu.devices, mu.server
+    include player, games, collector, mu, mu.terminal, mu.configVerb, mu.devices, mu.server
   }
 
   view serverAndClients of mu {
@@ -13,7 +13,7 @@ views {
 
   view crateLayout of workspace {
     title 'Crate layout'
-    description 'The seven crates and their allowed dependencies.'
+    description 'The crates and their allowed dependencies.'
     include *
   }
 
@@ -35,5 +35,38 @@ views {
     mu.terminal.loop -> mu.server.api 'sends the line'
     mu.terminal.loop -> mu.terminal.render 'draws a frame'
     mu.terminal.render -> mu.terminal.state 'reads'
+  }
+
+  dynamic view clientStart {
+    title 'The start of mu client'
+    description 'mu client goes from the server URL to the first frame: the first list, the configuration watch, GetClientConfig, the keymap and the notices.'
+    player -> mu.terminal.loop 'runs mu client with a server URL and a device name'
+    mu.terminal.loop -> mu.server.api 'lists the worlds'
+    mu.terminal.loop -> mu.server.api 'opens WatchConfig'
+    mu.terminal.loop <- mu.server.api 'the first store hash'
+    mu.terminal.loop -> mu.server.api 'GetClientConfig with the kind, the OS and the device'
+    mu.server.api -> mu.server.store 'resolves the layers of the client'
+    mu.terminal.loop <- mu.server.api 'the keys, the echo, the revision, the sources and the notices'
+    mu.terminal.loop -> mu.terminal.update 'applies the reply'
+    mu.terminal.update -> mu.terminal.keymap 'builds the keymap'
+    mu.terminal.update -> mu.terminal.state 'sets the echo and adds the notices'
+    mu.terminal.loop -> mu.terminal.render 'draws the first frame'
+  }
+
+  dynamic view configReload {
+    title 'A reload of the configuration'
+    description 'mu config reload makes the server read its directory again, and each attached client gets its new keymap.'
+    player -> mu.configVerb 'runs mu config reload'
+    mu.configVerb -> mu.server.api 'ReloadConfig'
+    mu.server.api -> mu.server.store 'reads and checks the directory again'
+    mu.configVerb <- mu.server.api 'the bad files, and the files that apply at the restart'
+    mu.server.store -> mu.server.api 'a new store hash'
+    mu.terminal.loop <- mu.server.api 'the new store hash on WatchConfig'
+    mu.terminal.loop -> mu.server.api 'GetClientConfig'
+    mu.terminal.loop <- mu.server.api 'a reply with a new revision'
+    mu.terminal.loop -> mu.terminal.update 'applies the reply'
+    mu.terminal.update -> mu.terminal.keymap 'replaces the keymap'
+    mu.terminal.update -> mu.terminal.state 'replaces the echo and adds each new notice'
+    mu.terminal.loop -> mu.terminal.render 'draws a frame'
   }
 }

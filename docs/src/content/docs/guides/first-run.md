@@ -44,7 +44,9 @@ In the second terminal, start the client:
 target/debug/mu client
 ```
 
-`mu` with no verb also starts the client. The client finds the server on the same socket. If no server answers, the client starts one in the background with only the configured worlds. That server writes its output to `server.log` next to the socket.
+`mu` with no verb also starts the client. The client finds the server on the same default socket. To name another socket, give the client a server URL, such as `--server unix:///tmp/mu/s.sock`. If no server answers, the client starts one in the background with only the configured worlds. That server writes its output to `server.log` next to the socket.
+
+Before the screen opens, the client gets its keys and its echo line from the server. The server picks them for the device name of the client. The default device name is the host name of the machine. The guide [The client configuration](/guides/client/) describes the server URL, the device name and the client layers.
 
 The top row lists the worlds. The world in focus is in square brackets: `[alpha/aria] beta/bryn`. A world with lines that wait for the server shows their count, for example `(2 waiting)`. The rows below show the lines of the world in focus. The bottom row is the pose editor, where you write the text to send. It grows with its text.
 
@@ -63,7 +65,7 @@ The top row lists the worlds. The world in focus is in square brackets: `[alpha/
 | Alt+Home, Alt+End | Scrolls the lines to the oldest line, or back to the bottom |
 | Ctrl+C | Quits the client. The server and its worlds keep running. If lines are not sent yet, the first Ctrl+C shows their count, and a second Ctrl+C quits and drops them. |
 
-The [input editor decision](/decisions/input-editor/) lists the other keys of the pose editor. The guide [The client file](/guides/client/) tells how to change the keys.
+The [input editor decision](/decisions/input-editor/) lists the other keys of the pose editor. The guide [The client configuration](/guides/client/) tells how to change the keys.
 
 A text that starts with `/` is a client command, for example `/focus beta/bryn` or `/quit`. The command `/help` lists each command and each key. To send a text that starts with `/` to the game, start it with `//`.
 

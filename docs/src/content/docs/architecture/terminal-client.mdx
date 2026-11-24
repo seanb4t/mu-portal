@@ -17,7 +17,7 @@ The registry is one table of the entries that the player can run. An entry has a
 
 A client command is a send whose text starts with `/`, such as `/focus beta/bryn`. `update` reads the name and the argument of the command, and runs its entry. A text that starts with `//` goes to the game with one `/`. An entry that edits the text of the pose editor, such as `send`, is not a command.
 
-The file `client.toml` can bind a key to any entry that needs no argument. The guide [The client file](/guides/client/) describes it.
+The keymap comes from the server. The client calls `GetClientConfig` before it opens the screen, and builds the keymap from the bindings of the reply. A binding can name any entry that needs no argument. After a reload that gives the client a new revision, the client replaces its keymap with no restart. The guide [The client configuration](/guides/client/) describes the bindings, and the page [Server and clients](/architecture/server-and-clients/) shows the start and the reload.
 
 ## The editors and the history
 

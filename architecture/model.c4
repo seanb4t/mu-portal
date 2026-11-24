@@ -50,6 +50,10 @@ model {
       render -> outputPane 'renders'
     }
 
+    configVerb = client 'mu config' {
+      description 'Shows the configuration of one client, and asks the server to read its directory again. It never starts a server.'
+    }
+
     devices = client 'Other paired devices' {
       description 'Later clients, for example a phone or a tablet. Each one is paired with the server.'
     }
@@ -66,18 +70,26 @@ model {
       journal = part 'Journal' {
         description 'The ordered record of events for each world.'
       }
+      store = part 'Configuration store' {
+        description 'Reads and checks the configuration directory: the worlds, server.toml and the client layers in clients/. It resolves the configuration of one client and reloads the client layers.'
+      }
 
       api -> sessions 'sends input'
       sessions -> journal 'records events'
       journal -> api 'feeds the event stream'
+      store -> sessions 'the worlds of the start'
+      api -> store 'resolves one client, and asks for a reload'
+      store -> api 'each new store hash'
     }
 
-    terminal.loop -> server.api 'commands and event stream'
+    terminal.loop -> server.api 'commands, event stream and configuration watch'
+    configVerb -> server.api 'GetClientConfig and ReloadConfig'
     devices -> server.api 'commands and event stream'
   }
 
   player -> mu.terminal 'plays in'
   player -> mu.devices 'plays on'
+  player -> mu.configVerb 'shows and reloads the configuration'
   mu.server.sessions -> games 'telnet'
   mu.server -> collector 'OTLP traces and metrics, when an endpoint is set'
 

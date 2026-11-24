@@ -9,7 +9,7 @@ sidebar:
 
 | Path | Holds |
 |---|---|
-| `crates/` | The seven crates of the product |
+| `crates/` | The crates of the product |
 | `spikes/` | Time-limited experiments, in a separate Cargo workspace |
 | `docs/` | This documentation site |
 | `architecture/` | The LikeC4 architecture model |

@@ -1,45 +1,86 @@
 ---
-title: The client file
-description: Change the keys and the echo line of mu client with client.toml.
+title: The client configuration
+description: Choose the server and the device of mu client, and change its keys and echo line with the client layers of the server.
 sidebar:
   order: 4
 ---
 
-This guide shows how to change the keys and the echo line of `mu client`, and how long it waits for a server. The echo line is the row that shows each text that you send, after `> `.
+This guide shows how `mu client` finds its server and how long it waits for it. It also shows how to change the keys and the echo line of the client. The echo line is the row that shows each text that you send, after `> `.
 
-## The client file
+The server owns the configuration. The client reads no configuration file. It gets its keys and its echo line from the server that it attaches to.
 
-The file `client.toml` holds the configuration of the terminal client. It goes at the top level of the configuration directory, next to `global.toml`. The guide [The configuration files](/guides/configuration/) tells where that directory is. `mu client` takes the flag `--config <dir>` as `mu server` does. `client.toml` makes no world, and `mu world` ignores it.
+## The server URL
 
-The client reads the file once, before it opens the screen. If the file does not exist, the client uses the defaults. If the directory does not exist, the client also uses the defaults. If `--config` or `MU_CONFIG` names a directory that does not exist, the client writes a warning that names it.
+The client finds the server through a URL. The URL is `unix://`, then the absolute path of the socket of the server, then an optional query. A space or another special character in the path goes in as a percent escape, such as `%20` for a space.
 
-If the client starts a server and you named the directory with `--config` or `MU_CONFIG`, the client gives that server the same directory. Otherwise the server finds the directory by the same rule as the client. If a server already runs on the socket, the client uses it and its worlds. The server keeps the worlds of the directory that it started with. If that directory is not the directory of the client, the client shows a notice that names both, and your directory changes only the client file. To use the worlds of your directory, stop that server first, as [Stop the server](/guides/first-run/#stop-the-server) says.
+The client takes the URL in this order:
+
+1. The flag `--server <URL>`.
+2. The variable `MU_SERVER`. An empty value counts as unset.
+3. `unix://` and the default socket of `mu server`. That socket is `mu/server.sock` under `XDG_RUNTIME_DIR`. If `XDG_RUNTIME_DIR` is not set, the socket is in the directory `mu-<uid>` under the temporary directory.
+
+This example names a socket and a wait of two seconds:
+
+```bash
+mu client --server 'unix:///run/user/1000/mu/server.sock?connect_wait=2'
+```
+
+The URL cannot hold a host, a user, a password or a fragment. A scheme other than `unix` and a relative path are also errors. For each of these errors, the client exits with status 1 before it connects, and the error names the URL.
+
+## The wait for a server
+
+The query option `connect_wait` is the longest time, in seconds, that the client waits for a server to answer. The default is 5. A fraction such as `0.5` is a valid value. A value of 0 or less, a value under 1 ns, and a value that is not finite are errors. The only query option is `connect_wait`. An unknown option and an option that occurs twice are also errors. Each error names the option, and the exit status is 1.
+
+Before the screen opens, the client lists the worlds and gets its configuration from the server. All of these steps share the one wait. If nothing listens on the socket, the client starts a server for that socket and waits for it. That server finds its configuration directory from the environment, as `mu server` does. It writes its output to `server.log` next to the socket. If no server answers in time, the client exits with status 1, and the error names the socket and the time.
+
+If a server listens but the list fails for another reason, the client does not start a second server. It writes the error and exits with status 1.
+
+## The device name
+
+The device name tells the server which machine the client runs on. The server uses it to pick the device layer of the client. The client takes the name in this order:
+
+1. The flag `--device <name>`.
+2. The variable `MU_DEVICE`. An empty value counts as unset.
+3. The host name of the machine, in lowercase.
+
+A device name has 1 to 64 characters. Each character is `a` to `z`, `0` to `9`, `-`, `_` or `.`. Any other name stops the client with status 1, and the error names it. If the host name is not a valid device name, the client stops, and the error names `--device`. In that case, set `--device` or `MU_DEVICE`.
+
+## The client layers
+
+The client configuration is in the directory `clients/` in the configuration directory of the server. The guide [The configuration files](/guides/configuration/) tells where that directory is. Each file in `clients/` is a layer. A layer is a file that sets some fields for some clients. Each layer is optional:
+
+| Layer | Applies to |
+|---|---|
+| `clients/global.toml` | Every client |
+| `clients/kinds/<kind>.toml` | Each client of one kind. The only kind is `tui`, the terminal client |
+| `clients/os/<os>.toml` | Each client on one OS: `macos` or `linux` |
+| `clients/devices/<device>.toml` | Each client with that device name |
+
+The layers merge in this order, from first to last: the defaults, the global layer, the kind, the OS and the device. A field takes its value from the last layer that sets it. The table `[keys]` merges key by key. So a later layer replaces the binding of each key that it names, and keeps the other bindings.
 
 ```toml
-# client.toml
+# clients/global.toml
 echo = "show"
 
 [keys]
 "alt+n" = "focus-next"
 "ctrl+n" = "none"
-
-[server]
-connect_wait_seconds = 5
 ```
+
+```toml
+# clients/devices/laptop.toml
+[keys]
+"alt+n" = "none"
+```
+
+A layer holds only these fields:
 
 | Field | Meaning |
 |---|---|
 | `echo` | `show`, `dim` or `hide`. The default is `dim` |
 | `[keys]` | A table from a key name to the name of an entry, or to `none` |
-| `[server]` | The table of the field `connect_wait_seconds` |
 
-## The wait for a server
-
-The field `connect_wait_seconds` of the table `[server]` is the longest time, in seconds, that the client waits for a server to answer. The default is 5. A fraction such as `0.5` is a valid value.
-
-The client uses this time twice. First, it asks the server on its socket for the list of the worlds. If nothing listens on the socket, the client starts a server, and then waits for that server to answer. If the server does not answer in time, the client exits with status 1, and the error names the socket and the time.
-
-If a server listens but the list fails for another reason, the client does not start a second server. It writes the error and exits with status 1.
+The server reads the layers at its start. If you change a layer while the server runs, run `mu config reload`. Each client that is attached gets the new configuration with no restart.
 
 ## The echo line
 
@@ -47,7 +88,7 @@ With `show`, the echo line has the normal style. With `dim`, it has the dim styl
 
 ## The keys table
 
-Each line of `[keys]` binds one key to one entry. An entry is one thing that the client can do, such as `focus-next` or `send`. The command `/help` in the client lists each entry with what it does. A binding replaces the default binding of that key. The value `none` removes the binding, so the key does nothing. Each key that the table does not name keeps its default.
+Each line of `[keys]` binds one key to one entry. An entry is one thing that the client can do, such as `focus-next` or `send`. The command `/help` in the client lists each entry with what it does. A binding replaces the default binding of that key. The value `none` removes the binding, so the key does nothing. Each key that no layer names keeps its default.
 
 An entry that needs a world, such as `focus`, cannot go on a key. Run it as a command instead, such as `/focus beta/bryn`.
 
@@ -58,7 +99,7 @@ A key name is zero or more modifiers, then one key, joined with `+`. The modifie
 The key is one of these:
 
 - One character, such as `n` or `1`. A letter is lowercase. To name a capital letter, use `shift` and the lowercase letter, such as `shift+n`.
-- `plus` for the `+` key, and `space` for the space bar.
+- `plus` for the `+` key, and `space` for the space bar. The names `.` and `period` are the same key.
 - The name of a special key. These are the special keys:
 
   | Group | Names |
@@ -79,16 +120,56 @@ The default keys leave Tab, Shift+Tab and Ctrl+Space with no binding. A later ve
 
 Some terminals do not send each key. In Terminal.app on macOS, the Option key types a character unless the setting "Use Option as Meta key" is on. So Alt+1 to Alt+9, Alt+Home and Alt+End do not reach the client. Terminal.app also sends Ctrl+Shift+Z as Ctrl+Z, so the key runs undo and not redo. In such a terminal, bind those entries to other keys in `[keys]`.
 
-## Errors
+## A bad layer
 
-The client does not open the screen for a bad file. It writes the error and exits with status 1. These are bad files:
+A bad layer does not stop the server or the client. The server skips the whole layer and uses the good layers. A skipped layer counts as a file that does not exist. No field and no binding of a bad layer applies. The server writes one line to stderr that names the file and the reason. Each client that the layer applies to shows a notice with the same text. The client shows the notice once, until you fix the layer.
 
-- A file that the client cannot read. The error names the path.
-- A file that is not TOML. The error names `client.toml`, the line and the column.
-- An unknown field, or an `echo` value that is not `show`, `dim` or `hide`. The error names `client.toml` and the field.
-- A `connect_wait_seconds` value under 1 ns, which includes 0 and a negative value, or a value that is not finite. The error names `client.toml` and `server.connect_wait_seconds`.
-- A bad binding. The error names `client.toml` and the key. A binding is bad if its key name is bad, or if its entry is unknown or needs a world. Two names of the same key are also bad, such as `ctrl+shift+z` and `shift+ctrl+z`.
+These layers are bad:
+
+- A file that the server cannot read.
+- A file that is not TOML. The notice names the file and the line.
+- An unknown field or table, such as `[server]`, or a value of the wrong type. The notice names the file and the field.
+- An `echo` value that is not `show`, `dim` or `hide`.
+- A layer with a bad binding. The notice names the file and the binding. These bindings are bad: a bad key name, an unknown entry, and an entry that needs a world. Two names of the same key in one layer are also bad, such as `ctrl+shift+z` and `shift+ctrl+z`.
+- A file under `clients/` that is not one of the layer files, such as `clients/extra.toml` or `clients/os/windows.toml`.
+
+## See the configuration of a client
+
+To see the configuration that one client gets, run:
+
+```bash
+mu config show --device laptop
+```
+
+The first line is `# revision <text>`. A change to a layer of that client gives a new revision. The output is TOML. A comment after each field and each binding names the layer that set it, or `default`. The notices of the bad layers of that client go to stderr.
+
+`mu config show` takes the flags `--server` and `--device` with the same rules as `mu client`. It also takes `--kind`, with the default `tui`, and `--os`, with the default of the machine. It never starts a server. If no server answers, it exits with status 1, and the error names the URL.
+
+## Reload the configuration
+
+To make the server read its configuration directory again, run:
+
+```bash
+mu config reload
+```
+
+`mu config reload` takes the flag `--server` with the same rules as `mu client`. It never starts a server. The server applies the new client layers, and each attached client gets its new keys and echo line.
+
+The server does not apply a change to a world or to `server.toml`. For each such file that changed after the start of the server, the command prints one line on stdout: `<path>: the change applies at the restart of the server`. To apply such a change, stop the server and start it again.
+
+The command writes one line to stderr for each bad file. If a file is bad, the exit status is 1. Otherwise it is 0. The good layers apply in both cases.
+
+## Move from client.toml
+
+An earlier `mu client` read the file `client.toml` at the top of the configuration directory. The client no longer reads it. If `client.toml` is still there, `mu server` and `mu world` stop with an error that names the file and `clients/global.toml`. To move it:
+
+1. Move the content of `client.toml` to `clients/global.toml` in the configuration directory of the server.
+2. Remove the table `[server]` from `clients/global.toml`. A layer cannot hold it.
+3. If you set `connect_wait_seconds` in that table, use the option `connect_wait` of the server URL instead.
+4. If a script sets `MU_SOCKET` or `--socket` for the client, change it to `MU_SERVER=unix://<path>` or `--server unix://<path>`. `MU_SOCKET` and `--socket` still name the socket of `mu server`.
+
+`mu client` no longer takes `--config` or `--socket`. Each of them is a usage error with exit status 2.
 
 ## Before a downgrade
 
-An earlier `mu` does not know `client.toml`. It reads the file as a stray file, and `mu world` and `mu server` stop with an error. Before you install an earlier binary, remove or rename `client.toml`.
+An earlier `mu` does not know `clients/`. It reads each file in it as a stray file, and `mu world` and `mu server` stop with an error. Before you install an earlier binary, move `clients/` out of the configuration directory.

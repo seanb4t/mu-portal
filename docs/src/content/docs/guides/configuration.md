@@ -5,11 +5,11 @@ sidebar:
   order: 2
 ---
 
-This guide shows how to configure your worlds. A world is one character on one game. The configuration is a directory of TOML files. `mu server` and `mu client` read it at the start, and `mu world` shows what it holds.
+This guide shows how to configure your worlds. A world is one character on one game. The configuration is a directory of TOML files. `mu server` reads it at the start, and `mu world` shows what it holds. The server owns the configuration, so `mu client` reads no file of it.
 
 ## Where the directory is
 
-`mu` finds the directory in this order:
+`mu server` and `mu world` find the directory in this order:
 
 1. The flag `--config <dir>`.
 2. The variable `MU_CONFIG`.
@@ -20,7 +20,9 @@ This guide shows how to configure your worlds. A world is one character on one g
 
 If the directory does not exist, there are no configured worlds.
 
-The directory can also hold `server.toml`, the configuration of the server, and `client.toml`, the configuration of the terminal client. Neither file makes a world. The guide [The server file and telemetry](/guides/telemetry/) describes `server.toml`, and the guide [The client file](/guides/client/) describes `client.toml`.
+If `mu client` starts a server, that server finds the directory by the same rule, from the environment of the client.
+
+The directory can also hold `server.toml`, the configuration of the server, and the directory `clients/`, the configuration of the clients. Neither makes a world. The guide [The server file and telemetry](/guides/telemetry/) describes `server.toml`. The guide [The client configuration](/guides/client/) describes the layers in `clients/`.
 
 ## The layout
 
@@ -33,7 +35,7 @@ The directory holds four kinds of files:
 | `games/<game>.toml` | One game: the host, the port and the type |
 | `characters/<game>/<character>.toml` | One world: a character on the game |
 
-Each character file makes one world. Its id is `<game>/<character>`. A name holds only `a` to `z`, `0` to `9` and `-`, and starts with a letter. Any other file that ends in `.toml` is an error. The exceptions are `server.toml` and `client.toml` at the top of the directory. If the file system ignores case, the same name in another case is that file too.
+Each character file makes one world. Its id is `<game>/<character>`. A name holds only `a` to `z`, `0` to `9` and `-`, and starts with a letter. Any other file that ends in `.toml` is an error. The exceptions are `server.toml` at the top of the directory and the files in `clients/`. If the file system ignores case, the same name in another case is that file too. A file `client.toml` at the top of the directory is an error. The error tells you to move its content to `clients/global.toml`, as the guide [The client configuration](/guides/client/#move-from-clienttoml) says.
 
 This example configures the world `alpha/aria`:
 
@@ -182,3 +184,7 @@ mu world show alpha/aria
 The output is TOML. A comment after each field names the file that set it, or `default`. A comment above each rule and script names its file. `mu world show` does not read the password.
 
 If a file has an error, `mu world` and `mu server` print the file, the field and the problem, and stop with the exit status 1.
+
+## A change while the server runs
+
+The server reads the worlds and `server.toml` once, at its start. A change to one of these files applies at the next start of the server. The command `mu config reload` applies only the files in `clients/`. It prints one line for each changed world file and for a changed `server.toml`. The line says that the change applies at the restart of the server.

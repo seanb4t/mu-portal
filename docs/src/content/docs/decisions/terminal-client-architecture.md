@@ -11,7 +11,7 @@ The terminal client uses the Elm architecture (TEA) at the top level, on the Ter
 
 - One model holds the focus, the worlds, the input line, the layout tree and the state of each pane by pane id.
 - Every input becomes a `Msg`: a terminal event, an event of the server, a reply to a call or a reply to a terminal query.
-- A keymap is a table from a key with its modifiers to an entry of the registry. The registry is one table of the entries that the player can run, and a client command chooses an entry too. `update` builds the `Action` of the entry. The client builds the default keymap in code, and `client.toml` can change it.
+- A keymap is a table from a key with its modifiers to an entry of the registry. The registry is one table of the entries that the player can run, and a client command chooses an entry too. `update` builds the `Action` of the entry. The client builds the default keymap in code. The client layers of the server can change it, and the client gets them with `GetClientConfig`. The [configuration ownership decision](/decisions/configuration-ownership/) gives the reason.
 - One `update` function changes the model and returns a list of effects. It does no I/O. The event loop performs each effect: a call of `mu-client`, a write to the terminal, or the end of the loop.
 - Only `update` changes the model, with one exception. `view` records what each pane drew, and it returns a scrolled pane to the bottom when the newest row shows.
 - The result of the startup probe is a `Msg` too. The event loop sends it before the first input event, and it draws no frame until `update` has handled it. So the first frame already has the widths and the graphics flag that the probe learned.
