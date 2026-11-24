@@ -48,6 +48,16 @@ fn host() -> String {
         .to_lowercase()
 }
 
+/// Asserts that the command took the host name `host` as its device: the echo of its device
+/// file, or, for a host name that is not a device name, a refusal that says to set `--device`.
+fn uses_the_host(output: &Output, host: &str) {
+    if mu_config::DeviceName::new(host).is_ok() {
+        hides_for(output, host);
+    } else {
+        fails_naming(output, &[host, "set --device"]);
+    }
+}
+
 /// Asserts that stdout holds the echo `hide` of the device file of `device`.
 fn hides_for(output: &Output, device: &str) {
     let line = format!("echo = \"hide\" # clients/devices/{device}.toml");
@@ -322,7 +332,7 @@ async fn an_empty_device_variable() {
         &[("MU_DEVICE", Some(""))],
     )
     .await;
-    hides_for(&output, &host);
+    uses_the_host(&output, &host);
 }
 
 #[tokio::test]
@@ -331,7 +341,7 @@ async fn the_host_name() {
     let dir = ConfigDir::empty().file(&format!("clients/devices/{host}.toml"), "echo = \"hide\"\n");
     let server = serve(&dir).await;
     let output = show(&["--server", &server_url(server.socket())], &[]).await;
-    hides_for(&output, &host);
+    uses_the_host(&output, &host);
 }
 
 #[tokio::test]
