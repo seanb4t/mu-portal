@@ -59,8 +59,8 @@ Test files: `crates/mu-cli/tests/config_store.rs` (new) holds the tests of `mu c
 
 ## 9. Review and integration
 
-- [ ] 9.1 Run `/sb:openspec-review config-store implementation`. Make sure that the verdict is not changes-requested.
-- [ ] 9.2 Run `mise run check` and `cargo nextest run --workspace --locked`. Make sure that both pass.
+- [x] 9.1 Run `/sb:openspec-review config-store implementation`. Make sure that the verdict is not changes-requested.
+- [x] 9.2 Run `mise run check` and `cargo nextest run --workspace --locked`. Make sure that both pass.
 - [ ] 9.3 Run `/sb:suite-review` on the branch, and fix or triage each blocker and major finding. Make sure that the pull request body says `Fixes #169`.
 
 ## Workflow follow-up
