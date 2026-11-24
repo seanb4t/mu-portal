@@ -15,29 +15,36 @@ use tokio::sync::watch;
 use tracing::{Instrument as _, Span};
 
 use crate::convert;
+use mu_config::{DeviceName, Kind, NameError, Os};
+
+use crate::store::{ClientPart, Notice, Reloaded, Store};
 
 /// The API of one server instance.
 pub struct PortalApi {
     portal: Portal,
     instance_id: String,
     stopping: watch::Receiver<bool>,
+    store: Arc<Store>,
     config_dir: Option<String>,
 }
 
 impl PortalApi {
-    /// The API over `portal`. Each stream ends when `stopping` turns true. `ListWorlds`
-    /// returns `config_dir` as the configuration directory of the server.
+    /// The API over `portal` and the configuration `store`. Each stream ends when `stopping`
+    /// turns true. `ListWorlds` returns `config_dir` as the configuration directory of the
+    /// server.
     #[must_use]
     pub fn new(
         portal: Portal,
         instance_id: String,
         stopping: watch::Receiver<bool>,
+        store: Arc<Store>,
         config_dir: Option<String>,
     ) -> Self {
         Self {
             portal,
             instance_id,
             stopping,
+            store,
             config_dir,
         }
     }
@@ -116,6 +123,88 @@ pub fn event_stream(
         },
     );
     Box::pin(head.chain(events))
+}
+
+/// The configuration of the client of `kind`, `os` and `device` in `part`. A bad name is
+/// `invalid_argument`, and its message names it.
+///
+/// # Errors
+///
+/// A [`ConnectError`] that names the bad kind, OS or device name.
+pub fn client_config(
+    part: &ClientPart,
+    kind: &str,
+    os: &str,
+    device: &str,
+) -> Result<proto::GetClientConfigResponse, ConnectError> {
+    let refused = |error: NameError| ConnectError::invalid_argument(error.to_string());
+    let kind = Kind::parse(kind).map_err(refused)?;
+    let os = Os::parse(os).map_err(refused)?;
+    let device = DeviceName::new(device).map_err(refused)?;
+    let config = part.resolve(kind, os, &device);
+    Ok(proto::GetClientConfigResponse {
+        store_hash: config.store_hash,
+        revision: config.revision,
+        echo: config.echo.name().to_owned(),
+        bindings: config
+            .bindings
+            .into_iter()
+            .map(|(key, entry)| proto::Binding {
+                key,
+                entry,
+                ..Default::default()
+            })
+            .collect(),
+        sources: config.sources.into_iter().collect(),
+        notices: config.notices.iter().map(notice).collect(),
+        ..Default::default()
+    })
+}
+
+fn notice(notice: &Notice) -> proto::Notice {
+    proto::Notice {
+        path: notice.path.clone(),
+        text: notice.text.clone(),
+        ..Default::default()
+    }
+}
+
+/// The reply of a reload.
+#[must_use]
+pub fn reloaded(reloaded: &Reloaded) -> proto::ReloadConfigResponse {
+    proto::ReloadConfigResponse {
+        notices: reloaded.notices.iter().map(notice).collect(),
+        restart: reloaded.restart.clone(),
+        ..Default::default()
+    }
+}
+
+/// The stream of one watcher: the current store hash, then each new one. `stopping` ends it
+/// with no error, and so does the end of the store.
+pub fn watch_stream(
+    mut parts: watch::Receiver<Arc<ClientPart>>,
+    stopping: watch::Receiver<bool>,
+) -> ServiceStream<proto::WatchConfigResponse> {
+    parts.mark_changed();
+    Box::pin(futures::stream::unfold(
+        (parts, stopping),
+        |(mut parts, mut stopping)| async move {
+            let store_hash = tokio::select! {
+                biased;
+                // A dropped sender also means stop.
+                _ = stopping.wait_for(|stop| *stop) => return None,
+                changed = parts.changed() => {
+                    changed.ok()?;
+                    parts.borrow_and_update().store_hash().to_owned()
+                }
+            };
+            let message = proto::WatchConfigResponse {
+                store_hash,
+                ..Default::default()
+            };
+            Some((Ok(message), (parts, stopping)))
+        },
+    ))
 }
 
 /// The span of one call of `method`. The caller records `mu.world` and the status where they
@@ -256,6 +345,48 @@ impl proto::PortalService for PortalApi {
                 .await
                 .map_err(|error| convert::status(&error))?;
             Response::ok(proto::ConnectResponse::default())
+        })
+        .await
+    }
+
+    async fn get_client_config(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, proto::GetClientConfigRequest>,
+    ) -> ServiceResult<proto::GetClientConfigResponse> {
+        traced("GetClientConfig", async {
+            let reply = client_config(
+                &self.store.client(),
+                request.kind,
+                request.os,
+                request.device,
+            )?;
+            Response::ok(reply)
+        })
+        .await
+    }
+
+    fn watch_config(
+        &self,
+        _ctx: RequestContext,
+        _request: ServiceRequest<'_, proto::WatchConfigRequest>,
+    ) -> Ready<ServiceResult<ServiceStream<proto::WatchConfigResponse>>> {
+        // The span ends when this method returns, not with the stream.
+        let span = call_span("WatchConfig");
+        let _entered = span.enter();
+        ready(Response::stream_ok(watch_stream(
+            self.store.watch(),
+            self.stopping.clone(),
+        )))
+    }
+
+    async fn reload_config(
+        &self,
+        _ctx: RequestContext,
+        _request: ServiceRequest<'_, proto::ReloadConfigRequest>,
+    ) -> ServiceResult<proto::ReloadConfigResponse> {
+        traced("ReloadConfig", async {
+            Response::ok(reloaded(&self.store.reload().await))
         })
         .await
     }

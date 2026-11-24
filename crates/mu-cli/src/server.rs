@@ -1,15 +1,18 @@
 //! The verb `mu server`: the secrets, the socket directory, then `mu-server`.
 
+use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::Args;
 use mu_core::connection::Quiet;
+use mu_core::world::DirSnapshot;
 use mu_core::{
     EnvSecretStore, LineBreak, Reconnect, ResolvedWorld, SecretRef, SecretSource, SecretStore,
     TcpTransport, TelnetFramer, TelnetSettings, WorldId, WorldSetup, load_password,
 };
 use mu_fake_server::FakeTransport;
+use mu_server::{Opened, ServerCheck, Store};
 use tracing_subscriber::util::SubscriberInitExt as _;
 
 use crate::config::{ConfigArgs, shown_dir};
@@ -63,11 +66,17 @@ pub fn run(args: &ServerArgs) -> ExitCode {
     let _ = rustls::crypto::ring::default_provider().install_default();
     // `server.toml` and the variables decide the export before the socket opens. The HTTP
     // exporters are built here, outside the runtime of the engine.
-    let file = match server_config::read(args.config.dir_from_env().as_deref()) {
-        Ok(file) => file,
+    // The snapshot comes first, so the check of `server.toml` and each later reload compare the
+    // same bytes.
+    let dir = args.config.dir_from_env();
+    args.config.warn_missing("server");
+    let snapshot = match dir.as_deref().map(DirSnapshot::take).transpose() {
+        Ok(snapshot) => snapshot.unwrap_or_default(),
         Err(error) => return fail(&error),
     };
-    let export = match telemetry::export(|name| std::env::var_os(name), &file.telemetry) {
+    let export = match server_config::check(dir.as_deref(), snapshot.server_file(), |name| {
+        std::env::var_os(name)
+    }) {
         Ok(export) => export,
         Err(error) => return fail(&error),
     };
@@ -92,7 +101,7 @@ pub fn run(args: &ServerArgs) -> ExitCode {
     if let Err(error) = providers.subscriber().try_init() {
         return fail(&format!("the log of the server: {error}"));
     }
-    let code = serve_worlds(args);
+    let code = serve_worlds(args, dir.as_deref(), snapshot);
     providers.shutdown(STOP_BOUND);
     code
 }
@@ -130,11 +139,27 @@ fn configured_setup(
     }
 }
 
-/// Resolves the worlds, opens the socket and serves until a signal stops it.
-fn serve_worlds(args: &ServerArgs) -> ExitCode {
-    // The configuration resolves first, so a bad file stops the start before the socket opens.
-    let configured = match args.config.worlds("server") {
-        Ok(worlds) => worlds,
+/// Opens the store over `snapshot`, the snapshot of `dir`, opens the socket and serves until a
+/// signal stops it.
+fn serve_worlds(args: &ServerArgs, dir: Option<&Path>, snapshot: DirSnapshot) -> ExitCode {
+    // The worlds resolve first, so a bad world file stops the start before the socket opens.
+    let check_dir = dir.map(Path::to_path_buf);
+    let check: ServerCheck = Box::new(move |entry| {
+        server_config::check(check_dir.as_deref(), entry, |name| std::env::var_os(name))
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    });
+    let Opened {
+        store: config_store,
+        worlds: configured,
+        ..
+    } = match Store::open(
+        dir,
+        snapshot,
+        check,
+        Box::new(|notice| crate::warn("server", notice)),
+    ) {
+        Ok(opened) => opened,
         Err(error) => return fail(&error),
     };
     if let Some(fake) = args
@@ -185,8 +210,16 @@ fn serve_worlds(args: &ServerArgs) -> ExitCode {
             Ok(shutdown) => shutdown,
             Err(error) => return fail(&error),
         };
-        let config_dir = args.config.dir_from_env().map(|dir| shown_dir(&dir));
-        match mu_server::serve(&socket, worlds, config_dir, shutdown).await {
+        let config_dir = dir.map(shown_dir);
+        match mu_server::serve(
+            &socket,
+            worlds,
+            Arc::new(config_store),
+            config_dir,
+            shutdown,
+        )
+        .await
+        {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => fail(&error),
         }

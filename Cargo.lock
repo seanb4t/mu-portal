@@ -1825,6 +1825,7 @@ dependencies = [
  "hex",
  "http",
  "mu-client",
+ "mu-config",
  "mu-core",
  "mu-fake-server",
  "mu-proto",
@@ -1855,6 +1856,7 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "url",
  "vt100",
 ]
 
@@ -1873,6 +1875,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mu-config"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "mu-core"
 version = "0.1.0"
 dependencies = [
@@ -1884,14 +1895,15 @@ dependencies = [
  "miniz_oxide",
  "mu-fake-server",
  "proptest",
- "same-file",
  "secrecy",
  "serde",
  "serde_path_to_error",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "toml",
  "tracing",
+ "walkdir",
 ]
 
 [[package]]
@@ -1920,8 +1932,11 @@ dependencies = [
  "buffa",
  "connectrpc",
  "futures",
+ "mu-config",
  "mu-core",
  "mu-proto",
+ "proptest",
+ "sha2",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
@@ -1937,12 +1952,12 @@ dependencies = [
  "futures",
  "insta",
  "mu-client",
+ "mu-config",
  "mu-proto",
  "proptest",
  "ratatui",
  "ratatui-textarea",
  "rustix",
- "serde",
  "termina",
  "tokio",
  "unicode-segmentation",

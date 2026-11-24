@@ -17,7 +17,6 @@ figment2 = { workspace = true }
 futures = { workspace = true }
 governor = { workspace = true }
 miniz_oxide = { workspace = true }
-same-file = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true }
 serde_path_to_error = { workspace = true }
@@ -25,9 +24,11 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 toml = { workspace = true }
 tracing = { workspace = true }
+walkdir = { workspace = true }
 
 [dev-dependencies]
 hex = { workspace = true }
 mu-fake-server = { path = "../mu-fake-server" }
 proptest = { workspace = true }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }

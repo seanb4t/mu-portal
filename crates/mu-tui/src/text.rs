@@ -36,13 +36,14 @@ pub(crate) const PLACEHOLDER: char = '\u{10EEEE}';
 /// `c` as it shows on the screen: a space for a tab, U+FFFD for each other control character
 /// and for the image placeholder, and every other char as it is.
 pub(crate) fn printable(c: char) -> char {
-    match c {
-        '\t' => ' ',
-        PLACEHOLDER => char::REPLACEMENT_CHARACTER,
-        c if c.is_control() => char::REPLACEMENT_CHARACTER,
-        c => c,
-    }
+    SCREEN.map(c)
 }
+
+/// The map of [`printable`].
+const SCREEN: mu_config::ControlMap = mu_config::ControlMap {
+    keep: &[('\t', ' ')],
+    also: &[PLACEHOLDER],
+};
 
 /// `text` as [`clean`] gives it, and `spans` in the order of their start. Spans with the same
 /// start keep their order. If `text` has a char that [`clean`] replaces, each byte offset moves

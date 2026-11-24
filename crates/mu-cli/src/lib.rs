@@ -1,8 +1,10 @@
 //! Command grammar of the `mu` binary.
 
+pub mod bootstrap;
 pub mod client;
 pub mod config;
 pub mod config_file;
+pub mod config_verb;
 pub mod env_path;
 pub mod server;
 pub mod server_config;
@@ -27,16 +29,7 @@ fn report(line: &std::fmt::Arguments<'_>) {
 }
 
 fn report_to(out: &mut impl Write, line: &std::fmt::Arguments<'_>) -> std::io::Result<()> {
-    let text: String = format!("{line}")
-        .chars()
-        .map(|c| {
-            if c.is_control() && c != '\n' && c != '\t' {
-                char::REPLACEMENT_CHARACTER
-            } else {
-                c
-            }
-        })
-        .collect();
+    let text = mu_config::filter(&line.to_string(), &mu_config::REPORT);
     out.write_all(format!("{text}\n").as_bytes())
 }
 
@@ -87,6 +80,8 @@ pub struct Cli {
 pub enum Verb {
     /// Start the terminal client (the default verb)
     Client(ClientArgs),
+    /// Show the configuration of one client, or reload the directory, on a running server
+    Config(config_verb::ConfigVerbArgs),
     /// Run the server
     Server(ServerArgs),
     /// Print the name and the version
@@ -109,6 +104,7 @@ pub fn run(cli: Cli) -> ExitCode {
     match cli.verb {
         None => client::run(&cli.client),
         Some(Verb::Client(args)) => client::run(&args),
+        Some(Verb::Config(args)) => config_verb::run(&args),
         Some(Verb::Server(args)) => server::run(&args),
         Some(Verb::World(args)) => world::run(&args),
         Some(Verb::Version) => print("version", &Cli::command().render_long_version()),

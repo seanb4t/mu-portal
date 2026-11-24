@@ -11,7 +11,6 @@ use termina::escape::osc::{Osc, Selection};
 use termina::{EventReader, EventStream};
 use tokio::sync::mpsc;
 
-use crate::config::Settings;
 use crate::kitty;
 use crate::model::Model;
 use crate::probe;
@@ -19,19 +18,22 @@ use crate::screen::{self, Restore, Screen};
 use crate::update::{Effect, Msg, Reply, update};
 use crate::view::view;
 
-/// Runs the client with `settings` on the alternate screen until the Quit action or the end of
-/// terminal input. Each of `notices` is a notice line from the start.
-/// The terminal comes back on exit,
-/// and on a panic through the panic hook of Termina.
+/// Runs the client with the client configuration `config` of `device` on the alternate screen
+/// until the Quit action or the end of terminal input. A new store hash of the watch of the
+/// configuration fetches the configuration of the kind `tui`, the OS of the machine and
+/// `device` again. The terminal comes back on exit, and on a panic through the panic hook of
+/// Termina.
 ///
 /// # Errors
 ///
 /// An I/O error of the terminal.
-pub async fn run(client: PortalClient, settings: Settings, notices: Vec<String>) -> io::Result<()> {
-    let mut model = Model::starting(settings);
-    for notice in &notices {
-        model.notice(notice);
-    }
+pub async fn run(
+    client: PortalClient,
+    device: String,
+    config: mu_proto::GetClientConfigResponse,
+) -> io::Result<()> {
+    let mut model = Model::starting();
+    model.apply_config(config);
     // The probe sets mode 2027, so a panic before its replies turns the mode off.
     let restore = Arc::new(Restore::default());
     restore.set_grapheme_mode(true);
@@ -54,7 +56,8 @@ pub async fn run(client: PortalClient, settings: Settings, notices: Vec<String>)
                 .chain(input.into_iter().map(Msg::Terminal))
                 .chain((!open.is_empty()).then_some(Msg::CutReply(open)))
                 .collect();
-            let result = event_loop(&mut terminal, reader, early, &mut model, &client).await;
+            let result =
+                event_loop(&mut terminal, reader, early, &mut model, &client, &device).await;
             if model.keeps_grapheme_mode() {
                 restore.set_grapheme_mode(false);
             }
@@ -73,9 +76,11 @@ async fn event_loop(
     mut early: VecDeque<Msg>,
     model: &mut Model,
     client: &PortalClient,
+    device: &str,
 ) -> io::Result<()> {
     let mut terminal_events = EventStream::new(reader, |_| true);
     let mut events = Box::pin(client.events());
+    let mut hashes = Box::pin(client.config_hashes());
     let (replies, mut reply) = mpsc::unbounded_channel();
     // The first list of the worlds, which `Model::starting` marks as asked.
     spawn_reply(&replies, listed_of(client.clone()));
@@ -92,6 +97,7 @@ async fn event_loop(
                 None => return Ok(()),
             },
             Some(item) = events.next() => Msg::Client(item),
+            Some(item) = hashes.next() => Msg::Client(item),
             Some(msg) = reply.recv() => msg,
             }
         };
@@ -128,6 +134,15 @@ async fn event_loop(
                     spawn_reply(&replies, control(client.clone(), world, false));
                 }
                 Effect::ListWorlds => spawn_reply(&replies, listed_of(client.clone())),
+                Effect::FetchConfig => {
+                    spawn_reply(&replies, config_of(client.clone(), device.to_owned()));
+                }
+                Effect::RetryConfig { after } => {
+                    spawn_reply(&replies, async move {
+                        tokio::time::sleep(after).await;
+                        Msg::RetryConfig
+                    });
+                }
             }
         }
     }
@@ -164,6 +179,17 @@ async fn listed_of(client: PortalClient) -> Msg {
     Msg::Listed(within(call, CALL_LIMIT, "").await)
 }
 
+/// The client configuration of the kind `tui`, the OS of the machine and `device`, within
+/// [`CALL_LIMIT`].
+async fn config_of(client: PortalClient, device: String) -> Msg {
+    let call = async {
+        crate::config::fetch(&client, &device)
+            .await
+            .map_err(|error| error.to_string())
+    };
+    Msg::Config(within(call, CALL_LIMIT, "").await)
+}
+
 /// Runs `call` on a task, and gives its message to the loop.
 fn spawn_reply(
     replies: &mpsc::UnboundedSender<Msg>,
@@ -186,12 +212,25 @@ pub async fn within<T>(
     limit: Duration,
     late: &str,
 ) -> Result<T, String> {
-    tokio::time::timeout(limit, call).await.unwrap_or_else(|_| {
-        Err(format!(
-            "the server gave no answer in {} s{late}",
-            limit.as_secs()
-        ))
+    timed(call, limit, || {
+        format!("the server gave no answer in {} s{late}", limit.as_secs())
     })
+    .await
+}
+
+/// The answer of `call`, or the text of `late` when `limit` ends first.
+///
+/// # Errors
+///
+/// The error of `call`, or the text of `late`.
+pub async fn timed<T>(
+    call: impl Future<Output = Result<T, String>>,
+    limit: Duration,
+    late: impl FnOnce() -> String,
+) -> Result<T, String> {
+    tokio::time::timeout(limit, call)
+        .await
+        .unwrap_or_else(|_| Err(late()))
 }
 
 /// The reply to a send of `text` to `world` that `call` makes. A call that fails is a refusal

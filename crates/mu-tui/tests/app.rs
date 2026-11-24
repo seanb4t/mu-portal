@@ -24,7 +24,7 @@ fn app(worlds: &[&str]) -> Model {
 
 /// A model of `run`, before its first list of the worlds ends.
 fn starting() -> Model {
-    Model::starting(mu_tui::Settings::default())
+    Model::starting()
 }
 
 /// A model of `run` after its first list of the worlds ends with `listed`.
@@ -2124,6 +2124,19 @@ fn the_default_dims() {
         cells
             .iter()
             .all(|cell| cell.modifier.contains(Modifier::DIM)),
+        "{cells:?}"
+    );
+}
+
+#[test]
+fn show() {
+    let mut app = two_worlds().with_echo(mu_tui::Echo::Show);
+    on_event(&mut app, player("alpha/aria", "hello"));
+    let cells = cells_of(&mut app, "> hello");
+    assert!(
+        cells
+            .iter()
+            .all(|cell| !cell.modifier.contains(Modifier::DIM)),
         "{cells:?}"
     );
 }

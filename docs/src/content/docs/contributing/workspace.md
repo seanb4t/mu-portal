@@ -9,7 +9,7 @@ sidebar:
 
 | Path | Holds |
 |---|---|
-| `crates/` | The seven crates of the product |
+| `crates/` | The crates of the product |
 | `spikes/` | Time-limited experiments, in a separate Cargo workspace |
 | `docs/` | This documentation site |
 | `architecture/` | The LikeC4 architecture model |
@@ -20,6 +20,7 @@ sidebar:
 | Crate | Holds |
 |---|---|
 | `mu-proto` | API schema and generated code |
+| `mu-config` | Client configuration: the fields of a client layer, the key names and the entry names |
 | `mu-core` | Server engine, with no knowledge of the wire format |
 | `mu-server` | API server: the adapter between the engine and the schema |
 | `mu-client` | API client, with the resume of the event stream |

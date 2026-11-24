@@ -1,6 +1,6 @@
 ---
 title: Server and clients
-description: The paired devices, the API and the parts of the server.
+description: The paired devices, the API, the parts of the server and the configuration store.
 sidebar:
   order: 2
 ---
@@ -14,3 +14,33 @@ Each client sends commands to the API and reads one event stream from it. The AP
 ## How a game session reads telnet
 
 A game session gives the bytes of each read to a framer. The telnet framer passes them to the telnet parser, which does no I/O. The parser reads the telnet commands, answers the option requests of the game and unpacks MCCP2 compression. The framer then gives the session lines, prompts, replies to send, the answers to marks, GMCP messages and protocol errors. A prompt is text with no line end at the end of a read, or text before GA or EOR. The framer reads the text of a world in UTF-8 or ISO-8859-1. The [telnet engine decision](/decisions/telnet-engine/) explains the choice of this design.
+
+## The configuration store
+
+The configuration store is the part of the server that owns the configuration directory. The guide [The configuration files](/guides/configuration/) tells where that directory is. At the start, the store reads the directory once into a snapshot. A snapshot is a copy of the path and the bytes of each file. The store resolves the worlds, checks `server.toml` and checks each client layer from that snapshot. A client layer is one file under `clients/` that sets the keys and the echo line of a client. The guide [The client configuration](/guides/client/) describes the layers.
+
+A bad world or a bad `server.toml` stops the start. A bad client layer does not stop the start. The store skips the whole layer and writes one line to stderr that names the file and the reason.
+
+The API has three calls for the configuration:
+
+| Call | What it does |
+|---|---|
+| `GetClientConfig` | Takes a kind, an OS and a device name. It returns the merged keys and echo, the revision, the layer that set each field, and a notice for each bad layer of that client |
+| `WatchConfig` | A stream. It sends the store hash first. After each reload that changes `clients/`, it sends the new store hash |
+| `ReloadConfig` | Reads the directory again. It applies the client layers, and lists the bad files and the changed files that apply only at the restart |
+
+The revision is a hash of the layer files of one client. Only a change to a layer of that client changes it. So the revision stays the same across a restart of the server. The store hash is a hash of every file under `clients/`. The server keeps no state about a client. Each client compares the store hash with the hash of its configuration. If the two differ, the client calls `GetClientConfig`.
+
+## The start of a client
+
+Before the screen opens, `mu client` lists the worlds, opens `WatchConfig`, waits for the first store hash and calls `GetClientConfig`. The three steps share one wait, the `connect_wait` option of the server URL. The client builds its keymap and its echo setting from the reply, and shows a notice for each bad layer.
+
+<LikeC4View viewId="clientStart" />
+
+## A reload
+
+`mu config reload` asks the server to read its directory again. The store applies the new client layers and sends a new store hash on `WatchConfig`. Each attached client then calls `GetClientConfig`. If the revision is new, the client replaces its keymap and its echo setting without a restart. A change to a world or to `server.toml` applies only at the restart of the server.
+
+<LikeC4View viewId="configReload" />
+
+The [configuration ownership decision](/decisions/configuration-ownership/) gives the reason for this design.

@@ -1,13 +1,23 @@
 ---
 title: Crate layout
-description: The seven crates and their allowed dependencies.
+description: The crates and their allowed dependencies.
 sidebar:
   order: 3
 ---
 
 import LikeC4View from '../../../components/LikeC4View.astro';
 
-The workspace has seven crates. `mu-tui` does not depend on `mu-core` or `mu-server`, so the terminal client cannot reach the server engine except through the API. `mu-core` does not depend on `mu-proto`, so the engine does not know the wire format.
+The workspace holds the crates of the product. `mu-tui` does not depend on `mu-core` or `mu-server`, so the terminal client cannot reach the server engine except through the API. `mu-core` does not depend on `mu-proto`, so the engine does not know the wire format.
+
+`mu-config` holds the client configuration. It has these parts:
+
+- The names of a client: the kind, the OS and the device name.
+- The grammar of a key name, and the check of a `[keys]` table.
+- The table of the entry names.
+- The fields of a client layer.
+- The filter that writes U+FFFD in place of a control character in a notice.
+
+`mu-config` depends on no other crate of the workspace. `mu-server` checks each client layer with it. `mu-tui` turns its key names into terminal keys. `mu-cli` checks the device name, the kind and the OS with it. `mu-server` and `mu-tui` reach the key grammar only through `mu-config`, so the server and the terminal client read a key name the same way.
 
 `mu-fake-server` holds the fake games. It depends on `mu-core`, and only the tests of `mu-core` depend on it. Cargo accepts that cycle for a dev-dependency. The `--fake-world` flag of `mu-cli` also uses it.
 

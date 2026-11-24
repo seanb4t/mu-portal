@@ -19,6 +19,15 @@ service PortalService {
 
   // Disconnects one world.
   rpc Disconnect(DisconnectRequest) returns (DisconnectResponse);
+
+  // Returns the configuration of one client: its layers merged from the defaults to the device.
+  rpc GetClientConfig(GetClientConfigRequest) returns (GetClientConfigResponse);
+
+  // Streams the current store hash, then each new store hash after a reload that changes it.
+  rpc WatchConfig(WatchConfigRequest) returns (stream WatchConfigResponse);
+
+  // Reads the configuration directory again and applies the new client layers.
+  rpc ReloadConfig(ReloadConfigRequest) returns (ReloadConfigResponse);
 }
 
 // `from_seq` is the first sequence number that the client wants. 0 and 1
@@ -124,3 +133,55 @@ message DisconnectRequest {
 }
 
 message DisconnectResponse {}
+
+// One client: its kind, such as `tui`, its OS, `macos` or `linux`, and its device name.
+message GetClientConfigRequest {
+  string kind = 1;
+  string os = 2;
+  string device = 3;
+}
+
+message GetClientConfigResponse {
+  // The hash of every file under `clients/` that the reply comes from.
+  string store_hash = 1;
+  // The hash of the layers of this client.
+  string revision = 2;
+  // How the client shows the echo line of a send: `show`, `dim` or `hide`.
+  string echo = 3;
+  // Each key, by its canonical name, and the entry that it runs, or `none`.
+  repeated Binding bindings = 4;
+  // The path of each field, such as `echo` or `keys.alt+n`, and the path of the layer that set
+  // it, relative to the configuration directory, or `default`.
+  map<string, string> sources = 5;
+  // One notice for each bad layer that applies to the client, and for each bad entry at the
+  // path of a layer directory.
+  repeated Notice notices = 6;
+}
+
+message Binding {
+  string key = 1;
+  string entry = 2;
+}
+
+// A bad file or place: its path, relative to the configuration directory when it is under
+// it, and the whole text of the notice. Neither holds a control character.
+message Notice {
+  string path = 1;
+  string text = 2;
+}
+
+message WatchConfigRequest {}
+
+message WatchConfigResponse {
+  string store_hash = 1;
+}
+
+message ReloadConfigRequest {}
+
+message ReloadConfigResponse {
+  // One notice for each bad file.
+  repeated Notice notices = 1;
+  // The path of each world file and of `server.toml` that differs from the snapshot of the
+  // start of the server. The change applies at the next start.
+  repeated string restart = 2;
+}

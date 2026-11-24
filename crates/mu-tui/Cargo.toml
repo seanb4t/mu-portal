@@ -15,11 +15,11 @@ workspace = true
 base64 = { workspace = true }
 futures = { workspace = true }
 mu-client = { path = "../mu-client" }
+mu-config = { path = "../mu-config" }
 mu-proto = { path = "../mu-proto" }
 ratatui = { workspace = true }
 ratatui-textarea = { workspace = true }
 rustix = { workspace = true, features = ["termios"] }
-serde = { workspace = true }
 termina = { workspace = true }
 tokio = { workspace = true }
 unicode-segmentation = { workspace = true }

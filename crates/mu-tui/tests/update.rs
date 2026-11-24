@@ -3,6 +3,7 @@
 use mu_client::ClientEvent;
 use mu_proto::{Event, EventKind, Source};
 use std::num::NonZeroU16;
+use std::time::Duration;
 
 use mu_tui::probe::{Outcome, PENDING_MAX};
 use mu_tui::store::CAPACITY;
@@ -512,4 +513,257 @@ proptest::proptest! {
             ("", vec![Effect::Disconnect { world: expected.to_owned() }])
         );
     }
+}
+
+// The live change of the client configuration.
+
+/// A client configuration with `hash`, `revision` and a notice for each of `notices`.
+fn reply(hash: &str, revision: &str, notices: &[&str]) -> mu_proto::GetClientConfigResponse {
+    mu_proto::GetClientConfigResponse {
+        store_hash: hash.to_owned(),
+        revision: revision.to_owned(),
+        echo: "dim".to_owned(),
+        notices: notices
+            .iter()
+            .map(|text| mu_proto::Notice {
+                path: "clients/global.toml".to_owned(),
+                text: (*text).to_owned(),
+                ..Default::default()
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+
+/// A model that applied `first`.
+fn configured(first: mu_proto::GetClientConfigResponse) -> Model {
+    let mut model = model();
+    model.apply_config(first);
+    model
+}
+
+fn store_hash(model: &mut Model, hash: &str) -> Vec<Effect> {
+    update(model, Msg::Client(ClientEvent::StoreHash(hash.to_owned())))
+}
+
+/// Sends the store hash of `reply`, then `reply`.
+fn new_config(model: &mut Model, reply: mu_proto::GetClientConfigResponse) {
+    store_hash(model, &reply.store_hash);
+    update(model, Msg::Config(Ok(reply)));
+}
+
+fn revision(model: &Model) -> Option<&str> {
+    model.config().map(|config| config.revision.as_str())
+}
+
+/// How many notice lines hold `text`.
+fn notices_of(model: &Model, text: &str) -> usize {
+    model
+        .notices()
+        .iter()
+        .filter(|line| line.contains(text))
+        .count()
+}
+
+#[test]
+fn the_same_hash_fetches_nothing() {
+    let mut model = configured(reply("h1", "r1", &[]));
+    assert_eq!(store_hash(&mut model, "h1"), []);
+}
+
+#[test]
+fn a_new_hash_fetches_the_configuration() {
+    let mut model = configured(reply("h1", "r1", &[]));
+    assert_eq!(store_hash(&mut model, "h2"), [Effect::FetchConfig]);
+}
+
+#[test]
+fn a_stale_reply_is_dropped() {
+    let mut model = configured(reply("h1", "r1", &[]));
+    store_hash(&mut model, "h2");
+    store_hash(&mut model, "h3");
+    update(&mut model, Msg::Config(Ok(reply("h2", "r2", &[]))));
+    let stale = revision(&model).map(str::to_owned);
+    update(&mut model, Msg::Config(Ok(reply("h3", "r3", &[]))));
+    assert_eq!(
+        (stale.as_deref(), revision(&model)),
+        (Some("r1"), Some("r3"))
+    );
+}
+
+#[test]
+fn the_same_revision_changes_nothing() {
+    let mut model = configured(reply("h1", "r1", &[]));
+    new_config(&mut model, reply("h2", "r1", &["clients/global.toml: bad"]));
+    assert_eq!(notices_of(&model, "bad"), 0);
+}
+
+#[test]
+fn a_notice_shows_once_across_two_revisions() {
+    let mut model = configured(reply("h1", "r1", &["laptop.toml: bad"]));
+    new_config(&mut model, reply("h2", "r2", &["laptop.toml: bad"]));
+    assert_eq!(notices_of(&model, "laptop.toml: bad"), 1);
+}
+
+#[test]
+fn a_notice_shows_again_after_a_fix() {
+    let mut model = configured(reply("h1", "r1", &["laptop.toml: bad"]));
+    new_config(&mut model, reply("h2", "r2", &[]));
+    new_config(&mut model, reply("h3", "r3", &["laptop.toml: bad"]));
+    assert_eq!(notices_of(&model, "laptop.toml: bad"), 2);
+}
+
+#[test]
+fn the_attach_notices_seed_the_last_reply() {
+    let mut model = Model::starting();
+    model.apply_config(reply("h1", "r1", &["laptop.toml: bad"]));
+    let at_attach = notices_of(&model, "laptop.toml: bad");
+    new_config(&mut model, reply("h2", "r2", &["laptop.toml: bad"]));
+    assert_eq!((at_attach, notices_of(&model, "laptop.toml: bad")), (1, 1));
+}
+
+/// One message of the live change: a store hash, or the reply of that hash.
+#[derive(Clone, Debug)]
+enum Step {
+    Hash(u8),
+    Reply(u8),
+}
+
+fn step() -> impl proptest::strategy::Strategy<Value = Step> {
+    use proptest::prelude::*;
+    prop_oneof![
+        (0_u8..4).prop_map(Step::Hash),
+        (0_u8..4).prop_map(Step::Reply)
+    ]
+}
+
+proptest::proptest! {
+    #[test]
+    fn the_latest_hash_wins(steps in proptest::collection::vec(step(), 0..24)) {
+        let mut model = configured(reply("start", "start", &[]));
+        let mut latest = None;
+        for each in steps {
+            match each {
+                Step::Hash(n) => {
+                    latest = Some(format!("h{n}"));
+                    store_hash(&mut model, &format!("h{n}"));
+                }
+                Step::Reply(n) => {
+                    let before = revision(&model).map(str::to_owned);
+                    update(
+                        &mut model,
+                        Msg::Config(Ok(reply(&format!("h{n}"), &format!("r{n}"), &[]))),
+                    );
+                    if revision(&model).map(str::to_owned) != before {
+                        let applied = model.config().map(|config| config.store_hash.clone());
+                        proptest::prop_assert_eq!(applied, latest.clone());
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_failed_fetch_fetches_again() {
+    let mut model = configured(reply("h1", "r1", &[]));
+    store_hash(&mut model, "h2");
+    let failed = update(&mut model, Msg::Config(Err("unavailable".to_owned())));
+    let again = update(&mut model, Msg::RetryConfig);
+    assert_eq!(
+        (failed, again, notices_of(&model, "unavailable")),
+        (
+            vec![Effect::RetryConfig {
+                after: Duration::from_millis(100)
+            }],
+            vec![Effect::FetchConfig],
+            1
+        )
+    );
+}
+
+#[test]
+fn each_failed_fetch_waits_longer_until_an_apply() {
+    let mut model = configured(reply("h1", "r1", &[]));
+    store_hash(&mut model, "h2");
+    let mut effects = Vec::new();
+    for _ in 0..3 {
+        effects.extend(update(
+            &mut model,
+            Msg::Config(Err("unavailable".to_owned())),
+        ));
+        update(&mut model, Msg::RetryConfig);
+    }
+    update(&mut model, Msg::Config(Ok(reply("h2", "r2", &[]))));
+    store_hash(&mut model, "h3");
+    effects.extend(update(
+        &mut model,
+        Msg::Config(Err("unavailable".to_owned())),
+    ));
+    let millis: Vec<Option<u128>> = effects
+        .iter()
+        .map(|effect| match effect {
+            Effect::RetryConfig { after } => Some(after.as_millis()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        (millis, notices_of(&model, "unavailable")),
+        (vec![Some(100), Some(200), Some(400), Some(100)], 2)
+    );
+}
+
+#[test]
+fn a_failed_fetch_of_an_applied_hash_fetches_nothing() {
+    let mut model = configured(reply("h1", "r1", &[]));
+    store_hash(&mut model, "h1");
+    let failed = update(&mut model, Msg::Config(Err("unavailable".to_owned())));
+    let again = update(&mut model, Msg::RetryConfig);
+    assert_eq!((failed, again), (vec![], vec![]));
+}
+
+#[test]
+fn a_late_failure_of_an_old_fetch_does_not_count() {
+    let mut model = configured(reply("h1", "r1", &[]));
+    store_hash(&mut model, "h2");
+    update(&mut model, Msg::Config(Ok(reply("h2", "r2", &[]))));
+    let late = update(&mut model, Msg::Config(Err("old".to_owned())));
+    store_hash(&mut model, "h3");
+    let failed = update(&mut model, Msg::Config(Err("unavailable".to_owned())));
+    assert_eq!(
+        (
+            late,
+            failed,
+            notices_of(&model, "old"),
+            notices_of(&model, "unavailable")
+        ),
+        (
+            vec![],
+            vec![Effect::RetryConfig {
+                after: Duration::from_millis(100)
+            }],
+            0,
+            1
+        )
+    );
+}
+
+#[test]
+fn a_hash_back_to_the_applied_one_resets_the_failures() {
+    let mut model = configured(reply("h1", "r1", &[]));
+    store_hash(&mut model, "h2");
+    update(&mut model, Msg::Config(Err("unavailable".to_owned())));
+    update(&mut model, Msg::RetryConfig);
+    store_hash(&mut model, "h1");
+    store_hash(&mut model, "h3");
+    let failed = update(&mut model, Msg::Config(Err("unavailable".to_owned())));
+    assert_eq!(
+        (failed, notices_of(&model, "unavailable")),
+        (
+            vec![Effect::RetryConfig {
+                after: Duration::from_millis(100)
+            }],
+            2
+        )
+    );
 }

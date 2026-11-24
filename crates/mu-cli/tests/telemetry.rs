@@ -870,6 +870,30 @@ async fn span_of_a_send() {
 }
 
 #[tokio::test]
+async fn get_client_config_has_a_span() {
+    let collector = Collector::start(Mode::Http).await;
+    let session = Setup::endpoint(&collector.url()).start().await;
+    session
+        .client
+        .client_config("tui", "linux", "laptop")
+        .await
+        .unwrap();
+    session
+        .client
+        .client_config("gui", "linux", "laptop")
+        .await
+        .unwrap_err();
+    stop(session.server).await;
+    let spans = spans_named(&collector, "mu.v1.PortalService/GetClientConfig");
+    let failed: Vec<_> = spans.iter().filter(|span| is_error(span)).collect();
+    assert_eq!((spans.len(), failed.len()), (2, 1), "{spans:?}");
+    assert_eq!(
+        attribute(failed[0], "rpc.connect_rpc.error_code").as_deref(),
+        Some("invalid_argument")
+    );
+}
+
+#[tokio::test]
 async fn span_of_a_subscribe() {
     let collector = Collector::start(Mode::Http).await;
     let mut session = Setup::endpoint(&collector.url()).start().await;
@@ -1174,4 +1198,23 @@ async fn silent_collector_does_not_delay_a_send() {
     for protocol in ["http/protobuf", "grpc"] {
         silent_collector_with(protocol).await;
     }
+}
+
+/// macOS volumes ignore case by default, so there `SERVER.toml` is `server.toml`.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn server_toml_in_another_case() {
+    let config = ConfigDir::empty().file(
+        "SERVER.toml",
+        "[telemetry]\nendpont = \"http://127.0.0.1:4318\"\n",
+    );
+    assert!(
+        config.path().join("server.toml").exists(),
+        "the volume of the temporary directory does not ignore case"
+    );
+    let output = ServerBuilder::new()
+        .env("MU_CONFIG", Some(config.path()))
+        .output()
+        .await;
+    fails_naming(&output, &["server.toml", "telemetry.endpont"]);
 }

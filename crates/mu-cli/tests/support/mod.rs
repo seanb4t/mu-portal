@@ -17,14 +17,19 @@ pub fn repo_root() -> &'static Path {
     Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
 }
 
+/// The device of each `mu` that a test starts, unless the test sets another.
+pub const TEST_DEVICE: &str = "test-device";
+
 /// The changes to the environment of each `mu` that a test starts, in the shape
 /// `(name, Some(value))` to set a variable and `(name, None)` to remove one. They remove
-/// `MU_SOCKET` and point `MU_CONFIG` at an empty directory, so that the socket and the
-/// configuration of the developer never reach a test. They also remove each variable whose
-/// name starts with `OTEL_`, so that the telemetry of the developer never reaches a test.
+/// `MU_SOCKET` and `MU_SERVER`, set `MU_DEVICE` to [`TEST_DEVICE`] and point `MU_CONFIG` at an
+/// empty directory, so that the socket, the server, the device and the configuration of the
+/// developer never reach a test, and the host name of the machine is never the device. They also remove each variable whose name starts with `OTEL_`, so that the telemetry of the developer never reaches a test.
 pub fn test_env() -> Vec<(OsString, Option<OsString>)> {
     let mut changes: Vec<(OsString, Option<OsString>)> = vec![
         ("MU_SOCKET".into(), None),
+        ("MU_SERVER".into(), None),
+        ("MU_DEVICE".into(), Some(TEST_DEVICE.into())),
         (
             "MU_CONFIG".into(),
             Some(empty_config_dir().into_os_string()),
@@ -83,6 +88,16 @@ pub fn apply_env<K: AsRef<OsStr>, V: AsRef<OsStr>>(
             None => command.env_remove(name),
         };
     }
+}
+
+/// Runs the built binary with `args` to its exit on the runtime of the test, with
+/// [`test_env`], then `env`.
+pub async fn mu_async(args: &[&str], env: &[(&str, Option<&str>)]) -> Output {
+    let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_mu"));
+    command.args(args);
+    apply_test_env(command.as_std_mut());
+    apply_env(command.as_std_mut(), env);
+    command.output().await.expect("the mu binary runs")
 }
 
 /// The game file of the base directory of the world-config spec.

@@ -3,9 +3,6 @@
 
 use std::collections::BTreeMap;
 
-use figment2::Figment;
-use figment2::providers::{Named, Serialized};
-
 use crate::framer::Charset;
 use crate::id::WorldId;
 use crate::secret::SecretRef;
@@ -17,6 +14,7 @@ use super::layer::{
     KeepaliveFields, Layer, LayerFields, LayerKey, LayerOrigin, LayerSource, LoginFields,
     ReconnectFields,
 };
+use super::merge::merge_layers;
 use super::{
     Backoff, Entry, EntryKind, Keepalive, KeepaliveMode, LineBreak, Login, Reconnect,
     ReconnectMode, ResolvedWorld, WorldDefaults,
@@ -202,29 +200,20 @@ fn defaults() -> LayerFields {
 
 /// Merges `chain` into the world `id`.
 fn world(id: WorldId, chain: &[&Layer]) -> Result<ResolvedWorld, ConfigError> {
+    let defaults = defaults();
     let mut origins = vec![LayerOrigin::Default];
-    let mut figment = Figment::from(Named::new("0", Serialized::defaults(defaults())));
+    let mut layers = vec![&defaults];
     for layer in chain {
-        let name = origins.len().to_string();
         origins.push(layer.origin.clone());
-        figment = figment.merge(Named::new(name, Serialized::defaults(&layer.fields)));
+        layers.push(&layer.fields);
     }
-    let merged: LayerFields = figment
-        .extract()
-        .map_err(|error| ConfigError::new(&id, error.to_string()))?;
-    let mut sources = BTreeMap::new();
-    for path in FIELD_PATHS {
-        if let Some(metadata) = figment.find_metadata(path)
-            && figment.find_value(path).is_ok()
-            && let Some(origin) = metadata
-                .name
-                .parse::<usize>()
-                .ok()
-                .and_then(|index| origins.get(index))
-        {
-            sources.insert((*path).to_owned(), origin.clone());
-        }
-    }
+    let paths: Vec<String> = FIELD_PATHS.iter().map(|path| (*path).to_owned()).collect();
+    let (merged, places) =
+        merge_layers(&layers, &paths).map_err(|error| ConfigError::new(&id, error))?;
+    let sources = places
+        .into_iter()
+        .filter_map(|(path, place)| origins.get(place).map(|origin| (path, origin.clone())))
+        .collect();
     let (rules, scripts) = accumulate(chain)?;
     finish(id, merged, sources, rules, scripts)
 }

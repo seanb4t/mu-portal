@@ -246,17 +246,28 @@ fn file_name_outside_the_id_rule() {
 
 #[test]
 fn stray_file() {
-    for path in [
-        "worlds.toml",
-        "characters/alpha.toml",
-        "games/old/alpha.toml",
-        "characters/alpha/aria/x.toml",
-        "games/.toml",
-        "games/beta.TOML",
-    ] {
+    for path in ["worlds.toml", "games/.toml", "games/beta.TOML"] {
         let config = Config::base().file(path, "");
         fails_naming(&config.list(), &[path]);
     }
+}
+
+#[test]
+fn a_stray_character_file() {
+    let config = Config::base().file("characters/alpha.toml", "");
+    fails_naming(&config.list(), &["characters/alpha.toml"]);
+}
+
+#[test]
+fn a_stray_game_file() {
+    let config = Config::base().file("games/old/alpha.toml", "");
+    fails_naming(&config.list(), &["games/old/alpha.toml"]);
+}
+
+#[test]
+fn a_stray_file_under_a_character() {
+    let config = Config::base().file("characters/alpha/aria/x.toml", "");
+    fails_naming(&config.list(), &["characters/alpha/aria/x.toml"]);
 }
 
 #[test]
@@ -270,8 +281,28 @@ fn server_file_makes_no_world() {
 
 #[test]
 fn the_file_of_the_client() {
-    let config = Config::base().file("client.toml", "echo = \"hide\"\n");
+    let config = Config::base().file("clients/global.toml", "echo = \"hide\"\n");
     has_line(&succeeds(&config.list()), "alpha/aria");
+}
+
+#[test]
+fn a_game_named_clients() {
+    let config = Config::empty()
+        .file("games/clients.toml", BASE_GAME)
+        .file("characters/clients/aria.toml", "");
+    has_line(&succeeds(&config.list()), "clients/aria");
+}
+
+#[test]
+fn a_bad_client_layer_does_not_stop_the_worlds() {
+    let config = Config::base().file("clients/global.toml", "echo = \"loud\"\n");
+    has_line(&succeeds(&config.list()), "alpha/aria");
+}
+
+#[test]
+fn a_leftover_client_toml() {
+    let config = Config::base().file("client.toml", "echo = \"hide\"\n");
+    fails_naming(&config.list(), &["client.toml", "clients/global.toml"]);
 }
 
 /// `name` with its stem in uppercase makes no world where the file system ignores case, and is
@@ -293,11 +324,6 @@ fn server_file_in_another_case() {
     top_file_in_another_case("server.toml");
 }
 
-#[test]
-fn client_file_in_another_case() {
-    top_file_in_another_case("client.toml");
-}
-
 /// An unreadable `name` makes no world, and the list does not fail.
 fn unreadable_top_file_makes_no_world(name: &str) {
     use std::os::unix::fs::PermissionsExt as _;
@@ -307,13 +333,30 @@ fn unreadable_top_file_makes_no_world(name: &str) {
 }
 
 #[test]
-fn unreadable_server_file_makes_no_world() {
+fn an_unreadable_server_file_leaves_world_list() {
     unreadable_top_file_makes_no_world("server.toml");
 }
 
 #[test]
-fn unreadable_client_file_makes_no_world() {
-    unreadable_top_file_makes_no_world("client.toml");
+fn a_fifo_named_server_toml_leaves_world_list() {
+    let config = Config::base();
+    let status = std::process::Command::new("mkfifo")
+        .arg(config.path().join("server.toml"))
+        .status()
+        .unwrap();
+    assert!(status.success());
+    has_line(&succeeds(&config.list()), "alpha/aria");
+}
+
+#[test]
+fn a_broken_link_named_server_toml_leaves_world_list() {
+    let config = Config::base();
+    std::os::unix::fs::symlink(
+        config.path().join("nothing"),
+        config.path().join("server.toml"),
+    )
+    .unwrap();
+    has_line(&succeeds(&config.list()), "alpha/aria");
 }
 
 #[test]
@@ -322,11 +365,17 @@ fn unreadable_server_file_in_another_case_names_the_error() {
     let config = Config::base().file("SERVER.toml", "");
     let path = config.path().join("SERVER.toml");
     fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
-    // A user who can read every file, such as root, gets no read error to name.
-    if fs::File::open(&path).is_ok() {
-        return;
+    assert!(
+        fs::File::open(&path).is_err(),
+        "the mode 000 does not keep this user out: run the tests as a user that is not root"
+    );
+    if config.path().join("server.toml").exists() {
+        // A volume that ignores case: the file is server.toml, whose read error the world
+        // read ignores.
+        has_line(&succeeds(&config.list()), "alpha/aria");
+    } else {
+        fails_naming(&config.list(), &["SERVER.toml", "Permission denied"]);
     }
-    fails_naming(&config.list(), &["SERVER.toml", "Permission denied"]);
 }
 
 /// A hard link of `name` under another name is a stray file.
@@ -339,11 +388,6 @@ fn hard_link_to_a_top_file_is_an_error(name: &str) {
 #[test]
 fn hard_link_to_the_server_file_is_an_error() {
     hard_link_to_a_top_file_is_an_error("server.toml");
-}
-
-#[test]
-fn hard_link_to_the_client_file_is_an_error() {
-    hard_link_to_a_top_file_is_an_error("client.toml");
 }
 
 #[test]

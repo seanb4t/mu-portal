@@ -8,7 +8,7 @@ use std::sync::Arc;
 use mu_proto::World as ProtoWorld;
 use ratatui::style::Style;
 
-use crate::config::{Echo, Settings};
+use crate::config::Echo;
 use crate::editor::{EditorId, EditorState};
 use crate::history::History;
 use crate::keymap::Keymap;
@@ -95,6 +95,25 @@ pub struct Model {
     pub(crate) echo: Echo,
     /// The reason of the last list of the worlds, if it failed.
     pub(crate) list_failure: Option<String>,
+    /// The client configuration that the model applied last.
+    pub(crate) config: Option<mu_proto::GetClientConfigResponse>,
+    /// The latest store hash of the watch of the configuration.
+    pub(crate) latest_hash: Option<String>,
+    /// The count of the fetches of the configuration that failed since the last apply.
+    pub(crate) config_failures: usize,
+    pub(crate) config_retry: ConfigRetry,
+}
+
+/// Whether an [`Effect::RetryConfig`](crate::update::Effect::RetryConfig) waits, so a second
+/// one does not start.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum ConfigRetry {
+    /// No retry waits.
+    #[default]
+    Idle,
+    /// A retry waits, and its [`Msg::RetryConfig`](crate::update::Msg::RetryConfig) did not
+    /// come yet.
+    Waiting,
 }
 
 /// Whether a list of the worlds is with the server, so a second one does not go.
@@ -156,6 +175,10 @@ impl Model {
             list_failure: None,
             first_list: false,
             echo: Echo::default(),
+            config: None,
+            latest_hash: None,
+            config_failures: 0,
+            config_retry: ConfigRetry::Idle,
         };
         for id in worlds {
             model.world(&id);
@@ -166,14 +189,12 @@ impl Model {
         model
     }
 
-    /// A model with no world, and the keymap and the echo of `settings`, that waits for its
-    /// first list of the worlds. The caller asks for that list. Until the first list ends, the top
-    /// row shows `listing worlds` and no world gets the focus.
+    /// A model with no world that waits for its first list of the worlds. The caller asks for
+    /// that list. Until the first list ends, the top row shows `listing worlds` and no world gets
+    /// the focus.
     #[must_use]
-    pub fn starting(settings: Settings) -> Self {
-        let mut model = Self::new([])
-            .with_keymap(settings.keymap)
-            .with_echo(settings.echo);
+    pub fn starting() -> Self {
+        let mut model = Self::new([]);
         model.listing = Listing::Asked;
         model.first_list = true;
         model
@@ -185,6 +206,18 @@ impl Model {
         if !self.worlds.is_empty() {
             self.set_focus(0);
         }
+    }
+
+    /// The client configuration that the model applied last.
+    #[must_use]
+    pub const fn config(&self) -> Option<&mu_proto::GetClientConfigResponse> {
+        self.config.as_ref()
+    }
+
+    /// The notice lines of the client, which a reset of the panes keeps.
+    #[must_use]
+    pub fn notices(&self) -> &[String] {
+        &self.notices
     }
 
     /// The model with `echo` as the style of the echo line of a send.

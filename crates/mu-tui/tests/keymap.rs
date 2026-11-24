@@ -116,74 +116,29 @@ fn default_keymap_leaves_tab_free() {
     assert_eq!(keys.map(|key| keymap.get(&key)), [None, None, None]);
 }
 
-// Key names of `client.toml`.
+// Key names of the client layers, mapped to the chords of the terminal.
 
+use mu_config::{ENTRY_NAMES, Key, KeyName, Modifiers as Held};
 use mu_tui::{Chord, Model, Msg, update};
 use proptest::prelude::*;
 use termina::Event as TermEvent;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 fn parse(name: &str) -> Chord {
-    Chord::parse(name).unwrap_or_else(|error| panic!("{error}"))
+    Chord::of_name(KeyName::parse(name).unwrap_or_else(|error| panic!("{error}")))
 }
 
 #[test]
-fn ctrl_plus_and_alt_1_are_read() {
-    assert_eq!(
-        [parse("ctrl+plus"), parse("alt+1")],
-        [
-            Chord::with(KeyCode::Char('+'), Modifiers::CONTROL),
-            Chord::with(KeyCode::Char('1'), Modifiers::ALT),
-        ]
-    );
-}
-
-#[test]
-fn f1_and_f12_are_read() {
-    assert_eq!(
-        [parse("f1"), parse("f12")],
-        [
-            Chord::plain(KeyCode::Function(1)),
-            Chord::plain(KeyCode::Function(12))
-        ]
-    );
-}
-
-#[test]
-fn a_bad_modifier_names_the_good_ones() {
-    let error = Chord::parse("hyper+n").expect_err("hyper").to_string();
-    assert!(error.ends_with("use ctrl, alt, shift or super"), "{error}");
-    let error = Chord::parse("ctrl++").expect_err("ctrl++").to_string();
-    assert!(error.ends_with("the key + is named plus"), "{error}");
-}
-
-#[test]
-fn bad_key_names_are_refused_with_the_name() {
-    for name in [
-        "ctrl+N",
-        "ctrl+ctrl+n",
-        "ctrl++",
-        "+",
-        "ctrl+",
-        "",
-        "ctrl",
-        "shift+1",
-        "shift+space",
-        "shift+plus",
-        "f0",
-        "f01",
-        "f13",
-        "alt+\t",
-        "alt+\r",
-        "alt+\u{7f}",
-        "hyper+n",
-    ] {
-        let error = Chord::parse(name).expect_err(name);
-        assert!(
-            error.to_string().starts_with(&format!("{name}: ")),
-            "{error}"
-        );
-    }
+fn the_entry_table_matches_the_registry() {
+    let registry: Vec<(&str, bool)> = ENTRIES
+        .iter()
+        .map(|entry| (entry.name, entry.arg.is_some_and(|arg| arg.required)))
+        .collect();
+    let table: Vec<(&str, bool)> = ENTRY_NAMES
+        .iter()
+        .map(|entry| (entry.name, entry.needs_arg))
+        .collect();
+    assert_eq!(table, registry);
 }
 
 #[test]
@@ -222,52 +177,83 @@ fn an_unbound_shift_letter_types_it() {
     assert_eq!(model.input(), "ZZ");
 }
 
-/// A key of a key name, as the name writes it, and whether Shift can go with it.
-fn key_part() -> impl Strategy<Value = (String, bool)> {
-    let special = [
-        "enter",
-        "tab",
-        "backspace",
-        "esc",
-        "up",
-        "down",
-        "left",
-        "right",
-        "home",
-        "end",
-        "pageup",
-        "pagedown",
-        "insert",
-        "delete",
+/// A neutral key, and whether Shift can go with it.
+fn neutral_key() -> impl Strategy<Value = (Key, bool)> {
+    let special = vec![
+        Key::Enter,
+        Key::Tab,
+        Key::Backspace,
+        Key::Esc,
+        Key::Up,
+        Key::Down,
+        Key::Left,
+        Key::Right,
+        Key::Home,
+        Key::End,
+        Key::PageUp,
+        Key::PageDown,
+        Key::Insert,
+        Key::Delete,
     ];
     prop_oneof![
-        proptest::sample::select(special.to_vec()).prop_map(|name| (name.to_owned(), true)),
-        Just(("space".to_owned(), false)),
-        Just(("plus".to_owned(), false)),
-        (1u8..=12).prop_map(|n| (format!("f{n}"), true)),
-        proptest::char::range('a', 'z').prop_map(|c| (c.to_string(), true)),
+        proptest::sample::select(special).prop_map(|key| (key, true)),
+        (1u8..=12).prop_map(|n| (Key::F(n), true)),
+        proptest::char::range('a', 'z').prop_map(|c| (Key::Char(c), true)),
         proptest::sample::select(
-            "0123456789!@#$%^&*()-=[]{};:'\",.<>/?`~|\\_"
+            " +.0123456789!@#$%^&*()-=[]{};:'\",<>/?`~|\\_"
                 .chars()
                 .collect::<Vec<_>>()
         )
-        .prop_map(|c| (c.to_string(), false)),
+        .prop_map(|c| (Key::Char(c), false)),
     ]
+}
+
+/// The key code that the terminal reports for `key`.
+fn code_of(key: Key, shift: bool) -> KeyCode {
+    match key {
+        Key::Char(c) => KeyCode::Char(c),
+        Key::Enter => KeyCode::Enter,
+        Key::Tab if shift => KeyCode::BackTab,
+        Key::Tab => KeyCode::Tab,
+        Key::Backspace => KeyCode::Backspace,
+        Key::Esc => KeyCode::Escape,
+        Key::Up => KeyCode::Up,
+        Key::Down => KeyCode::Down,
+        Key::Left => KeyCode::Left,
+        Key::Right => KeyCode::Right,
+        Key::Home => KeyCode::Home,
+        Key::End => KeyCode::End,
+        Key::PageUp => KeyCode::PageUp,
+        Key::PageDown => KeyCode::PageDown,
+        Key::Insert => KeyCode::Insert,
+        Key::Delete => KeyCode::Delete,
+        Key::F(n) => KeyCode::Function(n),
+    }
 }
 
 proptest! {
     #[test]
-    fn key_names_read_back(
-        (modifiers, turned) in proptest::sample::subsequence(vec!["ctrl", "alt", "shift", "super"], 0..=4)
-            .prop_flat_map(|modifiers| (Just(modifiers.clone()), Just(modifiers).prop_shuffle())),
-        (key, shift_ok) in key_part(),
+    fn each_key_maps_to_the_chord_of_its_event(
+        (key, shift_ok) in neutral_key(),
+        ctrl in any::<bool>(),
+        alt in any::<bool>(),
+        shift in any::<bool>(),
+        super_key in any::<bool>(),
     ) {
-        prop_assume!(shift_ok || !modifiers.contains(&"shift"));
-        let name = modifiers.iter().copied().chain([key.as_str()]).collect::<Vec<_>>().join("+");
-        let chord = Chord::parse(&name).map_err(|error| TestCaseError::fail(error.to_string()))?;
-        let written = chord.name().expect("a parsed chord has a name");
-        prop_assert_eq!(Chord::parse(&written).ok(), Some(chord));
-        let other = turned.iter().copied().chain([key.as_str()]).collect::<Vec<_>>().join("+");
-        prop_assert_eq!(Chord::parse(&other).ok(), Some(chord));
+        let shift = shift && shift_ok;
+        let name = KeyName { modifiers: Held { ctrl, alt, shift, super_key }, key };
+        let mut modifiers = Modifiers::NONE;
+        for (on, modifier) in [
+            (ctrl, Modifiers::CONTROL),
+            (alt, Modifiers::ALT),
+            (shift, Modifiers::SHIFT),
+            (super_key, Modifiers::SUPER),
+        ] {
+            if on {
+                modifiers |= modifier;
+            }
+        }
+        let event = KeyEvent::new(code_of(key, shift), modifiers);
+        prop_assert_eq!(Chord::of_name(name), Chord::of_key(&event));
     }
 }

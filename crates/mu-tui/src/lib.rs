@@ -26,14 +26,14 @@ mod view;
 pub mod width;
 pub mod wrap;
 
-pub use config::{ClientConfig, Echo, KeyError, ServerTable, Settings};
+pub use config::Echo;
 pub use editor::{Editor, EditorId, EditorState};
-pub use keymap::{Chord, KeyNameError, Keymap, Wheel};
+pub use keymap::{Chord, Keymap, Wheel};
 pub use layout::{Leaf, Node, Size};
 pub use model::{Model, PaneId};
 pub use pane::{Caps, OutputPane, PaneState, Position};
 pub use registry::{Arg, ArgKind, ENTRIES, Entry, EntryId, candidates};
-pub use run::{CALL_LIMIT, control_of, reply_of, run, within};
+pub use run::{CALL_LIMIT, control_of, reply_of, run, timed, within};
 pub use text::echo_rows;
 pub use update::{Action, Effect, Msg, Reply, update};
 pub use view::view;

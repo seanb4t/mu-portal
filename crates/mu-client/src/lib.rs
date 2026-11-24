@@ -6,7 +6,7 @@ use std::time::Duration;
 use backon::{BackoffBuilder as _, ExponentialBackoff, ExponentialBuilder};
 use connectrpc::ConnectError;
 use connectrpc::client::{ClientConfig, Http2Connection, ServerStream, SharedHttp2Connection};
-use futures::Stream;
+use futures::{Stream, StreamExt as _};
 use mu_proto as proto;
 use proto::__buffa::oneof::subscribe_response::Message;
 use thiserror::Error;
@@ -45,6 +45,9 @@ pub enum ClientEvent {
     Event(proto::Event),
     /// The stream ended. The client subscribes again by itself.
     Lost,
+    /// The store hash of the client layers, from the watch of the configuration: the current
+    /// hash at each open of the watch, then each new one.
+    StoreHash(String),
 }
 
 /// The shortest wait between two subscribes.
@@ -68,6 +71,11 @@ type Transport = SharedHttp2Connection;
 type Events = ServerStream<
     <Transport as connectrpc::client::ClientTransport>::ResponseBody,
     proto::__buffa::view::SubscribeResponseView<'static>,
+>;
+
+type Hashes = ServerStream<
+    <Transport as connectrpc::client::ClientTransport>::ResponseBody,
+    proto::__buffa::view::WatchConfigResponseView<'static>,
 >;
 
 /// The client of one server, on its Unix socket.
@@ -157,6 +165,46 @@ impl PortalClient {
         Ok(())
     }
 
+    /// The configuration of the client of `kind`, `os` and `device`.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the call fails, such as `invalid_argument` for a bad name.
+    pub async fn client_config(
+        &self,
+        kind: &str,
+        os: &str,
+        device: &str,
+    ) -> Result<proto::GetClientConfigResponse, ClientError> {
+        let request = proto::GetClientConfigRequest {
+            kind: kind.to_owned(),
+            os: os.to_owned(),
+            device: device.to_owned(),
+            ..Default::default()
+        };
+        Ok(self.inner.get_client_config(request).await?.into_owned())
+    }
+
+    /// Asks the server to read its configuration directory again.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the call fails.
+    pub async fn reload_config(&self) -> Result<proto::ReloadConfigResponse, ClientError> {
+        let request = proto::ReloadConfigRequest::default();
+        Ok(self.inner.reload_config(request).await?.into_owned())
+    }
+
+    /// One watch of the store hash, with no resume: the current hash, then each new one.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the call fails.
+    pub async fn watch_config(&self) -> Result<HashStream, ClientError> {
+        let request = proto::WatchConfigRequest::default();
+        Ok(HashStream(self.inner.watch_config(request).await?))
+    }
+
     /// One stream from `from_seq`, with no resume: the `Hello`, then each event.
     ///
     /// # Errors
@@ -181,13 +229,89 @@ impl PortalClient {
             stream: None,
             opened_from: 0,
             quiet_hello: false,
-            backoff: backoff(),
-            wait: false,
+            reopen: Reopen::new(),
         };
         futures::stream::unfold(resume, |mut resume| async move {
             let event = resume.next().await;
             Some((event, resume))
         })
+    }
+
+    /// The store hashes of the client layers as [`ClientEvent::StoreHash`], with no end. After
+    /// an error or a clean end, the watch waits by [`backoff`] and opens again, and its first
+    /// hash is the current one.
+    pub fn config_hashes(&self) -> impl Stream<Item = ClientEvent> + Send + 'static {
+        let client = self.clone();
+        watch(move || {
+            let client = client.clone();
+            async move { Ok(client.watch_config().await?.into_stream()) }
+        })
+    }
+}
+
+/// The stream of one open of a watch.
+type HashItems = std::pin::Pin<Box<dyn Stream<Item = Result<String, ClientError>> + Send>>;
+
+/// Each hash of the streams that `open` gives, with no end. A failed open, an error and a clean
+/// end each open again after a wait by [`backoff`].
+fn watch<O, F>(open: O) -> impl Stream<Item = ClientEvent> + Send
+where
+    O: FnMut() -> F + Send,
+    F: Future<Output = Result<HashItems, ClientError>> + Send,
+{
+    let state = (open, None::<HashItems>, Reopen::new());
+    futures::stream::unfold(state, |(mut open, mut stream, mut reopen)| async move {
+        loop {
+            let Some(items) = stream.as_mut() else {
+                reopen.pause().await;
+                match open().await {
+                    Ok(items) => stream = Some(items),
+                    Err(_) => reopen.failed(),
+                }
+                continue;
+            };
+            if let Some(Ok(hash)) = items.next().await {
+                reopen.reached();
+                return Some((ClientEvent::StoreHash(hash), (open, stream, reopen)));
+            }
+            stream = None;
+            reopen.failed();
+        }
+    })
+}
+
+/// The wait before a stream opens again.
+struct Reopen {
+    backoff: ExponentialBackoff,
+    /// The next open waits first.
+    wait: bool,
+}
+
+impl Reopen {
+    fn new() -> Self {
+        Self {
+            backoff: backoff(),
+            wait: false,
+        }
+    }
+
+    /// Waits by the backoff, if the last open failed or the last stream ended.
+    async fn pause(&mut self) {
+        if self.wait {
+            tokio::time::sleep(self.backoff.next().unwrap_or(LONGEST_WAIT)).await;
+        }
+    }
+
+    /// The open failed or the stream ended, so the next open waits.
+    const fn failed(&mut self) {
+        self.wait = true;
+    }
+
+    /// A message of the open stream came: the next open does not wait, and the backoff starts
+    /// again.
+    fn reached(&mut self) {
+        self.backoff = backoff();
+        self.wait = false;
     }
 }
 
@@ -209,6 +333,36 @@ impl EventStream {
     }
 }
 
+/// One stream of [`PortalClient::watch_config`].
+pub struct HashStream(Hashes);
+
+impl HashStream {
+    /// The next store hash. None means a clean end.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the stream ends with an error.
+    pub async fn next(&mut self) -> Result<Option<String>, ClientError> {
+        Ok(self
+            .0
+            .message()
+            .await?
+            .map(|message| message.to_owned_message().store_hash))
+    }
+
+    /// The hashes as a stream that ends after a clean end or an error.
+    fn into_stream(self) -> HashItems {
+        Box::pin(futures::stream::unfold(Some(self), |hashes| async move {
+            let mut hashes = hashes?;
+            match hashes.next().await {
+                Ok(Some(hash)) => Some((Ok(hash), Some(hashes))),
+                Ok(None) => None,
+                Err(error) => Some((Err(error), None)),
+            }
+        }))
+    }
+}
+
 struct Resume {
     client: proto::PortalServiceClient<Transport>,
     last: u64,
@@ -217,9 +371,7 @@ struct Resume {
     opened_from: u64,
     /// The next `Hello` follows a reset that this client made, so it yields nothing.
     quiet_hello: bool,
-    backoff: ExponentialBackoff,
-    /// The next subscribe waits first.
-    wait: bool,
+    reopen: Reopen,
 }
 
 impl Resume {
@@ -231,7 +383,7 @@ impl Resume {
             };
             let Ok(Some(message)) = stream.message().await else {
                 self.stream = None;
-                self.wait = true;
+                self.reopen.failed();
                 return ClientEvent::Lost;
             };
             let message = message.to_owned_message().message;
@@ -253,9 +405,7 @@ impl Resume {
 
     /// Subscribes from the next number. A failure waits by the backoff and tries again.
     async fn open(&mut self) {
-        if self.wait {
-            tokio::time::sleep(self.backoff.next().unwrap_or(LONGEST_WAIT)).await;
-        }
+        self.reopen.pause().await;
         let from = self.last + 1;
         let request = proto::SubscribeRequest {
             from_seq: from,
@@ -266,13 +416,12 @@ impl Resume {
                 self.stream = Some(stream);
                 self.opened_from = from;
             }
-            Err(_) => self.wait = true,
+            Err(_) => self.reopen.failed(),
         }
     }
 
     fn hello(&mut self, instance_id: String) -> Option<ClientEvent> {
-        self.backoff = backoff();
-        self.wait = false;
+        self.reopen.reached();
         if self.instance.as_ref() == Some(&instance_id) {
             return (!std::mem::take(&mut self.quiet_hello)).then_some(ClientEvent::Resumed);
         }
@@ -308,6 +457,77 @@ mod tests {
     async fn backoff_schedule() {
         let millis: Vec<u128> = waits(8).await.iter().map(Duration::as_millis).collect();
         assert_eq!(millis, [100, 200, 400, 800, 1600, 3200, 5000, 5000]);
+    }
+
+    /// A watch whose opens give `opens` in order: a list of hashes for a stream that ends after
+    /// them, or `None` for a failed open. The count of opens comes back in `count`.
+    fn scripted(
+        opens: Vec<Option<Vec<&'static str>>>,
+        count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) -> impl Stream<Item = ClientEvent> {
+        let mut opens = opens.into_iter();
+        watch(move || {
+            count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let next = opens.next();
+            async move {
+                match next {
+                    Some(Some(hashes)) => Ok(Box::pin(futures::stream::iter(
+                        hashes.into_iter().map(|hash| Ok(hash.to_owned())),
+                    )) as HashItems),
+                    Some(None) => Err(ClientError {
+                        code: "unavailable",
+                        message: String::new(),
+                    }),
+                    None => Ok(Box::pin(futures::stream::pending()) as HashItems),
+                }
+            }
+        })
+    }
+
+    fn hash(text: &str) -> ClientEvent {
+        ClientEvent::StoreHash(text.to_owned())
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_watch_reports_each_hash() {
+        let count = std::sync::Arc::default();
+        let hashes: Vec<ClientEvent> = scripted(vec![Some(vec!["a", "b"])], count)
+            .take(2)
+            .collect()
+            .await;
+        assert_eq!(hashes, [hash("a"), hash("b")]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_watch_opens_again() {
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let opens = vec![Some(vec!["a"]), None, Some(vec!["b"])];
+        let hashes: Vec<ClientEvent> = scripted(opens, std::sync::Arc::clone(&count))
+            .take(2)
+            .collect()
+            .await;
+        assert_eq!(
+            (hashes, count.load(std::sync::atomic::Ordering::SeqCst)),
+            (vec![hash("a"), hash("b")], 3)
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_watch_waits_before_each_open_after_a_loss() {
+        let count = std::sync::Arc::default();
+        let opens = vec![Some(vec!["a"]), None, Some(vec!["b"])];
+        let start = tokio::time::Instant::now();
+        let hashes: Vec<ClientEvent> = scripted(opens, count).take(2).collect().await;
+        // The timer of the paused clock rounds each sleep up to the next millisecond.
+        let waited = start.elapsed();
+        assert_eq!(
+            (
+                hashes,
+                waited >= Duration::from_millis(300),
+                waited < Duration::from_millis(310)
+            ),
+            (vec![hash("a"), hash("b")], true, true)
+        );
     }
 
     #[tokio::test(start_paused = true)]

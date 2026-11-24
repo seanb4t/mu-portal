@@ -56,14 +56,14 @@ ratatui = { version = "0.30.2", default-features = false, features = ["layout-ca
 ratatui-textarea = { version = "0.9.4", default-features = false }
 rcgen = "0.14.10"
 reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "rustls-no-provider"] }
-rustix = { version = "1.1.6", features = ["fs", "process", "pty"] }
+rustix = { version = "1.1.6", features = ["fs", "process", "pty", "system"] }
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std"] }
-same-file = "1.0.6"
 secrecy = "0.10.3"
 serde = { version = "1.0.229", features = ["derive"] }
 serde-saphyr = "2.1.1"
 serde_json = "1.0.154"
 serde_path_to_error = "0.1.20"
+sha2 = "0.10.9"
 syn = { version = "3.0.10", default-features = false }
 tempfile = "3.27.0"
 termina = { version = "0.3.3", features = ["event-stream"] }
@@ -76,9 +76,11 @@ tracing-opentelemetry = { version = "0.34.0", default-features = false, features
 tracing-subscriber = "0.3.23"
 unicode-segmentation = "1.13.3"
 unicode-width = "0.2.3"
+url = "2.5.9"
 uuid = { version = "1.29.2", features = ["v4"] }
 vt100 = "0.18.1"
 vte = "0.15.0"
+walkdir = "2.5.0"
 
 # The fork of ratatui-textarea, at its branch `mu`: a cursor that moves by grapheme, a width
 # function, and the count of the wrapped rows. The patch applies only while the fork has the
