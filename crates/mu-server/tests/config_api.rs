@@ -21,6 +21,7 @@ fn open(root: &Path) -> Store {
         Some(root),
         DirSnapshot::take(root).unwrap(),
         Box::new(|_| Ok(())),
+        Box::new(|_| {}),
     )
     .unwrap()
     .store

@@ -1,35 +1,51 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-24T17:39:38+00:00
-head: c832ad0a3d3cda13bde36e6e777e79a398646f2e
-round: 15
-next_id: 350
+reviewed_at: 2026-11-24T17:49:05+00:00
+head: d85fc7781896e8bc9e85b411fd6b297f9fa4c909
+round: 16
+next_id: 363
 lenses:
   spec-lint: not-applicable
   approach: ok
   fit: ok
   test-coverage: ok
-  test-honesty: ok
-  invariants: partial
-  verify: ok
+  test-honesty: partial
+  invariants: ok
+  verify: not-applicable
 ---
 # Review
+
+## Incomplete lenses
+
+- test-honesty: partial, gaps: 1
+  - Not read: bootstrap.rs, client.rs, snapshot.rs, mu-config tests, rest of config_store.rs and store.rs, mu-client tests, design.md decisions
+
+The verdict covers only what the lenses checked. While the `ctl-lens` row of an incomplete lens is open, the verdict cannot be `approve`.
 
 ## Findings
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-345 | test-coverage | should-fix | in-change | delta scenario 'A reload of a removed directory' has no matrix row | review > absent-row — "A reload of a removed directory" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-346 | test-coverage | should-fix | in-change | delta scenario 'The server writes the notices of a reload' has no matrix row | review > absent-row — "The server writes the notices of a reload" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-347 | test-coverage | should-fix | in-change | delta scenario 'An open socket directory' has no matrix row | review > absent-row — "An open socket directory" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-348 | test-coverage | should-fix | in-change | delta scenario 'A control character in the reply' has no matrix row | review > absent-row — "A control character in the reply" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-349 | test-coverage | should-fix | in-change | delta scenario 'A failed fetch is tried again' has no matrix row | review > absent-row — "A failed fetch is tried again" | add the row with its covering task or test |  |  | unmet-requirement |
-| R-344 | verify | should-fix | in-change | config_failed counts and notices a failed fetch even when the configuration is no longer stale. Fetches run concurrently, so an older fetch that fails after a newer one applied shows a spurious notice and leaves config_failures at 1 until the next apply. The next real failure then shows no notice and waits 200 ms, against the scenario A failed fetch is tried again (one notice, a wait of 100 ms). | crates/mu-tui/src/update.rs:854 — "if model.config_failures == 0 {" | In config_failed, return no effect and change neither the notice nor config_failures when config_stale(model) is false; add a test where a failure arrives after the latest hash applied, then a new hash fails and still shows one notice and waits 100 ms. |  |  | unmet-requirement |
+| R-350 | approach | should-fix | in-change | The requirement 'A failed fetch is tried again' (one notice, then a fetch again after a growing wait, reset by an apply) has no decision. D8 names only the fetch on a new hash and the apply; the retry lives only in update.rs and an Enforcement row. | specs/config-store/spec.md > Requirement: A failed fetch is tried again — "the client SHALL show one notice and SHALL fetch again after a wait that grows with each failure." | Add to D8 the rule of a failed fetch: a failure while the hash is stale shows one notice, waits by mu_client::backoff, fetches again, and an apply resets the count. |  |  | next-change |
+| R-351 | approach | should-fix | in-change | The requirement 'The server keeps and writes the result of a reload' has no decision: no decision says that a reload of a missing directory keeps the current client layers and fails with a line that names the directory. D2 covers only a walk error inside the snapshot. | specs/config-store/spec.md > Requirement: The server keeps and writes the result of a reload — "If the configuration directory does not exist at a reload, the server SHALL keep the current client layers" | Add to D2 the reload of a missing directory: the store keeps the current client part, returns a notice that names the directory, and mu config reload exits 1. |  |  | next-change |
+| R-352 | approach | should-fix | in-change | D2 says the store writes nothing to stderr and mu-cli writes each notice through warn. At head the reload in the store logs each notice itself with tracing::warn, and design.md records no deviation. | design.md > D2. The store lives in `mu-server` and keeps a snapshot — "The store writes nothing to stderr. It returns its notices, and `mu-cli` writes each one through `warn`" | Record in D2 that the reload writes each notice to the server log through tracing, and say how that path keeps one line per notice, or route the reload notices through warn. |  |  | next-change |
+| R-353 | approach | should-fix | in-change | The requirement 'mu config reaches only a private socket' has no decision. D6 names private_dir for mu client and says mu config creates no directory, but no decision has mu config refuse an open or foreign socket directory (checked_dir at head) or filter what show prints to stdout. | specs/config-store/spec.md > Requirement: mu config reaches only a private socket — "`mu config show` and `mu config reload` SHALL refuse a socket directory that exists and that another user owns" | Add to D6 that mu config checks an existing socket directory with checked_dir of socket.rs before it connects, and that show writes its stdout through the REPORT map. |  |  | next-change |
+| R-354 | approach | should-fix | in-change | No decision removes --config from mu client or keeps it off the server that the client starts. The scenario 'The client takes the flag' (exit 2) and the rule that the client passes no --config rest on the proposal alone; D7 says only that the directory compare goes away. | specs/server-process/spec.md > Requirement: The client starts a server — "The client SHALL NOT pass `--config` to the new server, which finds its directory from the environment that it inherits." | Add to D7 that ClientArgs holds only the bootstrap flags, so --config is a usage error, and that the started server gets only --socket and finds its directory from the environment. |  |  | next-change |
+| R-355 | fit | should-fix | in-change | A bad client layer reaches the server's stderr by two mechanisms. At start, mu-cli writes each store notice through warn. At reload, the store writes it with tracing::warn!. So one bad layer gives two line formats, and D2 says the store writes nothing to stderr. | crates/mu-server/src/store.rs:461 — "tracing::warn!("{notice}");" | Write the notices of the start and of a reload by one path. Either Store::open logs its notices with the same tracing::warn! as reload, because mu-cli installs the subscriber before Store::open. Or the store takes a notice sink from mu-cli, beside ServerCheck, that calls warn. Then make D2 name that one path. |  |  | drift |
+| R-356 | fit | should-fix | in-change | snapshot.rs writes the case rule of a top-level name (the same name in any case, and the same entry by same_entry) twice: is_top_file for server.toml, and an inline copy in Walker::parts for clients. The copies already differ. is_top_file turns a stat error into an error entry, but the clients copy turns it into 'not clients' with unwrap_or(false). | crates/mu-core/src/world/snapshot.rs:310 — "&& first.eq_ignore_ascii_case(CLIENTS_DIR)" | Make is_top_file a function of the canonical name, is_named(root, name, canonical) -> io::Result<bool>. Call it for both SERVER_FILE and CLIENTS_DIR, with one rule for a stat error. |  |  | drift |
+| R-357 | fit | should-fix | in-change | The source paths of a client layer are an inline vec!["echo"] in ClientPart::resolve, with inline defaults. The closest pattern, the world merge, keeps the paths in FIELD_PATHS beside the field types, and the test each_field_has_a_source guards them. #172 adds layout fields, and a field missing from the inline list gets no source, so mu config show prints it as default. D2 and D5 name neither the pattern nor a reason. | crates/mu-server/src/store.rs:319 — "let mut paths = vec!["echo".to_owned()];" | Add to mu-config a constant of the field paths of a client layer, beside ClientLayer, and a function for its defaults. ClientPart::resolve takes both from there. Add a test, as each_field_has_a_source does, that a layer which sets every field gets a source for each path of that constant. |  |  | next-change |
+| R-358 | invariants | should-fix | in-change | The walk enters at most LINKED_DIRS_MAX directories through links, but the only test asserts limits > 0 and a loose size bound. An off-by-one that enters 65 directories, or a check of > in place of ==, still passes it. | crates/mu-core/src/world/snapshot.rs:229 — "if self.linked_dirs == LINKED_DIRS_MAX {" | Add a test in crates/mu-core/tests/snapshot.rs with exactly LINKED_DIRS_MAX + 1 links under clients/ to distinct plain directories, each holding one file. Assert that the files of exactly LINKED_DIRS_MAX of them are kept and exactly one link is a limit error. |  |  | false-test |
+| R-359 | invariants | should-fix | in-change | connect_wait refuses a value under 1 ns and must accept 1 ns itself. Tests pass only 1e-10 and 0. No test passes 1e-9, so a change of >= to > refuses the edge the spec allows and every test still passes. | crates/mu-cli/src/client.rs:38 — ".filter(\|seconds\| *seconds >= 1e-9)" | Add a unit test in crates/mu-cli/src/client.rs that asserts connect_wait(1e-9) is Ok(Duration::from_nanos(1)), beside the refusal of 1e-10. |  |  | unmet-requirement |
+| R-360 | invariants | should-fix | in-change | The failure count of a fetch resets only at an apply. If the hash returns to the applied one with no reply (a reverted file and a reload), the count stays. The next failed fetch then shows no notice and waits 200 ms, not 100 ms. | crates/mu-tui/src/update.rs:222 — "model.config_failures = 0;" | In the StoreHash arm of on_client, set config_failures to 0 when config_stale is false. Add a test in crates/mu-tui/tests/update.rs: h1 applied, h2 and a failure, then h1, then h3 and a failure. Assert two notices and a second wait of 100 ms. |  |  | wrong-behaviour |
+| R-361 | test-honesty | should-fix | in-change | the_revision_frames_each_layer passes without length framing: path bytes between the two layers already make the unframed inputs differ. | crates/mu-server/tests/store.rs:283 — "write(dir.path(), "clients/global.toml", "echo = \\"show\\"\\n[keys]\\n");" | Make the layer before hold the next layer's path as its own bytes (as a_layer_that_holds_the_next_entry does) and remove the next file, or assert against an unframed concatenation. Only the proptest then guards framing. |  |  | false-test |
+| R-362 | approach | suggestion | in-change | D6 lists username and password among the calls of the URL parser. parse_url at head calls neither; a user or a password is refused only because Url::parse fails on the empty host. | design.md > D6. The bootstrap values — "So the parser uses `Url::parse`, `scheme`, `has_authority`, `host_str`, `username`, `password`, `fragment`, `query_pairs" | Drop username and password from the list in D6 and state that Url::parse refuses a user or a password with an empty host, or add the two checks to parse_url. |  | severity? should-fix 0.74 |  |
 
 ## Repeats
 
-None.
+| id | lens | severity | claim | evidence |
+|---|---|---|---|---|
+| R-158 | test-honesty | should-fix | lens test-honesty reported partial, gaps: 1 | review > lens-status — "test-honesty partial" |
 
 ## Out of bound
 
@@ -67,10 +83,11 @@ None.
 | 13 | implementation | follow-up | 58e8c309326c197de4cb81c911c30cc9c45ff953 | d0e2c9ddd4322ac6a9c7e4027bdbd9ddd4cf3f26774f056d8c8721cc5c8adfcf | changes-requested | 0 | 0 | 1 | 0 | 0 |  |
 | 14 | implementation | follow-up | 64176f447122666fcc32ba051a1aae6d6903f017 | 3466ffedc464a9eb5976faa131091081c55691bde602b270e5ccbeb9077215ac | approve | 0 | 0 | 0 | 1 | 0 |  |
 | 15 | implementation | follow-up | c832ad0a3d3cda13bde36e6e777e79a398646f2e | c0b348b8c79099be88eb99a5a15d5fe4eb6655358d7a2b3f31e87a5882ee851a | approve-with-notes | 6 | 0 | 0 | 0 | 0 |  |
+| 16 | implementation | full | d85fc7781896e8bc9e85b411fd6b297f9fa4c909 | d0ae1b63adb43dc2d597e7a6d912cd35d6c539b4088a1ac5967d4f36d9a82e46 | approve-with-notes | 13 | 1 | 0 | 0 | 0 | the suite fixes added five scenarios that need coverage matrix rows (R-345 to R-349) |
 
 ## Judge
 
-judge: 2 questions, 0.000 USD
+judge: 26 questions, 0.001 USD
 
 ## Coverage matrix
 
@@ -185,11 +202,16 @@ judge: 2 questions, 0.000 USD
 | A reload lists a changed server file | crates/mu-cli/tests/config_store.rs: a_reload_lists_a_changed_server_file | covered | pass |
 | A second reload lists the world change again | crates/mu-cli/tests/config_store.rs: a_second_reload_lists_the_world_change_again | covered | pass |
 | A reload with no server | crates/mu-cli/tests/config_store.rs: a_reload_with_no_server | covered | pass |
+| A reload of a removed directory | crates/mu-cli/tests/config_store.rs: a_reload_of_a_removed_directory_keeps_the_layers | covered | pass |
+| The server writes the notices of a reload | crates/mu-cli/tests/config_store.rs: the_server_logs_each_notice_of_a_reload | covered | pass |
+| An open socket directory | crates/mu-cli/tests/config_store.rs: mu_config_refuses_an_open_socket_directory | covered | pass |
+| A control character in the reply | crates/mu-cli/tests/config_store.rs: mu_config_filters_what_it_prints | covered | pass |
 | A new binding works without a restart | crates/mu-cli/tests/client.rs: a_new_binding_works_without_a_restart | covered | pass |
 | A reload while the stream is down | crates/mu-cli/tests/client.rs: a_reload_while_the_stream_is_down | covered | pass |
 | A reload across a server restart | crates/mu-cli/tests/client.rs: a_reload_across_a_server_restart | covered | pass |
 | A bad layer after a reload | crates/mu-cli/tests/client.rs: a_bad_layer_after_a_reload | covered | pass |
 | A clients directory that turns unlistable | crates/mu-cli/tests/client.rs: a_clients_directory_that_turns_unlistable | covered | pass |
+| A failed fetch is tried again | crates/mu-tui/tests/update.rs: a_failed_fetch_fetches_again | covered | pass |
 | A bad device layer at attach | crates/mu-cli/tests/client.rs: a_bad_device_layer_at_attach | covered | pass |
 | A client with no server starts one | crates/mu-cli/tests/client.rs: a_client_with_no_server_starts_one | covered | pass |
 | No server answers in time | crates/mu-cli/tests/client.rs: no_server_answers_in_time | covered | pass |
@@ -241,164 +263,169 @@ None.
 
 ## Verification runs
 
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_bad_name)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_fragment)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_host)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_name_of_64_characters)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_name_of_65_characters)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_negative_wait)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_password)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_path_with_a_space)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_relative_path)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_short_wait)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_user)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_wait_of_zero)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_wait_that_is_not_a_number)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_wait_under_one_nanosecond)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=an_empty_device_flag)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=an_empty_device_variable)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=an_empty_server_variable)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=an_infinite_wait)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=an_option_twice)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=an_unknown_option)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=another_scheme)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=mu_socket_does_not_count)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=no_double_slash)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=the_default)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=the_device_flag_wins)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=the_device_variable)'`
-- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=the_host_name)'`
+- exit 0: `cargo nextest run -p mu-cli --test cli --locked -E 'test(=help_lists_verbs)'`
+- exit 0: `cargo nextest run -p mu-cli --test cli --locked -E 'test(=help_for_one_verb)'`
 - exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=the_server_flag_wins)'`
 - exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=the_server_variable)'`
-- exit 0: `cargo nextest run -p mu-cli --test cli --locked -E 'test(=help_for_one_verb)'`
-- exit 0: `cargo nextest run -p mu-cli --test cli --locked -E 'test(=help_lists_verbs)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_bad_device_layer_at_attach)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_bad_layer_after_a_reload)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_binding_of_ctrl_shift_z)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_binding_of_shift_tab)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_binding_replaces_a_default)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_client_with_no_server_starts_one)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_clients_directory_that_turns_unlistable)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_key_bound_to_connect_with_no_world_in_focus)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_new_binding)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_new_binding_works_without_a_restart)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_reload_across_a_server_restart)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_reload_while_the_stream_is_down)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_removed_binding)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_server_that_closes_the_connection)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_server_that_does_not_answer)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_trailing_space_is_no_argument)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=connect_the_world_in_focus)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=disconnect_a_named_world)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=disconnect_an_unknown_world)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=hide)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=no_notice_about_another_directory)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=no_server_answers_in_time)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=no_terminal)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=no_terminal_on_stdin)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=none_on_a_key_with_a_modifier)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=show)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_client_takes_the_flag)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_client_warns_of_a_missing_directory)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_default_dims)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_default_keys_stay)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_device_layer_applies)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=an_empty_server_variable)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=the_default)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=mu_socket_does_not_count)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_path_with_a_space)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=another_scheme)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_host)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_user)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_password)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_fragment)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=no_double_slash)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_relative_path)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_wait_of_zero)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_negative_wait)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_wait_that_is_not_a_number)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=an_infinite_wait)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_wait_under_one_nanosecond)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=an_unknown_option)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=an_option_twice)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_short_wait)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=the_device_variable)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=the_device_flag_wins)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=an_empty_device_variable)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=the_host_name)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_bad_name)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_name_of_64_characters)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=a_name_of_65_characters)'`
+- exit 0: `cargo nextest run -p mu-cli --test bootstrap --locked -E 'test(=an_empty_device_flag)'`
 - exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_kind_layer_applies)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_device_layer_applies)'`
 - exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_os_layer_applies)'`
 - exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_socket_flag)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_started_server_finds_the_default_directory)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_started_server_inherits_mu_config)'`
-- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=two_clients_start_at_the_same_time)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_bad_device_layer_at_start)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_bad_echo_value)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_binding_of_a_dot)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_changed_layer_gives_a_new_revision)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_clients_directory_in_another_case)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_control_character)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_control_character_in_a_layer_name)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_device_file_with_a_bad_name)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_device_with_no_file)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_fifo_under_clients)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_file_that_cannot_be_read)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_file_that_is_not_a_layer)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_file_that_is_not_toml)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_layer_for_an_unknown_kind)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_layer_for_an_unknown_os)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_layer_of_another_device_leaves_the_revision)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_layer_without_echo_keeps_the_earlier_echo)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_line_break_in_a_binding)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_line_break_in_a_layer_name)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_link_to_an_unreadable_directory_under_clients)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_link_to_nothing_under_clients)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_loop_of_links_under_clients)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_notice_for_a_bad_layer_that_applies)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_applies_a_client_layer)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_does_not_apply_a_world_change)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_lists_a_changed_server_file)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_with_a_bad_game_of_two_worlds)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_with_a_bad_layer)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_with_a_bad_world_file)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_with_a_link_to_nothing_in_games)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_with_no_server)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_with_two_bad_world_files)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_with_two_stray_files)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_second_reload_lists_the_world_change_again)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=connect_the_world_in_focus)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=disconnect_a_named_world)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_key_bound_to_connect_with_no_world_in_focus)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=connect_with_no_world_in_focus)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_trailing_space_is_no_argument)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=disconnect_an_unknown_world)'`
 - exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_server_table)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=an_entry_that_needs_an_argument)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=an_unknown_entry)'`
 - exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=an_unknown_field)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=an_unknown_key_name)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=an_unknown_os_flag)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=an_unlistable_clients_directory)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=an_uppercase_key)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=another_os)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=keys_merge_key_by_key)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=no_clients_directory)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=no_notice_for_a_bad_layer_of_another_device)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=no_server)'`
 - exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=not_toml)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=one_bad_binding_skips_its_whole_layer)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=shift_with_a_digit)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=show_filters_a_control_character_in_a_notice)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=the_device_wins)'`
-- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=the_same_files_give_the_same_revision)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_file_that_cannot_be_read)'`
 - exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=two_names_of_one_key)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=an_uppercase_key)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_control_character)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=shift_with_a_digit)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=an_unknown_entry)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=an_unknown_key_name)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=an_entry_that_needs_an_argument)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_binding_of_shift_tab)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_binding_of_ctrl_shift_z)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_new_binding)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_default_keys_stay)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_removed_binding)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_binding_replaces_a_default)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=none_on_a_key_with_a_modifier)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_default_dims)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=show)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=hide)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_bad_echo_value)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_bad_device_layer_at_start)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_file_that_is_not_a_layer)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_device_file_with_a_bad_name)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_link_to_nothing_under_clients)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_binding_of_a_dot)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=an_unlistable_clients_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_control_character_in_a_layer_name)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_line_break_in_a_layer_name)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_line_break_in_a_binding)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_link_to_an_unreadable_directory_under_clients)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_file_that_is_not_toml)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_loop_of_links_under_clients)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_clients_directory_in_another_case)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_layer_for_an_unknown_os)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_fifo_under_clients)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_layer_for_an_unknown_kind)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=no_clients_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_device_with_no_file)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=the_device_wins)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=keys_merge_key_by_key)'`
 - exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=two_names_of_one_key_in_two_layers)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_bad_client_layer_does_not_stop_the_worlds)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_game_named_clients)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_leftover_client_toml)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_stray_character_file)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_stray_file_under_a_character)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_stray_game_file)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=an_unreadable_server_file_leaves_world_list)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=character_named_server_is_a_world)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=character_with_no_game)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=default_directory)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=directory_under_home)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=empty_mu_config)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=file_name_outside_the_id_rule)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=flag_wins_over_the_environment)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=link_to_nothing_is_an_error)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=missing_default_directory_is_quiet)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=missing_directory)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=no_home_directory)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=relative_xdg_config_home)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=server_file_makes_no_world)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=stray_file)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=the_file_of_the_client)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=worlds_from_character_files)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_layer_without_echo_keeps_the_earlier_echo)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=one_bad_binding_skips_its_whole_layer)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_notice_for_a_bad_layer_that_applies)'`
 - exit 0: `cargo nextest run -p mu-server --test config_api --locked -E 'test(=a_bad_device_name_in_a_call)'`
 - exit 0: `cargo nextest run -p mu-server --test config_api --locked -E 'test(=a_bad_kind_in_a_call)'`
 - exit 0: `cargo nextest run -p mu-server --test config_api --locked -E 'test(=a_bad_os_in_a_call)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_failed_first_list_after_an_event)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_focus_key_before_the_first_list)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_notice_before_the_first_list)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_send_before_the_first_list)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_event_before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=no_notice_for_a_bad_layer_of_another_device)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=the_same_files_give_the_same_revision)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_changed_layer_gives_a_new_revision)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_layer_of_another_device_leaves_the_revision)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=no_server)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=another_os)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=an_unknown_os_flag)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=show_filters_a_control_character_in_a_notice)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_applies_a_client_layer)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_with_a_bad_layer)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_does_not_apply_a_world_change)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_with_two_bad_world_files)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_with_a_bad_game_of_two_worlds)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_with_two_stray_files)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_with_a_bad_world_file)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_with_a_link_to_nothing_in_games)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_lists_a_changed_server_file)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_second_reload_lists_the_world_change_again)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_with_no_server)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=a_reload_of_a_removed_directory_keeps_the_layers)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=the_server_logs_each_notice_of_a_reload)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=mu_config_refuses_an_open_socket_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=mu_config_filters_what_it_prints)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_new_binding_works_without_a_restart)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_reload_while_the_stream_is_down)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_reload_across_a_server_restart)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_bad_layer_after_a_reload)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_clients_directory_that_turns_unlistable)'`
+- exit 0: `cargo nextest run -p mu-tui --test update --locked -E 'test(=a_failed_fetch_fetches_again)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_bad_device_layer_at_attach)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_client_with_no_server_starts_one)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=no_server_answers_in_time)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=two_clients_start_at_the_same_time)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_server_that_closes_the_connection)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_server_that_does_not_answer)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_started_server_finds_the_default_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_started_server_inherits_mu_config)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=no_notice_about_another_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=no_terminal)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=no_terminal_on_stdin)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=before_the_first_list)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=connect_with_no_world_in_focus)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_send_before_the_first_list)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=text_typed_before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=an_event_before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_focus_key_before_the_first_list)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_failed_first_list_after_an_event)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_notice_before_the_first_list)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_first_list_fails)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=flag_wins_over_the_environment)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=default_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=directory_under_home)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=empty_mu_config)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=relative_xdg_config_home)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=no_home_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=missing_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=missing_default_directory_is_quiet)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_client_warns_of_a_missing_directory)'`
+- exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_client_takes_the_flag)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=worlds_from_character_files)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=character_with_no_game)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=file_name_outside_the_id_rule)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=stray_file)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_stray_character_file)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_stray_game_file)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_stray_file_under_a_character)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=link_to_nothing_is_an_error)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=server_file_makes_no_world)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=character_named_server_is_a_world)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=the_file_of_the_client)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=an_unreadable_server_file_leaves_world_list)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_game_named_clients)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_bad_client_layer_does_not_stop_the_worlds)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_leftover_client_toml)'`
 
 ## Dropped
 
@@ -406,9 +433,37 @@ None.
 
 ## Lens notes
 
-- verify: prior.json has no fixed entry with a basis, so this round answers no row in fixes.
-- verify: openspec/specs/client-config/spec.md line 4 is in diff-hunks.txt; a main spec edited inside a change was not judged, since it is not a question of this agent.
-- verify: The reload notices go to the server stderr through tracing::warn!, and the stderr layer of mu server writes WARN lines to stderr (crates/mu-cli/src/telemetry/pipeline.rs 445).
+- approach: Checked against head: the ALLOWED_CRATES rows of D1 and D6, DirSnapshot and LINKED_DIRS_MAX of D2, merge_layers, server_config::check, the shared ControlMap filter, the watch channel with send_if_modified, the D4 framing and Sha256::digest with 16 hex digits, the proto of D5, Reopen shared by both streams, ClientEvent::StoreHash, answered and timed of D6 and D7, the D9 views, and the figment2 0.11.5 citations of D2. Each holds.
+- approach: Every test name in the Enforcement table exists at head.
+- approach: app-3 assumes the tracing subscriber of mu server writes warn records to stderr, as the passing test the_server_logs_each_notice_of_a_reload implies; the subscriber setup was not read.
+- fit: Three places state the backoff ceiling as a fallback: LONGEST_WAIT in mu-client, DEFAULT_WAIT in answers of mu-cli, and Duration::from_secs(5) in config_failed of mu-tui. backoff() has no max times, so no fallback can be reached, and no finding is raised.
+- fit: config_file.rs now holds only FileError, which server_config.rs re-exports as ServerFileError, so one type has two names. Nothing can drift from this, so no finding is raised.
+- fit: D9: the LikeC4 model adds the part Configuration store and the crate mu-config with their edges, and the dynamic views clientStart and configReload follow the pattern of keyPress.
+- fit: Earlier fit rows checked again at head and found closed: the shared control filter (R-124), the Reopen type (R-104), answered and timed (R-105, R-162), the request built by config::fetch (R-146), the PLACES table (R-147), the by_name lookup (R-184) and the Echo spelling (R-164).
+- invariants: I1: A device name always has 1 to 64 characters from a-z, 0-9, -, _ and . \| enforced at crates/mu-config/src/names.rs:142 DeviceName::new \| boundary test a_device_name_of_64, a_device_name_of_65, an_empty_device_name (mu-config) and a_name_of_64_characters, a_name_of_65_characters, an_empty_device_flag (bootstrap.rs)
+- invariants: I2: connect_wait is always finite and at least 1 ns \| enforced at crates/mu-cli/src/client.rs:36 connect_wait \| boundary test a_wait_under_one_nanosecond and a_wait_of_zero refuse; no test accepts 1e-9 (inv-2)
+- invariants: I3: The walk never enters more than LINKED_DIRS_MAX directories through links \| enforced at crates/mu-core/src/world/snapshot.rs:229 \| boundary test none exact; a_mesh_of_linked_directories_stops_at_the_limit asserts limits > 0 only (inv-1)
+- invariants: I4: No canonical key name holds a dot, and each canonical name reads back to the same key \| enforced at crates/mu-config/src/key.rs:195 Display and NAMED \| boundary test key_names_read_back (property) and a_dot_key_has_the_canonical_name_period
+- invariants: I5: A store notice never holds a control character, and keeps the number of characters \| enforced at crates/mu-config/src/filter.rs:29 STORE and crates/mu-server/src/store.rs:41 Notice::whole \| boundary test the_filter_leaves_no_control_character (property) and the_store_map_replaces_a_line_break
+- invariants: I6: Two different entry lists never give the same framed input \| enforced at crates/mu-server/src/store.rs:118 framed \| boundary test two_layer_lists_give_two_inputs (property, lists of 0 to 2 entries) and the_revision_frames_each_layer
+- invariants: I7: Function keys are f1 to f12 only \| enforced at crates/mu-config/src/key.rs:214 \| boundary test f1_and_f12_are_read, and f0, f01, f13 refused in keys.rs
+- invariants: I8: A reply applies only if its store hash is the latest hash \| enforced at crates/mu-tui/src/update.rs:220 \| boundary test a_stale_reply_is_dropped and the property the_latest_hash_wins
+- invariants: I9: A new store hash goes out only when the hash differs, and after the new client part is visible \| enforced at crates/mu-server/src/store.rs:477 send_if_modified on the watch channel \| boundary test a_reload_with_no_change_sends_nothing and a_fetch_on_a_new_hash_gets_the_new_revision
+- invariants: I10: A reload always compares with the snapshot of the start \| enforced at crates/mu-server/src/store.rs:487 changed(&self.start, ...) and start is never replaced \| boundary test a_second_reload_lists_the_world_change_again
+- invariants: I11: A failed fetch counts only while the configuration is stale \| enforced at crates/mu-tui/src/update.rs:854 config_failed \| boundary test a_late_failure_of_an_old_fetch_does_not_count
+- invariants: I12: A server URL has scheme unix, an authority with no host, no fragment, an absolute path and at most one connect_wait \| enforced at crates/mu-cli/src/bootstrap.rs:128 parse_url \| boundary test the refusal tests of bootstrap.rs (another_scheme to an_option_twice)
+- invariants: I13: Each failed-fetch episode starts with one notice and a 100 ms wait \| enforced at crates/mu-tui/src/update.rs:222 only, at an apply \| boundary test each_failed_fetch_waits_longer_until_an_apply covers the reset by an apply, none covers a stale episode that ends with no apply (inv-3)
+- invariants: I14: A client layer path is a layer file only if its name passes the check of its place \| enforced at crates/mu-server/src/store.rs:193 layer_rule \| boundary test a_device_file_with_a_bad_name, a_layer_for_an_unknown_kind, a_layer_for_an_unknown_os, a_file_that_is_not_a_layer
+- invariants: I15: A reply with the same revision changes nothing in the model \| enforced at crates/mu-tui/src/config.rs:39 \| boundary test the_same_revision_changes_nothing
+- invariants: No enforcement point is a script, so no edge input was run. The probe directory inv-probe holds only the envelope builder.
+- invariants: The modified requirements of world-config, terminal-client, server-process, client-commands and cli-entrypoint carry no new invariant beyond I1 to I15. D9 (documentation and diagrams) holds no invariant.
+- test-coverage: I read the bodies of about 30 tests and matched the rest by name and by the function list; those rows are covered at confidence 0.6 to 0.9. No row has a weaker assertion than its THEN step in the tests I read.
+- test-coverage: a_clients_directory_in_another_case is cfg(target_os = macos), so Linux CI never runs it. Its GIVEN needs a case-insensitive file system, so this is expected.
+- test-coverage: a_file_that_cannot_be_read and an_unreadable_server_file_leaves_world_list depend on a non-root user. Under root the first one skips and the second one cannot lock the file.
+- test-coverage: Orphan tests that no scenario names: a_bad_world_still_stops_the_start, a_bad_game_does_not_hide_a_bad_character_of_another_game, server_file_in_another_case.
+- test-coverage: The BREAKING removals each have a scenario: the_socket_flag for --socket, a_leftover_client_toml for client.toml, no_notice_about_another_directory for the directory notice.
+- test-honesty: No disabled or skipped tests found in crates/*/tests.
+- test-honesty: the_latest_hash_wins in update.rs asserts only when the revision changes, so a stale reply with the same revision as the current one goes unchecked (weak, not reported).
 
 ## Ledger
 
@@ -571,7 +626,7 @@ None.
 | R-155 | 10 | 10 | suggestion | in-change |  | ["artifact",["design.md","D4. The revision is a hash of the layers that apply"],"`Sha256::new()`, one `Digest::update` call for each slice, then `finalize()`."] | fixed | c23878086671b1a01ca1858a1dc8a5fa12246650 | 10 |  |  | D4 names the sha2 calls Sha256::new, one Digest::update for each slice, then finalize. The code builds one framed Vec and calls Sha256::digest once. |
 | R-156 | 10 | 10 | suggestion | in-change |  | ["artifact",["design.md","D6. The bootstrap values"],"Every flag of `mu-cli` with a variable is one `clap` argument with `env` and the value parser `parse_path`, which turns an empty value into none."] | fixed | c23878086671b1a01ca1858a1dc8a5fa12246650 | 10 |  | severity? should-fix 0.75 | D6 says that every mu-cli flag with a variable is one clap argument with env and parse_path. At head, --server has env, but its value is a plain String, and its own filter makes an empty flag unset too. D6 names only --device as the exception. |
 | R-157 | 10 | 10 | suggestion | in-change |  | ["path","crates/mu-server/src/store.rs",145] | fixed | c23878086671b1a01ca1858a1dc8a5fa12246650 | 10 |  |  | digest hand-writes the hex form of the first 8 bytes of the hash. The output of Sha256::digest in sha2 0.10.9 is a GenericArray, whose LowerHex takes a precision, so format!("{:.16x}", ...) gives the first 16 hex digits. The design does not name it. |
-| R-158 | 10 | 10 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: none; reason: a full round 11 reruns the test-honesty lens over the files it did not read |  |  |  | lens test-honesty reported partial, gaps: 1 |
+| R-158 | 10 | 16 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: none; reason: a full round 11 reruns the test-honesty lens over the files it did not read |  |  |  | lens test-honesty reported partial, gaps: 1 |
 | R-159 | 11 | 14 | blocker | in-change | wrong-behaviour | ["path","crates/mu-core/src/world/snapshot.rs",177] | resolved | resolved in round 14 from fixed 50ec9a0257165f27f220ff2393dde8f63467143d | 13 |  | severity? should-fix 0.61 | The snapshot marks server.toml as a top file only when it is a regular file. A FIFO or other non-regular entry named server.toml now stops mu world list and the server start with a stray-file error. The base scan skipped any top-level entry of that name. |
 | R-160 | 11 | 12 | should-fix | in-change | drift | ["path","crates/mu-core/src/world/snapshot.rs",130] | resolved | resolved in round 12 from fixed db98ea07b5a72094dca2dfa5ab076edfbaf2d264 | 11 |  |  | The rule of which snapshot paths lie under clients/ is written twice: is_under_clients in snapshot.rs, and an inline copy in changed() of store.rs that picks the paths outside clients/ for the restart lines. |
 | R-161 | 11 | 12 | should-fix | in-change | drift | ["path","crates/mu-cli/tests/support/process.rs",428] | resolved | resolved in round 12 from fixed db98ea07b5a72094dca2dfa5ab076edfbaf2d264 | 11 |  |  | The change adds support::process::server_url, which percent-escapes the socket path, and four more test copies that build the server URL from the path with no escape, in bootstrap.rs and config_store.rs. |
@@ -605,6 +660,19 @@ None.
 | R-347 | 15 | 15 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"An open socket directory"] | fixed | 38a8ff2a6599d4e1a8b319b5fe4b71f4e4760926 | 15 |  |  | delta scenario 'An open socket directory' has no matrix row |
 | R-348 | 15 | 15 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A control character in the reply"] | fixed | 38a8ff2a6599d4e1a8b319b5fe4b71f4e4760926 | 15 |  |  | delta scenario 'A control character in the reply' has no matrix row |
 | R-349 | 15 | 15 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A failed fetch is tried again"] | fixed | 38a8ff2a6599d4e1a8b319b5fe4b71f4e4760926 | 15 |  |  | delta scenario 'A failed fetch is tried again' has no matrix row |
+| R-350 | 16 | 16 | should-fix | in-change | next-change | ["artifact",["specs/config-store/spec.md","Requirement: A failed fetch is tried again"],"the client SHALL show one notice and SHALL fetch again after a wait that grows with each failure."] |  |  |  |  |  | The requirement 'A failed fetch is tried again' (one notice, then a fetch again after a growing wait, reset by an apply) has no decision. D8 names only the fetch on a new hash and the apply; the retry lives only in update.rs and an Enforcement row. |
+| R-351 | 16 | 16 | should-fix | in-change | next-change | ["artifact",["specs/config-store/spec.md","Requirement: The server keeps and writes the result of a reload"],"If the configuration directory does not exist at a reload, the server SHALL keep the current client layers"] |  |  |  |  |  | The requirement 'The server keeps and writes the result of a reload' has no decision: no decision says that a reload of a missing directory keeps the current client layers and fails with a line that names the directory. D2 covers only a walk error inside the snapshot. |
+| R-352 | 16 | 16 | should-fix | in-change | next-change | ["artifact",["design.md","D2. The store lives in `mu-server` and keeps a snapshot"],"The store writes nothing to stderr. It returns its notices, and `mu-cli` writes each one through `warn`"] |  |  |  |  |  | D2 says the store writes nothing to stderr and mu-cli writes each notice through warn. At head the reload in the store logs each notice itself with tracing::warn, and design.md records no deviation. |
+| R-353 | 16 | 16 | should-fix | in-change | next-change | ["artifact",["specs/config-store/spec.md","Requirement: mu config reaches only a private socket"],"`mu config show` and `mu config reload` SHALL refuse a socket directory that exists and that another user owns"] |  |  |  |  |  | The requirement 'mu config reaches only a private socket' has no decision. D6 names private_dir for mu client and says mu config creates no directory, but no decision has mu config refuse an open or foreign socket directory (checked_dir at head) or filter what show prints to stdout. |
+| R-354 | 16 | 16 | should-fix | in-change | next-change | ["artifact",["specs/server-process/spec.md","Requirement: The client starts a server"],"The client SHALL NOT pass `--config` to the new server, which finds its directory from the environment that it inherits."] |  |  |  |  |  | No decision removes --config from mu client or keeps it off the server that the client starts. The scenario 'The client takes the flag' (exit 2) and the rule that the client passes no --config rest on the proposal alone; D7 says only that the directory compare goes away. |
+| R-355 | 16 | 16 | should-fix | in-change | drift | ["path","crates/mu-server/src/store.rs",461] |  |  |  |  |  | A bad client layer reaches the server's stderr by two mechanisms. At start, mu-cli writes each store notice through warn. At reload, the store writes it with tracing::warn!. So one bad layer gives two line formats, and D2 says the store writes nothing to stderr. |
+| R-356 | 16 | 16 | should-fix | in-change | drift | ["path","crates/mu-core/src/world/snapshot.rs",310] |  |  |  |  |  | snapshot.rs writes the case rule of a top-level name (the same name in any case, and the same entry by same_entry) twice: is_top_file for server.toml, and an inline copy in Walker::parts for clients. The copies already differ. is_top_file turns a stat error into an error entry, but the clients copy turns it into 'not clients' with unwrap_or(false). |
+| R-357 | 16 | 16 | should-fix | in-change | next-change | ["path","crates/mu-server/src/store.rs",319] |  |  |  |  |  | The source paths of a client layer are an inline vec!["echo"] in ClientPart::resolve, with inline defaults. The closest pattern, the world merge, keeps the paths in FIELD_PATHS beside the field types, and the test each_field_has_a_source guards them. #172 adds layout fields, and a field missing from the inline list gets no source, so mu config show prints it as default. D2 and D5 name neither the pattern nor a reason. |
+| R-358 | 16 | 16 | should-fix | in-change | false-test | ["path","crates/mu-core/src/world/snapshot.rs",229] |  |  |  |  |  | The walk enters at most LINKED_DIRS_MAX directories through links, but the only test asserts limits > 0 and a loose size bound. An off-by-one that enters 65 directories, or a check of > in place of ==, still passes it. |
+| R-359 | 16 | 16 | should-fix | in-change | unmet-requirement | ["path","crates/mu-cli/src/client.rs",38] |  |  |  |  |  | connect_wait refuses a value under 1 ns and must accept 1 ns itself. Tests pass only 1e-10 and 0. No test passes 1e-9, so a change of >= to > refuses the edge the spec allows and every test still passes. |
+| R-360 | 16 | 16 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-tui/src/update.rs",222] |  |  |  |  |  | The failure count of a fetch resets only at an apply. If the hash returns to the applied one with no reply (a reverted file and a reload), the count stays. The next failed fetch then shows no notice and waits 200 ms, not 100 ms. |
+| R-361 | 16 | 16 | should-fix | in-change | false-test | ["path","crates/mu-server/tests/store.rs",283] |  |  |  |  |  | the_revision_frames_each_layer passes without length framing: path bytes between the two layers already make the unframed inputs differ. |
+| R-362 | 16 | 16 | suggestion | in-change |  | ["artifact",["design.md","D6. The bootstrap values"],"So the parser uses `Url::parse`, `scheme`, `has_authority`, `host_str`, `username`, `password`, `fragment`, `query_pairs` and `to_file_path`."] |  |  |  |  | severity? should-fix 0.74 | D6 lists username and password among the calls of the URL parser. parse_url at head calls neither; a user or a password is refused only because Url::parse fails on the empty host. |
 
 ## Reviewed files
 
@@ -668,11 +736,11 @@ None.
 | crates/mu-tui/src/model.rs | 64c4e9d318936cf283447c48c81497e2820eed2d |
 | crates/mu-tui/src/run.rs | 0a60b352c05446e6fd146ef28d95993af346e23f |
 | crates/mu-tui/src/text.rs | 493248060c333e890196085ef6fc1be2a9b65a9a |
-| crates/mu-tui/src/update.rs | ddf7589712070488813348e2bf8166bf43917217 |
+| crates/mu-tui/src/update.rs | f9c8936368e0ff93b49e09c9723e3184eedcca37 |
 | crates/mu-tui/tests/app.rs | f306b1e88247808630337d827452ba146f537bdb |
 | crates/mu-tui/tests/keymap.rs | 94decbdf7633009227997cbdf39bc051a6719316 |
 | crates/mu-tui/tests/update.proptest-regressions | f6c6a9dd68ea23ba04711ca882a7c630471ff619 |
-| crates/mu-tui/tests/update.rs | 1e42e31e80093ae3ddee59701f3d56dcf6265c24 |
+| crates/mu-tui/tests/update.rs | 886f5a081aad5dd3f4fc7a4474c9a6570e39cd55 |
 | docs/src/content/docs/architecture/crate-layout.mdx | 3054ce7e1a3861696434eadc5e0133b1cc711cfa |
 | docs/src/content/docs/architecture/server-and-clients.mdx | dd2549b652c032fd908536906aac3e36cae1d846 |
 | docs/src/content/docs/architecture/terminal-client.mdx | 22a5cdea73a87b05105957ea98856f3a533de4f5 |
@@ -686,7 +754,7 @@ None.
 | docs/src/content/docs/index.md | 94e8a3be6d9512c32b039819b4d07c1deeee46f0 |
 | mise.toml | 3483112b3eb01ff8abaf18c07f2a87193069e984 |
 | openspec/changes/config-store/.openspec.yaml | a0171eea41a9ef975ac5c180be78365a94f5bee0 |
-| openspec/changes/config-store/design.md | a554b8c931ab3f82446fff0c8c5cb125ec82a57d |
+| openspec/changes/config-store/design.md | 99460f4acdce3975f6d2d78bb34dd9592b13078b |
 | openspec/changes/config-store/proposal.md | d459ab83ac317ba928f478856d2e07d050e79cb9 |
 | openspec/changes/config-store/specs/cli-entrypoint/spec.md | e58709b8a27afcfd635388b7e7982ac633245c70 |
 | openspec/changes/config-store/specs/client-bootstrap/spec.md | 195967911288c2fa7a8dbd622508f039a5277927 |
@@ -696,7 +764,7 @@ None.
 | openspec/changes/config-store/specs/server-process/spec.md | b042cd312cd519e5aad0413a62a18d3f38b10d23 |
 | openspec/changes/config-store/specs/terminal-client/spec.md | 161a454fcf502072a84ac2b52c10b782f2e6ecaf |
 | openspec/changes/config-store/specs/world-config/spec.md | 356551ef3788fafa9bb3434524b4138d12ce4f77 |
-| openspec/changes/config-store/tasks.md | sha256:516433824729ff0f64bd932b8006a08cddc35bcccee2123b6196ef53358687af |
+| openspec/changes/config-store/tasks.md | sha256:130a62ff92fd2ae78ee00daebda2fe43828e936900527169bbb65cc9538f0f67 |
 | openspec/review.json | absent |
 
 ## Plan review (2026-11-23)

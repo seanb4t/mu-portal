@@ -747,3 +747,23 @@ fn a_late_failure_of_an_old_fetch_does_not_count() {
         )
     );
 }
+
+#[test]
+fn a_hash_back_to_the_applied_one_resets_the_failures() {
+    let mut model = configured(reply("h1", "r1", &[]));
+    store_hash(&mut model, "h2");
+    update(&mut model, Msg::Config(Err("unavailable".to_owned())));
+    update(&mut model, Msg::RetryConfig);
+    store_hash(&mut model, "h1");
+    store_hash(&mut model, "h3");
+    let failed = update(&mut model, Msg::Config(Err("unavailable".to_owned())));
+    assert_eq!(
+        (failed, notices_of(&model, "unavailable")),
+        (
+            vec![Effect::RetryConfig {
+                after: Duration::from_millis(100)
+            }],
+            2
+        )
+    );
+}

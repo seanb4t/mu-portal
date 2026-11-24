@@ -7,7 +7,9 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use mu_config::{ClientLayer, DeviceName, Echo, Kind, NameError, Os, STORE, check_keys, filter};
+use mu_config::{
+    ClientLayer, DeviceName, Echo, FIELD_PATHS, Kind, NameError, Os, STORE, check_keys, filter,
+};
 use mu_core::ResolvedWorld;
 use mu_core::world::{
     CLIENTS_DIR, ConfigError, DirSnapshot, Hidden, SnapEntry, is_under_clients, merge_layers,
@@ -20,6 +22,9 @@ use tokio::sync::{Mutex, watch};
 /// file in the snapshot, or none when the directory holds no such file, and gives the text of
 /// the error.
 pub type ServerCheck = Box<dyn Fn(Option<&SnapEntry>) -> Result<(), String> + Send + Sync>;
+
+/// Writes one notice of the store where the server reports its warnings.
+pub type NoticeSink = Box<dyn Fn(&Notice) + Send + Sync>;
 
 /// One bad file or place: its path, relative to the configuration directory when it is under
 /// it, and the whole text of the notice. Neither holds a control character.
@@ -310,13 +315,10 @@ impl ClientPart {
                 .into_iter()
                 .filter_map(|path| Some((path, Content::of(self.entries.get(path)?)))),
         ));
-        let defaults = ClientLayer {
-            echo: Some(Echo::default()),
-            keys: None,
-        };
+        let defaults = ClientLayer::defaults();
         let mut layers = vec![&defaults];
         layers.extend(good.iter().map(|(_, layer)| *layer));
-        let mut paths = vec!["echo".to_owned()];
+        let mut paths: Vec<String> = FIELD_PATHS.iter().map(|path| (*path).to_owned()).collect();
         let keys: BTreeSet<&String> = good
             .iter()
             .filter_map(|(_, layer)| layer.keys.as_ref())
@@ -388,10 +390,12 @@ pub struct Store {
     client: watch::Sender<Arc<ClientPart>>,
     reload: Mutex<()>,
     server_check: ServerCheck,
+    report: NoticeSink,
 }
 
 impl Store {
-    /// The store of the directory `root`, from `snapshot`, its snapshot at the start.
+    /// The store of the directory `root`, from `snapshot`, its snapshot at the start. It gives
+    /// each notice of the start and of each reload to `report`.
     ///
     /// # Errors
     ///
@@ -400,16 +404,21 @@ impl Store {
         root: Option<&Path>,
         snapshot: DirSnapshot,
         server_check: ServerCheck,
+        report: NoticeSink,
     ) -> Result<Opened, ConfigError> {
         let worlds = resolve(&[&snapshot])?;
         let part = ClientPart::new(&snapshot);
         let notices = part.notices();
+        for notice in &notices {
+            report(notice);
+        }
         let store = Self {
             root: root.map(Path::to_path_buf),
             start: snapshot,
             client: watch::Sender::new(Arc::new(part)),
             reload: Mutex::new(()),
             server_check,
+            report,
         };
         Ok(Opened {
             store,
@@ -458,7 +467,7 @@ impl Store {
             }
         };
         for notice in &reloaded.notices {
-            tracing::warn!("{notice}");
+            (self.report)(notice);
         }
         reloaded
     }

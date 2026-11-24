@@ -152,14 +152,16 @@ fn serve_worlds(args: &ServerArgs, dir: Option<&Path>, snapshot: DirSnapshot) ->
     let Opened {
         store: config_store,
         worlds: configured,
-        notices,
-    } = match Store::open(dir, snapshot, check) {
+        ..
+    } = match Store::open(
+        dir,
+        snapshot,
+        check,
+        Box::new(|notice| crate::warn("server", notice)),
+    ) {
         Ok(opened) => opened,
         Err(error) => return fail(&error),
     };
-    for notice in &notices {
-        crate::warn("server", notice);
-    }
     if let Some(fake) = args
         .fake_worlds
         .iter()

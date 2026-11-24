@@ -282,12 +282,12 @@ impl Walker<'_> {
     fn keep(&mut self, parts: &[String], mut entry: SnapEntry) {
         let mut path = parts.join("/");
         if let [name] = parts {
-            match is_top_file(self.root, name) {
-                Ok(true) => {
-                    super::SERVER_FILE.clone_into(&mut path);
+            match canonical_top(self.root, name) {
+                Ok(Some(top)) if top == super::SERVER_FILE => {
+                    top.clone_into(&mut path);
                     self.snapshot.top_files.insert(path.clone());
                 }
-                Ok(false) => {}
+                Ok(_) => {}
                 Err(error) => entry = SnapEntry::of_io(&error),
             }
         }
@@ -297,7 +297,8 @@ impl Walker<'_> {
     /// The parts of `path`, which is under `directory`, relative to the root. A top-level
     /// directory that is the directory of the client layers in another case is named
     /// [`CLIENTS_DIR`].
-    fn parts(&self, directory: &Path, prefix: &[String], path: &Path) -> Vec<String> {
+    /// The error of the check of a top-level name is kept as an entry at that name.
+    fn parts(&mut self, directory: &Path, prefix: &[String], path: &Path) -> Vec<String> {
         let mut parts = prefix.to_vec();
         if let Ok(rest) = path.strip_prefix(directory) {
             parts.extend(
@@ -305,33 +306,42 @@ impl Walker<'_> {
                     .map(|part| part.as_os_str().to_string_lossy().into_owned()),
             );
         }
-        if let Some(first) = parts.first_mut()
-            && first != CLIENTS_DIR
-            && first.eq_ignore_ascii_case(CLIENTS_DIR)
-            && same_entry(&self.root.join(&*first), &self.root.join(CLIENTS_DIR)).unwrap_or(false)
-        {
-            CLIENTS_DIR.clone_into(first);
+        if let Some(first) = parts.first_mut() {
+            match canonical_top(self.root, first) {
+                Ok(Some(CLIENTS_DIR)) => CLIENTS_DIR.clone_into(first),
+                Ok(_) => {}
+                Err(error) => {
+                    let name = first.clone();
+                    self.snapshot
+                        .entries
+                        .entry(name)
+                        .or_insert_with(|| SnapEntry::of_io(&error));
+                }
+            }
         }
         parts
     }
 }
 
-/// Whether the top-level file `name` is [`SERVER_FILE`](super::SERVER_FILE): the same name in
-/// any case, and the same file. On a file system that ignores case, `Server.toml` is that
-/// file.
-fn is_top_file(root: &Path, name: &str) -> io::Result<bool> {
-    let file = super::SERVER_FILE;
-    if !name.eq_ignore_ascii_case(file) {
-        return Ok(false);
+/// The name that the top-level entry `name` stands for: [`CLIENTS_DIR`] or
+/// [`SERVER_FILE`](super::SERVER_FILE) when `name` is that name in any case and the same entry,
+/// else none. On a file system that ignores case, `Server.toml` is `server.toml`.
+fn canonical_top(root: &Path, name: &str) -> io::Result<Option<&'static str>> {
+    for top in [CLIENTS_DIR, super::SERVER_FILE] {
+        if !name.eq_ignore_ascii_case(top) {
+            continue;
+        }
+        if name == top {
+            return Ok(Some(top));
+        }
+        return match same_entry(&root.join(name), &root.join(top)) {
+            Ok(true) => Ok(Some(top)),
+            Ok(false) => Ok(None),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error),
+        };
     }
-    if name == file {
-        return Ok(true);
-    }
-    match same_entry(&root.join(name), &root.join(file)) {
-        Ok(same) => Ok(same),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(error),
-    }
+    Ok(None)
 }
 
 /// Whether `a` and `b` are one entry: the same device and inode. It reads the metadata of each,

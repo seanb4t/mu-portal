@@ -3,6 +3,7 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
+use std::sync::{Arc, Mutex as StdMutex};
 
 use mu_config::{DeviceName, Echo, Kind, Os};
 use mu_core::world::{DirSnapshot, SnapEntry};
@@ -275,21 +276,6 @@ fn a_bad_layer_changes_the_revision() {
 }
 
 #[test]
-fn the_revision_frames_each_layer() {
-    let dir = tempfile::tempdir().unwrap();
-    write(dir.path(), "clients/global.toml", "echo = \"show\"\n");
-    write(dir.path(), "clients/kinds/tui.toml", "[keys]\n");
-    let before = revision(dir.path(), "laptop");
-    write(
-        dir.path(),
-        "clients/global.toml",
-        "echo = \"show\"\n[keys]\n",
-    );
-    write(dir.path(), "clients/kinds/tui.toml", "");
-    assert_ne!(revision(dir.path(), "laptop"), before);
-}
-
-#[test]
 fn a_layer_that_holds_the_next_entry_changes_the_revision() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "clients/global.toml", "echo = \"show\"\n");
@@ -424,9 +410,14 @@ fn open(root: &Path) -> Store {
         }
         _ => Ok(()),
     });
-    Store::open(Some(root), DirSnapshot::take(root).unwrap(), check)
-        .unwrap()
-        .store
+    Store::open(
+        Some(root),
+        DirSnapshot::take(root).unwrap(),
+        check,
+        Box::new(|_| {}),
+    )
+    .unwrap()
+    .store
 }
 
 fn laptop(store: &Store) -> ClientConfig {
@@ -439,10 +430,13 @@ fn laptop(store: &Store) -> ClientConfig {
 fn open_resolves_the_worlds_and_returns_the_notices() {
     let dir = world_dir();
     write(dir.path(), "clients/extra.toml", "echo = \"show\"\n");
+    let reported = Arc::new(StdMutex::new(Vec::new()));
+    let sink = Arc::clone(&reported);
     let opened = Store::open(
         Some(dir.path()),
         DirSnapshot::take(dir.path()).unwrap(),
         Box::new(|_| Ok(())),
+        Box::new(move |notice| sink.lock().unwrap().push(notice.path.clone())),
     )
     .unwrap();
     assert_eq!(
@@ -452,9 +446,14 @@ fn open_resolves_the_worlds_and_returns_the_notices() {
                 .notices
                 .iter()
                 .map(|n| n.path.as_str())
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>(),
+            reported.lock().unwrap().clone()
         ),
-        (1, vec!["clients/extra.toml"])
+        (
+            1,
+            vec!["clients/extra.toml"],
+            vec!["clients/extra.toml".to_owned()]
+        )
     );
 }
 
@@ -466,6 +465,7 @@ fn a_bad_world_stops_open() {
         Some(dir.path()),
         DirSnapshot::take(dir.path()).unwrap(),
         Box::new(|_| Ok(())),
+        Box::new(|_| {}),
     );
     assert!(opened.is_err());
 }

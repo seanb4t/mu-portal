@@ -925,6 +925,7 @@ fn on_client(model: &mut Model, item: ClientEvent) -> Vec<Effect> {
             if config_stale(model) {
                 vec![Effect::FetchConfig]
             } else {
+                model.config_failures = 0;
                 Vec::new()
             }
         }

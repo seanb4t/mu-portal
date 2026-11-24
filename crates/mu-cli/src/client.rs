@@ -217,6 +217,11 @@ async fn answers(client: &PortalClient, last: &RefCell<Option<ClientError>>) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_wait_of_one_nanosecond_is_a_wait() {
+        assert_eq!(connect_wait(1e-9), Ok(Duration::from_nanos(1)));
+    }
+
     /// A step that takes `seconds` of the paused clock and succeeds.
     async fn step(seconds: f64) -> Result<(), String> {
         tokio::time::sleep(Duration::from_secs_f64(seconds)).await;

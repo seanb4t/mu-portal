@@ -74,6 +74,21 @@ pub struct ClientLayer {
     pub keys: Option<BTreeMap<String, String>>,
 }
 
+impl ClientLayer {
+    /// The built-in values: each field of [`FIELD_PATHS`] set, and no binding.
+    #[must_use]
+    pub fn defaults() -> Self {
+        Self {
+            echo: Some(Echo::default()),
+            keys: None,
+        }
+    }
+}
+
+/// The path of each field of a client layer other than `[keys]`, in the order of
+/// `mu config show`. A binding of `[keys]` has the path `keys.<key>`.
+pub const FIELD_PATHS: &[&str] = &["echo"];
+
 /// The value of a binding that makes the key do nothing.
 pub const NONE: &str = "none";
 

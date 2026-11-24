@@ -122,6 +122,41 @@ fn a_root_that_is_a_file_is_an_error() {
     assert!(error.contains(&file.display().to_string()), "{error}");
 }
 
+/// The number of files and of limit errors in a snapshot of `links` links to directories that
+/// each hold one file.
+fn linked_dirs(links: usize) -> (usize, usize) {
+    let dir = tempfile::tempdir().expect("dir");
+    let devices = dir.path().join("clients/devices");
+    fs::create_dir_all(&devices).expect("mkdir");
+    for n in 0..links {
+        let target = dir.path().join("targets").join(format!("t{n:03}"));
+        fs::create_dir_all(&target).expect("mkdir");
+        fs::write(target.join("x.toml"), "").expect("write");
+        symlink(&target, devices.join(format!("l{n:03}"))).expect("link");
+    }
+    let snapshot = take(dir.path());
+    let files = snapshot
+        .clients()
+        .filter(|(_, entry)| matches!(entry, SnapEntry::File(_)))
+        .count();
+    let limits = snapshot
+        .entries()
+        .filter(|(_, entry)| matches!(entry, SnapEntry::Error { kind, .. } if kind == "limit"))
+        .count();
+    (files, limits)
+}
+
+#[test]
+fn the_walk_enters_exactly_the_limit_of_linked_directories() {
+    assert_eq!(
+        (
+            linked_dirs(LINKED_DIRS_MAX),
+            linked_dirs(LINKED_DIRS_MAX + 1)
+        ),
+        ((LINKED_DIRS_MAX, 0), (LINKED_DIRS_MAX, 1))
+    );
+}
+
 #[test]
 fn a_mesh_of_linked_directories_stops_at_the_limit() {
     let dir = tempfile::tempdir().expect("dir");
