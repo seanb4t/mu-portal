@@ -1,5 +1,5 @@
 # Evennia installed from PyPI, telnet on port 4201.
-FROM python:3.15-slim-trixie@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928
+FROM python:3.15-slim-trixie@sha256:1c670c3568107e243bfd05457ad9ca0b11c35a855c985af73e4452db9a714e70
 
 # renovate: datasource=pypi depName=evennia
 ARG EVENNIA_VERSION=6.1.0
