@@ -2,11 +2,27 @@
 
 use std::collections::BTreeMap;
 
+use mu_client::{ClientError, PortalClient};
 pub use mu_config::Echo;
+use mu_config::{Kind, Os};
 use mu_proto::GetClientConfigResponse;
 
 use crate::keymap::Keymap;
 use crate::model::Model;
+
+/// The client configuration of the terminal client on this machine with the name `device`.
+///
+/// # Errors
+///
+/// The [`ClientError`] of the call.
+pub async fn fetch(
+    client: &PortalClient,
+    device: &str,
+) -> Result<GetClientConfigResponse, ClientError> {
+    client
+        .client_config(Kind::Tui.name(), Os::current().name(), device)
+        .await
+}
 
 impl Model {
     /// Applies the client configuration `reply`. A reply with a new revision replaces the keymap

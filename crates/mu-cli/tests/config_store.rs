@@ -38,13 +38,20 @@ async fn one_notice(dir: &Path, texts: &[&str]) {
 }
 
 /// Sets the mode 000 on `path`. False when this process can still list or read it, as root can.
-fn locked(path: &Path) -> bool {
+fn lock(path: &Path) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o000)).unwrap();
-    let locked = fs::read_dir(path).is_err();
+    let locked = if path.is_dir() {
+        fs::read_dir(path).is_err()
+    } else {
+        fs::read(path).is_err()
+    };
     if !locked {
         fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
     }
-    locked
+    assert!(
+        locked,
+        "the mode 000 does not keep this user out: run the tests as a user that is not root"
+    );
 }
 
 #[tokio::test]
@@ -130,9 +137,7 @@ async fn an_unlistable_clients_directory() {
     let dir = ConfigDir::empty();
     let clients = dir.path().join("clients");
     fs::create_dir(&clients).unwrap();
-    if !locked(&clients) {
-        return;
-    }
+    lock(&clients);
     let server = start(dir.path()).await;
     fs::set_permissions(&clients, fs::Permissions::from_mode(0o755)).unwrap();
     assert_eq!(
@@ -154,13 +159,12 @@ async fn a_link_to_an_unreadable_directory_under_clients() {
     fs::create_dir(&locked_dir).unwrap();
     fs::create_dir_all(dir.path().join("clients/devices")).unwrap();
     symlink(&locked_dir, dir.path().join("clients/devices/x")).unwrap();
-    if !locked(&locked_dir) {
-        return;
-    }
+    lock(&locked_dir);
     let server = start(dir.path()).await;
     fs::set_permissions(&locked_dir, fs::Permissions::from_mode(0o755)).unwrap();
-    assert!(
-        !lines_with(&server, "clients/devices/x").is_empty(),
+    assert_eq!(
+        lines_with(&server, "clients/devices/x").len(),
+        1,
         "{:?}",
         server.stderr()
     );
@@ -553,13 +557,15 @@ async fn an_unknown_os_flag() {
     );
 }
 
+/// macOS volumes ignore case by default, so there `Clients` is `clients`.
+#[cfg(target_os = "macos")]
 #[tokio::test]
 async fn a_clients_directory_in_another_case() {
     let dir = ConfigDir::empty().file("Clients/global.toml", "echo = \"hide\"\n");
-    if !dir.path().join("clients").exists() {
-        // The file system of the test does not ignore case.
-        return;
-    }
+    assert!(
+        dir.path().join("clients").exists(),
+        "the volume of the temporary directory does not ignore case"
+    );
     let output = show_dir(&dir).await;
     assert!(
         has_line(&output, "echo = \"hide\" # clients/global.toml"),
@@ -830,11 +836,7 @@ async fn a_bad_echo_value() {
 async fn a_file_that_cannot_be_read() {
     let dir = ConfigDir::empty().file("clients/global.toml", "echo = \"hide\"\n");
     let file = dir.path().join("clients/global.toml");
-    fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).unwrap();
-    if fs::read(&file).is_ok() {
-        // Root opens the file.
-        return;
-    }
+    lock(&file);
     let output = show_dir(&dir).await;
     fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
     one_line_with(&output, &["clients/global.toml"]);

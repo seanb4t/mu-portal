@@ -177,12 +177,7 @@ async fn listed_of(client: PortalClient) -> Msg {
 /// [`CALL_LIMIT`].
 async fn config_of(client: PortalClient, device: String) -> Msg {
     let call = async {
-        client
-            .client_config(
-                mu_config::Kind::Tui.name(),
-                mu_config::Os::current().name(),
-                &device,
-            )
+        crate::config::fetch(&client, &device)
             .await
             .map_err(|error| error.to_string())
     };

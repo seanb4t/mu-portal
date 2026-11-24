@@ -1199,3 +1199,22 @@ async fn silent_collector_does_not_delay_a_send() {
         silent_collector_with(protocol).await;
     }
 }
+
+/// macOS volumes ignore case by default, so there `SERVER.toml` is `server.toml`.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn server_toml_in_another_case() {
+    let config = ConfigDir::empty().file(
+        "SERVER.toml",
+        "[telemetry]\nendpont = \"http://127.0.0.1:4318\"\n",
+    );
+    assert!(
+        config.path().join("server.toml").exists(),
+        "the volume of the temporary directory does not ignore case"
+    );
+    let output = ServerBuilder::new()
+        .env("MU_CONFIG", Some(config.path()))
+        .output()
+        .await;
+    fails_naming(&output, &["server.toml", "telemetry.endpont"]);
+}

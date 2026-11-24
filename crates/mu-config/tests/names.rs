@@ -51,3 +51,14 @@ fn the_names_read_back() {
         (Some(Kind::Tui), Some(Os::Macos), Some(Os::Linux))
     );
 }
+
+#[test]
+fn a_list_of_names() {
+    let lists = [
+        mu_config::listed::<&str>(&[]),
+        mu_config::listed(&["a"]),
+        mu_config::listed(&["a", "b"]),
+        mu_config::listed(&["a", "b", "c"]),
+    ];
+    assert_eq!(lists, ["", "a", "a and b", "a, b and c"]);
+}

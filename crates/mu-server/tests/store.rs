@@ -39,8 +39,9 @@ fn binding<'a>(config: &'a ClientConfig, key: &str) -> Option<&'a str> {
         .map(|(_, entry)| entry.as_str())
 }
 
-/// Whether the mode 000 on `path` keeps this process out, which it does not for root.
-fn locked(path: &Path) -> bool {
+/// Sets the mode 000 on `path`, and fails the test if the mode does not keep this process out,
+/// as for root.
+fn lock(path: &Path) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o000)).unwrap();
     let locked = if path.is_dir() {
         fs::read_dir(path).is_err()
@@ -50,7 +51,10 @@ fn locked(path: &Path) -> bool {
     if !locked {
         fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
     }
-    locked
+    assert!(
+        locked,
+        "the mode 000 does not keep this user out: run the tests as a user that is not root"
+    );
 }
 
 #[test]
@@ -306,9 +310,7 @@ fn an_unreadable_layer_changes_the_revision() {
     write(dir.path(), "clients/devices/laptop.toml", "");
     let before = revision(dir.path(), "laptop");
     let path = dir.path().join("clients/devices/laptop.toml");
-    if !locked(&path) {
-        return;
-    }
+    lock(&path);
     let after = client(dir.path(), "laptop");
     fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
     assert!(
@@ -323,13 +325,29 @@ fn an_unlistable_clients_directory_changes_the_revision() {
     fs::create_dir(dir.path().join("clients")).unwrap();
     let before = revision(dir.path(), "laptop");
     let clients = dir.path().join("clients");
-    if !locked(&clients) {
-        return;
-    }
+    lock(&clients);
     let after = client(dir.path(), "laptop");
     fs::set_permissions(&clients, fs::Permissions::from_mode(0o755)).unwrap();
     assert!(
         after.revision != before && after.notices.iter().any(|notice| notice.path == "clients"),
+        "{after:?}"
+    );
+}
+
+#[test]
+fn a_file_at_a_layer_directory_changes_the_revision() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join("clients/devices")).unwrap();
+    let before = revision(dir.path(), "laptop");
+    fs::remove_dir(dir.path().join("clients/devices")).unwrap();
+    write(dir.path(), "clients/devices", "");
+    let after = client(dir.path(), "laptop");
+    assert!(
+        after.revision != before
+            && after
+                .notices
+                .iter()
+                .any(|notice| notice.path == "clients/devices"),
         "{after:?}"
     );
 }

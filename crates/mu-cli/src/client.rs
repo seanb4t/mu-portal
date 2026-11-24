@@ -10,7 +10,6 @@ use std::time::Duration;
 
 use clap::Args;
 use mu_client::{ClientError, PortalClient};
-use mu_config::{Kind, Os};
 use tokio::net::UnixStream;
 
 use crate::bootstrap::BootstrapArgs;
@@ -46,6 +45,22 @@ pub(crate) fn shown(wait: Duration) -> String {
     format!("{} s", wait.as_secs_f64())
 }
 
+/// The message of a server at `url` that did not answer within `wait`.
+pub(crate) fn no_answer(url: &str, wait: Duration) -> String {
+    format!("the server on {url} did not answer within {}", shown(wait))
+}
+
+/// The answer of `steps`, or the text of `late` when `wait` ends first.
+pub(crate) async fn within<T>(
+    wait: Duration,
+    steps: impl Future<Output = Result<T, String>>,
+    late: impl FnOnce() -> String,
+) -> Result<T, String> {
+    tokio::time::timeout(wait, steps)
+        .await
+        .unwrap_or_else(|_| Err(late()))
+}
+
 /// The answer of `call` to the server at `url`, or the error to print: the error of the call,
 /// or a server that did not answer within `wait`.
 pub(crate) async fn answered<T>(
@@ -53,14 +68,8 @@ pub(crate) async fn answered<T>(
     wait: Duration,
     call: impl Future<Output = Result<T, ClientError>>,
 ) -> Result<T, String> {
-    match tokio::time::timeout(wait, call).await {
-        Ok(Ok(answer)) => Ok(answer),
-        Ok(Err(error)) => Err(format!("{url}: {error}")),
-        Err(_) => Err(format!(
-            "the server on {url} did not answer within {}",
-            shown(wait)
-        )),
-    }
+    let call = async { call.await.map_err(|error| format!("{url}: {error}")) };
+    within(wait, call, || no_answer(url, wait)).await
 }
 
 /// What answered on the socket before the first list.
@@ -141,29 +150,21 @@ pub fn run(args: &ClientArgs) -> ExitCode {
                 .ok_or_else(|| format!("{name}: the watch of the configuration ended"))
         };
         let config = async {
-            client
-                .client_config(Kind::Tui.name(), Os::current().name(), device.as_str())
+            mu_tui::config::fetch(&client, device.as_str())
                 .await
                 .map_err(failed)
         };
         let late = || {
+            let late = no_answer(&server.url, server.wait);
             if started.get() {
-                format!(
-                    "no server answered on {name} within {}; read {}",
-                    shown(server.wait),
-                    log.display()
-                )
+                format!("{late}; read {}", log.display())
             } else {
-                format!(
-                    "the server on {name} did not answer within {}",
-                    shown(server.wait)
-                )
+                late
             }
         };
-        let config = match Box::pin(in_one_wait(server.wait, list, hash, config)).await {
-            Some(Ok(config)) => config,
-            Some(Err(error)) => return fail(&error),
-            None => return fail(&late()),
+        let config = match Box::pin(in_one_wait(server.wait, list, hash, config, late)).await {
+            Ok(config) => config,
+            Err(error) => return fail(&error),
         };
         match mu_tui::run(client, device.as_str().to_owned(), config).await {
             Ok(()) => ExitCode::SUCCESS,
@@ -173,19 +174,20 @@ pub fn run(args: &ClientArgs) -> ExitCode {
 }
 
 /// The answer of `config`, after `list` and then `hash` succeed, or the first error. All three
-/// steps run within one wait of `wait`, and `None` is a wait that ended first.
+/// steps run within one wait of `wait`, and the text of `late` is a wait that ended first.
 async fn in_one_wait<A, B, C>(
     wait: Duration,
     list: impl Future<Output = Result<A, String>>,
     hash: impl Future<Output = Result<B, String>>,
     config: impl Future<Output = Result<C, String>>,
-) -> Option<Result<C, String>> {
+    late: impl FnOnce() -> String,
+) -> Result<C, String> {
     let steps = async {
         list.await?;
         hash.await?;
         config.await
     };
-    tokio::time::timeout(wait, steps).await.ok()
+    within(wait, steps, late).await
 }
 
 /// Starts `mu server` for `socket` in its own process group, with stdout and stderr appended to
@@ -225,11 +227,9 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn one_wait_covers_the_three_steps() {
         let wait = Duration::from_secs(1);
-        let within = in_one_wait(wait, step(0.3), step(0.3), step(0.3)).await;
-        let late = in_one_wait(wait, step(0.4), step(0.4), step(0.4)).await;
-        assert!(
-            within == Some(Ok(())) && late.is_none(),
-            "{within:?} {late:?}"
-        );
+        let late = || "late".to_owned();
+        let on_time = in_one_wait(wait, step(0.3), step(0.3), step(0.3), late).await;
+        let too_late = in_one_wait(wait, step(0.4), step(0.4), step(0.4), late).await;
+        assert_eq!((on_time, too_late), (Ok(()), Err("late".to_owned())));
     }
 }

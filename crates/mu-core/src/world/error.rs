@@ -42,6 +42,12 @@ impl ConfigError {
     pub fn place(&self) -> &str {
         &self.place
     }
+
+    /// The file path of the place, without the line and the column.
+    #[must_use]
+    pub fn path(&self) -> &str {
+        self.place.split(':').next().unwrap_or_default()
+    }
 }
 
 /// A value that breaks a rule of its field: the path of the field, such as `login.template`,

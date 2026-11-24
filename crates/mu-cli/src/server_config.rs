@@ -65,12 +65,7 @@ pub fn read(dir: Option<&Path>, entry: Option<&SnapEntry>) -> Result<ServerFile,
         path: dir.join(SERVER_FILE),
         text: text.to_owned(),
     };
-    let text = match entry {
-        SnapEntry::File(bytes) => std::str::from_utf8(bytes)
-            .map_err(|_| unreadable("stream did not contain valid UTF-8"))?,
-        SnapEntry::NotRegular => return Err(unreadable("not a regular file")),
-        SnapEntry::Error { text, .. } => return Err(unreadable(text)),
-    };
+    let text = entry.text().map_err(|reason| unreadable(&reason))?;
     let mut file: ServerFile = parse_toml(&SERVER_FILE, text, Hidden::All)?;
     if let Some(path) = file
         .telemetry

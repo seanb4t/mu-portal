@@ -3,11 +3,11 @@
 //! one client, and reads the directory again at a reload.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{self, Write as _};
+use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use mu_config::{ClientLayer, DeviceName, Echo, Kind, Os, STORE, check_keys, filter};
+use mu_config::{ClientLayer, DeviceName, Echo, Kind, NameError, Os, STORE, check_keys, filter};
 use mu_core::ResolvedWorld;
 use mu_core::world::{
     CLIENTS_DIR, ConfigError, DirSnapshot, Hidden, SnapEntry, merge_layers, parse_toml, resolve,
@@ -138,65 +138,85 @@ pub fn framed<'a>(entries: impl IntoIterator<Item = (&'a str, Content<'a>)>) -> 
 
 /// The first 16 hex digits of the SHA-256 hash of `input`.
 fn digest(input: &[u8]) -> String {
-    Sha256::digest(input)
-        .iter()
-        .take(8)
-        .fold(String::new(), |mut text, byte| {
-            let _ = write!(text, "{byte:02x}");
-            text
-        })
+    format!("{:.16x}", Sha256::digest(input))
 }
 
-/// The directories on the path of each layer of a client.
-const LAYER_DIRS: [&str; 4] = [
-    CLIENTS_DIR,
-    "clients/kinds",
-    "clients/os",
-    "clients/devices",
+/// The layer that applies to every client.
+const GLOBAL: &str = "clients/global.toml";
+
+/// A directory of layer files under `clients/`: its path, the name of a layer in it as the
+/// notice writes it, and the check of that name.
+struct Place {
+    dir: &'static str,
+    shown: &'static str,
+    check: fn(&str) -> Result<(), NameError>,
+}
+
+/// The directories of the kind, the OS and the device layers, in the order of the merge.
+const PLACES: [Place; 3] = [
+    Place {
+        dir: "clients/kinds",
+        shown: "<kind>",
+        check: |name| Kind::parse(name).map(drop),
+    },
+    Place {
+        dir: "clients/os",
+        shown: "<os>",
+        check: |name| Os::parse(name).map(drop),
+    },
+    Place {
+        dir: "clients/devices",
+        shown: "<device>",
+        check: |name| DeviceName::new(name).map(drop),
+    },
 ];
 
+/// The directories on the path of each layer of a client.
+fn layer_dirs<'a>() -> impl Iterator<Item = &'a str> {
+    std::iter::once(CLIENTS_DIR).chain(PLACES.iter().map(|place| place.dir))
+}
+
 /// The text of a path under `clients/` that is not a layer file.
-const NOT_A_LAYER: &str = "not a layer file: the layer files are clients/global.toml, \
-     clients/kinds/<kind>.toml, clients/os/<os>.toml and clients/devices/<device>.toml";
+fn not_a_layer() -> String {
+    let places: Vec<String> = PLACES
+        .iter()
+        .map(|place| format!("{}/{}.toml", place.dir, place.shown))
+        .collect();
+    format!(
+        "not a layer file: the layer files are {GLOBAL}, {}",
+        mu_config::listed(&places)
+    )
+}
 
 /// Whether `path` is a layer file, or the reason that it is not.
 fn layer_rule(path: &str) -> Result<(), String> {
-    if path == "clients/global.toml" {
+    if path == GLOBAL {
         return Ok(());
     }
-    let name = |prefix: &str| {
-        path.strip_prefix(prefix)
+    for place in &PLACES {
+        if let Some(name) = path
+            .strip_prefix(place.dir)
+            .and_then(|rest| rest.strip_prefix('/'))
             .and_then(|file| file.strip_suffix(".toml"))
             .filter(|name| !name.contains('/'))
-    };
-    let checked = if let Some(name) = name("clients/kinds/") {
-        Kind::parse(name).map(|_| ())
-    } else if let Some(name) = name("clients/os/") {
-        Os::parse(name).map(|_| ())
-    } else if let Some(name) = name("clients/devices/") {
-        DeviceName::new(name).map(|_| ())
-    } else {
-        return Err(NOT_A_LAYER.to_owned());
-    };
-    checked.map_err(|error| error.to_string())
+        {
+            return (place.check)(name).map_err(|error| error.to_string());
+        }
+    }
+    Err(not_a_layer())
 }
 
 /// What the entry at `path` under `clients/` holds.
 fn state(path: &str, entry: &SnapEntry) -> State {
     let bad = |reason: &str| State::Bad(Notice::new(path, reason));
-    match entry {
-        SnapEntry::Error { text, .. } => return bad(text),
-        SnapEntry::NotRegular => return bad(NOT_REGULAR),
-        SnapEntry::File(_) => {}
-    }
-    if let Err(reason) = layer_rule(path) {
+    if let SnapEntry::File(_) = entry
+        && let Err(reason) = layer_rule(path)
+    {
         return bad(&reason);
     }
-    let SnapEntry::File(bytes) = entry else {
-        return bad(NOT_REGULAR);
-    };
-    let Ok(text) = std::str::from_utf8(bytes) else {
-        return bad("stream did not contain valid UTF-8");
+    let text = match entry.text() {
+        Ok(text) => text,
+        Err(reason) => return bad(&reason),
     };
     let mut layer: ClientLayer = match parse_toml(&path, text, Hidden::All) {
         Ok(layer) => layer,
@@ -264,19 +284,18 @@ impl ClientPart {
     /// The configuration of a client of `kind` on `os` with the name `device`.
     #[must_use]
     pub fn resolve(&self, kind: Kind, os: Os, device: &DeviceName) -> ClientConfig {
-        let files = [
-            "clients/global.toml".to_owned(),
-            format!("clients/kinds/{}.toml", kind.name()),
-            format!("clients/os/{}.toml", os.name()),
-            format!("clients/devices/{device}.toml"),
-        ];
+        let names = [kind.name(), os.name(), device.as_str()];
+        let files: Vec<String> = std::iter::once(GLOBAL.to_owned())
+            .chain(
+                PLACES
+                    .iter()
+                    .zip(names)
+                    .map(|(place, name)| format!("{}/{name}.toml", place.dir)),
+            )
+            .collect();
         let mut notices = Vec::new();
         let mut good: Vec<(&str, &ClientLayer)> = Vec::new();
-        for path in LAYER_DIRS
-            .iter()
-            .copied()
-            .chain(files.iter().map(String::as_str))
-        {
+        for path in layer_dirs().chain(files.iter().map(String::as_str)) {
             match self.states.get(path) {
                 Some(State::Bad(notice)) => notices.push(notice.clone()),
                 Some(State::Good(layer)) => good.push((path, layer)),
@@ -284,18 +303,11 @@ impl ClientPart {
             }
         }
         let revision = digest(&framed(
-            LAYER_DIRS
-                .iter()
-                .copied()
+            layer_dirs()
                 .chain(files.iter().map(String::as_str))
                 .collect::<BTreeSet<&str>>()
                 .into_iter()
-                .filter_map(|path| {
-                    let entry = self.entries.get(path)?;
-                    let is_dir = LAYER_DIRS.contains(&path);
-                    (!is_dir || matches!(entry, SnapEntry::Error { .. }))
-                        .then(|| (path, Content::of(entry)))
-                }),
+                .filter_map(|path| Some((path, Content::of(self.entries.get(path)?)))),
         ));
         let defaults = ClientLayer {
             echo: Some(Echo::default()),
@@ -438,11 +450,7 @@ impl Store {
     fn reload_from(&self, snapshot: &DirSnapshot) -> Reloaded {
         let mut notices: Vec<Notice> = world_errors(snapshot)
             .iter()
-            .map(|error| {
-                let place = error.place();
-                let path = place.split(':').next().unwrap_or(place);
-                Notice::whole(path, &error.to_string())
-            })
+            .map(|error| Notice::whole(error.path(), &error.to_string()))
             .collect();
         if let Err(error) = (self.server_check)(snapshot.server_file()) {
             notices.push(Notice::whole(mu_core::world::SERVER_FILE, &error));

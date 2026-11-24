@@ -21,6 +21,19 @@ impl fmt::Display for NameError {
 
 impl std::error::Error for NameError {}
 
+/// `names` as a list in text, such as `a`, `a and b` or `a, b and c`.
+#[must_use]
+pub fn listed<S: AsRef<str>>(names: &[S]) -> String {
+    match names {
+        [] => String::new(),
+        [one] => one.as_ref().to_owned(),
+        [rest @ .., last] => {
+            let rest: Vec<&str> = rest.iter().map(AsRef::as_ref).collect();
+            format!("{} and {}", rest.join(", "), last.as_ref())
+        }
+    }
+}
+
 /// The kind of a client.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
@@ -52,7 +65,10 @@ impl Kind {
             .ok_or_else(|| NameError {
                 what: "kind",
                 name: name.to_owned(),
-                reason: "is no kind: the kinds are tui".to_owned(),
+                reason: format!(
+                    "is no kind: the kinds are {}",
+                    listed(&Self::ALL.map(Self::name))
+                ),
             })
     }
 }
@@ -91,7 +107,10 @@ impl Os {
             .ok_or_else(|| NameError {
                 what: "os",
                 name: name.to_owned(),
-                reason: "is no OS: the OS names are macos and linux".to_owned(),
+                reason: format!(
+                    "is no OS: the OS names are {}",
+                    listed(&Self::ALL.map(Self::name))
+                ),
             })
     }
 

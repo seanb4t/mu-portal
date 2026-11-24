@@ -62,14 +62,9 @@ impl LayerSource for DirSnapshot {
 /// Reads the file at `path` as the layer `key`.
 fn layer(path: &str, entry: &SnapEntry, key: LayerKey) -> Result<Layer, ConfigError> {
     let origin = LayerOrigin::File(path.to_owned());
-    let text = match entry {
-        SnapEntry::File(bytes) => std::str::from_utf8(bytes)
-            .map_err(|_| ConfigError::new(&origin, "stream did not contain valid UTF-8"))?,
-        SnapEntry::NotRegular => {
-            return Err(ConfigError::new(&origin, "not a regular file"));
-        }
-        SnapEntry::Error { text, .. } => return Err(ConfigError::new(&origin, text.clone())),
-    };
+    let text = entry
+        .text()
+        .map_err(|reason| ConfigError::new(&origin, reason))?;
     let (extends, fields) = parse::<LayerFile>(&origin, text, LAYER_HIDDEN)?.split();
     match (&key, &extends) {
         (LayerKey::Game(_), None) => {
@@ -147,11 +142,6 @@ impl LayerSource for ReadLayers {
     }
 }
 
-/// The file path of the place of `error`, without the line and the column.
-fn path_of(error: &ConfigError) -> &str {
-    error.place().split(':').next().unwrap_or_default()
-}
-
 /// Every error of the world files of `snapshot`, at most one for each path, in the order of the
 /// paths. It reports each entry that cannot be read, each stray file and each name outside the
 /// id rule, parses each world file once, and resolves each world on its own, so a bad game of
@@ -160,7 +150,7 @@ fn path_of(error: &ConfigError) -> &str {
 pub fn world_errors(snapshot: &DirSnapshot) -> Vec<ConfigError> {
     let mut errors: BTreeMap<String, ConfigError> = BTreeMap::new();
     let mut add = |error: ConfigError| {
-        errors.entry(path_of(&error).to_owned()).or_insert(error);
+        errors.entry(error.path().to_owned()).or_insert(error);
     };
     let mut layers = Vec::new();
     for (path, entry) in snapshot.world_entries() {

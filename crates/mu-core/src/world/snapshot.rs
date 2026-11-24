@@ -31,6 +31,20 @@ pub enum SnapEntry {
 }
 
 impl SnapEntry {
+    /// The text of a regular file, or the reason that the entry has none.
+    ///
+    /// # Errors
+    ///
+    /// The reason: the entry is no regular file, could not be read, or holds no UTF-8 text.
+    pub fn text(&self) -> Result<&str, String> {
+        match self {
+            Self::File(bytes) => std::str::from_utf8(bytes)
+                .map_err(|_| "stream did not contain valid UTF-8".to_owned()),
+            Self::NotRegular => Err("not a regular file".to_owned()),
+            Self::Error { text, .. } => Err(text.clone()),
+        }
+    }
+
     fn of_io(error: &io::Error) -> Self {
         Self::Error {
             kind: error.kind().to_string(),
@@ -104,7 +118,8 @@ impl DirSnapshot {
             .filter(|(path, _)| !is_under_clients(path) && !self.top_files.contains(*path))
     }
 
-    /// The entry of [`SERVER_FILE`](super::SERVER_FILE), if the directory holds one.
+    /// The entry of [`SERVER_FILE`](super::SERVER_FILE), if the directory holds one. On a file
+    /// system that ignores case, the snapshot keeps that file under this name in any case.
     #[must_use]
     pub fn server_file(&self) -> Option<&SnapEntry> {
         self.entries.get(super::SERVER_FILE)
@@ -217,14 +232,16 @@ impl Walker<'_> {
         if !Self::kept(parts) {
             return;
         }
-        if let [name] = parts {
+        let mut parts = parts.to_vec();
+        if let [name] = parts.as_mut_slice() {
             match is_top_file(self.root, name) {
                 Ok(true) => {
+                    super::SERVER_FILE.clone_into(name);
                     self.snapshot.top_files.insert(name.clone());
                 }
                 Ok(false) => {}
                 Err(error) => {
-                    self.keep(parts, SnapEntry::of_io(&error));
+                    self.keep(&parts, SnapEntry::of_io(&error));
                     return;
                 }
             }
@@ -233,7 +250,7 @@ impl Walker<'_> {
             Ok(bytes) => SnapEntry::File(bytes),
             Err(error) => SnapEntry::of_io(&error),
         };
-        self.keep(parts, entry);
+        self.keep(&parts, entry);
     }
 
     /// Keeps an entry that is neither a file nor a directory, if the snapshot keeps its path.
