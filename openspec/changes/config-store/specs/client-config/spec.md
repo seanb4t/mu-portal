@@ -32,7 +32,7 @@ A binding of `[keys]` SHALL make its layer bad in each of these cases:
 - an unknown key or an unknown entry
 - an entry that needs an argument
 - a repeated modifier
-- `shift` with a character that is not a letter
+- `shift` with a character that is not lowercase, such as a digit, a sign or a letter with no case
 - a control character
 - two names of one key in the same layer
 

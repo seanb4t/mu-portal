@@ -981,3 +981,14 @@ async fn an_entry_that_needs_an_argument() {
         &["clients/global.toml", "alt+f", "focus"],
     );
 }
+
+#[test]
+fn mu_config_show_has_a_value_for_each_field_path() {
+    let reply = mu_proto::GetClientConfigResponse::default();
+    let missing: Vec<&str> = mu_config::FIELD_PATHS
+        .iter()
+        .copied()
+        .filter(|path| mu_cli::config_verb::field_value(&reply, path).is_none())
+        .collect();
+    assert!(missing.is_empty(), "{missing:?}");
+}

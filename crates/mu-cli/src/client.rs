@@ -32,12 +32,15 @@ fn fail(error: &dyn std::fmt::Display) -> ExitCode {
 /// The longest wait for a server to answer, when nothing sets one.
 pub(crate) const DEFAULT_WAIT: Duration = Duration::from_secs(5);
 
-/// The wait of `seconds`, or the reason that it is no wait. A value under 1 ns is no wait.
+/// The wait of `seconds`, or the reason that it is no wait. A value under 1 ns is no wait. A
+/// finite value above the longest [`Duration`] is the longest one.
 pub(crate) fn connect_wait(seconds: f64) -> Result<Duration, String> {
-    Some(seconds)
-        .filter(|seconds| *seconds >= 1e-9)
-        .and_then(|seconds| Duration::try_from_secs_f64(seconds).ok())
-        .ok_or_else(|| format!("{seconds} is not a finite number of seconds of 1 ns or more"))
+    if !seconds.is_finite() || seconds < 1e-9 {
+        return Err(format!(
+            "{seconds} is not a finite number of seconds of 1 ns or more"
+        ));
+    }
+    Ok(Duration::try_from_secs_f64(seconds).unwrap_or(Duration::MAX))
 }
 
 /// The wait as the messages print it, such as `5 s` or `0.2 s`.
@@ -216,6 +219,11 @@ async fn answers(client: &PortalClient, last: &RefCell<Option<ClientError>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_wait_beyond_the_longest_duration_is_the_longest() {
+        assert_eq!(connect_wait(1e20), Ok(Duration::MAX));
+    }
 
     #[test]
     fn a_wait_of_one_nanosecond_is_a_wait() {

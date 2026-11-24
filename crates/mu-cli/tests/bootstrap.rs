@@ -5,7 +5,7 @@ use std::path::Path;
 use std::process::Output;
 
 use support::process::{ServerBuilder, ServerProcess, private_tempdir, server_url};
-use support::{ConfigDir, mu_async, stderr, stdout};
+use support::{ConfigDir, fails_naming, mu_async, stderr, stdout};
 use tokio::net::UnixListener;
 
 mod support;
@@ -26,19 +26,10 @@ async fn serve(dir: &ConfigDir) -> ServerProcess {
         .await
 }
 
-/// Asserts the exit status 1 and a stderr that holds each of `texts`.
-fn refused(output: &Output, texts: &[&str]) {
-    let stderr = stderr(output);
-    assert!(
-        output.status.code() == Some(1) && texts.iter().all(|text| stderr.contains(text)),
-        "{stderr}"
-    );
-}
-
 /// Asserts that `mu config show --server <url> --device laptop` is refused with the text that
 /// names `url` and `reason`.
 async fn refused_url(url: &str, reason: &str) {
-    refused(
+    fails_naming(
         &show(&["--server", url, "--device", "laptop"], &[]).await,
         &[&format!("{url}: {reason}")],
     );
@@ -140,7 +131,7 @@ async fn mu_socket_does_not_count() {
     )
     .await;
     let default = run.join("mu/server.sock");
-    refused(&output, &[default.to_str().unwrap()]);
+    fails_naming(&output, &[default.to_str().unwrap()]);
 }
 
 #[tokio::test]
@@ -289,7 +280,7 @@ async fn a_short_wait() {
     )
     .await;
     held.abort();
-    refused(&output, &[socket.to_str().unwrap(), "0.2"]);
+    fails_naming(&output, &[socket.to_str().unwrap(), "0.2"]);
 }
 
 #[tokio::test]
@@ -356,7 +347,7 @@ async fn a_bad_name() {
         &[],
     )
     .await;
-    refused(&output, &["my laptop"]);
+    fails_naming(&output, &["my laptop"]);
 }
 
 #[tokio::test]
@@ -386,7 +377,7 @@ async fn a_name_of_65_characters() {
         &[],
     )
     .await;
-    refused(&output, &[&name]);
+    fails_naming(&output, &[&name]);
 }
 
 #[tokio::test]
@@ -402,5 +393,5 @@ async fn an_empty_device_flag() {
         &[],
     )
     .await;
-    refused(&output, &["device"]);
+    fails_naming(&output, &["device"]);
 }

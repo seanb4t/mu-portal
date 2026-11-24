@@ -7,7 +7,7 @@ use std::process::ExitCode;
 
 use clap::{Args, Subcommand};
 use mu_client::PortalClient;
-use mu_config::{Kind, Os, REPORT, STORE, filter};
+use mu_config::{FIELD_PATHS, Kind, Os, REPORT, STORE, filter};
 use mu_proto as proto;
 
 use crate::bootstrap::{BootstrapArgs, Server};
@@ -125,6 +125,16 @@ pub fn restart_lines(restart: &[String]) -> String {
     })
 }
 
+/// The value of the field at `path` of [`FIELD_PATHS`] in `reply`, as TOML, or none for a path
+/// that the reply does not carry.
+#[must_use]
+pub fn field_value(reply: &proto::GetClientConfigResponse, path: &str) -> Option<toml::Value> {
+    match path {
+        "echo" => Some(toml::Value::String(reply.echo.clone())),
+        _ => None,
+    }
+}
+
 /// The configuration as TOML: the revision on the first line, then each field and each binding
 /// with a comment that names its source. Each control character other than the line break and
 /// the tab is written as U+FFFD.
@@ -138,8 +148,11 @@ pub fn render(reply: &proto::GetClientConfigResponse) -> String {
             .to_owned()
     };
     let mut text = format!("# revision {}\n", reply.revision);
-    let echo = toml::Value::String(reply.echo.clone());
-    let _ = writeln!(text, "echo = {echo} # {}", source("echo"));
+    for path in FIELD_PATHS {
+        if let Some(value) = field_value(reply, path) {
+            let _ = writeln!(text, "{path} = {value} # {}", source(path));
+        }
+    }
     if !reply.bindings.is_empty() {
         text.push_str("\n[keys]\n");
     }

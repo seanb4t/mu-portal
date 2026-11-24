@@ -134,8 +134,8 @@ impl std::error::Error for KeyNameError {}
 impl KeyName {
     /// Reads a key name. A key is one character that is not an uppercase letter, a control
     /// character or `+`, the name `plus`, the name `period`, or the name of a special key. `.`
-    /// and `period` are one key. `shift` goes only with a letter or a special key, because the
-    /// terminal reports Shift and another character as the shifted character.
+    /// and `period` are one key. `shift` goes only with a lowercase character or a special key,
+    /// because the terminal reports Shift and another character as the shifted character.
     ///
     /// # Errors
     ///

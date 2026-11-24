@@ -75,6 +75,7 @@ fn bad_key_names_are_refused_with_the_name() {
         "shift+space",
         "shift+plus",
         "shift+period",
+        "shift+\u{5d0}",
         "f0",
         "f01",
         "f13",
@@ -191,6 +192,11 @@ fn key_part() -> impl Strategy<Value = (String, bool)> {
                 .collect::<Vec<_>>()
         )
         .prop_map(|c| (c.to_string(), false)),
+        proptest::char::any()
+            .prop_filter("a key character", |c| {
+                !c.is_control() && !c.is_uppercase() && *c != '+'
+            })
+            .prop_map(|c| (c.to_string(), c.is_lowercase())),
     ]
 }
 
@@ -210,4 +216,9 @@ proptest! {
         let other = turned.iter().copied().chain([key.as_str()]).collect::<Vec<_>>().join("+");
         prop_assert_eq!(KeyName::parse(&other).ok(), Some(parsed));
     }
+}
+
+#[test]
+fn shift_goes_with_a_lowercase_letter_beyond_ascii() {
+    assert!(KeyName::parse("shift+\u{e9}").is_ok());
 }
