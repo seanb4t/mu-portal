@@ -18,15 +18,18 @@ use crate::screen::{self, Restore, Screen};
 use crate::update::{Effect, Msg, Reply, update};
 use crate::view::view;
 
-/// Runs the client with the client configuration `config` on the alternate screen until the
-/// Quit action or the end of terminal input. The terminal comes back on exit, and on a panic
-/// through the panic hook of Termina.
+/// Runs the client with the client configuration `config` of `device` on the alternate screen
+/// until the Quit action or the end of terminal input. A new store hash of the watch of the
+/// configuration fetches the configuration of the kind `tui`, the OS of the machine and
+/// `device` again. The terminal comes back on exit, and on a panic through the panic hook of
+/// Termina.
 ///
 /// # Errors
 ///
 /// An I/O error of the terminal.
 pub async fn run(
     client: PortalClient,
+    device: String,
     config: mu_proto::GetClientConfigResponse,
 ) -> io::Result<()> {
     let mut model = Model::starting();
@@ -53,7 +56,8 @@ pub async fn run(
                 .chain(input.into_iter().map(Msg::Terminal))
                 .chain((!open.is_empty()).then_some(Msg::CutReply(open)))
                 .collect();
-            let result = event_loop(&mut terminal, reader, early, &mut model, &client).await;
+            let result =
+                event_loop(&mut terminal, reader, early, &mut model, &client, &device).await;
             if model.keeps_grapheme_mode() {
                 restore.set_grapheme_mode(false);
             }
@@ -72,9 +76,11 @@ async fn event_loop(
     mut early: VecDeque<Msg>,
     model: &mut Model,
     client: &PortalClient,
+    device: &str,
 ) -> io::Result<()> {
     let mut terminal_events = EventStream::new(reader, |_| true);
     let mut events = Box::pin(client.events());
+    let mut hashes = Box::pin(client.config_hashes());
     let (replies, mut reply) = mpsc::unbounded_channel();
     // The first list of the worlds, which `Model::starting` marks as asked.
     spawn_reply(&replies, listed_of(client.clone()));
@@ -91,6 +97,7 @@ async fn event_loop(
                 None => return Ok(()),
             },
             Some(item) = events.next() => Msg::Client(item),
+            Some(item) = hashes.next() => Msg::Client(item),
             Some(msg) = reply.recv() => msg,
             }
         };
@@ -127,6 +134,9 @@ async fn event_loop(
                     spawn_reply(&replies, control(client.clone(), world, false));
                 }
                 Effect::ListWorlds => spawn_reply(&replies, listed_of(client.clone())),
+                Effect::FetchConfig => {
+                    spawn_reply(&replies, config_of(client.clone(), device.to_owned()));
+                }
             }
         }
     }
@@ -161,6 +171,22 @@ async fn listed_of(client: PortalClient) -> Msg {
             .map_err(|error| error.to_string())
     };
     Msg::Listed(within(call, CALL_LIMIT, "").await)
+}
+
+/// The client configuration of the kind `tui`, the OS of the machine and `device`, within
+/// [`CALL_LIMIT`].
+async fn config_of(client: PortalClient, device: String) -> Msg {
+    let call = async {
+        client
+            .client_config(
+                mu_config::Kind::Tui.name(),
+                mu_config::Os::current().name(),
+                &device,
+            )
+            .await
+            .map_err(|error| error.to_string())
+    };
+    Msg::Config(within(call, CALL_LIMIT, "").await)
 }
 
 /// Runs `call` on a task, and gives its message to the loop.

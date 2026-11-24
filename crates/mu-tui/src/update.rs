@@ -50,6 +50,9 @@ pub enum Msg {
     Reply(Reply),
     /// The list of the worlds after an [`Effect::ListWorlds`], or the reason that it failed.
     Listed(Result<Vec<ProtoWorld>, String>),
+    /// The client configuration after an [`Effect::FetchConfig`], or the reason that the call
+    /// failed.
+    Config(Result<mu_proto::GetClientConfigResponse, String>),
     /// The result of an [`Effect::Connect`] or an [`Effect::Disconnect`].
     Control {
         /// The world of the call.
@@ -143,6 +146,8 @@ pub enum Effect {
         /// The world to disconnect.
         world: String,
     },
+    /// Ask the server for the client configuration, and give it back as a [`Msg::Config`].
+    FetchConfig,
     /// Write `text` to the clipboard of the terminal.
     ClipboardWrite(String),
     /// Send the PNG `png` to the terminal as `image`, with a virtual placement of its size,
@@ -203,6 +208,16 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
         Msg::Terminal(_) => Vec::new(),
         Msg::Run { entry, arg } => run_entry(model, entry, arg),
         Msg::Client(item) => on_client(model, item),
+        Msg::Config(Ok(reply)) => {
+            if model.latest_hash.as_ref() == Some(&reply.store_hash) {
+                model.apply_config(reply);
+            }
+            Vec::new()
+        }
+        Msg::Config(Err(reason)) => {
+            model.notice(&format!("could not get the client configuration: {reason}"));
+            Vec::new()
+        }
         Msg::Listed(listed) => {
             let again = model.listing == Listing::AskedBeforeReset;
             model.listing = Listing::Idle;
@@ -862,6 +877,16 @@ fn on_client(model: &mut Model, item: ClientEvent) -> Vec<Effect> {
         ClientEvent::Resumed => {
             model.lost = false;
             Vec::new()
+        }
+        ClientEvent::StoreHash(hash) => {
+            let applied = model.config.as_ref().map(|config| &config.store_hash);
+            let fetch = applied != Some(&hash);
+            model.latest_hash = Some(hash);
+            if fetch {
+                vec![Effect::FetchConfig]
+            } else {
+                Vec::new()
+            }
         }
         ClientEvent::Lost => {
             model.lost = true;

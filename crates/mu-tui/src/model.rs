@@ -97,6 +97,8 @@ pub struct Model {
     pub(crate) list_failure: Option<String>,
     /// The client configuration that the model applied last.
     pub(crate) config: Option<mu_proto::GetClientConfigResponse>,
+    /// The latest store hash of the watch of the configuration.
+    pub(crate) latest_hash: Option<String>,
 }
 
 /// Whether a list of the worlds is with the server, so a second one does not go.
@@ -159,6 +161,7 @@ impl Model {
             first_list: false,
             echo: Echo::default(),
             config: None,
+            latest_hash: None,
         };
         for id in worlds {
             model.world(&id);
@@ -186,6 +189,18 @@ impl Model {
         if !self.worlds.is_empty() {
             self.set_focus(0);
         }
+    }
+
+    /// The client configuration that the model applied last.
+    #[must_use]
+    pub const fn config(&self) -> Option<&mu_proto::GetClientConfigResponse> {
+        self.config.as_ref()
+    }
+
+    /// The notice lines of the client, which a reset of the panes keeps.
+    #[must_use]
+    pub fn notices(&self) -> &[String] {
+        &self.notices
     }
 
     /// The model with `echo` as the style of the echo line of a send.

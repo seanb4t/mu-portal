@@ -165,7 +165,7 @@ pub fn run(args: &ClientArgs) -> ExitCode {
             Some(Err(error)) => return fail(&error),
             None => return fail(&late()),
         };
-        match mu_tui::run(client, config).await {
+        match mu_tui::run(client, device.as_str().to_owned(), config).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => fail(&error),
         }

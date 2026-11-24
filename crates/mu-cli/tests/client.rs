@@ -1354,3 +1354,143 @@ async fn a_key_bound_to_connect_with_no_world_in_focus() {
     client.send(b"x");
     editor_holds(&client, "x").await;
 }
+
+// A live change of the client layers.
+
+/// Writes `text` to `path` under `config`.
+fn write_layer(config: &ConfigDir, path: &str, text: &str) {
+    let path = config.path().join(path);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, text).unwrap();
+}
+
+/// Runs `mu config reload` on the server of `socket`.
+async fn reload(socket: &std::path::Path) {
+    support::mu_async(&["config", "reload", "--server", &server_url(socket)], &[]).await;
+}
+
+/// Waits until the screen, with no whitespace, holds each of `texts`.
+async fn wait_notice(client: &PtyClient, texts: &[&str]) {
+    client
+        .wait_rows("the notice", |rows| {
+            let screen: String = rows.concat().split_whitespace().collect();
+            texts.iter().all(|text| screen.contains(text))
+        })
+        .await;
+}
+
+/// Writes the binding Alt+N to `focus-next` for `laptop`, and a bad `clients/global.toml`. The
+/// notice of the bad file shows when the client applied the configuration with the binding.
+fn bind_alt_n(config: &ConfigDir) {
+    write_layer(
+        config,
+        "clients/devices/laptop.toml",
+        "[keys]\n\"alt+n\" = \"focus-next\"\n",
+    );
+    write_layer(config, "clients/global.toml", "colour = \"red\"\n");
+}
+
+/// Waits for the notice of [`bind_alt_n`], presses Alt+N and waits for the focus of
+/// `beta/bryn`.
+async fn alt_n_moves_the_focus(client: &mut PtyClient) {
+    wait_notice(client, &["clients/global.toml", "colour"]).await;
+    client.send(b"\x1bn");
+    client
+        .wait_top("the focus", |top| top.contains("[beta/bryn]"))
+        .await;
+}
+
+#[tokio::test]
+async fn a_new_binding_works_without_a_restart() {
+    let config = ConfigDir::empty();
+    let (session, mut client) = attached_with(TWO_WORLDS, &config, Answers::Default).await;
+    bind_alt_n(&config);
+    reload(session.server.socket()).await;
+    alt_n_moves_the_focus(&mut client).await;
+}
+
+#[tokio::test]
+async fn a_reload_while_the_stream_is_down() {
+    let config = ConfigDir::empty();
+    let server = ServerBuilder::new()
+        .fake_worlds(TWO_WORLDS)
+        .arg("--config")
+        .arg(config.path())
+        .start()
+        .await;
+    let relay = Relay::start(&server.dir().path().join("relay.sock"), server.socket());
+    let mut client = PtyClient::start_args(
+        relay.socket(),
+        server.dir().path(),
+        Answers::Default,
+        &["--device".as_ref(), "laptop".as_ref()],
+        &[],
+    );
+    client.wait_greeting().await;
+    relay.hold();
+    assert!(relay.cut() >= 1, "no connection to cut");
+    client
+        .wait_top("disconnected", |top| top.contains("disconnected"))
+        .await;
+    bind_alt_n(&config);
+    reload(server.socket()).await;
+    relay.release();
+    client
+        .wait_top("connected", |top| !top.contains("disconnected"))
+        .await;
+    alt_n_moves_the_focus(&mut client).await;
+}
+
+#[tokio::test]
+async fn a_reload_across_a_server_restart() {
+    let config = ConfigDir::empty();
+    let (mut session, mut client) = attached_with(TWO_WORLDS, &config, Answers::Default).await;
+    session.server.signal(rustix::process::Signal::TERM);
+    session.server.wait_exit().await;
+    bind_alt_n(&config);
+    let dir = std::sync::Arc::clone(session.server.dir());
+    let _server = ServerBuilder::new()
+        .in_dir(&dir)
+        .fake_worlds(TWO_WORLDS)
+        .arg("--config")
+        .arg(config.path())
+        .start()
+        .await;
+    client
+        .wait_top("connected", |top| !top.contains("disconnected"))
+        .await;
+    alt_n_moves_the_focus(&mut client).await;
+}
+
+#[tokio::test]
+async fn a_bad_layer_after_a_reload() {
+    let config = ConfigDir::empty().file("clients/devices/laptop.toml", "echo = \"hide\"\n");
+    let (session, mut client) = attached_with(&["alpha/aria"], &config, Answers::Default).await;
+    write_layer(&config, "clients/devices/laptop.toml", "echo = \"loud\"\n");
+    reload(session.server.socket()).await;
+    wait_notice(&client, &["clients/devices/laptop.toml", "echo"]).await;
+    hello(&mut client).await;
+    assert_eq!(client.dims("> hello"), [true; 7]);
+}
+
+#[tokio::test]
+async fn a_clients_directory_that_turns_unlistable() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let config = ConfigDir::empty().file("clients/global.toml", "");
+    let clients = config.path().join("clients");
+    let (session, client) = attached_with(&["alpha/aria"], &config, Answers::Default).await;
+    std::fs::set_permissions(&clients, std::fs::Permissions::from_mode(0o000)).unwrap();
+    // A user who can list every directory, such as root, gets no error.
+    if std::fs::read_dir(&clients).is_ok() {
+        std::fs::set_permissions(&clients, std::fs::Permissions::from_mode(0o755)).unwrap();
+        return;
+    }
+    reload(session.server.socket()).await;
+    client
+        .wait_rows("the notice", |rows| {
+            rows.iter()
+                .any(|row| row.starts_with("-- ") && row.contains("clients"))
+        })
+        .await;
+    std::fs::set_permissions(&clients, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
