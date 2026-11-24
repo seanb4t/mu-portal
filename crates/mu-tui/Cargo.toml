@@ -15,6 +15,7 @@ workspace = true
 base64 = { workspace = true }
 futures = { workspace = true }
 mu-client = { path = "../mu-client" }
+mu-config = { path = "../mu-config" }
 mu-proto = { path = "../mu-proto" }
 ratatui = { workspace = true }
 ratatui-textarea = { workspace = true }

@@ -1,6 +1,7 @@
 //! The keymap: a table from a key with its modifiers, or a step of the mouse wheel, to an entry
 //! of the [registry](crate::registry).
 
+use mu_config::{Binding, Key, KeyName};
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use crate::registry::EntryId;
@@ -36,83 +37,48 @@ impl Chord {
         Self { code, modifiers }
     }
 
-    /// The chord of a key name: modifiers from `ctrl`, `alt`, `shift` and `super`, then one key,
-    /// joined with `+`. A key is one character that is not an uppercase letter, a control
-    /// character or `+`, the name `plus`, or the name of a special key. `shift+tab` is
-    /// [`KeyCode::BackTab`] with Shift, and `shift` and a letter is the lowercase letter with
-    /// Shift. `shift` with any other character is an error, because the terminal sends the
-    /// shifted character.
-    ///
-    /// # Errors
-    ///
-    /// A [`KeyNameError`] that names the key name and the reason.
-    pub fn parse(name: &str) -> Result<Self, KeyNameError> {
-        let error = |reason: String| KeyNameError {
-            name: name.to_owned(),
-            reason,
-        };
-        let mut parts: Vec<&str> = name.split('+').collect();
-        let key = parts.pop().unwrap_or_default();
-        let mut modifiers = Modifiers::NONE;
-        for part in parts {
-            let (_, modifier) = MODIFIERS
-                .iter()
-                .find(|(each, _)| *each == part)
-                .ok_or_else(|| {
-                    error(if part.is_empty() {
-                        "the key + is named plus".to_owned()
-                    } else {
-                        format!("{part:?} is no modifier: use ctrl, alt, shift or super")
-                    })
-                })?;
-            if modifiers.contains(*modifier) {
-                return Err(error(format!("{part} is there twice")));
-            }
-            modifiers |= *modifier;
-        }
-        let code = key_code(key).map_err(error)?;
-        if modifiers.contains(Modifiers::SHIFT)
-            && let KeyCode::Char(c) = code
-            && !c.is_lowercase()
-        {
-            return Err(error(format!(
-                "shift with {key} is not a key, because the terminal sends the shifted character"
-            )));
-        }
-        let code = if code == KeyCode::Tab && modifiers.contains(Modifiers::SHIFT) {
-            KeyCode::BackTab
-        } else {
-            code
-        };
-        Ok(Self { code, modifiers })
-    }
-
-    /// The key name of the chord, which [`Self::parse`] reads back for a chord that it made: the
-    /// modifiers in the order
-    /// `ctrl`, `alt`, `shift`, `super`, then the key. None for a key that has no name.
+    /// The chord of a neutral key name. Tab with Shift is [`KeyCode::BackTab`] with Shift, as
+    /// the terminal reports it.
     #[must_use]
-    pub fn name(self) -> Option<String> {
-        let key = match self.code {
-            KeyCode::BackTab => "tab".to_owned(),
-            KeyCode::Char(c) => NAMED
-                .iter()
-                .find(|(_, code)| *code == KeyCode::Char(c))
-                .map_or_else(|| c.to_string(), |(name, _)| (*name).to_owned()),
-            KeyCode::Function(n) => format!("f{n}"),
-            code => (*NAMED.iter().find(|(_, each)| *each == code)?.0).to_owned(),
+    pub fn of_name(name: KeyName) -> Self {
+        let held = name.modifiers;
+        let mut modifiers = Modifiers::NONE;
+        for (on, modifier) in [
+            (held.ctrl, Modifiers::CONTROL),
+            (held.alt, Modifiers::ALT),
+            (held.shift, Modifiers::SHIFT),
+            (held.super_key, Modifiers::SUPER),
+        ] {
+            if on {
+                modifiers |= modifier;
+            }
+        }
+        let code = match name.key {
+            Key::Char(c) => KeyCode::Char(c),
+            Key::Enter => KeyCode::Enter,
+            Key::Tab if held.shift => KeyCode::BackTab,
+            Key::Tab => KeyCode::Tab,
+            Key::Backspace => KeyCode::Backspace,
+            Key::Esc => KeyCode::Escape,
+            Key::Up => KeyCode::Up,
+            Key::Down => KeyCode::Down,
+            Key::Left => KeyCode::Left,
+            Key::Right => KeyCode::Right,
+            Key::Home => KeyCode::Home,
+            Key::End => KeyCode::End,
+            Key::PageUp => KeyCode::PageUp,
+            Key::PageDown => KeyCode::PageDown,
+            Key::Insert => KeyCode::Insert,
+            Key::Delete => KeyCode::Delete,
+            Key::F(n) => KeyCode::Function(n),
         };
-        let mut parts: Vec<String> = MODIFIERS
-            .iter()
-            .filter(|(_, modifier)| self.modifiers.contains(*modifier))
-            .map(|(name, _)| (*name).to_owned())
-            .collect();
-        parts.push(key);
-        Some(parts.join("+"))
+        Self { code, modifiers }
     }
 
     /// The chord that a binding of `key` has. An uppercase letter is its lowercase letter with
     /// Shift, and Tab with Shift is [`KeyCode::BackTab`].
-    fn of_key(key: &KeyEvent) -> Self {
+    #[must_use]
+    pub fn of_key(key: &KeyEvent) -> Self {
         let mut modifiers = key.modifiers;
         let code = match key.code {
             KeyCode::Char(c) if c.is_uppercase() => {
@@ -129,79 +95,6 @@ impl Chord {
             code => code,
         };
         Self { code, modifiers }
-    }
-}
-
-/// A key name that [`Chord::parse`] refuses.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct KeyNameError {
-    /// The key name.
-    pub name: String,
-    /// What is wrong with it.
-    pub reason: String,
-}
-
-impl std::fmt::Display for KeyNameError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.name, self.reason)
-    }
-}
-
-impl std::error::Error for KeyNameError {}
-
-/// The modifiers of a key name, in the order that [`Chord::name`] writes them.
-const MODIFIERS: [(&str, Modifiers); 4] = [
-    ("ctrl", Modifiers::CONTROL),
-    ("alt", Modifiers::ALT),
-    ("shift", Modifiers::SHIFT),
-    ("super", Modifiers::SUPER),
-];
-
-/// The names of the special keys, and of the characters ` ` and `+`.
-const NAMED: [(&str, KeyCode); 16] = [
-    ("enter", KeyCode::Enter),
-    ("tab", KeyCode::Tab),
-    ("backspace", KeyCode::Backspace),
-    ("esc", KeyCode::Escape),
-    ("space", KeyCode::Char(' ')),
-    ("plus", KeyCode::Char('+')),
-    ("up", KeyCode::Up),
-    ("down", KeyCode::Down),
-    ("left", KeyCode::Left),
-    ("right", KeyCode::Right),
-    ("home", KeyCode::Home),
-    ("end", KeyCode::End),
-    ("pageup", KeyCode::PageUp),
-    ("pagedown", KeyCode::PageDown),
-    ("insert", KeyCode::Insert),
-    ("delete", KeyCode::Delete),
-];
-
-/// The key code of the last part of a key name.
-fn key_code(key: &str) -> Result<KeyCode, String> {
-    if let Some((_, code)) = NAMED.iter().find(|(name, _)| *name == key) {
-        return Ok(*code);
-    }
-    if let Some(digits) = key.strip_prefix('f')
-        && !digits.is_empty()
-        && digits.bytes().all(|byte| byte.is_ascii_digit())
-    {
-        return match digits.parse::<u8>() {
-            Ok(n @ 1..=12) if !digits.starts_with('0') => Ok(KeyCode::Function(n)),
-            _ => Err(format!("{key} is no function key: they are f1 to f12")),
-        };
-    }
-    let mut chars = key.chars();
-    match (chars.next(), chars.next()) {
-        (None, _) => Err("the name has no key".to_owned()),
-        (Some(c), None) if c.is_control() => Err(format!(
-            "the control character {c:?} is no key: name the key, such as tab or enter"
-        )),
-        (Some(c), None) if c.is_uppercase() => Err(format!(
-            "{c} is uppercase: name the key with shift and the lowercase letter"
-        )),
-        (Some(c), None) => Ok(KeyCode::Char(c)),
-        _ => Err(format!("{key:?} is no key")),
     }
 }
 
@@ -267,6 +160,21 @@ impl Keymap {
             Some(bound) => bound.1 = entry,
             None => self.entries.push((chord, entry)),
         }
+    }
+
+    /// The default keymap with each binding in place of the default of its key. A key bound to
+    /// [`Binding::None`] runs `ignore`, so it does not fall back to the key with no modifier.
+    #[must_use]
+    pub fn with_bindings(bindings: &[(KeyName, Binding)]) -> Self {
+        let mut keymap = Self::default();
+        for (name, binding) in bindings {
+            let entry = match binding {
+                Binding::None => EntryId::of("ignore"),
+                Binding::Entry(entry) => EntryId::of(entry),
+            };
+            keymap.bind(Chord::of_name(*name), entry);
+        }
+        keymap
     }
 
     /// The entry of `key`. An uppercase letter is looked up as its lowercase letter with Shift,

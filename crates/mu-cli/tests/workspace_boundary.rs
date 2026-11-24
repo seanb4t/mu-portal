@@ -19,13 +19,15 @@ mod support;
 const ALLOWED_EDGES: &[(&str, &[&str])] = &[
     ("mu-proto", &[]),
     ("mu-core", &[]),
+    ("mu-config", &[]),
     ("mu-fake-server", &["mu-core"]),
-    ("mu-server", &["mu-core", "mu-proto"]),
+    ("mu-server", &["mu-config", "mu-core", "mu-proto"]),
     ("mu-client", &["mu-proto"]),
-    ("mu-tui", &["mu-client", "mu-proto"]),
+    ("mu-tui", &["mu-client", "mu-config", "mu-proto"]),
     (
         "mu-cli",
         &[
+            "mu-config",
             "mu-core",
             "mu-fake-server",
             "mu-server",
@@ -65,6 +67,7 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "tracing",
         ],
     ),
+    ("mu-config", &["proptest", "serde"]),
     ("mu-fake-server", &["futures", "tokio"]),
     (
         "mu-server",

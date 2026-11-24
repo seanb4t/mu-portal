@@ -5,8 +5,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::keymap::{Chord, Keymap};
-use crate::registry::EntryId;
+use crate::keymap::Keymap;
 
 /// How the client shows the echo line of a send.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
@@ -69,27 +68,7 @@ pub struct Settings {
     pub echo: Echo,
 }
 
-/// A bad binding of `[keys]`. Its text is the reason alone, so the reader of the file puts the
-/// file and the key before it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct KeyError {
-    /// The key name of the binding, as the file writes it.
-    pub key: String,
-    /// What is wrong with it.
-    pub reason: String,
-}
-
-impl std::fmt::Display for KeyError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.reason)
-    }
-}
-
-impl std::error::Error for KeyError {}
-
-/// The value of a binding that makes the key do nothing: it binds the key to `ignore`, so the
-/// key does not fall back to the key with no modifier.
-const NONE: &str = "none";
+pub use mu_config::KeyError;
 
 impl ClientConfig {
     /// The default keymap with each binding of `[keys]` in place of the default of its key.
@@ -97,35 +76,9 @@ impl ClientConfig {
     ///
     /// # Errors
     ///
-    /// A [`KeyError`] for a bad key name, an unknown entry, an entry that needs an argument, or
-    /// two names of one key.
+    /// The [`KeyError`] of [`mu_config::check_keys`].
     pub fn keymap(&self) -> Result<Keymap, KeyError> {
-        let mut keymap = Keymap::default();
-        let mut named: Vec<(Chord, &str)> = Vec::new();
-        for (key, value) in &self.keys {
-            let error = |reason: String| KeyError {
-                key: key.clone(),
-                reason,
-            };
-            let chord = Chord::parse(key).map_err(|parse| error(parse.reason))?;
-            if let Some((_, other)) = named.iter().find(|(each, _)| *each == chord) {
-                return Err(error(format!("{other} and {key} name the same key")));
-            }
-            named.push((chord, key));
-            let entry = if value == NONE {
-                EntryId::of("ignore")
-            } else {
-                EntryId::named(value).ok_or_else(|| error(format!("no entry is named {value}")))?
-            };
-            if let Some(arg) = entry.entry().arg.filter(|arg| arg.required) {
-                return Err(error(format!(
-                    "{value} needs a {}, so a key cannot run it",
-                    arg.kind.word()
-                )));
-            }
-            keymap.bind(chord, entry);
-        }
-        Ok(keymap)
+        Ok(Keymap::with_bindings(&mu_config::check_keys(&self.keys)?))
     }
 
     /// The settings of a run: the keymap of [`Self::keymap`] and the echo.

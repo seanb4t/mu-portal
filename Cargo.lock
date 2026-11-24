@@ -1873,6 +1873,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mu-config"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde",
+]
+
+[[package]]
 name = "mu-core"
 version = "0.1.0"
 dependencies = [
@@ -1937,6 +1945,7 @@ dependencies = [
  "futures",
  "insta",
  "mu-client",
+ "mu-config",
  "mu-proto",
  "proptest",
  "ratatui",

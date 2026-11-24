@@ -28,7 +28,7 @@ pub mod wrap;
 
 pub use config::{ClientConfig, Echo, KeyError, ServerTable, Settings};
 pub use editor::{Editor, EditorId, EditorState};
-pub use keymap::{Chord, KeyNameError, Keymap, Wheel};
+pub use keymap::{Chord, Keymap, Wheel};
 pub use layout::{Leaf, Node, Size};
 pub use model::{Model, PaneId};
 pub use pane::{Caps, OutputPane, PaneState, Position};
