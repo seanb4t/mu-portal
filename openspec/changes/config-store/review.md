@@ -1,9 +1,9 @@
 ---
 verdict: approve
 phase: implementation
-reviewed_at: 2026-11-24T19:54:37+00:00
-head: 4320f62b86578df29a04034fd82aba66321826c8
-round: 18
+reviewed_at: 2026-11-24T20:40:21+00:00
+head: 7204d1ea64d73441970e919faa5daacec149e44d
+round: 19
 next_id: 374
 lenses:
   spec-lint: not-applicable
@@ -66,6 +66,7 @@ None.
 | 16 | implementation | full | d85fc7781896e8bc9e85b411fd6b297f9fa4c909 | d0ae1b63adb43dc2d597e7a6d912cd35d6c539b4088a1ac5967d4f36d9a82e46 | approve-with-notes | 13 | 1 | 0 | 0 | 0 | the suite fixes added five scenarios that need coverage matrix rows (R-345 to R-349) |
 | 17 | implementation | full | 57b0a353d2a9fd8d9b2bc80f618d1b0bfb74b9b3 | 09a6e0a64c758b051002cda5f6bb79d46cee105e0cc06a38b1a845aa7f71da46 | approve-with-notes | 11 | 1 | 0 | 0 | 0 | the test-honesty lens of round 16 was partial, so its files are split over three agents |
 | 18 | implementation | follow-up | 4320f62b86578df29a04034fd82aba66321826c8 | e2782093d2745a67e8e000f2b2a4ec52c30fb1508bc2d975ace4066abe26c4bc | approve | 0 | 0 | 0 | 9 | 0 |  |
+| 19 | implementation | follow-up | 7204d1ea64d73441970e919faa5daacec149e44d | 789a9649f92ec9f4d8f7aedcfce2c79709cc21a9038a561f413f4bc85e43cb95 | approve | 0 | 0 | 0 | 0 | 0 |  |
 
 ## Judge
 
@@ -415,9 +416,12 @@ None.
 
 ## Lens notes
 
-- verify: D1 (design.md line 40) still says that the only allowed third-party crate of mu-config is serde, in the same paragraph that names the ALLOWED_CRATES row of serde, proptest and toml. The row and the dev-dependency reason are stated, so the claim of R-369 holds as fixed; the first sentence reads as the rule for normal dependencies only.
-- verify: The design.md ranges of the fix_hunks (lines 40, 70, 77, 175, 218) are not in diff-hunks.txt. They were read at head for R-363, R-369, R-370 and R-371.
-- verify: connect_wait now gives Duration::MAX for a finite value above the longest Duration. Its only consumer is mu_tui::timed, which calls tokio::time::timeout, and the start path in_one_wait goes through the same function, so no Instant addition with that value exists in mu-cli.
+- verify: prior.json holds no fixed entry with a basis, so this round has no fix to answer and fixes is empty.
+- verify: Every range of diff-hunks.txt was read at head: Cargo.lock 3666-3704, crates/mu-cli/tests/bootstrap.rs 51-60, 335 and 343-348, and crates/mu-cli/tests/support/mod.rs 20-32. None holds a regression.
+- verify: Cargo.lock moves toml to 1.2.2 and toml_parser to 1.1.6. The workspace requirement toml = "1.2.1" in Cargo.toml admits 1.2.2.
+- verify: test_env now sets MU_DEVICE to TEST_DEVICE in place of removing it. Each env change of a test applies after test_env, so the_host_name removes MU_DEVICE and an_empty_device_variable sets it empty, and both reach the host-name branch of device_name in crates/mu-cli/src/bootstrap.rs. No other test under crates/mu-cli/tests names the host name or test-device.
+- verify: Task 6.1 still says that test_env removes MU_DEVICE, while the helper now sets it to test-device. The doc comment of test_env states the new behaviour. This is a wording gap in tasks.md, not a regression.
+- verify: uses_the_host takes the refusal branch when mu_config::DeviceName refuses the host name, so the_host_name and an_empty_device_variable use the code's own name check as their oracle. The grammar has its own unit tests in mu-config. This is a remark for the test-honesty lens, outside the verify bound.
 
 ## Ledger
 
@@ -643,84 +647,8 @@ None.
 
 | path | content |
 |---|---|
-| Cargo.lock | 1050d63e83e2b8d280cd2081487dc385e61fd9b9 |
-| Cargo.toml | e78f9d0a9c18451aa5b4841ae5b5ea19a9c9400b |
-| architecture/model.c4 | 57efc47d38ab8d091fc45278356f6225e52620e0 |
-| architecture/views.c4 | 089983f9b810713767ab80770a20d556455e046d |
-| crates/mu-cli/Cargo.toml | c1fc9f7c542a93a820e08f655f08e959133d0489 |
-| crates/mu-cli/src/bootstrap.rs | c8e408b4c725ace592611b9bcf03103c18c24623 |
-| crates/mu-cli/src/client.rs | 1a83a0456494b98326afa86e03349eba38275651 |
-| crates/mu-cli/src/config_file.rs | 0b4bb1bc1734e095a93da357efaa49defa239ee6 |
-| crates/mu-cli/src/config_verb.rs | 6917bed4e9fe548e0d8f0c58b3890cea223b3ffd |
-| crates/mu-cli/src/lib.rs | 38821a654e56d33d606b0cb70d5c3c73a1f4d89b |
-| crates/mu-cli/src/server.rs | adb8596ed302c00a4c50077e523439040673563d |
-| crates/mu-cli/src/server_config.rs | 2cc909c126c791802487888bd92884f286f09f1b |
-| crates/mu-cli/src/socket.rs | 572e8c547719bb268ca9a06207f6a797cdf9c8e3 |
-| crates/mu-cli/tests/bootstrap.rs | f7fcbba72b02eeef780f83f953180089e1056f56 |
-| crates/mu-cli/tests/cli.rs | b8d8d0c42184f67280cee6f03008a928cbc1b728 |
-| crates/mu-cli/tests/client.rs | 414dcdb06632cfaa82073e8cb912ce3dcbba18a1 |
-| crates/mu-cli/tests/config_store.rs | 81d8867259c24c5677dcd109c8be2e660f09dea2 |
-| crates/mu-cli/tests/server.rs | c8187b3c41d4744438447579175527eedaf9a51c |
-| crates/mu-cli/tests/support/mod.rs | 3eb693474d9011199d0738076deb3d6cc318cef8 |
-| crates/mu-cli/tests/support/process.rs | 4c2dba2036cda6d3658a705cf39596d5a619848e |
-| crates/mu-cli/tests/telemetry.rs | 445b219fe1f0991b751a73a0257ce23d838c3dc7 |
-| crates/mu-cli/tests/workspace_boundary.rs | b794b6c5ed88c34f12c58786ca5c5bb10471b447 |
-| crates/mu-cli/tests/world_config.rs | 2196d6727d92719459c9df70a3be9ab6c2e7107e |
-| crates/mu-client/src/lib.rs | a5119f73be50f90c313532e9cd65966981f3c678 |
-| crates/mu-config/Cargo.toml | 88782c13c2b8ab6648fc876174beaf837d6aaaf2 |
-| crates/mu-config/src/entries.rs | c370c0fb5df7488f47598cb3c8743d35585d3b12 |
-| crates/mu-config/src/filter.rs | 1d9211887f44127409a7e3a4073e9061fbefd336 |
-| crates/mu-config/src/key.rs | e3f8d577576d4508031d87172ef3b94f830f2531 |
-| crates/mu-config/src/layer.rs | 82d2342512945626b14bf0a75ae491f392c46f54 |
-| crates/mu-config/src/lib.rs | a835025c0f895ecace18062dcc8411ab49dd0359 |
-| crates/mu-config/src/names.rs | 6ef3c9529a623bbe814b7253c58bf649ccc128af |
-| crates/mu-config/tests/filter.rs | 079c8cbdae4bee04d58a50671e353d46978650bd |
-| crates/mu-config/tests/keys.rs | 78e20e9089d999997b320fc67301f4cc35f122c0 |
-| crates/mu-config/tests/layer.rs | cf435aaa15031c25cbcf7372cee807f2aae3dfb7 |
-| crates/mu-config/tests/names.rs | d638942e8bf197267f1c49b7a4bdeeed741e1fda |
-| crates/mu-core/Cargo.toml | b656a43167026ec80d8f3dcdbd3e814beb9e57a9 |
-| crates/mu-core/src/world/dir.rs | 9f8922541795b28e4fec3e390c51f61fad3b98b0 |
-| crates/mu-core/src/world/error.rs | 03a6baeaed46cc964dcd214c32997d650b507387 |
-| crates/mu-core/src/world/merge.rs | 8a983e35e23556411e260bf2c031e1b8e6e07aee |
-| crates/mu-core/src/world/mod.rs | eda2e248b7ad3b0691a8c320a45fa27a724757f5 |
-| crates/mu-core/src/world/resolve.rs | 8a876532606736602185ecbc71d491f0f9b16f04 |
-| crates/mu-core/src/world/snapshot.rs | 23889ce2dd5b4bf7d1ce4a7fc9c3d515d6af8dc0 |
-| crates/mu-core/tests/snapshot.rs | 9b9a337909b09e68758ae5486751d1f4f368d239 |
-| crates/mu-proto/proto/mu/v1/portal.proto | 1cc61ac8f992927724d21d5f0eaec79a000e6952 |
-| crates/mu-server/Cargo.toml | 7202d3211f25c2708f335f83cafa2a6b915543be |
-| crates/mu-server/src/lib.rs | 7ccb4a4323be6f54e245c1d774ddcb8ea753db6b |
-| crates/mu-server/src/serve.rs | d1609036cd448031117a836cd5be4867fa6890d3 |
-| crates/mu-server/src/service.rs | 99c2a105fbb39a1694e096155565034dd74ea681 |
-| crates/mu-server/src/store.rs | e1895c958e9d81afef8ccc0996ac8775c1338c9d |
-| crates/mu-server/tests/config_api.rs | e6fb87d815fdf8bc3dceb749c6ade73e37dbe120 |
-| crates/mu-server/tests/store.proptest-regressions | 3c9fea0c261bebfa8a8749284b5fde16b429a727 |
-| crates/mu-server/tests/store.rs | c1215b8f146d5b2de8fe5b93fe5bb633e1cb66de |
-| crates/mu-tui/Cargo.toml | 3262d77d63d3fb01667e89dee193433e2637bcee |
-| crates/mu-tui/src/config.rs | 59b896887ba53a1d96a582386c4189f2d602075e |
-| crates/mu-tui/src/keymap.rs | 1b60266e2d012163ab6dff879b99a1b57610a398 |
-| crates/mu-tui/src/lib.rs | a63c5958eef8aaac8dee5ad0034b260ab8b18ff6 |
-| crates/mu-tui/src/model.rs | 64c4e9d318936cf283447c48c81497e2820eed2d |
-| crates/mu-tui/src/run.rs | 0a60b352c05446e6fd146ef28d95993af346e23f |
-| crates/mu-tui/src/text.rs | 493248060c333e890196085ef6fc1be2a9b65a9a |
-| crates/mu-tui/src/update.rs | 8d8d468c0c715ef337b3ef216cd808ae7372fc75 |
-| crates/mu-tui/tests/app.rs | f306b1e88247808630337d827452ba146f537bdb |
-| crates/mu-tui/tests/keymap.rs | 94decbdf7633009227997cbdf39bc051a6719316 |
-| crates/mu-tui/tests/update.proptest-regressions | f6c6a9dd68ea23ba04711ca882a7c630471ff619 |
-| crates/mu-tui/tests/update.rs | 478a6f539a33d4440835da28a7293a5aec883f8b |
-| docs/src/content/docs/architecture/crate-layout.mdx | 3054ce7e1a3861696434eadc5e0133b1cc711cfa |
-| docs/src/content/docs/architecture/server-and-clients.mdx | dd2549b652c032fd908536906aac3e36cae1d846 |
-| docs/src/content/docs/architecture/terminal-client.mdx | 22a5cdea73a87b05105957ea98856f3a533de4f5 |
-| docs/src/content/docs/contributing/workspace.md | 9e3d4cba29efd751c37df149509d985429212841 |
-| docs/src/content/docs/decisions/configuration-ownership.md | 4d1cbdbe01c149dcfa7b4626d17bce8d8a2fcee4 |
-| docs/src/content/docs/decisions/terminal-client-architecture.md | eda053b8161cd2f0213e9a093c2285dffc817338 |
-| docs/src/content/docs/guides/client.md | 05afd654110ad9920c788865a47eda7031a7dcd0 |
-| docs/src/content/docs/guides/configuration.md | e217c216bfaa09fbbab774fed20c046554b0cd1b |
-| docs/src/content/docs/guides/first-run.md | 273e4a32b56b7167b7b6099f1a837ca81f1e8985 |
-| docs/src/content/docs/guides/telemetry.md | 6d232a5907a7bc0a7927b44310fa9c3d3b64520c |
-| docs/src/content/docs/index.md | 94e8a3be6d9512c32b039819b4d07c1deeee46f0 |
-| mise.toml | 3483112b3eb01ff8abaf18c07f2a87193069e984 |
 | openspec/changes/config-store/.openspec.yaml | a0171eea41a9ef975ac5c180be78365a94f5bee0 |
-| openspec/changes/config-store/design.md | 536ae22371ae788919a4fd91ae71f921b7d40530 |
+| openspec/changes/config-store/design.md | 44dcd06e6e4615ce598be5f38957990eafa82809 |
 | openspec/changes/config-store/proposal.md | d459ab83ac317ba928f478856d2e07d050e79cb9 |
 | openspec/changes/config-store/specs/cli-entrypoint/spec.md | e58709b8a27afcfd635388b7e7982ac633245c70 |
 | openspec/changes/config-store/specs/client-bootstrap/spec.md | 195967911288c2fa7a8dbd622508f039a5277927 |
