@@ -92,8 +92,8 @@ A bad command names no entry, or an entry that does not run as a command. It can
 - **AND** `alpha/aria` is still connected
 
 #### Scenario: A key bound to connect with no world in focus
-- **GIVEN** `<dir>/client.toml` holds `[keys]` with `"alt+c" = "connect"`, and a server with no world
-- **WHEN** the user starts `mu client --config <dir>` and presses Alt+C
+- **GIVEN** `clients/global.toml` holds `[keys]` with `"alt+c" = "connect"`, and a server serves that directory with no world
+- **WHEN** the user starts `mu client` and presses Alt+C
 - **THEN** the screen shows a line that starts with `-- ` and contains `no world`
 - **AND** the client is still running
 

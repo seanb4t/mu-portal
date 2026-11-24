@@ -669,7 +669,7 @@ The client SHALL split the echo line of a send at each `line_break` of its world
 - **AND** the screen shows no row that holds `one%rtwo` and starts with `> `
 
 ### Requirement: The top row shows the first list
-The client SHALL open the screen before its first list of the worlds for the screen. `mu client` can list the worlds once before, within the time of `connect_wait_seconds` in `client.toml`, to decide whether to start a server. Until that list ends, the top row SHALL show `listing worlds`, and no world SHALL have the focus, also if events of a world arrive. Keys typed in that time SHALL edit an editor of no world, and a key that sends SHALL show that no world is in focus.
+The client SHALL open the screen before its first list of the worlds for the screen. `mu client` can list the worlds once before, within the time of `connect_wait` of the server URL, to decide whether to start a server. It also gets its client configuration from the server before it opens the screen. Until that list ends, the top row SHALL show `listing worlds`, and no world SHALL have the focus, also if events of a world arrive. Keys typed in that time SHALL edit an editor of no world, and a key that sends SHALL show that no world is in focus.
 
 #### Scenario: Before the first list
 - **GIVEN** the client opened the screen, and its first list of the worlds did not end yet
