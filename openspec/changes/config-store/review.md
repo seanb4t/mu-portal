@@ -1,10 +1,10 @@
 ---
-verdict: approve
+verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-24T16:43:03+00:00
-head: 64176f447122666fcc32ba051a1aae6d6903f017
-round: 14
-next_id: 344
+reviewed_at: 2026-11-24T17:39:38+00:00
+head: c832ad0a3d3cda13bde36e6e777e79a398646f2e
+round: 15
+next_id: 350
 lenses:
   spec-lint: not-applicable
   approach: ok
@@ -20,6 +20,12 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
+| R-345 | test-coverage | should-fix | in-change | delta scenario 'A reload of a removed directory' has no matrix row | review > absent-row — "A reload of a removed directory" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-346 | test-coverage | should-fix | in-change | delta scenario 'The server writes the notices of a reload' has no matrix row | review > absent-row — "The server writes the notices of a reload" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-347 | test-coverage | should-fix | in-change | delta scenario 'An open socket directory' has no matrix row | review > absent-row — "An open socket directory" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-348 | test-coverage | should-fix | in-change | delta scenario 'A control character in the reply' has no matrix row | review > absent-row — "A control character in the reply" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-349 | test-coverage | should-fix | in-change | delta scenario 'A failed fetch is tried again' has no matrix row | review > absent-row — "A failed fetch is tried again" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-344 | verify | should-fix | in-change | config_failed counts and notices a failed fetch even when the configuration is no longer stale. Fetches run concurrently, so an older fetch that fails after a newer one applied shows a spurious notice and leaves config_failures at 1 until the next apply. The next real failure then shows no notice and waits 200 ms, against the scenario A failed fetch is tried again (one notice, a wait of 100 ms). | crates/mu-tui/src/update.rs:854 — "if model.config_failures == 0 {" | In config_failed, return no effect and change neither the notice nor config_failures when config_stale(model) is false; add a test where a failure arrives after the latest hash applied, then a new hash fails and still shows one notice and waits 100 ms. |  |  | unmet-requirement |
 
 ## Repeats
 
@@ -60,10 +66,11 @@ None.
 | 12 | implementation | follow-up | e1b97a9dade476dadab073a4331db2fc5dc26b1c | 2622986694bb01f0c8faebd284962f57f365bfcc0479c6670b37c4e8b285df03 | changes-requested | 0 | 0 | 1 | 26 | 0 |  |
 | 13 | implementation | follow-up | 58e8c309326c197de4cb81c911c30cc9c45ff953 | d0e2c9ddd4322ac6a9c7e4027bdbd9ddd4cf3f26774f056d8c8721cc5c8adfcf | changes-requested | 0 | 0 | 1 | 0 | 0 |  |
 | 14 | implementation | follow-up | 64176f447122666fcc32ba051a1aae6d6903f017 | 3466ffedc464a9eb5976faa131091081c55691bde602b270e5ccbeb9077215ac | approve | 0 | 0 | 0 | 1 | 0 |  |
+| 15 | implementation | follow-up | c832ad0a3d3cda13bde36e6e777e79a398646f2e | c0b348b8c79099be88eb99a5a15d5fe4eb6655358d7a2b3f31e87a5882ee851a | approve-with-notes | 6 | 0 | 0 | 0 | 0 |  |
 
 ## Judge
 
-judge: 0 questions, 0.000 USD
+judge: 2 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -399,10 +406,9 @@ None.
 
 ## Lens notes
 
-- verify: R-159: at head, keep() marks a top-level entry named exactly server.toml as the top file with no file system call (is_top_file returns true when name == SERVER_FILE), so a FIFO or a link to nothing at that name never becomes a stray world file. For another case, same_entry now uses fs::symlink_metadata on both names, so a broken link named Server.toml on a case-insensitive file system is the server file. The macOS-only test a_broken_link_named_server_toml_in_another_case_is_the_server_file fails with the earlier fs::metadata, because both stats return NotFound and is_top_file returns false.
-- verify: same_entry now compares the link itself rather than its target, for both the server.toml check and the Clients/ rename in parts(). On a case-sensitive file system, a top-level link Server.toml -> server.toml is now a stray .toml file, whereas the base scan (same_file::is_same_file, which follows links) skipped it as the top file. This matches design.md D2 line 62 (compare the two names themselves, not the target of a link) and the world-config rule that any other .toml file is an error, so it is not raised as a regression.
-- verify: The diff-hunks.txt ranges in openspec/changes/config-store/review.md were not read, because this agent must not read review.md.
-- verify: design.md line 62 (a fix_hunks range outside diff-hunks.txt) was read and matches the code at snapshot.rs 336-341.
+- verify: prior.json has no fixed entry with a basis, so this round answers no row in fixes.
+- verify: openspec/specs/client-config/spec.md line 4 is in diff-hunks.txt; a main spec edited inside a change was not judged, since it is not a question of this agent.
+- verify: The reload notices go to the server stderr through tracing::warn!, and the stderr layer of mu server writes WARN lines to stderr (crates/mu-cli/src/telemetry/pipeline.rs 445).
 
 ## Ledger
 
@@ -593,6 +599,12 @@ None.
 | R-183 | 11 | 12 | suggestion | in-change |  | ["artifact",["design.md","D5. The API"],"notices[{path, reason}]"] | resolved | resolved in round 12 from fixed db98ea07b5a72094dca2dfa5ab076edfbaf2d264 | 11 |  |  | The D5 sketch gives a notice the fields path and reason. The proto Notice at head has path and text, and text is the whole notice with the path in it, as D2 states. A reader of D5, such as the writes of #173 or an MCP server, looks for a reason field that does not exist. |
 | R-184 | 11 | 12 | suggestion | in-change |  | ["path","crates/mu-config/src/names.rs",64] | resolved | resolved in round 12 from fixed db98ea07b5a72094dca2dfa5ab076edfbaf2d264 | 11 |  | scope? beyond-scope 0.63 | Kind::parse and Os::parse are the same lookup by name in ALL, with a NameError. Only the word for the name and the plural in the reason differ. Echo::named is the same lookup over an inline list. |
 | R-185 | 11 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"invariants partial"] | accepted | ticket: none; reason: the follow-up round reruns the invariants lens on D1, D5 and D7, the three areas it did not check |  |  |  | lens invariants reported partial, gaps: 3 |
+| R-344 | 15 | 15 | should-fix | in-change | unmet-requirement | ["path","crates/mu-tui/src/update.rs",854] |  |  |  |  |  | config_failed counts and notices a failed fetch even when the configuration is no longer stale. Fetches run concurrently, so an older fetch that fails after a newer one applied shows a spurious notice and leaves config_failures at 1 until the next apply. The next real failure then shows no notice and waits 200 ms, against the scenario A failed fetch is tried again (one notice, a wait of 100 ms). |
+| R-345 | 15 | 15 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A reload of a removed directory"] |  |  |  |  |  | delta scenario 'A reload of a removed directory' has no matrix row |
+| R-346 | 15 | 15 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The server writes the notices of a reload"] |  |  |  |  |  | delta scenario 'The server writes the notices of a reload' has no matrix row |
+| R-347 | 15 | 15 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"An open socket directory"] |  |  |  |  |  | delta scenario 'An open socket directory' has no matrix row |
+| R-348 | 15 | 15 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A control character in the reply"] |  |  |  |  |  | delta scenario 'A control character in the reply' has no matrix row |
+| R-349 | 15 | 15 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A failed fetch is tried again"] |  |  |  |  |  | delta scenario 'A failed fetch is tried again' has no matrix row |
 
 ## Reviewed files
 
@@ -603,24 +615,25 @@ None.
 | architecture/model.c4 | 57efc47d38ab8d091fc45278356f6225e52620e0 |
 | architecture/views.c4 | 089983f9b810713767ab80770a20d556455e046d |
 | crates/mu-cli/Cargo.toml | c1fc9f7c542a93a820e08f655f08e959133d0489 |
-| crates/mu-cli/src/bootstrap.rs | 08caab7130089c103795b1d32133337e94049d82 |
-| crates/mu-cli/src/client.rs | 35954fa95fb917570a51dd1005f2a936b9fb1012 |
+| crates/mu-cli/src/bootstrap.rs | c8e408b4c725ace592611b9bcf03103c18c24623 |
+| crates/mu-cli/src/client.rs | ef076fb6ebc8bb87fcb46590ce9cc618747f0fcc |
 | crates/mu-cli/src/config_file.rs | 0b4bb1bc1734e095a93da357efaa49defa239ee6 |
-| crates/mu-cli/src/config_verb.rs | 8d7f8beab5fbb7949ea6a9132a4baea7b7689aef |
+| crates/mu-cli/src/config_verb.rs | df6b5446bd3ee8ffcb6bfbe16b0540d5752a97c8 |
 | crates/mu-cli/src/lib.rs | 38821a654e56d33d606b0cb70d5c3c73a1f4d89b |
 | crates/mu-cli/src/server.rs | e2eee161fd934a92f2f2155080d329943606ae14 |
 | crates/mu-cli/src/server_config.rs | 2cc909c126c791802487888bd92884f286f09f1b |
+| crates/mu-cli/src/socket.rs | 572e8c547719bb268ca9a06207f6a797cdf9c8e3 |
 | crates/mu-cli/tests/bootstrap.rs | 1eacbd505e4fff0d0da0843f7f37aae1b19135d2 |
 | crates/mu-cli/tests/cli.rs | b8d8d0c42184f67280cee6f03008a928cbc1b728 |
-| crates/mu-cli/tests/client.rs | 5b21cc3a517bfb5692a3bf74459858d96efcd130 |
-| crates/mu-cli/tests/config_store.rs | cd4cf5340f49ee5e81ea6ca1825b7999b94c5d9e |
+| crates/mu-cli/tests/client.rs | 414dcdb06632cfaa82073e8cb912ce3dcbba18a1 |
+| crates/mu-cli/tests/config_store.rs | f159ddaa6dc567e294493a65324a8ac029040ad0 |
 | crates/mu-cli/tests/server.rs | c8187b3c41d4744438447579175527eedaf9a51c |
-| crates/mu-cli/tests/support/mod.rs | e57098d333d767711dca52638d78d09c20df7f45 |
-| crates/mu-cli/tests/support/process.rs | d225da8fb069c0bc7a203792fc7590fc5db4dd6a |
+| crates/mu-cli/tests/support/mod.rs | 3eb693474d9011199d0738076deb3d6cc318cef8 |
+| crates/mu-cli/tests/support/process.rs | 4c2dba2036cda6d3658a705cf39596d5a619848e |
 | crates/mu-cli/tests/telemetry.rs | 445b219fe1f0991b751a73a0257ce23d838c3dc7 |
 | crates/mu-cli/tests/workspace_boundary.rs | 1aa13a2761dbb375d62c04084759758921e9b7b5 |
 | crates/mu-cli/tests/world_config.rs | 2196d6727d92719459c9df70a3be9ab6c2e7107e |
-| crates/mu-client/src/lib.rs | 21ce4039f91b5bec79d19b3dee96571015baacd7 |
+| crates/mu-client/src/lib.rs | a5119f73be50f90c313532e9cd65966981f3c678 |
 | crates/mu-config/Cargo.toml | 1722b06d6a745f0319e4abec6b6f640cee340627 |
 | crates/mu-config/src/entries.rs | c370c0fb5df7488f47598cb3c8743d35585d3b12 |
 | crates/mu-config/src/filter.rs | 1d9211887f44127409a7e3a4073e9061fbefd336 |
@@ -632,60 +645,59 @@ None.
 | crates/mu-config/tests/keys.rs | bb5cf24bf25e6493a4fb71a876935f74474077dc |
 | crates/mu-config/tests/names.rs | d638942e8bf197267f1c49b7a4bdeeed741e1fda |
 | crates/mu-core/Cargo.toml | b656a43167026ec80d8f3dcdbd3e814beb9e57a9 |
-| crates/mu-core/src/world/dir.rs | 377474856caadda99ec036cfa729261838d6ee68 |
+| crates/mu-core/src/world/dir.rs | 9f8922541795b28e4fec3e390c51f61fad3b98b0 |
 | crates/mu-core/src/world/error.rs | 03a6baeaed46cc964dcd214c32997d650b507387 |
 | crates/mu-core/src/world/merge.rs | 8a983e35e23556411e260bf2c031e1b8e6e07aee |
 | crates/mu-core/src/world/mod.rs | eda2e248b7ad3b0691a8c320a45fa27a724757f5 |
 | crates/mu-core/src/world/resolve.rs | 8a876532606736602185ecbc71d491f0f9b16f04 |
-| crates/mu-core/src/world/snapshot.rs | b6ef467f9fd733d9565d9499aaa6dc2ed264c8ec |
+| crates/mu-core/src/world/snapshot.rs | 7a51687954d8474bd17728c153f787c876bf8a9d |
 | crates/mu-core/tests/snapshot.rs | c19930cf7a1351db3a904ad3da441b849b9c9c57 |
-| crates/mu-proto/proto/mu/v1/portal.proto | 107477c1404403cfd81f4df255197c7781af7ac9 |
+| crates/mu-proto/proto/mu/v1/portal.proto | 1cc61ac8f992927724d21d5f0eaec79a000e6952 |
 | crates/mu-server/Cargo.toml | 7202d3211f25c2708f335f83cafa2a6b915543be |
 | crates/mu-server/src/lib.rs | 7ccb4a4323be6f54e245c1d774ddcb8ea753db6b |
 | crates/mu-server/src/serve.rs | d1609036cd448031117a836cd5be4867fa6890d3 |
-| crates/mu-server/src/service.rs | fd362e315e3bc1f764910fa44d10136dce472bd9 |
-| crates/mu-server/src/store.rs | 087f83b3dcdc5888045a011820221d1f63bbc136 |
-| crates/mu-server/tests/config_api.rs | dfd55c43ec418aaa4e018a3fcf96786eec4a057d |
+| crates/mu-server/src/service.rs | 99c2a105fbb39a1694e096155565034dd74ea681 |
+| crates/mu-server/src/store.rs | 88534eb50d087ded203702fdfda921c1c269a505 |
+| crates/mu-server/tests/config_api.rs | b6d83a20af3f04a97cd1f27914a779e3324cb8f7 |
 | crates/mu-server/tests/store.proptest-regressions | 3c9fea0c261bebfa8a8749284b5fde16b429a727 |
 | crates/mu-server/tests/store.rs | e31e2af4b8568c4d61db7c1f7ede612136a1f66e |
 | crates/mu-tui/Cargo.toml | 3262d77d63d3fb01667e89dee193433e2637bcee |
-| crates/mu-tui/src/config.rs | f82af7c939e5204e3426801e622a03d73c1c1d57 |
+| crates/mu-tui/src/config.rs | 59b896887ba53a1d96a582386c4189f2d602075e |
 | crates/mu-tui/src/keymap.rs | 1b60266e2d012163ab6dff879b99a1b57610a398 |
 | crates/mu-tui/src/lib.rs | a63c5958eef8aaac8dee5ad0034b260ab8b18ff6 |
-| crates/mu-tui/src/model.rs | f63fdb131b292756a73be46cbe7dfcff355ab8f7 |
-| crates/mu-tui/src/run.rs | 8d07423715e0151b9b66ab0ed57a09d98768639b |
+| crates/mu-tui/src/model.rs | 64c4e9d318936cf283447c48c81497e2820eed2d |
+| crates/mu-tui/src/run.rs | 0a60b352c05446e6fd146ef28d95993af346e23f |
 | crates/mu-tui/src/text.rs | 493248060c333e890196085ef6fc1be2a9b65a9a |
-| crates/mu-tui/src/update.rs | b6501d22078d47abff41af35057181f54bf4a199 |
+| crates/mu-tui/src/update.rs | ddf7589712070488813348e2bf8166bf43917217 |
 | crates/mu-tui/tests/app.rs | f306b1e88247808630337d827452ba146f537bdb |
 | crates/mu-tui/tests/keymap.rs | 94decbdf7633009227997cbdf39bc051a6719316 |
 | crates/mu-tui/tests/update.proptest-regressions | f6c6a9dd68ea23ba04711ca882a7c630471ff619 |
-| crates/mu-tui/tests/update.rs | 369fcd199a096784845230b32c8cd7fda7056876 |
+| crates/mu-tui/tests/update.rs | 1e42e31e80093ae3ddee59701f3d56dcf6265c24 |
 | docs/src/content/docs/architecture/crate-layout.mdx | 3054ce7e1a3861696434eadc5e0133b1cc711cfa |
 | docs/src/content/docs/architecture/server-and-clients.mdx | dd2549b652c032fd908536906aac3e36cae1d846 |
 | docs/src/content/docs/architecture/terminal-client.mdx | 22a5cdea73a87b05105957ea98856f3a533de4f5 |
-| docs/src/content/docs/contributing/workspace.md | f38336f7da79ff65d14632fb999ba7af78f88388 |
+| docs/src/content/docs/contributing/workspace.md | 9e3d4cba29efd751c37df149509d985429212841 |
 | docs/src/content/docs/decisions/configuration-ownership.md | 4d1cbdbe01c149dcfa7b4626d17bce8d8a2fcee4 |
 | docs/src/content/docs/decisions/terminal-client-architecture.md | eda053b8161cd2f0213e9a093c2285dffc817338 |
-| docs/src/content/docs/guides/client.md | 147adde1a1d63ec63b6fc1dcabf139c767327306 |
+| docs/src/content/docs/guides/client.md | 05afd654110ad9920c788865a47eda7031a7dcd0 |
 | docs/src/content/docs/guides/configuration.md | e217c216bfaa09fbbab774fed20c046554b0cd1b |
 | docs/src/content/docs/guides/first-run.md | 273e4a32b56b7167b7b6099f1a837ca81f1e8985 |
 | docs/src/content/docs/guides/telemetry.md | 6d232a5907a7bc0a7927b44310fa9c3d3b64520c |
 | docs/src/content/docs/index.md | 94e8a3be6d9512c32b039819b4d07c1deeee46f0 |
 | mise.toml | 3483112b3eb01ff8abaf18c07f2a87193069e984 |
 | openspec/changes/config-store/.openspec.yaml | a0171eea41a9ef975ac5c180be78365a94f5bee0 |
-| openspec/changes/config-store/design.md | 56ff0079480cc104c0b35f317dacafa13f7f32c3 |
+| openspec/changes/config-store/design.md | a554b8c931ab3f82446fff0c8c5cb125ec82a57d |
 | openspec/changes/config-store/proposal.md | d459ab83ac317ba928f478856d2e07d050e79cb9 |
 | openspec/changes/config-store/specs/cli-entrypoint/spec.md | e58709b8a27afcfd635388b7e7982ac633245c70 |
 | openspec/changes/config-store/specs/client-bootstrap/spec.md | 195967911288c2fa7a8dbd622508f039a5277927 |
 | openspec/changes/config-store/specs/client-commands/spec.md | 68a8762e8fc76955a5637ec22bba61a5039d5e5c |
 | openspec/changes/config-store/specs/client-config/spec.md | d4f770f9cafb6de690262ed42c28b1d39304757f |
-| openspec/changes/config-store/specs/config-store/spec.md | 6310f3fa6f856f1a5d316df8a144187624b9c40b |
+| openspec/changes/config-store/specs/config-store/spec.md | 2f6f1e20df72d1901f99aad63cc060deb3e6399e |
 | openspec/changes/config-store/specs/server-process/spec.md | b042cd312cd519e5aad0413a62a18d3f38b10d23 |
 | openspec/changes/config-store/specs/terminal-client/spec.md | 161a454fcf502072a84ac2b52c10b782f2e6ecaf |
 | openspec/changes/config-store/specs/world-config/spec.md | 356551ef3788fafa9bb3434524b4138d12ce4f77 |
 | openspec/changes/config-store/tasks.md | sha256:516433824729ff0f64bd932b8006a08cddc35bcccee2123b6196ef53358687af |
 | openspec/review.json | absent |
-| openspec/specs/client-config/spec.md | ce30e01b7d9a298176825768823be4f1e356a151 |
 
 ## Plan review (2026-11-23)
 

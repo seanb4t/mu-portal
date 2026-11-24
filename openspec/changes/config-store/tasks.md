@@ -61,7 +61,7 @@ Test files: `crates/mu-cli/tests/config_store.rs` (new) holds the tests of `mu c
 
 - [x] 9.1 Run `/sb:openspec-review config-store implementation`. Make sure that the verdict is not changes-requested.
 - [x] 9.2 Run `mise run check` and `cargo nextest run --workspace --locked`. Make sure that both pass.
-- [ ] 9.3 Run `/sb:suite-review` on the branch, and fix or triage each blocker and major finding. Make sure that the pull request body says `Fixes #169`.
+- [ ] 9.3 Run `/sb:suite-review` on the branch, and fix or triage each blocker and major finding. Make sure that the tests of the fixes pass: `a_reload_of_a_removed_directory_keeps_the_layers`, `the_server_logs_each_notice_of_a_reload`, `mu_config_refuses_an_open_socket_directory`, `mu_config_filters_what_it_prints` and `a_started_server_that_does_not_answer_names_the_last_error` in `mu-cli`, `a_failed_fetch_fetches_again`, `each_failed_fetch_waits_longer_until_an_apply` and `a_late_failure_of_an_old_fetch_does_not_count` in `mu-tui`, and `the_watch_waits_before_each_open_after_a_loss` in `mu-client`. Make sure that the pull request body says `Fixes #169`.
 
 ## Workflow follow-up
 

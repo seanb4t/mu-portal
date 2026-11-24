@@ -721,3 +721,29 @@ fn a_failed_fetch_of_an_applied_hash_fetches_nothing() {
     let again = update(&mut model, Msg::RetryConfig);
     assert_eq!((failed, again), (vec![], vec![]));
 }
+
+#[test]
+fn a_late_failure_of_an_old_fetch_does_not_count() {
+    let mut model = configured(reply("h1", "r1", &[]));
+    store_hash(&mut model, "h2");
+    update(&mut model, Msg::Config(Ok(reply("h2", "r2", &[]))));
+    let late = update(&mut model, Msg::Config(Err("old".to_owned())));
+    store_hash(&mut model, "h3");
+    let failed = update(&mut model, Msg::Config(Err("unavailable".to_owned())));
+    assert_eq!(
+        (
+            late,
+            failed,
+            notices_of(&model, "old"),
+            notices_of(&model, "unavailable")
+        ),
+        (
+            vec![],
+            vec![Effect::RetryConfig {
+                after: Duration::from_millis(100)
+            }],
+            0,
+            1
+        )
+    );
+}

@@ -847,16 +847,19 @@ fn config_stale(model: &Model) -> bool {
         && model.latest_hash.as_ref() != model.config.as_ref().map(|config| &config.store_hash)
 }
 
-/// The effects of a failed fetch of the configuration: a notice at the first failure since the
-/// last apply, and a fetch again after a wait by [`mu_client::backoff`] while the configuration
-/// is stale and no other wait runs.
+/// The effects of a failed fetch of the configuration. A failure while the configuration is not
+/// stale changes nothing. Otherwise: a notice at the first failure since the last apply, and a
+/// fetch again after a wait by [`mu_client::backoff`] while no other wait runs.
 fn config_failed(model: &mut Model, reason: &str) -> Vec<Effect> {
+    if !config_stale(model) {
+        return Vec::new();
+    }
     if model.config_failures == 0 {
         model.notice(&format!("could not get the client configuration: {reason}"));
     }
     let failures = model.config_failures;
     model.config_failures = failures.saturating_add(1);
-    if model.config_retry == ConfigRetry::Waiting || !config_stale(model) {
+    if model.config_retry == ConfigRetry::Waiting {
         return Vec::new();
     }
     model.config_retry = ConfigRetry::Waiting;

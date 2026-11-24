@@ -208,7 +208,7 @@ The diagrams follow `docs/src/content/docs/contributing/diagrams.md`: LikeC4 for
 | A reload of a missing directory keeps the client layers, and a failed merge of the layers gives a notice | `a_reload_of_a_removed_directory_keeps_the_layers` in `mu-cli`, and review for the merge, which no checked layer can make fail |
 | The server writes each notice of a reload to its stderr | `the_server_logs_each_notice_of_a_reload` in `mu-cli` |
 | `mu config` reaches only a private socket directory and filters what it prints | `mu_config_refuses_an_open_socket_directory` and `mu_config_filters_what_it_prints` in `mu-cli` |
-| A failed fetch is tried again with a growing wait | `a_failed_fetch_fetches_again` and `each_failed_fetch_waits_longer_until_an_apply` in `mu-tui` |
+| A failed fetch is tried again with a growing wait, and a failure of an old fetch does not count | `a_failed_fetch_fetches_again`, `each_failed_fetch_waits_longer_until_an_apply` and `a_late_failure_of_an_old_fetch_does_not_count` in `mu-tui` |
 | The watch waits before it opens again | `the_watch_waits_before_each_open_after_a_loss` in `mu-client` |
 | A started server that does not answer names its last error | `a_started_server_that_does_not_answer_names_the_last_error` in `mu-cli` |
 | No secret in a URL | Review alone. The URL grammar has no field for one, and an unknown query option is refused. |
