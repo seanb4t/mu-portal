@@ -65,6 +65,7 @@ None.
 | R-139 | should-fix | accepted | Each scenario has a named test in tasks 4.2 and 4.5; the implementation-phase full review builds the coverage matrix rows for them. |  |
 | R-140 | should-fix | accepted | Each scenario has a named test in tasks 4.2 and 4.5; the implementation-phase full review builds the coverage matrix rows for them. |  |
 | R-141 | should-fix | accepted | Each scenario has a named test in tasks 4.2 and 4.5; the implementation-phase full review builds the coverage matrix rows for them. |  |
+| R-158 | should-fix | accepted | a full round 11 reruns the test-honesty lens over the files it did not read |  |
 
 ## Rounds
 
@@ -603,7 +604,7 @@ None.
 | R-155 | 10 | 10 | suggestion | in-change |  | ["artifact",["design.md","D4. The revision is a hash of the layers that apply"],"`Sha256::new()`, one `Digest::update` call for each slice, then `finalize()`."] | fixed | c23878086671b1a01ca1858a1dc8a5fa12246650 | 10 |  |  | D4 names the sha2 calls Sha256::new, one Digest::update for each slice, then finalize. The code builds one framed Vec and calls Sha256::digest once. |
 | R-156 | 10 | 10 | suggestion | in-change |  | ["artifact",["design.md","D6. The bootstrap values"],"Every flag of `mu-cli` with a variable is one `clap` argument with `env` and the value parser `parse_path`, which turns an empty value into none."] | fixed | c23878086671b1a01ca1858a1dc8a5fa12246650 | 10 |  | severity? should-fix 0.75 | D6 says that every mu-cli flag with a variable is one clap argument with env and parse_path. At head, --server has env, but its value is a plain String, and its own filter makes an empty flag unset too. D6 names only --device as the exception. |
 | R-157 | 10 | 10 | suggestion | in-change |  | ["path","crates/mu-server/src/store.rs",145] | fixed | c23878086671b1a01ca1858a1dc8a5fa12246650 | 10 |  |  | digest hand-writes the hex form of the first 8 bytes of the hash. The output of Sha256::digest in sha2 0.10.9 is a GenericArray, whose LowerHex takes a precision, so format!("{:.16x}", ...) gives the first 16 hex digits. The design does not name it. |
-| R-158 | 10 | 10 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-honesty partial"] |  |  |  |  |  | lens test-honesty reported partial, gaps: 1 |
+| R-158 | 10 | 10 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: none; reason: a full round 11 reruns the test-honesty lens over the files it did not read |  |  |  | lens test-honesty reported partial, gaps: 1 |
 
 ## Reviewed files
 
