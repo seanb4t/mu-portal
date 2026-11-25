@@ -95,7 +95,13 @@ The call `SaveLayout` SHALL take a name, the lines of a layout, and an optional 
 - **AND** `<dir>/clients` holds no file
 
 ### Requirement: A write makes the directories that it needs
-Before a write, the server SHALL make `clients`, `clients/layouts` and `clients/devices` if they are missing. If one of these paths exists and is not a directory, the call SHALL fail with an error that names the path, and SHALL write nothing.
+Before a write, the server SHALL make `clients`, `clients/layouts` and `clients/devices` if they are missing. A link to a directory SHALL count as a directory, and the write SHALL go through the link. If one of these paths exists and is not a directory, the call SHALL fail with an error that names the path, and SHALL write nothing.
+
+#### Scenario: A save through a linked directory
+- **GIVEN** `<dir>/clients` is a symbolic link to a directory that holds `layouts/mine.toml` with the lines `output` and `editor below output`
+- **WHEN** a client calls `EditLayout` on `mine` with the place `tabs above output`
+- **THEN** the call succeeds, and the file `layouts/mine.toml` of the linked directory holds the lines `output`, `editor below output` and `tabs above output`
+- **AND** `<dir>/clients` is still a symbolic link
 
 #### Scenario: A clients path that is a file
 - **GIVEN** a server serves `<dir>`, which holds no `clients` directory, and the user then makes the empty file `<dir>/clients`

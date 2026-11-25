@@ -15,7 +15,8 @@ use toml_edit::{Array, DocumentMut, Item, Table, value};
 /// The text of the error for a path that exists and is no directory, and for a directory that
 /// the server cannot make. It names `shown`, the path relative to the configuration directory.
 pub fn ensure_dir(dir: &Path, shown: &str) -> Result<(), String> {
-    match fs::symlink_metadata(dir) {
+    // A link to a directory is a directory here, as it is for the reader of the layers.
+    match fs::metadata(dir) {
         Ok(found) if found.is_dir() => Ok(()),
         Ok(_) => Err(format!("{shown} is not a directory")),
         Err(_) => fs::create_dir_all(dir).map_err(|error| format!("{shown}: {error}")),

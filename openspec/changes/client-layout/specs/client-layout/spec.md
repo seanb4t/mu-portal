@@ -47,7 +47,24 @@ Each line of text SHALL have the name of a stream. The lines of a world that no 
 - **THEN** the pane of `channels` shows its title row and no other line
 
 ### Requirement: A line stays in the output where it arrived
-The client SHALL put each line into one `output` when the line arrives. That SHALL be the `output` that shows the stream of the line at that time, for the world of the line. A later change of the layout SHALL NOT move the line. A notice SHALL be a line of the stream `notices` for the world in focus.
+The client SHALL put each line into one `output` when the line arrives. That SHALL be the `output` that shows the stream of the line at that time, for the world of the line. A later change of the layout SHALL NOT move the line. A notice SHALL be a line of the stream `notices` for the world in focus. The notice of a line that the server refused SHALL be a line of the stream `notices` for the world of that line.
+
+#### Scenario: A refused line goes to the notices
+- **GIVEN** the layout in use holds the lines `output`, `tabs above output`, `editor below output`, `statusline below editor` and `output as notices right of output, 30%`, and `alpha/aria` has the focus
+- **WHEN** the user sends the line `hi`, and the server refuses it with the reason `down`
+- **THEN** the last line of the pane of `notices` is `-- down`
+- **AND** the pane of `output` shows no line that starts with `-- `
+
+#### Scenario: A refused line of a world that lost the focus
+- **GIVEN** the layout in use holds the lines `output`, `tabs above output`, `editor below output`, `statusline below editor` and `output as notices right of output, 30%`, and `alpha/aria` has the focus
+- **WHEN** the user sends the line `hi`, runs the command `/focus beta/bryn`, and the server then refuses the line with the reason `down`
+- **THEN** no pane shows a line that starts with `-- `
+- **AND** after the command `/focus alpha/aria`, the last line of the pane of `notices` is `-- down`
+
+#### Scenario: A line with no world goes to the notices
+- **GIVEN** the layout in use holds the lines `output`, `tabs above output`, `editor below output`, `statusline below editor` and `output as notices right of output, 30%`, and the server has no world
+- **WHEN** the user types `hi` and presses Enter
+- **THEN** the pane of `notices` shows a line that starts with `-- `, and the pane of `output` shows none
 
 #### Scenario: An output that comes later starts with new lines
 - **GIVEN** the layout `classic` is in use, the world in focus is the fake world `alpha/aria`, and the user ran the command `/focus nowhere/nobody`

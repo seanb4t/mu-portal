@@ -3298,13 +3298,10 @@ fn a_drag_down() {
 fn a_drag_down_past_the_smallest_pane() {
     let mut app = laptop_with(NOTICES_BELOW);
     let title = rect_of(&app, "notices").2 - 1;
+    let all = rows_of(&app, "notices") + rows_of(&app, "output");
     drag_from_to(&mut app, (20, title), (20, 22));
-    assert!(
-        rows_of(&app, "notices") >= 2,
-        "{}",
-        rows_of(&app, "notices")
-    );
-    assert!(rows_of(&app, "output") >= 2, "{}", rows_of(&app, "output"));
+    assert_eq!(rows_of(&app, "notices"), 2);
+    assert_eq!(rows_of(&app, "output"), all - 2);
 }
 
 #[test]
@@ -3365,4 +3362,59 @@ fn a_drag_does_not_drift() {
         app.layout().lines()[4],
         "output as notices right of output, 50%"
     );
+}
+
+/// Whether a row of the block `id` starts a notice.
+fn has_a_notice_row(app: &mut Model, id: &str) -> bool {
+    block_rows(app, id).iter().any(|row| row.starts_with("-- "))
+}
+
+#[test]
+fn a_refused_line_goes_to_the_notices_block() {
+    let mut app = laptop_with(SIDEBAR_LINES);
+    type_text(&mut app, "hi");
+    assert_ne!(press(&mut app, key(KeyCode::Enter)), [] as [Effect; 0]);
+    on_reply(
+        &mut app,
+        Reply::Refused {
+            world: "alpha/aria".to_owned(),
+            text: "hi".to_owned(),
+            reason: "down".to_owned(),
+        },
+    );
+    assert_eq!(block_rows(&mut app, "notices").last().unwrap(), "-- down");
+    assert!(!has_a_notice_row(&mut app, "output"));
+}
+
+#[test]
+fn a_refused_line_of_another_world_waits_in_its_notices() {
+    let mut app = laptop_with(SIDEBAR_LINES);
+    type_text(&mut app, "hi");
+    assert_ne!(press(&mut app, key(KeyCode::Enter)), [] as [Effect; 0]);
+    enter(&mut app, "/focus beta/bryn");
+    on_reply(
+        &mut app,
+        Reply::Refused {
+            world: "alpha/aria".to_owned(),
+            text: "hi".to_owned(),
+            reason: "down".to_owned(),
+        },
+    );
+    // The world in focus shows nothing of it.
+    assert!(!has_a_notice_row(&mut app, "notices"));
+    assert!(!has_a_notice_row(&mut app, "output"));
+    enter(&mut app, "/focus alpha/aria");
+    assert_eq!(block_rows(&mut app, "notices").last().unwrap(), "-- down");
+    assert!(!has_a_notice_row(&mut app, "output"));
+}
+
+#[test]
+fn enter_with_no_world_goes_to_the_notices_block() {
+    let mut app = app(&[]).with_device("laptop");
+    app.apply_config(config_with(SIDEBAR_LINES, &[], "{world}", &["world"], &[]));
+    draw(&mut app);
+    type_text(&mut app, "hi");
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
+    assert!(has_a_notice_row(&mut app, "notices"));
+    assert!(!has_a_notice_row(&mut app, "output"));
 }

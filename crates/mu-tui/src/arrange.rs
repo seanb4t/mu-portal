@@ -101,8 +101,13 @@ pub(crate) fn marks(layout: &Layout, pane: &Placed) -> String {
 }
 
 /// The part of `area` at the cell: the outer third of a side, or the middle.
+/// The cells of the part at one edge of a pane of `extent` cells, where a drop goes beside
+/// the pane: a third, and one cell at least.
+fn third(extent: u16) -> u16 {
+    (extent / 3).max(1)
+}
+
 pub(crate) fn drop_at(area: Area, column: u16, row: u16) -> Drop {
-    let third = |extent: u16| (extent / 3).max(1);
     let (x, y) = (column.saturating_sub(area.x), row.saturating_sub(area.y));
     if x < third(area.width) && area.width >= 3 {
         Drop::Beside(Side::Left)
@@ -119,7 +124,6 @@ pub(crate) fn drop_at(area: Area, column: u16, row: u16) -> Drop {
 
 /// The cells of `area` that the mark of `drop` covers.
 pub(crate) fn drop_area(area: Area, drop: Drop) -> Area {
-    let third = |extent: u16| (extent / 3).max(1);
     match drop {
         Drop::Stack => area,
         Drop::Beside(Side::Left) => Area {
@@ -213,23 +217,39 @@ impl Model {
     /// change that the layout rules refuse changes nothing, and the last row shows the reason.
     fn arrange_change(&mut self, change: Change) {
         let before = self.layout().clone();
-        match before.apply(change) {
-            Ok(changed) => {
-                self.show_layout(changed.layout);
-                if let Some(mode) = &mut self.arrange {
-                    mode.undo.push(before);
-                    mode.picked = None;
-                    mode.second = None;
-                    mode.adding = false;
-                    mode.message = None;
-                }
-            }
-            Err(error) => {
-                if let Some(mode) = &mut self.arrange {
-                    mode.message = Some(error.to_string());
-                }
-            }
+        let changed = before.apply(change);
+        if self.arrange_show(before, changed)
+            && let Some(mode) = &mut self.arrange
+        {
+            mode.picked = None;
+            mode.second = None;
+            mode.adding = false;
         }
+    }
+
+    /// Shows the result of a change of the mode to the layout `before`, and returns whether
+    /// the change is good. A good change goes on the screen, and `before` goes on the undo
+    /// list. A refused change changes nothing and shows its reason.
+    fn arrange_show(
+        &mut self,
+        before: Layout,
+        changed: Result<mu_config::layout::Changed, mu_config::layout::LayoutError>,
+    ) -> bool {
+        let (shown, message) = match changed {
+            Ok(changed) => (Some(changed.layout), None),
+            Err(error) => (None, Some(error.to_string())),
+        };
+        let good = shown.is_some();
+        if let Some(layout) = shown {
+            self.show_layout(layout);
+        }
+        if let Some(mode) = &mut self.arrange {
+            if good {
+                mode.undo.push(before);
+            }
+            mode.message = message;
+        }
+        good
     }
 
     /// The step that places the pick with `place`.
@@ -298,20 +318,8 @@ impl Model {
         };
         let cells = border.owner_end.saturating_sub(border.owner_start);
         let before = self.layout().clone();
-        match before.resize_by(&id, steps, cells, border.total) {
-            Ok(changed) => {
-                self.show_layout(changed.layout);
-                if let Some(mode) = &mut self.arrange {
-                    mode.undo.push(before);
-                    mode.message = None;
-                }
-            }
-            Err(error) => {
-                if let Some(mode) = &mut self.arrange {
-                    mode.message = Some(error.to_string());
-                }
-            }
-        }
+        let changed = before.resize_by(&id, steps, cells, border.total);
+        self.arrange_show(before, changed);
     }
 
     /// Leaves the mode and saves the layout, if the mode changed it.

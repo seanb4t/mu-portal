@@ -127,15 +127,7 @@ pub fn field_value(reply: &proto::GetClientConfigResponse, path: &str) -> Option
 
 /// The key `key` as a part of a dotted TOML key: bare if TOML allows it, and quoted if not.
 fn key_part(key: &str) -> String {
-    let bare = !key.is_empty()
-        && key
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_');
-    if bare {
-        key.to_owned()
-    } else {
-        toml::Value::String(key.to_owned()).to_string()
-    }
+    toml_edit::Key::new(key).display_repr().into_owned()
 }
 
 /// The configuration as TOML: the revision on the first line, then each field and each binding

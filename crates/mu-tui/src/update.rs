@@ -73,6 +73,9 @@ pub enum Msg {
     /// The wait of an [`Effect::Wait`] for [`Timer::Tick`] ended, at this time of the clock in
     /// milliseconds since the Unix epoch.
     Tick(i64),
+    /// The first read of the clock, in milliseconds, before the first frame. No wait ended, so
+    /// a wait of a tick that is pending stays pending.
+    Clock(i64),
     /// The result of an [`Effect::Connect`] or an [`Effect::Disconnect`].
     Control {
         /// The world of the call.
@@ -307,6 +310,10 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
 
 fn step(model: &mut Model, msg: Msg) -> Vec<Effect> {
     match msg {
+        Msg::Clock(now_ms) => {
+            model.now_ms = now_ms;
+            Vec::new()
+        }
         Msg::Tick(now_ms) => {
             model.now_ms = now_ms;
             model.tick = TickWait::Idle;
@@ -693,23 +700,12 @@ fn click_title(model: &mut Model, column: u16, row: u16) {
     else {
         return;
     };
-    let shown = crate::view::front(model, pane).map(|block| block.id.clone());
-    let mut start = pane.area.x;
-    for block in &pane.blocks {
-        // The name in front has a bracket on each side.
-        let brackets = if Some(&block.id) == shown.as_ref() {
-            2
-        } else {
-            0
-        };
-        let width = u16::try_from(block.id.as_str().len()).unwrap_or(u16::MAX) + brackets;
-        if (start..start.saturating_add(width)).contains(&column) {
-            if let Some(first) = pane.blocks.first() {
-                model.fronts.insert(first.id.clone(), block.id.clone());
-            }
-            return;
-        }
-        start = start.saturating_add(width).saturating_add(1);
+    let picked = crate::view::title_cells(model, pane)
+        .into_iter()
+        .find(|(_, _, columns)| columns.contains(&column))
+        .map(|(block, _, _)| block.id.clone());
+    if let (Some(picked), Some(first)) = (picked, pane.blocks.first()) {
+        model.fronts.insert(first.id.clone(), picked);
     }
 }
 
@@ -1085,10 +1081,7 @@ fn help(model: &mut Model) {
 fn world_to_send_to(model: &mut Model) -> Option<String> {
     let world = model.focused().map(str::to_owned);
     if world.is_none() {
-        model.push(
-            PaneId::NOTICES,
-            &format!("-- {}", no_world("the line goes nowhere")),
-        );
+        model.hint(&no_world("the line goes nowhere"));
     }
     world
 }
@@ -1373,10 +1366,10 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
     };
     let kept = put_back(model, &world, lines);
     let notice = format!("-- {}{}", clean(&reason), in_history(kept));
-    let pane = model
-        .find(&world)
-        .map_or(PaneId::NOTICES, |index| model.worlds[index].pane);
-    model.push(pane, &notice);
+    // The notice is about a line of `world`, so it goes to the notices of that world.
+    if let Some(pane) = model.pane_in(Some(&world), mu_config::layout::NOTICES_STREAM) {
+        model.push(pane, &notice);
+    }
     Vec::new()
 }
 

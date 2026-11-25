@@ -234,13 +234,20 @@ fn a_larger_block_stops_at_ninety_percent() {
     let mut app = laptop_with(&[
         "output",
         "editor below output",
-        "output as notices right of output, 90%",
+        "output as notices right of output, 80%",
     ]);
     // A screen of 300 columns has room for the smallest pane beside 90 percent.
     draw_sized(&mut app, 300);
     assert_eq!(key(&mut app, KeyCode::Char('l'), Modifiers::ALT), []);
     draw_sized(&mut app, 300);
+    // The first step shows that the key changes the block.
     keys(&mut app, "b>");
+    assert_eq!(
+        app.layout().lines()[2],
+        "output as notices right of output, 85%"
+    );
+    // Three more steps ask for 100 percent.
+    keys(&mut app, ">>>");
     assert_eq!(
         app.layout().lines()[2],
         "output as notices right of output, 90%"
@@ -261,6 +268,13 @@ fn a_larger_block_in_a_small_split_keeps_its_size() {
     assert_eq!(
         app.layout().lines()[2],
         "output as notices right of output, 30%"
+    );
+    // The same keys on a wider screen change the block, so the pick is on it.
+    draw_sized(&mut app, 80);
+    keys(&mut app, ">");
+    assert_eq!(
+        app.layout().lines()[2],
+        "output as notices right of output, 35%"
     );
 }
 

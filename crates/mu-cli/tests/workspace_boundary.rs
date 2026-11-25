@@ -149,6 +149,7 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "thiserror",
             "tokio",
             "toml",
+            "toml_edit",
             "tonic",
             "tracing",
             "tracing-opentelemetry",

@@ -83,7 +83,7 @@ async fn event_loop(
     let mut hashes = Box::pin(client.config_hashes());
     let (replies, mut reply) = mpsc::unbounded_channel();
     // The model takes the time of the clock before the first frame.
-    early.push_back(Msg::Tick(now_ms()));
+    early.push_back(Msg::Clock(now_ms()));
     // The first list of the worlds, which `Model::starting` marks as asked.
     spawn_reply(&replies, listed_of(client.clone()));
     loop {

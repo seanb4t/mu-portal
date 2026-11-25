@@ -601,38 +601,52 @@ impl Model {
             .or(Some(first))
     }
 
-    /// The pane of the `output` `id` of the world in focus: the pane of the world for the first
-    /// `output` of the plan, and a pane of its own for each other one. None for a block that
-    /// has no pane yet.
-    #[must_use]
-    pub fn pane_of_block(&self, id: &BlockId) -> Option<PaneId> {
-        let first = self.layout().ids_of(BlockKind::Output).next()?;
+    /// The pane of the world `world`, or the pane of notices for no world.
+    fn world_pane(&self, world: Option<&str>) -> PaneId {
+        world
+            .and_then(|id| self.find(id))
+            .map_or(PaneId::NOTICES, |index| self.worlds[index].pane)
+    }
+
+    /// The pane of the `output` `id` of `world`: the pane of the world for the first `output`
+    /// of its plan, and a pane of its own for each other one. None for a block that has no
+    /// pane yet. This is the one rule of which pane an `output` shows.
+    pub(crate) fn pane_of(&self, world: Option<&str>, id: &BlockId) -> Option<PaneId> {
+        let first = self.layout_of(world).ids_of(BlockKind::Output).next()?;
         if first == id {
-            return Some(self.focused_pane());
+            return Some(self.world_pane(world));
         }
         self.extra_panes
-            .get(&(self.focused().map(str::to_owned), id.clone()))
+            .get(&(world.map(str::to_owned), id.clone()))
             .copied()
     }
 
-    /// The pane that takes a line of the stream `stream` for the world in focus, made if it
-    /// does not exist yet. None if the layout on the screen holds no `output`.
-    pub(crate) fn pane_for(&mut self, stream: &str) -> Option<PaneId> {
-        let layout = self.layout();
-        let target = layout.route(stream)?.clone();
-        if layout.ids_of(BlockKind::Output).next() == Some(&target) {
-            return Some(self.focused_pane());
-        }
-        let key = (self.focused().map(str::to_owned), target);
-        if let Some(pane) = self.extra_panes.get(&key) {
-            return Some(*pane);
+    /// The pane of the `output` `id` of the world in focus.
+    #[must_use]
+    pub fn pane_of_block(&self, id: &BlockId) -> Option<PaneId> {
+        self.pane_of(self.focused(), id)
+    }
+
+    /// The pane that takes a line of the stream `stream` for `world`, made if it does not
+    /// exist yet. None if the layout of the world holds no `output`.
+    pub(crate) fn pane_in(&mut self, world: Option<&str>, stream: &str) -> Option<PaneId> {
+        let target = self.layout_of(world).route(stream)?.clone();
+        if let Some(pane) = self.pane_of(world, &target) {
+            return Some(pane);
         }
         let pane = PaneId(self.next_pane);
         self.next_pane += 1;
         self.panes
             .insert(pane, PaneState::with_caps(Arc::clone(&self.caps)));
-        self.extra_panes.insert(key, pane);
+        self.extra_panes
+            .insert((world.map(str::to_owned), target), pane);
         Some(pane)
+    }
+
+    /// The pane that takes a line of the stream `stream` for the world in focus.
+    pub(crate) fn pane_for(&mut self, stream: &str) -> Option<PaneId> {
+        let world = self.focused().map(str::to_owned);
+        self.pane_in(world.as_deref(), stream)
     }
 
     /// Takes the line break of each world of a list of the worlds. A listed world that the

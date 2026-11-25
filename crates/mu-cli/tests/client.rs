@@ -2306,7 +2306,10 @@ async fn not_saved(config: &ConfigDir, device: &str) {
     client.send(b"/pane hide tabs\r");
     client
         .wait_rows("the notice of a layout that is not saved", |rows| {
-            joined(rows).contains("/layout save") && !rows[0].starts_with("[alpha/aria]")
+            rows.iter()
+                .any(|row| row.starts_with("-- the layout is not saved"))
+                && joined(rows).contains("/layout save")
+                && !rows[0].starts_with("[alpha/aria]")
         })
         .await;
     assert!(!config.path().join("clients/layouts").exists());

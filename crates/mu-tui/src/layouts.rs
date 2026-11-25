@@ -32,6 +32,20 @@ impl Model {
         }
     }
 
+    /// Puts `layout` on the screen under the new name `name`, and returns the effect that
+    /// saves it. The choice in use then names it.
+    fn save_as(&mut self, name: &LayoutName, layout: Layout) -> Vec<Effect> {
+        let lines = layout.lines();
+        let then = self.then_choose();
+        self.set_chosen(name.as_str().to_owned(), layout);
+        vec![Effect::SaveLayout {
+            name: name.as_str().to_owned(),
+            lines,
+            device: self.device.clone(),
+            then,
+        }]
+    }
+
     /// Puts `layout` on the screen and saves nothing: a step of a drag, or of arrange mode.
     pub(crate) fn show_layout(&mut self, layout: Layout) {
         let name = self.layout_name().to_owned();
@@ -63,16 +77,7 @@ impl Model {
                     then: Then::Nothing,
                 }]
             }
-            Ok(SaveTarget::New(target)) => {
-                let then = self.then_choose();
-                self.set_chosen(target.as_str().to_owned(), layout);
-                vec![Effect::SaveLayout {
-                    name: target.as_str().to_owned(),
-                    lines,
-                    device: self.device.clone(),
-                    then,
-                }]
-            }
+            Ok(SaveTarget::New(target)) => self.save_as(&target, layout),
             Err(error) => {
                 self.notice(&format!(
                     "the layout is not saved: {error}. Use /layout save <name>"
@@ -250,15 +255,7 @@ impl Model {
         match LayoutName::new(name) {
             Ok(name) => {
                 let layout = self.layout().clone();
-                let lines = layout.lines();
-                let then = self.then_choose();
-                self.set_chosen(name.as_str().to_owned(), layout);
-                vec![Effect::SaveLayout {
-                    name: name.as_str().to_owned(),
-                    lines,
-                    device: self.device.clone(),
-                    then,
-                }]
+                self.save_as(&name, layout)
             }
             Err(error) => {
                 self.notice(&error.to_string());

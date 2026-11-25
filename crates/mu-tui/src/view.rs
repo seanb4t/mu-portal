@@ -127,20 +127,41 @@ pub(crate) fn front<'a>(model: &Model, pane: &'a Placed) -> Option<&'a Block> {
     model.front_of(&pane.blocks)
 }
 
-/// The title row of `pane`: the id of each block, with the one that shows in square brackets.
-pub(crate) fn title_row(model: &Model, pane: &Placed) -> String {
+/// The text between two names of a title row.
+const TITLE_GAP: &str = " ";
+
+/// Each block of the title row of `pane`, with its text and its columns on the screen. The
+/// block that shows has its id in square brackets.
+pub(crate) fn title_cells<'a>(
+    model: &Model,
+    pane: &'a Placed,
+) -> Vec<(&'a Block, String, std::ops::Range<u16>)> {
     let shown = front(model, pane).map(|block| &block.id);
+    let gap = u16::try_from(TITLE_GAP.len()).unwrap_or(u16::MAX);
+    let mut start = pane.area.x;
     pane.blocks
         .iter()
         .map(|block| {
-            if Some(&block.id) == shown {
+            let text = if Some(&block.id) == shown {
                 format!("[{}]", block.id)
             } else {
                 block.id.to_string()
-            }
+            };
+            let end = start.saturating_add(u16::try_from(text.len()).unwrap_or(u16::MAX));
+            let cell = (block, text, start..end);
+            start = end.saturating_add(gap);
+            cell
         })
+        .collect()
+}
+
+/// The title row of `pane`: the id of each block, with the one that shows in square brackets.
+pub(crate) fn title_row(model: &Model, pane: &Placed) -> String {
+    title_cells(model, pane)
+        .into_iter()
+        .map(|(_, text, _)| text)
         .collect::<Vec<_>>()
-        .join(" ")
+        .join(TITLE_GAP)
 }
 
 /// The area of the lines of `pane`, below its title row.

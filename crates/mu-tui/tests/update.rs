@@ -1000,6 +1000,23 @@ fn no_tick_without_a_time_segment() {
 }
 
 #[test]
+fn the_first_clock_read_starts_no_second_tick() {
+    let mut model = model();
+    assert_eq!(
+        configure(
+            &mut model,
+            layout_config(STATUS, &[], &["world"], &["idle"])
+        ),
+        [tick()]
+    );
+    // The wait of the tick is pending. The first read of the clock sets the time only.
+    assert_eq!(update(&mut model, Msg::Clock(5_000)), []);
+    assert_eq!(press(&mut model, KeyCode::Char('a'), Modifiers::NONE), []);
+    // The end of the one wait starts the next one.
+    assert_eq!(update(&mut model, Msg::Tick(6_000)), [tick()]);
+}
+
+#[test]
 fn one_tick_waits_at_a_time() {
     let mut model = model();
     assert_eq!(

@@ -855,3 +855,22 @@ async fn a_size_of_fill_from_the_command_line() {
         "output as notices right of output"
     );
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_save_through_a_linked_directory() {
+    // The directory `clients` of the configuration directory is a link to a directory.
+    let real = mine(&["output", "editor below output"]);
+    let config = tempfile::tempdir().expect("a directory");
+    std::os::unix::fs::symlink(real.path().join("clients"), config.path().join("clients"))
+        .expect("a link");
+    let server = start(config.path()).await;
+    let output = layout(&server, &["place", "mine", "tabs above output"]).await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        place_of(real.path(), "mine"),
+        ["output", "editor below output", "tabs above output"]
+    );
+    // The link stays a link.
+    assert!(config.path().join("clients").is_symlink());
+}

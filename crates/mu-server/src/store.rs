@@ -231,7 +231,12 @@ pub const DEVICES_DIR: &str = "clients/devices";
 /// The path of the layout file of `name`.
 #[must_use]
 pub fn layout_path(name: &str) -> String {
-    format!("{LAYOUTS_DIR}/{name}.toml")
+    path_in(LAYOUTS_DIR, name)
+}
+
+/// The path of the TOML file `name` right under the directory `dir`. [`name_in`] reads it back.
+fn path_in(dir: &str, name: &str) -> String {
+    format!("{dir}/{name}.toml")
 }
 
 /// The name of the layout file at `path`, or none for a path that is not in the directory of
@@ -277,7 +282,7 @@ fn layer_dirs<'a>() -> impl Iterator<Item = &'a str> {
 fn not_a_layer() -> String {
     let places: Vec<String> = PLACES
         .iter()
-        .map(|place| format!("{}/{}.toml", place.dir, place.shown))
+        .map(|place| path_in(place.dir, place.shown))
         .collect();
     format!(
         "not a layer file: the layer files are {GLOBAL}, {}. A layout file is {LAYOUTS_DIR}/<name>.toml",
@@ -512,7 +517,7 @@ impl ClientPart {
                 PLACES
                     .iter()
                     .zip(names)
-                    .map(|(place, name)| format!("{}/{name}.toml", place.dir)),
+                    .map(|(place, name)| path_in(place.dir, name)),
             )
             .collect();
         let mut notices = Vec::new();
@@ -807,7 +812,7 @@ fn put_choice(
     choice: &Choice,
     name: Option<&str>,
 ) -> Result<(), WriteError> {
-    let path = format!("{DEVICES_DIR}/{device}.toml");
+    let path = path_in(DEVICES_DIR, device.as_str());
     if let Some(notice) = part.bad_at(&path) {
         return Err(WriteError::Refused(notice.text));
     }

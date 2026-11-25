@@ -675,6 +675,35 @@ fn a_resize_out_of_range_is_refused() {
         .expect_err("95%")
         .to_string();
     assert!(text.contains("95%"), "{text}");
+    // The reader of a sentence refuses these sizes too, but a caller can make any size.
+    for size in [Size::Percent(9), Size::Percent(91), Size::Cells(0)] {
+        assert!(
+            layout(SIDEBAR).resize(&id_of("notices"), size).is_err(),
+            "{size:?}"
+        );
+    }
+    for size in [Size::Max(0), Size::Max(101)] {
+        assert!(
+            layout(SIDEBAR).resize(&id_of("editor"), size).is_err(),
+            "{size:?}"
+        );
+    }
+}
+
+#[test]
+fn a_resize_at_each_end_of_the_range_is_good() {
+    for size in [Size::Percent(10), Size::Percent(90), Size::Cells(1)] {
+        assert!(
+            layout(SIDEBAR).resize(&id_of("notices"), size).is_ok(),
+            "{size:?}"
+        );
+    }
+    for size in [Size::Max(1), Size::Max(100)] {
+        assert!(
+            layout(SIDEBAR).resize(&id_of("editor"), size).is_ok(),
+            "{size:?}"
+        );
+    }
 }
 
 #[test]
@@ -1091,8 +1120,24 @@ proptest! {
     ) {
         let key = character.map_or_else(|| game.clone(), |character| format!("{game}/{character}"));
         let choice = if with_entry { entry(&key) } else { Choice::Default };
-        if let Ok(name) = save_target(&choice, &device(&device_name)) {
-            prop_assert_eq!(LayoutName::new(name.as_str()), Ok(name));
+        // The name that the save rule gives: the device name, then the key with dots.
+        let wanted = if with_entry {
+            format!("{device_name}.{}", key.replace('/', "."))
+        } else {
+            device_name.clone()
+        };
+        match save_target(&choice, &device(&device_name)) {
+            Ok(name) => {
+                prop_assert_eq!(name.as_str(), wanted.as_str());
+                prop_assert!(wanted.chars().count() <= 64);
+            }
+            Err(_) => prop_assert!(
+                wanted.chars().count() > 64
+                    || BUILT_IN.iter().any(|each| each.name == wanted)
+                    || wanted == "."
+                    || wanted == "..",
+                "{}", wanted
+            ),
         }
     }
 }
@@ -1176,6 +1221,85 @@ proptest! {
                     "{:?} in {:?}", pane.area, layout.lines()
                 );
             }
+        }
+    }
+}
+
+/// A plan with the block `notices` in a split of two text panes, in the direction `dir`.
+fn two_panes(dir: Dir) -> Layout {
+    // The editor is on the other side, so the split of the two panes takes the whole screen
+    // in its direction.
+    let (editor, notices) = match dir {
+        Dir::Columns => ("below", "right of"),
+        Dir::Rows => ("right of", "below"),
+    };
+    layout(&[
+        "output",
+        &format!("editor {editor} output"),
+        &format!("output as notices {notices} output, 50%"),
+    ])
+}
+
+/// Whether the percent `percent` of `notices` is good on a screen of `area`: the solver gives
+/// the block that percent of the `total` cells of its split, rounded down, and both text panes
+/// keep the smallest size. The solver holds each pane at its smallest size, so a percent that
+/// is not good shows other cells than the plan says.
+fn a_good_percent(plan: &Layout, percent: u8, area: Area, dir: Dir, total: u16) -> bool {
+    let sized = plan
+        .resize(&id_of("notices"), Size::Percent(percent))
+        .expect("a percent from 10 to 90");
+    let solved = solve(&sized.layout, area, &|_, _| 1);
+    let cells = |id: &str| {
+        solved.pane_of(&id_of(id)).map(|pane| match dir {
+            Dir::Columns => pane.area.width,
+            Dir::Rows => pane.area.height,
+        })
+    };
+    let least = match dir {
+        Dir::Columns => 10,
+        Dir::Rows => 2,
+    };
+    let nominal = u32::from(total) * u32::from(percent) / 100;
+    cells("notices").is_some_and(|got| u32::from(got) == nominal && got >= least)
+        && cells("output").is_some_and(|got| got >= least)
+}
+
+proptest! {
+    #[test]
+    fn a_border_gives_a_percent_that_keeps_both_panes(
+        total in prop_oneof![0_u16..400, any::<u16>()],
+        cells in any::<u16>(),
+        columns in any::<bool>(),
+    ) {
+        let dir = if columns { Dir::Columns } else { Dir::Rows };
+        let area = if columns { Area::new(total, 24) } else { Area::new(80, total) };
+        let plan = two_panes(dir);
+        // The client takes the cells of the split from the border of the block.
+        let solved = solve(&plan, area, &|_, _| 1);
+        let Some(border) = solved.borders.iter().find(|border| border.owner == id_of("notices"))
+        else {
+            return Ok(());
+        };
+        let total = border.total;
+        let good: Vec<u8> = (10..=90)
+            .filter(|percent| a_good_percent(&plan, *percent, area, dir, total))
+            .collect();
+        let changed = plan.resize_border(&id_of("notices"), cells, total).expect("good");
+        if good.is_empty() {
+            // No percent keeps both panes, so the plan stays as it is.
+            prop_assert_eq!(changed.layout.lines(), plan.lines());
+        } else {
+            let line = changed.layout.lines()[2].clone();
+            let percent: u8 = line
+                .rsplit_once(", ")
+                .and_then(|(_, size)| size.strip_suffix('%'))
+                .and_then(|text| text.parse().ok())
+                .expect("a percent");
+            prop_assert!(good.contains(&percent), "{} of {:?}", percent, good);
+            // The percent is the good one that is nearest to the cells of the drag.
+            let asked = (u32::from(cells) * 100).div_ceil(u32::from(total.max(1)));
+            let nearest = u32::from(percent).abs_diff(asked);
+            prop_assert!(good.iter().all(|each| u32::from(*each).abs_diff(asked) >= nearest));
         }
     }
 }
