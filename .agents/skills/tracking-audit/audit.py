@@ -24,8 +24,8 @@ OWNER = os.environ.get("MU_PROJECT_OWNER", "seanb4t")
 PROJECT = os.environ.get("MU_PROJECT_NUMBER", "1")
 REPO = os.environ.get("MU_REPO", "seanb4t/mu-portal")
 ACTIVE = {"In progress", "In review"}
-NO_ISSUE_PR = re.compile(r"^chore\((openspec|deps)\)")
-RENOVATE = {"app/renovate", "renovate", "renovate[bot]"}
+NO_ISSUE_PR = re.compile(r"^(chore|fix)\((openspec|deps)\)")
+RENOVATE = {"app/renovate", "app/fzymgc-renovate", "renovate", "renovate[bot]"}
 ISSUE_REF = re.compile(r"#(\d+)")
 
 
