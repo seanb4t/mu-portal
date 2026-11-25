@@ -6,7 +6,7 @@ Defines what the plain terminal client shows and sends: the list of worlds, the 
 ## Requirements
 
 ### Requirement: The screen has three parts
-The client SHALL use the alternate screen. The top row SHALL list the worlds in order by their game part and then by their character part. The world in focus SHALL be in square brackets. With no world, the top row SHALL show `no worlds`. The bottom rows SHALL hold the pose editor, which this spec also calls the input line. With no text, the editor SHALL take one row. The rows between SHALL show the output pane of the world in focus. At the start, the pane is at the bottom, so it shows the latest lines, the newest at the bottom.
+The client SHALL use the alternate screen. With the layout `classic`, the top row SHALL list the worlds in order by game part and then by character part, with the world in focus in square brackets, or `no worlds` with no world. The bottom rows SHALL hold the pose editor, which takes one row with no text. The rows between SHALL show the output pane of the world in focus, at its bottom at the start. Another layout SHALL place these parts as its plan says.
 
 #### Scenario: The first view
 - **GIVEN** a server with the fake worlds `alpha/aria` and `beta/bryn`
@@ -717,3 +717,11 @@ The client SHALL open the screen before its first list of the worlds for the scr
 - **WHEN** the reply to the list is the error `boom`
 - **THEN** the top row shows `no worlds`, not `listing worlds`
 - **AND** the screen shows a line that starts with `-- ` and contains `boom`
+
+### Requirement: The top row is the tabs block
+In this spec, the top row SHALL be the block `tabs` of the layout. With the layout `classic`, it SHALL be the first row of the screen. The text of each world in it SHALL be the tab label of the world, which is the world id by default.
+
+#### Scenario: The default layout puts the tabs first
+- **GIVEN** the configuration directory of the server holds no `clients` directory, and the server has the fake world `alpha/aria`
+- **WHEN** the user starts `mu client` in a terminal of 80 columns and 24 rows
+- **THEN** row 1 of the screen shows `[alpha/aria]`

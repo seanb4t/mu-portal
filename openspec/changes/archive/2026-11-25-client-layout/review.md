@@ -1,10 +1,10 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-25T15:44:09+00:00
-head: 63a7fc667751c359594aa3aeb0af63dd0bab1692
-round: 11
-next_id: 156
+reviewed_at: 2026-11-25T18:15:19+00:00
+head: 62cc87ecee08187c7f74e5b33a9ded1a85057f14
+round: 12
+next_id: 199
 lenses:
   spec-lint: not-applicable
   approach: ok
@@ -20,7 +20,49 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-155 | test-coverage | should-fix | in-change | delta scenario 'The earlier lines of a block that stands in for main' has no matrix row | review > absent-row — "The earlier lines of a block that stands in for main" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-156 | test-coverage | should-fix | in-change | delta scenario 'Help lists the verbs' has no matrix row | review > absent-row — "Help lists the verbs" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-157 | test-coverage | should-fix | in-change | delta scenario 'Help for one verb' has no matrix row | review > absent-row — "Help for one verb" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-158 | test-coverage | should-fix | in-change | delta scenario 'Help lists the entries' has no matrix row | review > absent-row — "Help lists the entries" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-159 | test-coverage | should-fix | in-change | delta scenario 'An entry takes the id of a block' has no matrix row | review > absent-row — "An entry takes the id of a block" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-160 | test-coverage | should-fix | in-change | delta scenario 'A hint with no output' has no matrix row | review > absent-row — "A hint with no output" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-161 | test-coverage | should-fix | in-change | delta scenario 'A new configuration brings an output' has no matrix row | review > absent-row — "A new configuration brings an output" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-162 | test-coverage | should-fix | in-change | delta scenario 'The focus moves to a world with an output' has no matrix row | review > absent-row — "The focus moves to a world with an output" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-163 | test-coverage | should-fix | in-change | delta scenario 'Lines that waited show one time and in order' has no matrix row | review > absent-row — "Lines that waited show one time and in order" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-164 | test-coverage | should-fix | in-change | delta scenario 'A line of 257 characters' has no matrix row | review > absent-row — "A line of 257 characters" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-165 | test-coverage | should-fix | in-change | delta scenario 'An anchor twice' has no matrix row | review > absent-row — "An anchor twice" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-166 | test-coverage | should-fix | in-change | delta scenario 'A key with a part of 65 characters' has no matrix row | review > absent-row — "A key with a part of 65 characters" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-167 | test-coverage | should-fix | in-change | delta scenario 'A line that mu writes with 257 characters' has no matrix row | review > absent-row — "A line that mu writes with 257 characters" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-168 | test-coverage | should-fix | in-change | delta scenario 'A resize that makes a line too long' has no matrix row | review > absent-row — "A resize that makes a line too long" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-169 | test-coverage | should-fix | in-change | delta scenario 'A refused save writes no layout file' has no matrix row | review > absent-row — "A refused save writes no layout file" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-170 | test-coverage | should-fix | in-change | delta scenario 'A refused edit of a built-in layout writes no layout file' has no matrix row | review > absent-row — "A refused edit of a built-in layout writes no layout file" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-171 | test-coverage | should-fix | in-change | delta scenario 'A write to a linked device file' has no matrix row | review > absent-row — "A write to a linked device file" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-172 | test-coverage | should-fix | in-change | delta scenario 'A link to a directory' has no matrix row | review > absent-row — "A link to a directory" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-173 | test-coverage | should-fix | in-change | delta scenario 'A link to nothing' has no matrix row | review > absent-row — "A link to nothing" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-174 | test-coverage | should-fix | in-change | delta scenario 'A refused call makes no directory' has no matrix row | review > absent-row — "A refused call makes no directory" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-175 | test-coverage | should-fix | in-change | delta scenario 'A save that makes a good layer bad' has no matrix row | review > absent-row — "A save that makes a good layer bad" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-176 | test-coverage | should-fix | in-change | delta scenario 'A write keeps the permissions' has no matrix row | review > absent-row — "A write keeps the permissions" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-177 | test-coverage | should-fix | in-change | delta scenario 'An error holds no line of the file' has no matrix row | review > absent-row — "An error holds no line of the file" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-178 | test-coverage | should-fix | in-change | delta scenario 'A save stores the lines as mu writes them' has no matrix row | review > absent-row — "A save stores the lines as mu writes them" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-179 | test-coverage | should-fix | in-change | delta scenario 'The caller goes away' has no matrix row | review > absent-row — "The caller goes away" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-180 | test-coverage | should-fix | in-change | delta scenario 'Forget an entry that is not there' has no matrix row | review > absent-row — "Forget an entry that is not there" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-181 | test-coverage | should-fix | in-change | delta scenario 'Forget an entry that is not there, in each form of the file' has no matrix row | review > absent-row — "Forget an entry that is not there, in each form of the file" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-182 | test-coverage | should-fix | in-change | delta scenario 'Arrange mode writes the plan again' has no matrix row | review > absent-row — "Arrange mode writes the plan again" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-183 | test-coverage | should-fix | in-change | delta scenario 'A new configuration ends arrange mode' has no matrix row | review > absent-row — "A new configuration ends arrange mode" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-184 | test-coverage | should-fix | in-change | delta scenario 'A new configuration ends a drag' has no matrix row | review > absent-row — "A new configuration ends a drag" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-185 | test-coverage | should-fix | in-change | delta scenario 'The same configuration keeps arrange mode' has no matrix row | review > absent-row — "The same configuration keeps arrange mode" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-186 | test-coverage | should-fix | in-change | delta scenario 'A failed save ends arrange mode' has no matrix row | review > absent-row — "A failed save ends arrange mode" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-187 | test-coverage | should-fix | in-change | delta scenario 'A focus move ends arrange mode' has no matrix row | review > absent-row — "A focus move ends arrange mode" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-188 | test-coverage | should-fix | in-change | delta scenario 'A focus move ends a drag' has no matrix row | review > absent-row — "A focus move ends a drag" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-189 | test-coverage | should-fix | in-change | delta scenario 'A larger block in a small split' has no matrix row | review > absent-row — "A larger block in a small split" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-190 | test-coverage | should-fix | in-change | delta scenario 'A border that cannot move' has no matrix row | review > absent-row — "A border that cannot move" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-191 | test-coverage | should-fix | in-change | delta scenario 'The last good layout comes back' has no matrix row | review > absent-row — "The last good layout comes back" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-192 | test-coverage | should-fix | in-change | delta scenario 'A change after a failed save' has no matrix row | review > absent-row — "A change after a failed save" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-193 | test-coverage | should-fix | in-change | delta scenario 'The first view' has no matrix row | review > absent-row — "The first view" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-194 | test-coverage | should-fix | in-change | delta scenario 'The order of the worlds' has no matrix row | review > absent-row — "The order of the worlds" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-195 | test-coverage | should-fix | in-change | delta scenario 'A bad world id is refused' has no matrix row | review > absent-row — "A bad world id is refused" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-196 | test-coverage | should-fix | in-change | delta scenario 'Ids outside the rule' has no matrix row | review > absent-row — "Ids outside the rule" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-197 | test-coverage | should-fix | in-change | delta scenario 'Ids inside the rule' has no matrix row | review > absent-row — "Ids inside the rule" | add the row with its covering task or test |  |  | unmet-requirement |
+| R-198 | test-coverage | should-fix | in-change | delta scenario 'A part of 65 characters' has no matrix row | review > absent-row — "A part of 65 characters" | add the row with its covering task or test |  |  | unmet-requirement |
 
 ## Repeats
 
@@ -41,6 +83,7 @@ lenses:
 | R-150 | test-coverage | should-fix | delta scenario 'The main output is not the first output line' has no matrix row | review > absent-row — "The main output is not the first output line" |
 | R-147 | test-coverage | should-fix | delta scenario 'A hide of the main output' has no matrix row | review > absent-row — "A hide of the main output" |
 | R-148 | test-coverage | should-fix | delta scenario 'A new main output takes the lines of the world back' has no matrix row | review > absent-row — "A new main output takes the lines of the world back" |
+| R-155 | test-coverage | should-fix | delta scenario 'The earlier lines of a block that stands in for main' has no matrix row | review > absent-row — "The earlier lines of a block that stands in for main" |
 | R-149 | test-coverage | should-fix | delta scenario 'A line of a world with no output' has no matrix row | review > absent-row — "A line of a world with no output" |
 | R-151 | test-coverage | should-fix | delta scenario 'A save with a key' has no matrix row | review > absent-row — "A save with a key" |
 | R-152 | test-coverage | should-fix | delta scenario 'A save with a key and no device' has no matrix row | review > absent-row — "A save with a key and no device" |
@@ -76,6 +119,7 @@ None.
 | 9 | implementation | full | 3f3084a618f082bd7b2f43b6f3324b8d856fb5fc | 9896adbb614840e1c0d7515640e5a5f6168ce34c1c52aad82763bfe4c81ae59f | approve-with-notes | 17 | 10 | 0 | 0 | 0 | the round 7 fixes added four scenarios that no test-coverage lens graded, and the operator asked for a third full round |
 | 10 | implementation | follow-up | 661b9163f5b3f87e7f993404dd272348b07f85a1 | 03b90dc57e53621491b3ff3fb0c920fb9053d953cd85fb154c8d75287768e01e | approve-with-notes | 8 | 12 | 1 | 12 | 0 |  |
 | 11 | implementation | follow-up | 63a7fc667751c359594aa3aeb0af63dd0bab1692 | 0a37b2f94e75c1b74d6f988222e425c61dfdc819e2b6f8f59f4fdf4a6edb3129 | approve-with-notes | 1 | 20 | 0 | 1 | 0 |  |
+| 12 | implementation | follow-up | 62cc87ecee08187c7f74e5b33a9ded1a85057f14 | 298c25cfe734d65bbc435e0fe2fef84f32f866180d0ecb7e2c72e348502eb353 | approve-with-notes | 43 | 21 | 0 | 0 | 0 |  |
 
 ## Judge
 
@@ -480,10 +524,10 @@ None.
 
 ## Lens notes
 
-- verify: R-130: design.md D11 now decides that a stand-in main output shows the pane of the world and keeps its own pane state off the screen. specs/client-layout/spec.md line 58 states the same rule, and the scenario at line 71 checks it. Model::pane_of in crates/mu-tui/src/model.rs gives the world pane to the main output and reads extra_panes for any other output. No code path removes an entry of extra_panes, so the earlier lines come back when main returns.
-- verify: The test the_earlier_lines_of_a_stand_in_come_back_with_main in crates/mu-tui/tests/app.rs 3487-3503 checks each THEN step of the new scenario on the drawn rows of the block notices.
-- verify: The review.md ranges of diff-hunks.txt and the fix_hunks entry review.md 635 8 were not read, because the agent rules forbid reading review.md.
-- verify: Requirement 'An output shows the lines of its id' (spec line 30) says an output shows the stream with its id. While notices stands in for main, its earlier notices lines do not show. The rule at spec line 58 states this exception, so no finding is raised. A spec lens may still want the exception named in line 30.
+- verify: prior.json holds no fixed entry with a basis, so this round has no fix to answer and fixes is empty.
+- verify: The non-test source hunks of diff-hunks.txt were read at head (mu-server write.rs, store.rs, service.rs; mu-tui config.rs, model.rs, layouts.rs, update.rs, run.rs, arrange.rs; mu-config change.rs, parse.rs, mod.rs, tree.rs, step.rs, world_id.rs, names.rs, lib.rs; mu-cli layout_verb.rs, lib.rs), and none holds a regression with a stated consequence. Test-file hunks were not judged: test honesty and coverage are the questions of other lenses.
+- verify: crates/mu-tui/src/model.rs: replay_notices sets unshown to every kept notice when no pane shows the notices, which can pass UNSHOWN_MAX (200), and show_notice then drops the oldest only when the length equals 200 exactly, so the bound of D11 does not hold past 200. The lines are kept notices that a replay shows anyway, so no wrong result follows.
+- verify: design.md D3 says that resize_border and resize_by return the plan as it is in a split with no good percent; at head change.rs resize_within returns the error 'the split has no room for another size', which the spec requirement 'A resize with no room is refused' asks for. The text of D3 is stale; that is a question for the fit lens, not a regression.
 
 ## Ledger
 
@@ -584,12 +628,12 @@ None.
 | R-93 | 6 | 6 | suggestion | in-change |  | ["artifact",["design.md","D5. Layer 2: layouts on the server"],"`GetClientConfigResponse` gets `repeated WorldLayout world_layouts`, each with a key, a name and its sentences."] | fixed | f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  | severity? blocker 0.72 | D5 names the message of a world entry WorldLayout. At head the field is `repeated NamedLayout world_layouts`, the message that ListLayouts also uses. |
 | R-94 | 6 | 6 | suggestion | in-change |  | ["path","crates/mu-tui/src/statusline.rs",63] | fixed | f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  | severity? should-fix 0.72 | The statusline cuts text to a width with two loops by graphemes, one from the end and one from the start. D7 says the cut uses the functions of width.rs, which gets none. |
 | R-95 | 6 | 6 | suggestion | in-change |  | ["artifact",["specs/client-layout/spec.md","Requirement: A small terminal keeps each pane usable"],"A pane of `output` SHALL keep at least 2 rows and 10 columns while the terminal has room for each pane at that size."] | fixed | f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | The floor of 2 rows and 10 columns for an output pane ranges over any plan and any terminal size that has room. The property test solve_stays_inside_the_area checks only containment and overlap, and never the floor, so a solver change that drops the raise to the smallest size passes it. |
-| R-96 | 6 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"An unknown field"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command | 6 |  |  | covered row 'An unknown field' has no verification run |
-| R-97 | 6 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"The editor after the notices"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command | 6 |  |  | covered row 'The editor after the notices' has no verification run |
-| R-98 | 6 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"The editor before the notices"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command | 6 |  |  | covered row 'The editor before the notices' has no verification run |
-| R-99 | 6 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"No world in focus"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command | 6 |  |  | covered row 'No world in focus' has no verification run |
-| R-100 | 6 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Under an hour"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command | 6 |  |  | covered row 'Under an hour' has no verification run |
-| R-101 | 6 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Over an hour"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command | 6 |  |  | covered row 'Over an hour' has no verification run |
+| R-96 | 6 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"An unknown field"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command | 6 |  |  | covered row 'An unknown field' has no verification run |
+| R-97 | 6 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"The editor after the notices"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command | 6 |  |  | covered row 'The editor after the notices' has no verification run |
+| R-98 | 6 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"The editor before the notices"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command | 6 |  |  | covered row 'The editor before the notices' has no verification run |
+| R-99 | 6 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"No world in focus"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command | 6 |  |  | covered row 'No world in focus' has no verification run |
+| R-100 | 6 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Under an hour"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command | 6 |  |  | covered row 'Under an hour' has no verification run |
+| R-101 | 6 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Over an hour"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command | 6 |  |  | covered row 'Over an hour' has no verification run |
 | R-102 | 6 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"approach partial"] | accepted | ticket: none; reason: the lens sampled large files in two full rounds, with a different sample each time; the operator accepted the gap, and the suite review of task 7.3 reads the branch again | 6 |  |  | lens approach reported partial, gaps: 3 |
 | R-103 | 6 | 9 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: none; reason: the lens sampled large files in two full rounds, with a different sample each time; the operator accepted the gap, and the suite review of task 7.3 reads the branch again | 6 |  |  | lens test-honesty reported partial, gaps: 2 |
 | R-104 | 6 | 9 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"invariants partial"] | accepted | ticket: none; reason: the lens sampled large files in two full rounds, with a different sample each time; the operator accepted the gap, and the suite review of task 7.3 reads the branch again | 6 |  |  | lens invariants reported partial, gaps: 2 |
@@ -612,8 +656,8 @@ None.
 | R-121 | 7 | 8 | suggestion | in-change |  | ["path","crates/mu-cli/src/config_verb.rs",130] | resolved | resolved in round 8 from fixed 726d0a7d734f1b1964784993f7822b3026df52f5 | 7 |  |  | key_part writes the TOML rule of a bare key by hand to print an entry of [world-layouts]. toml_edit, already a workspace dependency, gives the same with Key::display_repr, and D5 names no alternative. |
 | R-122 | 7 | 8 | suggestion | in-change |  | ["path","crates/mu-config/src/layout/tree.rs",190] | resolved | resolved in round 8 from fixed 726d0a7d734f1b1964784993f7822b3026df52f5 | 7 |  | severity? should-fix 0.62 | The range check of build, which guards resize for any Size a caller makes, is tested only at 95%. The reader refuses 9% and 91% before build runs, so a_percent_out_of_range never reaches this check, and no test passes 9%, 91%, a count of 0 or max 0 and 101 to resize. |
 | R-123 | 7 | 8 | suggestion | in-change |  | ["path","crates/mu-config/src/layout/change.rs",106] | resolved | resolved in round 8 from fixed 726d0a7d734f1b1964784993f7822b3026df52f5 | 7 |  |  | percent_range must give exactly the whole percents from 10 to 90 whose solved cells keep both sides at the smallest size, for any split total; the tests pin only the totals 20, 21, 80 and 300. |
-| R-124 | 7 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A block beside two rows"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command |  |  |  | covered row 'A block beside two rows' has no verification run |
-| R-125 | 7 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"An id in a later line"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command |  |  |  | covered row 'An id in a later line' has no verification run |
+| R-124 | 7 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A block beside two rows"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command |  |  |  | covered row 'A block beside two rows' has no verification run |
+| R-125 | 7 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"An id in a later line"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command |  |  |  | covered row 'An id in a later line' has no verification run |
 | R-126 | 8 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A refused line goes to the notices"] | fixed | 726d0a7d734f1b1964784993f7822b3026df52f5 | 8 |  |  | delta scenario 'A refused line goes to the notices' has no matrix row |
 | R-127 | 8 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A refused line of a world that lost the focus"] | fixed | 726d0a7d734f1b1964784993f7822b3026df52f5 | 8 |  |  | delta scenario 'A refused line of a world that lost the focus' has no matrix row |
 | R-128 | 8 | 8 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A line with no world goes to the notices"] | fixed | 726d0a7d734f1b1964784993f7822b3026df52f5 | 8 |  |  | delta scenario 'A line with no world goes to the notices' has no matrix row |
@@ -630,20 +674,63 @@ None.
 | R-139 | 9 | 10 | suggestion | in-change |  | ["artifact",["design.md","D7. Layer 2: the streams, the tab label and the statusline"],"The run loop sends one tick before the first draw."] | resolved | resolved in round 10 from fixed ee7a74a0c580486e3f3de9df7b6504047114f42e | 9 |  | severity? should-fix 0.80 | D7 says the run loop sends one tick before the first draw. At head the run loop sends Msg::Clock, which sets the time and leaves the wait of a tick alone. An early Msg::Tick is the double tick chain that R-113 removed. |
 | R-140 | 9 | 10 | suggestion | in-change |  | ["artifact",["design.md","D9. Layer 4: commands and the mouse"],"A press and a release on one name with no move is a click, and calls `front`."] | resolved | resolved in round 10 from fixed ee7a74a0c580486e3f3de9df7b6504047114f42e | 9 |  |  | D9 says a click on a name of a title row calls `front`. At head `front` in view.rs only reads the block in front. The click runs click_title, which writes Model::fronts. |
 | R-141 | 9 | 10 | suggestion | in-change |  | ["artifact",["tasks.md","3. Layer 2: named layouts"],"`the_default_comes_last` and `no_world_gives_the_default` in `layout.rs` of `mu-config` pass"] | resolved | resolved in round 10 from fixed ee7a74a0c580486e3f3de9df7b6504047114f42e | 9 |  |  | Task 3.2a puts the four unit tests of layout_for in layout.rs of mu-config. At head they are in crates/mu-config/tests/names.rs. |
-| R-142 | 9 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"The default layout"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command |  |  |  | covered row 'The default layout' has no verification run |
-| R-143 | 9 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A label too long"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command |  |  |  | covered row 'A label too long' has no verification run |
-| R-144 | 9 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"No worlds"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command |  |  |  | covered row 'No worlds' has no verification run |
-| R-145 | 9 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A drag past the smallest pane"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command |  |  |  | covered row 'A drag past the smallest pane' has no verification run |
+| R-142 | 9 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"The default layout"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command |  |  |  | covered row 'The default layout' has no verification run |
+| R-143 | 9 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A label too long"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command |  |  |  | covered row 'A label too long' has no verification run |
+| R-144 | 9 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"No worlds"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command |  |  |  | covered row 'No worlds' has no verification run |
+| R-145 | 9 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A drag past the smallest pane"] | refuted | review_merge.py matches a run only against the whole covered-by text, so a row that names two tests matches no command |  |  |  | covered row 'A drag past the smallest pane' has no verification run |
 | R-146 | 9 | 9 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"fit partial"] | accepted | ticket: none; reason: the fit lens sampled in the third full round; the operator accepted the gap as for the other lenses, and the suite review of task 7.3 reads the branch again |  |  |  | lens fit reported partial, gaps: 4 |
-| R-147 | 10 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A hide of the main output"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'A hide of the main output' has no matrix row |
-| R-148 | 10 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A new main output takes the lines of the world back"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'A new main output takes the lines of the world back' has no matrix row |
-| R-149 | 10 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A line of a world with no output"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'A line of a world with no output' has no matrix row |
-| R-150 | 10 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The main output is not the first output line"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'The main output is not the first output line' has no matrix row |
-| R-151 | 10 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A save with a key"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'A save with a key' has no matrix row |
-| R-152 | 10 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A save with a key and no device"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'A save with a key and no device' has no matrix row |
-| R-153 | 10 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A command that changes nothing"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'A command that changes nothing' has no matrix row |
-| R-154 | 10 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A drag back to its start"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'A drag back to its start' has no matrix row |
-| R-155 | 11 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The earlier lines of a block that stands in for main"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'The earlier lines of a block that stands in for main' has no matrix row |
+| R-147 | 10 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A hide of the main output"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'A hide of the main output' has no matrix row |
+| R-148 | 10 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A new main output takes the lines of the world back"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'A new main output takes the lines of the world back' has no matrix row |
+| R-149 | 10 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A line of a world with no output"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'A line of a world with no output' has no matrix row |
+| R-150 | 10 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The main output is not the first output line"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'The main output is not the first output line' has no matrix row |
+| R-151 | 10 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A save with a key"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'A save with a key' has no matrix row |
+| R-152 | 10 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A save with a key and no device"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'A save with a key and no device' has no matrix row |
+| R-153 | 10 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A command that changes nothing"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'A command that changes nothing' has no matrix row |
+| R-154 | 10 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A drag back to its start"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'A drag back to its start' has no matrix row |
+| R-155 | 11 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The earlier lines of a block that stands in for main"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition before the round |  |  |  | delta scenario 'The earlier lines of a block that stands in for main' has no matrix row |
+| R-156 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Help lists the verbs"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'Help lists the verbs' has no matrix row |
+| R-157 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Help for one verb"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'Help for one verb' has no matrix row |
+| R-158 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Help lists the entries"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'Help lists the entries' has no matrix row |
+| R-159 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"An entry takes the id of a block"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'An entry takes the id of a block' has no matrix row |
+| R-160 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A hint with no output"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A hint with no output' has no matrix row |
+| R-161 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A new configuration brings an output"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A new configuration brings an output' has no matrix row |
+| R-162 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The focus moves to a world with an output"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'The focus moves to a world with an output' has no matrix row |
+| R-163 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Lines that waited show one time and in order"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'Lines that waited show one time and in order' has no matrix row |
+| R-164 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A line of 257 characters"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A line of 257 characters' has no matrix row |
+| R-165 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"An anchor twice"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'An anchor twice' has no matrix row |
+| R-166 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A key with a part of 65 characters"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A key with a part of 65 characters' has no matrix row |
+| R-167 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A line that mu writes with 257 characters"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A line that mu writes with 257 characters' has no matrix row |
+| R-168 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A resize that makes a line too long"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A resize that makes a line too long' has no matrix row |
+| R-169 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A refused save writes no layout file"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A refused save writes no layout file' has no matrix row |
+| R-170 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A refused edit of a built-in layout writes no layout file"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A refused edit of a built-in layout writes no layout file' has no matrix row |
+| R-171 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A write to a linked device file"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A write to a linked device file' has no matrix row |
+| R-172 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A link to a directory"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A link to a directory' has no matrix row |
+| R-173 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A link to nothing"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A link to nothing' has no matrix row |
+| R-174 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A refused call makes no directory"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A refused call makes no directory' has no matrix row |
+| R-175 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A save that makes a good layer bad"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A save that makes a good layer bad' has no matrix row |
+| R-176 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A write keeps the permissions"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A write keeps the permissions' has no matrix row |
+| R-177 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"An error holds no line of the file"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'An error holds no line of the file' has no matrix row |
+| R-178 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A save stores the lines as mu writes them"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A save stores the lines as mu writes them' has no matrix row |
+| R-179 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The caller goes away"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'The caller goes away' has no matrix row |
+| R-180 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Forget an entry that is not there"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'Forget an entry that is not there' has no matrix row |
+| R-181 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Forget an entry that is not there, in each form of the file"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'Forget an entry that is not there, in each form of the file' has no matrix row |
+| R-182 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Arrange mode writes the plan again"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'Arrange mode writes the plan again' has no matrix row |
+| R-183 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A new configuration ends arrange mode"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A new configuration ends arrange mode' has no matrix row |
+| R-184 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A new configuration ends a drag"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A new configuration ends a drag' has no matrix row |
+| R-185 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The same configuration keeps arrange mode"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'The same configuration keeps arrange mode' has no matrix row |
+| R-186 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A failed save ends arrange mode"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A failed save ends arrange mode' has no matrix row |
+| R-187 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A focus move ends arrange mode"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A focus move ends arrange mode' has no matrix row |
+| R-188 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A focus move ends a drag"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A focus move ends a drag' has no matrix row |
+| R-189 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A larger block in a small split"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A larger block in a small split' has no matrix row |
+| R-190 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A border that cannot move"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A border that cannot move' has no matrix row |
+| R-191 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The last good layout comes back"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'The last good layout comes back' has no matrix row |
+| R-192 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A change after a failed save"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A change after a failed save' has no matrix row |
+| R-193 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The first view"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'The first view' has no matrix row |
+| R-194 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"The order of the worlds"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'The order of the worlds' has no matrix row |
+| R-195 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A bad world id is refused"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A bad world id is refused' has no matrix row |
+| R-196 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Ids outside the rule"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'Ids outside the rule' has no matrix row |
+| R-197 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Ids inside the rule"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'Ids inside the rule' has no matrix row |
+| R-198 | 12 | 12 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A part of 65 characters"] | refuted | a follow-up round has no test-coverage lens, so a scenario that a fix adds gets no matrix row; the operator chose this disposition |  |  |  | delta scenario 'A part of 65 characters' has no matrix row |
 
 ## Reviewed files
 
@@ -651,17 +738,17 @@ None.
 |---|---|
 | Cargo.lock | bedf076990a2723de953a29dc5560bcba160a376 |
 | Cargo.toml | 9c941dec15e79db61ba820e3e17faf13abf2f11a |
-| architecture/model.c4 | f0e5a47894b832d4143111d80038c5aa918e6eee |
-| architecture/views.c4 | 806536588b18b5861f18eff3f24b8cd30ab71aa0 |
+| architecture/model.c4 | a863a5b0a219b8f53b19d01f9599cd260fabf2d6 |
+| architecture/views.c4 | d23fc7ba2d5a42a707cfa9616911d8a06e67d92a |
 | crates/mu-cli/Cargo.toml | aa31266cf493719333b6f144b42fe70e721ad9b3 |
 | crates/mu-cli/src/config_verb.rs | 86ac1fcb1aa254a4e0f781a4851ae1c36aee0541 |
-| crates/mu-cli/src/layout_verb.rs | 666e55a720c79151162c0a5e9e79573b595d31f1 |
-| crates/mu-cli/src/lib.rs | 0d47527b1944ed448a29d739ab2d93370f08fcc0 |
+| crates/mu-cli/src/layout_verb.rs | 320b25e9d339750c85bb8a88d80060872926ddc4 |
+| crates/mu-cli/src/lib.rs | 91cb865f9790c5d9f1fd6368fc196b7edabd154c |
 | crates/mu-cli/src/remote.rs | 7a523c62388d9ffc3f9c2c6497d16b38c6174acd |
 | crates/mu-cli/tests/cli.rs | 7797d83b8a7c4b599925ecce556bca6dc23de847 |
-| crates/mu-cli/tests/client.rs | 1602188ef51e90cbfe51119ec56147d2477ac723 |
-| crates/mu-cli/tests/config_store.rs | e9218c52758b01ce1459877cb8c332e3ea1ddacc |
-| crates/mu-cli/tests/layout.rs | f3c90b6d0433ea94cc0fd94ce8e73368c4a4b846 |
+| crates/mu-cli/tests/client.rs | c391f2b817f57930b053c458a5ae1eb8e8d55454 |
+| crates/mu-cli/tests/config_store.rs | d070166e837061e2c782b895b3ee2fc793565b48 |
+| crates/mu-cli/tests/layout.rs | bb884731d03254d29764ed5371261c5b924769ab |
 | crates/mu-cli/tests/support/mod.rs | e639f97ff567d14798ba98add497a663ad402b8e |
 | crates/mu-cli/tests/workspace_boundary.rs | e6dda3c06a3f15aa11ab63f739bfb53373eed874 |
 | crates/mu-client/src/lib.rs | 79d2c32b8ea7dee53436383732546bf05c1859d5 |
@@ -671,66 +758,70 @@ None.
 | crates/mu-config/src/layer.rs | 3d1f69cd2e17f8b9b62ee67b849f03da4c51f18f |
 | crates/mu-config/src/layout/block.rs | be68431a61b6d18b5a7e6810819c41d7824cbce9 |
 | crates/mu-config/src/layout/builtin.rs | e7786e40b0c711fe55d5aaaa15dfb6009709460a |
-| crates/mu-config/src/layout/change.rs | d36610e0b3526c565202636c0cff5d4fb45bdcc1 |
-| crates/mu-config/src/layout/mod.rs | af7503e8dda1322eb695861bc2f80c37c164b6be |
-| crates/mu-config/src/layout/parse.rs | 5c31fa357e2adaa39939fa78ea26655583fcc32d |
+| crates/mu-config/src/layout/change.rs | f70801c61258b5249019db93d0540d4723180421 |
+| crates/mu-config/src/layout/mod.rs | 90f5e25c327c2e0d0244a11eacf10cca405e465e |
+| crates/mu-config/src/layout/parse.rs | 3923c9712a0746a284cbde04f9acb835a071c78d |
 | crates/mu-config/src/layout/solve.rs | 25c6bb39cecfc5e0936b4a8cf39c905e4937fe67 |
-| crates/mu-config/src/layout/step.rs | 8c5267090900d57e286ad2eb576bd1d0f8eecec1 |
-| crates/mu-config/src/layout/tree.rs | 6d21b09e3bf45728de6536655a194e7dbc415f41 |
+| crates/mu-config/src/layout/step.rs | 8e24fd5c65ced99539367bae125aa770e30d5f02 |
+| crates/mu-config/src/layout/tree.rs | 99e4328c43b1985b42daced9f45f2dad6f1fb734 |
 | crates/mu-config/src/layout/write.rs | db02174d0541c4c79d6ea4b8d0c05686f4b9ace5 |
-| crates/mu-config/src/lib.rs | a0bd98df708f7e54f36df123ccf800b72c6927c0 |
-| crates/mu-config/src/names.rs | fba014820cf321b8290d76fc672d7fd65e8a362f |
-| crates/mu-config/src/world_id.rs | 520b3410e6ff6307e9d0ca8c5a16eedfc290336a |
+| crates/mu-config/src/lib.rs | fa8279f70ca852aa896eab265007d0122dc01a1a |
+| crates/mu-config/src/names.rs | cd39407289b63b92184cdf1e41a5309d7f5f32bc |
+| crates/mu-config/src/world_id.rs | 2827f7687adadde87103bd04d36e18111587b1f0 |
 | crates/mu-config/tests/layer.rs | f245d723f398870adc217b2ff2c62b554b72c0b6 |
 | crates/mu-config/tests/layout.proptest-regressions | e8336239f3b196ee48d2b252e7d4e1dc16e9bb0d |
-| crates/mu-config/tests/layout.rs | 7017cd2f2f1c0e5780c82293300d0a5bcea345ea |
-| crates/mu-config/tests/names.rs | a3bf5e9376ac783fe25303f3f603aaf66f888785 |
+| crates/mu-config/tests/layout.rs | 24614e61f68c79d14ebdfc6438165320ca25ea4c |
+| crates/mu-config/tests/names.rs | e370a152a3a68305d17d609809c78ab6664a58dc |
 | crates/mu-core/Cargo.toml | 89937e8493ca6d837f8eb28a58ff84981adc7d8f |
 | crates/mu-core/src/id.rs | 453174368922ff0a1b221f12e9dabe7de3b907b0 |
 | crates/mu-core/src/world/merge.rs | 92c82461f2c8b54c6cde46715e4eda6e05367d83 |
-| crates/mu-proto/proto/mu/v1/portal.proto | 6e36604c8205956969c5dedbe6468ecd2b3b81ab |
+| crates/mu-proto/proto/mu/v1/portal.proto | 158e73765c3f85f968fd6a5bba0e83d8608af91b |
 | crates/mu-server/Cargo.toml | a53455fa1b31b187adcf337d18ed20c05f497e6d |
 | crates/mu-server/src/lib.rs | 8428a97973fcb851b3de9aaf01748fb20d847625 |
-| crates/mu-server/src/service.rs | e5c00f71d6d911e7250f313941d21ac7ca57f6fe |
-| crates/mu-server/src/store.rs | fe5b1c6e9d60eea3a682130c342c031341fb5a74 |
-| crates/mu-server/src/write.rs | 2abaab243c8f771156208db416fcdf0e1ed809a2 |
-| crates/mu-server/tests/store.rs | ede35486d76925e09c0a15a35a8cd41b297eeed4 |
-| crates/mu-tui/src/arrange.rs | 2e0578589a1756907c42e682fbeb24523213aba5 |
-| crates/mu-tui/src/config.rs | 31dc99ee32b0d94efa67a8c214d408fd81db6681 |
+| crates/mu-server/src/service.rs | 10e3a350bdfef6bac657f5add77e3f7aad7aa2f9 |
+| crates/mu-server/src/store.rs | 65c4dd6e8f59e43f7eeb29ec64de7b845d8ad9ed |
+| crates/mu-server/src/write.rs | 7af278a8f5278ffa994e9264cb8170b7297a58f9 |
+| crates/mu-server/tests/store.rs | 2bd4b865db27a48615ce9075960760277eebff83 |
+| crates/mu-tui/src/arrange.rs | 8cd880c68051f569fbffa692a1f0572c457d3434 |
+| crates/mu-tui/src/config.rs | 71e8c5dc84d1ced550380949a3211be9407a0104 |
 | crates/mu-tui/src/editor.rs | bf65a6b7efd456bb35a3accc565eaca4b471a3c8 |
 | crates/mu-tui/src/keymap.rs | 60e9ef84b8124b829806a350bc4145fc460bb4b2 |
 | crates/mu-tui/src/layout.rs | absent |
-| crates/mu-tui/src/layouts.rs | 0d687ee4522ec07890bcab385118c618e4f811be |
-| crates/mu-tui/src/lib.rs | 8e55962cb616d2f0f7dfdc89ce6353b6780640f2 |
-| crates/mu-tui/src/model.rs | f726f2908d5663b87c9ff9642112a57e889b654d |
+| crates/mu-tui/src/layouts.rs | 8a7050ad2becc29ac4bbe53951bc101e4e1db3e6 |
+| crates/mu-tui/src/lib.rs | 5bbecf013fba425bdf508517ff835d2ff8cb2ef2 |
+| crates/mu-tui/src/model.rs | 5fb1027a99bdf5c2d1da7c32df5226939de79927 |
 | crates/mu-tui/src/registry.rs | 6acfabe5ca36a9f4249aaeb78e8f63f7d6fb1ad3 |
-| crates/mu-tui/src/run.rs | 30098c5d48dc39e61f96359ad8e103c3d6cbc8c4 |
+| crates/mu-tui/src/run.rs | fa7650c1b6aed562c3f67090e55a854a903f8262 |
 | crates/mu-tui/src/statusline.rs | df28af7fb7db26ca5d9085079b17fa3bd1ada49c |
-| crates/mu-tui/src/update.rs | e15804682fad23ec6b3946d3a38dccbea3c14e5f |
+| crates/mu-tui/src/update.rs | 4cb4a9361e76ab71156523cbabfa93b8d4779f61 |
 | crates/mu-tui/src/view.rs | cc34fea8d6740abb51d4cde0f4cab2c34896f590 |
 | crates/mu-tui/src/width.rs | 8894728414954329d5eab91707dd99f25dee4204 |
-| crates/mu-tui/tests/app.rs | 69610c85267f61b3e6455c768d6a288dbc2a57cc |
-| crates/mu-tui/tests/arrange.rs | 5d3d741e12ef7791e7d4144480f61504072753e4 |
+| crates/mu-tui/tests/app.rs | 56c9c285a5aafb028ddc08685bceb0e10a092d68 |
+| crates/mu-tui/tests/arrange.rs | f282023d74f392dda7399d35b21886cb0956701d |
 | crates/mu-tui/tests/editor.rs | c7992ae680d306d88c22f875eb27a1f19a575a86 |
 | crates/mu-tui/tests/snapshots/app__a_percent_and_a_count_of_cells.snap | 185ad1cc3fc2071b5e92a5cf7c930976a373efd3 |
 | crates/mu-tui/tests/snapshots/app__the_picture_of_each_built_in_layout.snap | d96114ee98416bb0b914415f3baf834d4d81bfe4 |
-| crates/mu-tui/tests/update.rs | 6d35a0f7dcbcc96d1e5cb2b95c1f5306b699e32f |
-| docs/src/content/docs/architecture/server-and-clients.mdx | e26f7a7035c6adf0535056d29b03930cc195db77 |
+| crates/mu-tui/tests/update.rs | 149bb57f8be07490dea7f7ba99c03d12f1d9600a |
+| docs/src/content/docs/architecture/server-and-clients.mdx | e4c29f70fe6edfd20cc93c23455eadcad6fd6e45 |
 | docs/src/content/docs/architecture/terminal-client.mdx | 85d2f6949411c56fe3e935541ebefcab776a2d6c |
-| docs/src/content/docs/decisions/layout-model.md | 387b996cce62927addf2042db6ffddbd3097025c |
-| docs/src/content/docs/guides/client.md | 1998f8025e8130dad06ff91480087d779112027e |
-| docs/src/content/docs/guides/configuration.md | 1a6d9215d8fc6a948b4cd0eabebd881f0f5d9379 |
-| docs/src/content/docs/guides/layouts.md | c8487d2acb8eb016a032f4f3406efc02b4e0a378 |
+| docs/src/content/docs/decisions/layout-model.md | 640d77843de59f085d3866a5255d47c7524e8126 |
+| docs/src/content/docs/guides/client.md | 09a05f370a06f9be0daaa2504c6855430630139d |
+| docs/src/content/docs/guides/configuration.md | e985a66108cd3e50f8d4ee35f524bacce4b453e1 |
+| docs/src/content/docs/guides/first-run.md | e402c2a6f6fe84b4aa25e0e48b57fc1aa592e4e8 |
+| docs/src/content/docs/guides/layouts.md | 8006d5d3e31b0e434681e354a2b5946f58d84fca |
 | openspec/changes/client-layout/.openspec.yaml | 880dcbddfbd01d2f90c77d58dcf594b444480b33 |
-| openspec/changes/client-layout/design.md | ba7e2d5f44e098d846afc54ad7cd37046cd66d6c |
-| openspec/changes/client-layout/proposal.md | aeea3d73493fb740ca4ad21d70a4e5d9c4086c80 |
+| openspec/changes/client-layout/design.md | dfe5ba0375e9d9ec80a70f454a7eaa6f8592896c |
+| openspec/changes/client-layout/proposal.md | df18eaa1584ee0c7d17087b7ec5f314302eb3a30 |
+| openspec/changes/client-layout/specs/cli-entrypoint/spec.md | 20966fd1453225a3f9c2b5f0343ed66f8f166229 |
+| openspec/changes/client-layout/specs/client-commands/spec.md | 54c23e40c5979247b6bd85176302466986cce14b |
 | openspec/changes/client-layout/specs/client-config/spec.md | 732875b42d24bcce5855b8e077ae1a36f615591b |
-| openspec/changes/client-layout/specs/client-layout/spec.md | 58febc36f7a9533e0f595e0339ab3a36e21e0126 |
+| openspec/changes/client-layout/specs/client-layout/spec.md | 9cdda3027f0ec99335f8c255f1a0d5474fc3a234 |
 | openspec/changes/client-layout/specs/client-statusline/spec.md | ac3a3ba76dafc334996beeb1f82b4623b5a0b352 |
-| openspec/changes/client-layout/specs/config-store/spec.md | 4a8b7666a0810695e6352e63aa2586b6f32f9dee |
-| openspec/changes/client-layout/specs/layout-editing/spec.md | 494472933c1841717661065358777498fd4e4c68 |
-| openspec/changes/client-layout/specs/terminal-client/spec.md | a42fcbd9684d5fea1a7bf612a60c2f0e2ea56f95 |
-| openspec/changes/client-layout/tasks.md | sha256:c0d205d887620b58b0c34229d39edb6a645749fbc2945663fc4d64f637687706 |
+| openspec/changes/client-layout/specs/config-store/spec.md | 2e5d9ec25fde58bdf4de271ea984a40e83a56bc2 |
+| openspec/changes/client-layout/specs/layout-editing/spec.md | 12b88f5f2d0b7cbe1c86688657b48057fc66e17f |
+| openspec/changes/client-layout/specs/terminal-client/spec.md | 53c29e29e317e9c23dbadb34ee70af42d0efbb2b |
+| openspec/changes/client-layout/specs/world-sessions/spec.md | f7af34dc31dd7ee4652fb81870264c714d8c6d33 |
+| openspec/changes/client-layout/tasks.md | sha256:b4011bff790e2769d0f466c351a03489c3e189301d3fd60fc3c3c659143a593e |
 | openspec/review.json | absent |
 
 ## Plan review (2026-11-25)
