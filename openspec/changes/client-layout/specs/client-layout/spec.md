@@ -238,12 +238,12 @@ The block `editor` SHALL take one row for each wrapped row of its text. That cou
 
 #### Scenario: The editor stops at its max
 - **GIVEN** the layout in use holds the lines `output` and `editor below output, max 3`, and the world in focus is the fake world `alpha/aria`
-- **WHEN** the user types five lines with Alt+Enter between them, in a terminal of 80 columns and 24 rows
+- **WHEN** the user types five lines with Ctrl+J between them, in a terminal of 80 columns and 24 rows
 - **THEN** the editor takes the bottom 3 rows
 
 #### Scenario: The default max
 - **GIVEN** the layout `classic` is in use, and the world in focus is the fake world `alpha/aria`
-- **WHEN** the user types twelve lines with Alt+Enter between them, in a terminal of 80 columns and 24 rows
+- **WHEN** the user types twelve lines with Ctrl+J between them, in a terminal of 80 columns and 24 rows
 - **THEN** the editor takes the bottom 8 rows
 
 ### Requirement: Editors side by side take the same rows
@@ -251,12 +251,12 @@ A part of the screen that holds only editors side by side SHALL take the rows of
 
 #### Scenario: Two editors side by side
 - **GIVEN** the layout in use holds the lines `output`, `editor below output` and `editor as scratch right of editor`, and the world in focus is the fake world `alpha/aria`
-- **WHEN** the user types three lines with Alt+Enter between them, in a terminal of 80 columns and 24 rows
+- **WHEN** the user types three lines with Ctrl+J between them, in a terminal of 80 columns and 24 rows
 - **THEN** the pane of `editor` and the pane of `scratch` each take rows 22 to 24
 
 #### Scenario: The shorter max does not stop the taller editor
 - **GIVEN** the layout in use holds the lines `output`, `editor below output` and `editor as scratch right of editor, max 2`, and the world in focus is the fake world `alpha/aria`
-- **WHEN** the user types three lines with Alt+Enter between them, in a terminal of 80 columns and 24 rows
+- **WHEN** the user types three lines with Ctrl+J between them, in a terminal of 80 columns and 24 rows
 - **THEN** the pane of `editor` and the pane of `scratch` each take rows 22 to 24
 
 ### Requirement: A bad sentence makes its layout bad

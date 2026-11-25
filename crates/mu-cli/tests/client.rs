@@ -8,9 +8,9 @@ use mu_proto::{EventKind, WorldState};
 use mu_fake_server::{Listening, Script, ScriptedGame};
 use support::process::{
     Answers, BOUND, PtyClient, PtyOn, Reaper, Relay, SERVING, ServerBuilder, ServerProcess,
-    Session, TWO_WORLDS, mu_on_pty, private_tempdir, server_url,
+    Session, TWO_WORLDS, greeting, mu_on_pty, private_tempdir, server_url,
 };
-use support::{ConfigDir, mode, stderr};
+use support::{ConfigDir, mode, mu_async, stderr};
 
 mod support;
 
@@ -1518,4 +1518,564 @@ async fn a_clients_directory_that_turns_unlistable() {
         })
         .await;
     std::fs::set_permissions(&clients, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+// The layout of the screen (client-layout).
+
+/// The content of a layout file with `lines`.
+fn layout_file(lines: &[&str]) -> String {
+    let quoted: Vec<String> = lines.iter().map(|line| format!("{line:?}")).collect();
+    format!("place = [{}]\n", quoted.join(", "))
+}
+
+/// A configuration directory whose `clients/global.toml` names the layout `mine` of `lines`, and
+/// then holds `rest`.
+fn layout_dir(lines: &[&str], rest: &str) -> ConfigDir {
+    ConfigDir::empty()
+        .file("clients/layouts/mine.toml", &layout_file(lines))
+        .file("clients/global.toml", &format!("layout = \"mine\"\n{rest}"))
+}
+
+/// A server with `worlds` over `config`, and a client on it. A row of the client holds the
+/// greeting of the first world, beside the text of other panes.
+async fn attached_showing(worlds: &[&str], config: &ConfigDir) -> (Session, PtyClient) {
+    let mut session = Session::start(
+        ServerBuilder::new()
+            .fake_worlds(worlds)
+            .arg("--config")
+            .arg(config.path()),
+    )
+    .await;
+    for world in worlds {
+        session.welcome(world).await;
+    }
+    let client = PtyClient::start_args(
+        session.server.socket(),
+        session.server.dir().path(),
+        Answers::Default,
+        &["--device".as_ref(), "laptop".as_ref()],
+        &[],
+    );
+    let first = greeting(worlds[0]);
+    client
+        .wait_rows("the greeting", |rows| {
+            rows.iter().any(|row| row.contains(&first))
+        })
+        .await;
+    (session, client)
+}
+
+/// A server with `worlds` and the layout `lines`, and a client on it that shows the greeting.
+async fn with_layout(worlds: &[&str], lines: &[&str]) -> (Session, PtyClient, ConfigDir) {
+    let config = layout_dir(lines, "");
+    let (session, client) = attached_showing(worlds, &config).await;
+    (session, client, config)
+}
+
+/// Waits until row `number`, from 1, passes `check`.
+async fn wait_row(client: &PtyClient, number: usize, what: &str, check: impl Fn(&str) -> bool) {
+    client
+        .wait_rows(what, |rows| {
+            rows.get(number - 1).is_some_and(|row| check(row))
+        })
+        .await;
+}
+
+/// The column of the first `needle` in row `number`, both from 1.
+fn column_of(client: &PtyClient, number: usize, needle: &str) -> Option<usize> {
+    let rows = client.rows();
+    let row = rows.get(number - 1)?;
+    let at = row.find(needle)?;
+    Some(row[..at].chars().count() + 1)
+}
+
+#[tokio::test]
+async fn no_tabs() {
+    let (mut session, mut client, _config) =
+        with_layout(TWO_WORLDS, &["output", "editor below output"]).await;
+    client.send(b"\x0e");
+    client
+        .wait_rows("the greeting of beta/bryn", |rows| {
+            rows.iter().any(|row| row.trim() == greeting("beta/bryn"))
+        })
+        .await;
+    client.send(b"hi\r");
+    let event = session
+        .until("the player event", |event| {
+            event.kind == EventKind::EVENT_KIND_INPUT
+        })
+        .await;
+    assert_eq!(
+        (event.world.as_str(), event.text.as_str()),
+        ("beta/bryn", "hi")
+    );
+    assert!(
+        client.rows().iter().all(|row| !row.contains("alpha/aria")),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn the_editor_alone() {
+    // The client starts with the default layout, so the greeting shows when it knows its world.
+    let (mut session, mut client, config) = with_layer(&["alpha/aria"], "").await;
+    let config = config
+        .file("clients/layouts/mine.toml", &layout_file(&["editor"]))
+        .file("clients/global.toml", "layout = \"mine\"\n");
+    let output = mu_async(
+        &[
+            "config",
+            "reload",
+            "--server",
+            &server_url(session.server.socket()),
+        ],
+        &[],
+    )
+    .await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    client
+        .wait_rows("a screen with the editor alone", |rows| {
+            rows.iter().all(|row| row.trim().is_empty())
+        })
+        .await;
+    client.send(b"hi\r");
+    let event = session
+        .until("the player event", |event| {
+            event.kind == EventKind::EVENT_KIND_INPUT
+        })
+        .await;
+    assert_eq!(
+        (event.world.as_str(), event.text.as_str()),
+        ("alpha/aria", "hi")
+    );
+    drop(config);
+}
+
+#[tokio::test]
+async fn the_output_above_the_tabs() {
+    let (_session, client, _config) = with_layout(
+        &["alpha/aria"],
+        &["output", "tabs below output", "editor below tabs"],
+    )
+    .await;
+    wait_row(&client, 23, "the tabs", |row| {
+        row.starts_with("[alpha/aria]")
+    })
+    .await;
+    let rows = client.rows();
+    assert!(
+        rows[..22]
+            .iter()
+            .any(|row| row.trim() == greeting("alpha/aria")),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn a_block_beside_another() {
+    let (_session, client, _config) = with_layout(
+        &["alpha/aria"],
+        &[
+            "output",
+            "tabs above output",
+            "editor below output",
+            "output as notices right of output",
+        ],
+    )
+    .await;
+    wait_row(&client, 1, "the tabs", |row| {
+        row.starts_with("[alpha/aria]")
+    })
+    .await;
+    // The divider is in column 41, and the tabs row has none.
+    assert_eq!(column_of(&client, 1, "│"), None);
+    assert_eq!(column_of(&client, 3, "│"), Some(41));
+    let greeting_row = (2..=23)
+        .find(|row| column_of(&client, *row, &greeting("alpha/aria")).is_some())
+        .expect("the greeting shows");
+    assert_eq!(
+        column_of(&client, greeting_row, &greeting("alpha/aria")),
+        Some(1)
+    );
+}
+
+#[tokio::test]
+async fn the_statusline_at_the_bottom() {
+    let (_session, client, _config) = with_layout(
+        &["alpha/aria"],
+        &[
+            "output",
+            "editor below output",
+            "output as notices right of output",
+            "statusline at bottom",
+        ],
+    )
+    .await;
+    wait_row(&client, 24, "the statusline", |row| {
+        row.starts_with("alpha/aria | ")
+    })
+    .await;
+    assert_eq!(column_of(&client, 24, "│"), None);
+}
+
+#[tokio::test]
+async fn notices_behind_the_output() {
+    let (_session, client, _config) = with_layout(
+        &["alpha/aria"],
+        &[
+            "output",
+            "editor below output",
+            "output as notices with output",
+        ],
+    )
+    .await;
+    wait_row(&client, 1, "the title row", |row| {
+        row.trim() == "[output] notices"
+    })
+    .await;
+    assert!(
+        client
+            .rows()
+            .iter()
+            .any(|row| row.trim() == greeting("alpha/aria")),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn an_id_in_a_later_line() {
+    let (_session, client, _config) = with_layout(
+        &["alpha/aria"],
+        &[
+            "output",
+            "editor below output",
+            "output as side right of output",
+            "tabs above side",
+        ],
+    )
+    .await;
+    wait_row(&client, 1, "the tabs beside the title", |row| {
+        row.starts_with("[output]")
+    })
+    .await;
+    assert_eq!(column_of(&client, 1, "[alpha/aria]"), Some(42));
+}
+
+#[tokio::test]
+async fn a_percent() {
+    let (_session, client, _config) = with_layout(
+        &["alpha/aria"],
+        &[
+            "output",
+            "editor below output",
+            "output as notices right of output, 25%",
+        ],
+    )
+    .await;
+    assert_eq!(column_of(&client, 2, "│"), Some(60));
+}
+
+#[tokio::test]
+async fn a_count_of_cells() {
+    let (_session, client, _config) = with_layout(
+        &["alpha/aria"],
+        &[
+            "output",
+            "editor below output",
+            "output as notices below output, 5",
+        ],
+    )
+    .await;
+    // The pane of the notices takes the 5 rows above the editor, and its first row is its title.
+    wait_row(&client, 19, "the title of the notices", |row| {
+        row.trim() == "[notices]"
+    })
+    .await;
+    assert_eq!(client.rows()[0].trim(), "[output]");
+}
+
+/// Types `count` lines with Ctrl+J between them.
+fn type_lines(client: &mut PtyClient, count: usize) {
+    for number in 1..=count {
+        if number > 1 {
+            client.send(b"\x0a");
+        }
+        client.send(format!("line{number}").as_bytes());
+    }
+}
+
+#[tokio::test]
+async fn the_editor_stops_at_its_max() {
+    let (_session, mut client, _config) =
+        with_layout(&["alpha/aria"], &["output", "editor below output, max 3"]).await;
+    type_lines(&mut client, 5);
+    wait_row(&client, 24, "the last line", |row| row.trim() == "line5").await;
+    let rows = client.rows();
+    assert_eq!(
+        [rows[21].trim(), rows[22].trim(), rows[23].trim()],
+        ["line3", "line4", "line5"]
+    );
+    assert!(!rows[20].contains("line"), "{}", client.contents());
+}
+
+#[tokio::test]
+async fn the_sidebar_layout() {
+    let config = ConfigDir::empty().file("clients/global.toml", "layout = \"sidebar\"\n");
+    let (_session, client) = attached_showing(&["alpha/aria"], &config).await;
+    wait_row(&client, 24, "the statusline", |row| {
+        row.starts_with("alpha/aria | ")
+    })
+    .await;
+    assert!(
+        client.rows()[0].starts_with("[alpha/aria]"),
+        "{}",
+        client.contents()
+    );
+    assert_eq!(column_of(&client, 2, "│"), Some(56));
+}
+
+#[tokio::test]
+async fn a_reload_changes_the_layout() {
+    let (session, mut client, config) = with_layer(&["alpha/aria"], "").await;
+    client.send(b"draft");
+    wait_row(&client, 24, "the typed text", |row| row.trim() == "draft").await;
+    let config = config.file("clients/global.toml", "layout = \"status\"\n");
+    let output = mu_async(
+        &[
+            "config",
+            "reload",
+            "--server",
+            &server_url(session.server.socket()),
+        ],
+        &[],
+    )
+    .await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    wait_row(&client, 24, "the statusline", |row| {
+        row.starts_with("alpha/aria | ")
+    })
+    .await;
+    assert_eq!(client.rows()[22].trim(), "draft");
+    drop(config);
+}
+
+#[tokio::test]
+async fn the_default_layout_puts_the_tabs_first() {
+    let (_session, client) =
+        attached_with(&["alpha/aria"], &ConfigDir::empty(), Answers::Default).await;
+    assert!(
+        client.rows()[0].starts_with("[alpha/aria]"),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn a_label_with_the_number() {
+    let (_session, client, _config) =
+        with_layer(TWO_WORLDS, "[tabs]\nlabel = \"{number}:{character}\"\n").await;
+    client
+        .wait_top("the labels", |top| top.trim() == "[1:aria] 2:bryn")
+        .await;
+}
+
+#[tokio::test]
+async fn the_game_and_the_character() {
+    let (_session, client, _config) =
+        with_layer(&["alpha/aria"], "[tabs]\nlabel = \"{character}@{game}\"\n").await;
+    client
+        .wait_top("the label", |top| top.trim() == "[aria@alpha]")
+        .await;
+}
+
+#[tokio::test]
+async fn braces() {
+    let (_session, client, _config) =
+        with_layer(&["alpha/aria"], "[tabs]\nlabel = \"{{{character}}}\"\n").await;
+    client
+        .wait_top("the label", |top| top.trim() == "[{aria}]")
+        .await;
+}
+
+/// Whether `text` is a time from `0:00` to `0:09`.
+fn is_a_young_time(text: &str) -> bool {
+    text.strip_prefix("0:0")
+        .is_some_and(|rest| rest.len() == 1 && rest.bytes().all(|byte| byte.is_ascii_digit()))
+}
+
+#[tokio::test]
+async fn the_default_segments() {
+    let (_session, client, _config) = with_layer(&["alpha/aria"], "layout = \"status\"\n").await;
+    wait_row(&client, 24, "the statusline", |row| {
+        row.starts_with("alpha/aria | connected")
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn the_state_after_a_disconnect() {
+    let (_session, mut client, _config) =
+        with_layer(&["alpha/aria"], "layout = \"status\"\n").await;
+    wait_row(&client, 24, "the connected state", |row| {
+        row.starts_with("alpha/aria | connected")
+    })
+    .await;
+    client.send(b"/disconnect\r");
+    wait_row(&client, 24, "the disconnected state", |row| {
+        row.starts_with("alpha/aria | disconnected")
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn the_idle_time_after_a_send() {
+    let (_session, mut client, _config) = with_layer(
+        &["alpha/aria"],
+        "layout = \"status\"\n[statusline]\nleft = []\nright = [\"idle\"]\n",
+    )
+    .await;
+    client.send(b"hi\r");
+    wait_row(&client, 24, "the idle time", |row| {
+        row.split_whitespace().last().is_some_and(is_a_young_time)
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn the_connected_time() {
+    let (_session, client, _config) = with_layer(
+        &["alpha/aria"],
+        "layout = \"status\"\n[statusline]\nleft = [\"connected\"]\nright = []\n",
+    )
+    .await;
+    wait_row(&client, 24, "the connected time", |row| {
+        is_a_young_time(row.trim())
+    })
+    .await;
+}
+
+// The layout of the world in focus.
+
+/// A server with the two worlds and `[world-layouts]` with `entries`, and a client on it.
+async fn with_world_layouts(entries: &str) -> (Session, PtyClient, ConfigDir) {
+    with_layer(TWO_WORLDS, &format!("[world-layouts]\n{entries}")).await
+}
+
+#[tokio::test]
+async fn a_world_with_its_own_layout() {
+    let (_session, client, _config) = with_world_layouts("\"alpha/aria\" = \"status\"\n").await;
+    wait_row(&client, 24, "the statusline", |row| {
+        row.starts_with("alpha/aria | ")
+    })
+    .await;
+    assert!(
+        client.rows()[0].starts_with("[alpha/aria]"),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn the_focus_moves_to_a_world_with_no_entry() {
+    let (_session, mut client, _config) = with_world_layouts("\"alpha/aria\" = \"status\"\n").await;
+    wait_row(&client, 24, "the statusline", |row| {
+        row.starts_with("alpha/aria | ")
+    })
+    .await;
+    client.send(b"\x0e");
+    client
+        .wait_top("the focus on beta/bryn", |top| top.contains("[beta/bryn]"))
+        .await;
+    client.send(b"x");
+    wait_row(&client, 24, "the editor on the bottom row", |row| {
+        row.trim() == "x"
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_layout_for_a_game() {
+    let (_session, client, _config) = with_world_layouts("alpha = \"focus\"\n").await;
+    assert!(
+        client
+            .rows()
+            .iter()
+            .all(|row| !row.contains("[alpha/aria]")),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn the_world_entry_comes_before_the_game_entry() {
+    let (_session, client, _config) =
+        with_world_layouts("alpha = \"focus\"\n\"alpha/aria\" = \"classic\"\n").await;
+    client
+        .wait_top("the tabs", |top| top.starts_with("[alpha/aria]"))
+        .await;
+}
+
+#[tokio::test]
+async fn no_world_in_focus_takes_the_default_layout() {
+    let (_session, client, _config) = with_layer(
+        &[],
+        "layout = \"status\"\n[world-layouts]\nalpha = \"focus\"\n",
+    )
+    .await;
+    wait_row(&client, 24, "the statusline", |row| {
+        row.trim() == "no world"
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_world_keeps_its_text_across_a_change_of_layout() {
+    let (_session, mut client, _config) = with_world_layouts("\"alpha/aria\" = \"status\"\n").await;
+    client.send(b"draft");
+    wait_row(&client, 23, "the typed text", |row| row.trim() == "draft").await;
+    client.send(b"\x0e");
+    client
+        .wait_top("the focus on beta/bryn", |top| top.contains("[beta/bryn]"))
+        .await;
+    client.send(b"\x10");
+    wait_row(&client, 23, "the text of alpha/aria", |row| {
+        row.trim() == "draft"
+    })
+    .await;
+    wait_row(&client, 24, "the statusline", |row| {
+        row.starts_with("alpha/aria | ")
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn the_input_focus_after_a_change_of_the_world() {
+    let config = ConfigDir::empty()
+        .file(
+            "clients/layouts/mine.toml",
+            &layout_file(&[
+                "output",
+                "editor below output",
+                "editor as scratch right of editor",
+            ]),
+        )
+        .file(
+            "clients/global.toml",
+            "[world-layouts]\n\"alpha/aria\" = \"mine\"\n",
+        );
+    let (_session, mut client) = attached_with(TWO_WORLDS, &config, Answers::Default).await;
+    // Alt+E gives the input focus to `scratch`, which the layout of beta/bryn does not hold.
+    client.send(b"\x1be");
+    client.send(b"\x0e");
+    client
+        .wait_top("the focus on beta/bryn", |top| top.contains("[beta/bryn]"))
+        .await;
+    client.send(b"x");
+    wait_row(&client, 24, "the editor of beta/bryn", |row| {
+        row.trim() == "x"
+    })
+    .await;
 }

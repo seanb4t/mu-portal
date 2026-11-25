@@ -2982,3 +2982,12 @@ fn a_wide_character_is_not_split() {
     assert_eq!(mu_tui::statusline::row(&app, 10), "alpha/日本");
     assert_eq!(mu_tui::statusline::row(&app, 9), "alpha/日");
 }
+
+#[test]
+fn the_default_max() {
+    let mut app = two_worlds();
+    let lines: Vec<String> = (1..=12).map(|number| format!("line{number}")).collect();
+    let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
+    type_lines(&mut app, &lines);
+    assert_eq!(rect_of(&app, "editor"), (1, 80, 17, 24));
+}

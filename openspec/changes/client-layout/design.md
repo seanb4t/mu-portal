@@ -170,7 +170,7 @@ The property test `a_line_reads_back` generates any step: each side, each edge, 
 
 The solver is a pure function of `mu-config`, `solve(layout, area, rows_of) -> Vec<Placed>`. The caller passes `rows_of`, a function from the id of an editor and a width to its wrapped rows, because `mu-config` does not hold the text. Each `Placed` names a block, its rectangle, and its divider or title row. The draw, the mouse hit test, arrange mode and the pictures of `mu layout` all use this one function.
 
-`mu-config` also gets `preview(layout, width, height) -> Vec<String>`, a picture with box characters and the name of each block. `mu layout list` prints it, and the tests of layers 1 and 2 use it as their expected output with `insta`.
+`mu-config` also gets `preview(layout, width, height) -> Vec<String>`, a picture with box characters and the name of each block. `mu layout list` prints it, and two snapshot tests in `app.rs` of `mu-tui` keep its output with `insta`, which `mu-tui` already uses. So `mu-config` takes no `insta`.
 
 `apply_config` reads the sentences and checks them. A good layout replaces the old one. A bad one keeps the old one and gives a notice. `Model` keeps the default layout and the layout of each entry. `Model::layout()` returns the one that `layout_for` gives for the world in focus, so a change of the focus needs no other code to change the screen. The pane states and the editor states stay in the model, so a new layout keeps the scroll positions and the text.
 
@@ -287,7 +287,7 @@ A line does not move after it arrived. An `output` that the player adds later st
 | One lookup of the layout of a world | `layout_for` in `mu-config`, with the unit tests of its three steps. The client and the server call it. |
 | A save from a built-in layout sets only the choice in use | `save_target` in `mu-config`, and the scenario "A save from the built-in layout of one world". |
 | No test waits for the clock or needs a real mouse | Review, and `review-lint` flags a sleep in a test. |
-| The crate rules | `crates/mu-cli/tests/workspace_boundary.rs`, with `toml_edit` added to the row of `mu-server`, `winnow` and `insta` to the row of `mu-config`, and the edge from `mu-core` to `mu-config`. The row of `mu-server` already holds `tempfile`, which moves from `[dev-dependencies]` to `[dependencies]`. |
+| The crate rules | `crates/mu-cli/tests/workspace_boundary.rs`, with `toml_edit` added to the row of `mu-server`, `winnow` to the row of `mu-config`, and the edge from `mu-core` to `mu-config`. The row of `mu-server` already holds `tempfile`, which moves from `[dev-dependencies]` to `[dependencies]`. |
 | An agent and a person change a layout the same way | `EditLayout` and the client commands call the same operations. The scenario "An edit gives the same file as the command" compares the two. |
 
 ## Risks / Trade-offs

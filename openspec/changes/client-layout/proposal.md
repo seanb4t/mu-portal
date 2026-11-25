@@ -114,6 +114,6 @@ The change has five layers. Each layer works and has its tests before the next o
 ## Impact
 
 - Code: `crates/mu-config` gets the type `WorldId` from `mu-core`, which now depends on `mu-config`. It also gets the catalog, the layout model, the operations, the sentences, the label and the segments. `crates/mu-server` reads `clients/layouts/`, serves the three calls and writes files. `crates/mu-proto` gets the calls and the new fields. `crates/mu-tui` draws layouts, and gets the commands, the mouse actions, arrange mode, the statusline and the tick. `crates/mu-cli` gets the verb `layout` and prints the new fields in `mu config show`.
-- New dependencies: `toml_edit` in `mu-server`, to set one field of a device layer and keep the rest of the file. `winnow` in `mu-config`, to parse the sentences. The lock file already holds `winnow`. `insta` in `mu-config`, for the pictures in its tests. `tempfile` of `mu-server` becomes a dependency of the build.
+- New dependencies: `toml_edit` in `mu-server`, to set one field of a device layer and keep the rest of the file. `winnow` in `mu-config`, to parse the sentences. The lock file already holds `winnow`. `tempfile` of `mu-server` becomes a dependency of the build.
 - Documentation: a new guide page for layouts, the guides `client.md` and `configuration.md`, the page `architecture/terminal-client.mdx`, and a decision page for the layout model.
 - Diagrams: the LikeC4 model gets the write path from the client to the configuration store, and one dynamic view of a save.
