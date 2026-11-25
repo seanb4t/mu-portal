@@ -165,6 +165,8 @@ pub struct Model {
     /// The time of the last tick of the clock, in milliseconds since the Unix epoch.
     pub(crate) now_ms: i64,
     pub(crate) tick: TickWait,
+    /// The columns and the rows of the last frame.
+    pub(crate) screen: (u16, u16),
 }
 
 /// Whether an [`Effect::RetryConfig`](crate::update::Effect::RetryConfig) waits, so a second
@@ -252,6 +254,7 @@ impl Model {
             config_retry: ConfigRetry::Idle,
             now_ms: 0,
             tick: TickWait::Idle,
+            screen: (0, 0),
         };
         let input = model.input.clone();
         model.editor_of(None, &input);

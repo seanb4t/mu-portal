@@ -58,6 +58,7 @@ pub fn solved(model: &Model, width: u16, height: u16) -> Solved {
 /// cursor goes to the insertion point of the editor with the input focus.
 pub fn view(model: &mut Model, frame: &mut Frame) {
     let area = frame.area();
+    model.screen = (area.width, area.height);
     let solved = solved(model, area.width, area.height);
     for divider in &solved.dividers {
         let column = vec!["│"; usize::from(divider.height)].join("\n");

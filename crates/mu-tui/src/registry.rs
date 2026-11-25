@@ -229,6 +229,12 @@ pub static ENTRIES: &[Entry] = &[
         false,
         |_| Action::FocusPrev,
     ),
+    plain(
+        "editor-next",
+        "give the input focus to the next editor",
+        false,
+        |_| Action::EditorNext,
+    ),
     on_world("focus", "give the focus to a world", true, |world| {
         Action::Focus(world.unwrap_or_default())
     }),

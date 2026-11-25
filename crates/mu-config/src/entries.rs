@@ -45,6 +45,7 @@ pub const ENTRY_NAMES: &[EntryName] = &[
     plain("focus-9"),
     plain("focus-next"),
     plain("focus-prev"),
+    plain("editor-next"),
     EntryName {
         name: "focus",
         needs_arg: true,

@@ -27,6 +27,7 @@ use crate::probe::{self, Outcome};
 use crate::registry::{ArgKind, EntryId, candidates};
 use crate::store::Image;
 use crate::text::{clean, clean_paste, echo_rows, line};
+use mu_config::layout::{BlockId, BlockKind};
 
 /// One input of the model.
 #[derive(Clone, Debug)]
@@ -79,6 +80,8 @@ pub enum Action {
     FocusNext,
     /// Give the focus to the previous world, before the first world the last.
     FocusPrev,
+    /// Give the input focus to the next editor of the plan, after the last one the first.
+    EditorNext,
     /// Send the text of the pose editor to the world in focus as one command, and return its
     /// pane to the bottom.
     Submit,
@@ -450,6 +453,17 @@ fn on_mouse(model: &mut Model, mouse: MouseEvent) -> Vec<Effect> {
         MouseEventKind::ScrollUp => wheel(model, Wheel::Up),
         MouseEventKind::ScrollDown => wheel(model, Wheel::Down),
         MouseEventKind::Down(MouseButton::Left) => {
+            // A press in an editor gives it the input focus.
+            let (width, height) = model.screen;
+            let pressed = crate::view::solved(model, width, height)
+                .pane_at(mouse.column, mouse.row)
+                .and_then(|pane| pane.blocks.first().cloned());
+            if let Some(block) = pressed
+                && block.kind == BlockKind::Editor
+            {
+                model.input = block.id;
+                return Vec::new();
+            }
             if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
                 match state.position(mouse.column, mouse.row) {
                     Some(position) => state.press(position),
@@ -622,6 +636,15 @@ fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
         }
         Action::FocusPrev => {
             move_focus(model, false);
+            Vec::new()
+        }
+        Action::EditorNext => {
+            let now = model.input_id();
+            let editors: Vec<&BlockId> = model.layout().ids_of(BlockKind::Editor).collect();
+            let place = editors.iter().position(|id| **id == now).unwrap_or(0);
+            if let Some(next) = editors.get((place + 1) % editors.len().max(1)) {
+                model.input = (*next).clone();
+            }
             Vec::new()
         }
         Action::Submit | Action::SubmitLines => {

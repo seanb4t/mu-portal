@@ -782,3 +782,346 @@ fn a_hash_back_to_the_applied_one_resets_the_failures() {
         )
     );
 }
+
+// The world state, the times and the tick of the clock (client-layout).
+
+use mu_proto::{GetClientConfigResponse, NamedLayout};
+use proptest::prelude::*;
+
+const CLASSIC: &[&str] = &["output", "tabs above output", "editor below output"];
+const STATUS: &[&str] = &[
+    "output",
+    "tabs above output",
+    "editor below output",
+    "statusline below editor",
+];
+
+fn texts(lines: &[&str]) -> Vec<String> {
+    lines.iter().map(ToString::to_string).collect()
+}
+
+/// A configuration with the layout `lines`, the layout of each key of `worlds`, and the two
+/// lists of segments.
+fn layout_config(
+    lines: &[&str],
+    worlds: &[(&str, &[&str])],
+    left: &[&str],
+    right: &[&str],
+) -> GetClientConfigResponse {
+    GetClientConfigResponse {
+        store_hash: "h".to_owned(),
+        revision: format!("{lines:?}{worlds:?}{left:?}{right:?}"),
+        echo: "dim".to_owned(),
+        layout_name: "test".to_owned(),
+        layout: texts(lines),
+        tab_label: "{world}".to_owned(),
+        statusline_left: texts(left),
+        statusline_right: texts(right),
+        world_layouts: worlds
+            .iter()
+            .map(|(key, lines)| NamedLayout {
+                key: (*key).to_owned(),
+                name: "other".to_owned(),
+                lines: texts(lines),
+                ..Default::default()
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+
+/// Gives `config` to the model through `update`, and returns the effects of the reply.
+fn configure(model: &mut Model, config: GetClientConfigResponse) -> Vec<Effect> {
+    store_hash(model, &config.store_hash);
+    update(model, Msg::Config(Ok(Box::new(config))))
+}
+
+/// A model of two worlds with the layout `status` and these segments. The tick of the clock
+/// waits.
+fn status_model(left: &[&str], right: &[&str]) -> Model {
+    let mut model = model();
+    configure(&mut model, layout_config(STATUS, &[], left, right));
+    model
+}
+
+fn world_event(kind: EventKind, source: Source, time_ms: i64) -> Msg {
+    Msg::Client(ClientEvent::Event(Event {
+        world: "alpha/aria".to_owned(),
+        kind: kind.into(),
+        source: source.into(),
+        time_ms,
+        ..Default::default()
+    }))
+}
+
+fn tick() -> Effect {
+    Effect::Wait {
+        after: mu_tui::TICK,
+        then: Timer::Tick,
+    }
+}
+
+fn status_row(model: &Model) -> String {
+    mu_tui::statusline::row(model, 80)
+}
+
+#[test]
+fn a_connect_event_sets_the_connect_time() {
+    let mut model = status_model(&["connected"], &[]);
+    update(
+        &mut model,
+        world_event(
+            EventKind::EVENT_KIND_CONNECTED,
+            Source::SOURCE_SYSTEM,
+            10_000,
+        ),
+    );
+    update(&mut model, Msg::Tick(13_000));
+    assert_eq!(status_row(&model), "0:03");
+}
+
+#[test]
+fn a_disconnect_event_clears_the_connect_time() {
+    let mut model = status_model(&["connected"], &[]);
+    update(
+        &mut model,
+        world_event(
+            EventKind::EVENT_KIND_CONNECTED,
+            Source::SOURCE_SYSTEM,
+            10_000,
+        ),
+    );
+    update(
+        &mut model,
+        world_event(
+            EventKind::EVENT_KIND_DISCONNECTED,
+            Source::SOURCE_SYSTEM,
+            12_000,
+        ),
+    );
+    update(&mut model, Msg::Tick(13_000));
+    assert_eq!(status_row(&model), "");
+}
+
+#[test]
+fn a_send_from_any_client_sets_the_send_time() {
+    let mut model = status_model(&[], &["idle"]);
+    update(
+        &mut model,
+        world_event(EventKind::EVENT_KIND_INPUT, Source::SOURCE_PLAYER, 5_000),
+    );
+    update(&mut model, Msg::Tick(8_000));
+    assert!(
+        status_row(&model).ends_with("0:03"),
+        "{:?}",
+        status_row(&model)
+    );
+}
+
+#[test]
+fn a_connect_event_lists_again() {
+    let mut model = model();
+    let effects = update(
+        &mut model,
+        world_event(
+            EventKind::EVENT_KIND_CONNECTED,
+            Source::SOURCE_SYSTEM,
+            10_000,
+        ),
+    );
+    assert_eq!(effects, [Effect::ListWorlds]);
+}
+
+#[test]
+fn a_reset_clears_the_times() {
+    let mut model = status_model(&["connected"], &["idle"]);
+    update(
+        &mut model,
+        world_event(
+            EventKind::EVENT_KIND_CONNECTED,
+            Source::SOURCE_SYSTEM,
+            10_000,
+        ),
+    );
+    update(
+        &mut model,
+        world_event(EventKind::EVENT_KIND_INPUT, Source::SOURCE_PLAYER, 11_000),
+    );
+    update(
+        &mut model,
+        Msg::Client(ClientEvent::Reset {
+            instance_id: "i".to_owned(),
+        }),
+    );
+    update(&mut model, Msg::Tick(13_000));
+    assert_eq!(status_row(&model), "");
+}
+
+#[test]
+fn a_tick_moves_the_idle_time() {
+    let mut model = status_model(&[], &["idle"]);
+    update(
+        &mut model,
+        world_event(EventKind::EVENT_KIND_INPUT, Source::SOURCE_PLAYER, 20_000),
+    );
+    update(&mut model, Msg::Tick(23_000));
+    assert!(
+        status_row(&model).ends_with("0:03"),
+        "{:?}",
+        status_row(&model)
+    );
+    update(&mut model, Msg::Tick(24_000));
+    assert!(
+        status_row(&model).ends_with("0:04"),
+        "{:?}",
+        status_row(&model)
+    );
+}
+
+#[test]
+fn no_tick_without_a_time_segment() {
+    let mut model = model();
+    assert_eq!(
+        configure(
+            &mut model,
+            layout_config(CLASSIC, &[], &["world"], &["idle"])
+        ),
+        []
+    );
+    assert_eq!(update(&mut model, Msg::Tick(1_000)), []);
+    // The layout `status` with no time segment asks for no tick.
+    assert_eq!(
+        configure(
+            &mut model,
+            layout_config(STATUS, &[], &["world"], &["typed"])
+        ),
+        []
+    );
+}
+
+#[test]
+fn one_tick_waits_at_a_time() {
+    let mut model = model();
+    assert_eq!(
+        configure(
+            &mut model,
+            layout_config(STATUS, &[], &["world"], &["idle"])
+        ),
+        [tick()]
+    );
+    assert_eq!(press(&mut model, KeyCode::Char('a'), Modifiers::NONE), []);
+    assert_eq!(update(&mut model, Msg::Tick(1_000)), [tick()]);
+}
+
+#[test]
+fn a_new_layout_with_a_time_segment_starts_the_tick() {
+    let mut model = model();
+    assert_eq!(
+        configure(
+            &mut model,
+            layout_config(CLASSIC, &[], &["world"], &["idle"])
+        ),
+        []
+    );
+    assert_eq!(
+        configure(
+            &mut model,
+            layout_config(STATUS, &[], &["world"], &["idle"])
+        ),
+        [tick()]
+    );
+}
+
+#[test]
+fn a_focus_change_to_a_status_layout_starts_the_tick() {
+    let mut model = model();
+    let config = layout_config(CLASSIC, &[("beta/bryn", STATUS)], &["world"], &["idle"]);
+    assert_eq!(configure(&mut model, config), []);
+    assert_eq!(
+        press(&mut model, KeyCode::Char('n'), Modifiers::CONTROL),
+        [tick()]
+    );
+}
+
+#[test]
+fn a_tick_takes_the_time_of_the_clock() {
+    let message = mu_tui::ended(Timer::Tick, || 42_000);
+    assert!(matches!(message, Msg::Tick(42_000)), "{message:?}");
+    let retry = mu_tui::ended(Timer::RetryConfig, || 42_000);
+    assert!(matches!(retry, Msg::RetryConfig), "{retry:?}");
+}
+
+/// One step of the property test of the input focus.
+#[derive(Clone, Debug)]
+enum FocusStep {
+    Layout(usize),
+    EditorNext,
+    WorldNext,
+    WorldPrev,
+}
+
+const EDITOR_LAYOUTS: &[&[&str]] = &[
+    &["output", "editor below output"],
+    &[
+        "output",
+        "editor below output",
+        "editor as scratch right of editor",
+    ],
+    &[
+        "output",
+        "editor as scratch below output",
+        "editor as notes right of scratch",
+        "editor right of notes",
+    ],
+];
+
+fn focus_step() -> impl Strategy<Value = FocusStep> {
+    prop_oneof![
+        (0..EDITOR_LAYOUTS.len()).prop_map(FocusStep::Layout),
+        Just(FocusStep::EditorNext),
+        Just(FocusStep::WorldNext),
+        Just(FocusStep::WorldPrev),
+    ]
+}
+
+proptest! {
+    #[test]
+    fn the_input_focus_is_an_editor_of_the_plan(
+        steps in prop::collection::vec(focus_step(), 0..40),
+        other in 0..EDITOR_LAYOUTS.len(),
+    ) {
+        let mut model = model();
+        for step in steps {
+            match step {
+                FocusStep::Layout(index) => {
+                    // The world `beta/bryn` has a layout of its own.
+                    let config = layout_config(
+                        EDITOR_LAYOUTS[index],
+                        &[("beta/bryn", EDITOR_LAYOUTS[other])],
+                        &["world"],
+                        &[],
+                    );
+                    configure(&mut model, config);
+                }
+                FocusStep::EditorNext => {
+                    press(&mut model, KeyCode::Char('e'), Modifiers::ALT);
+                }
+                FocusStep::WorldNext => {
+                    press(&mut model, KeyCode::Char('n'), Modifiers::CONTROL);
+                }
+                FocusStep::WorldPrev => {
+                    press(&mut model, KeyCode::Char('p'), Modifiers::CONTROL);
+                }
+            }
+            let input = model.input_id();
+            prop_assert!(
+                model
+                    .layout()
+                    .holds(mu_config::layout::BlockKind::Editor, &input),
+                "{} is no editor of {:?}",
+                input,
+                model.layout().lines()
+            );
+        }
+    }
+}

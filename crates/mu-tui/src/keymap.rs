@@ -198,7 +198,8 @@ impl Keymap {
 
 impl Default for Keymap {
     /// Ctrl+C quits, Ctrl+N and Ctrl+P move the focus, and Alt+1 to Alt+9 give it to the world
-    /// at that place. Alt+Home and Alt+End scroll the pane to its ends. The page keys scroll one
+    /// at that place. Alt+E gives the input focus to the next editor. Alt+Home and Alt+End scroll
+    /// the pane to its ends. The page keys scroll one
     /// page, and each step of the mouse wheel scrolls three rows.
     ///
     /// Enter and Ctrl+M send the text of the pose editor as one command. Alt+Enter and
@@ -215,6 +216,10 @@ impl Default for Keymap {
         keymap.bind(Chord::ctrl('c'), EntryId::of("quit"));
         keymap.bind(Chord::ctrl('n'), EntryId::of("focus-next"));
         keymap.bind(Chord::ctrl('p'), EntryId::of("focus-prev"));
+        keymap.bind(
+            Chord::with(KeyCode::Char('e'), Modifiers::ALT),
+            EntryId::of("editor-next"),
+        );
         keymap.bind(Chord::plain(KeyCode::Enter), EntryId::of("send"));
         keymap.bind(Chord::ctrl('m'), EntryId::of("send"));
         keymap.bind(
