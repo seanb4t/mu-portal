@@ -82,6 +82,7 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "tempfile",
             "thiserror",
             "tokio",
+            "toml_edit",
             "tracing",
             "uuid",
         ],

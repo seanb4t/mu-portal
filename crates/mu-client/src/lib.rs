@@ -205,6 +205,82 @@ impl PortalClient {
         Ok(self.inner.list_layouts(request).await?.into_owned())
     }
 
+    /// Each block of the layout `name` on a screen of `width` columns and `height` rows.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the call fails.
+    pub async fn describe_layout(
+        &self,
+        name: &str,
+        width: u32,
+        height: u32,
+    ) -> Result<proto::DescribeLayoutResponse, ClientError> {
+        let request = proto::DescribeLayoutRequest {
+            name: name.to_owned(),
+            width,
+            height,
+            ..Default::default()
+        };
+        Ok(self.inner.describe_layout(request).await?.into_owned())
+    }
+
+    /// Writes the layout file `name` with `lines`. With `device`, the layer of that device then
+    /// names the layout.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the call fails.
+    pub async fn save_layout(
+        &self,
+        name: &str,
+        lines: Vec<String>,
+        device: Option<&str>,
+    ) -> Result<(), ClientError> {
+        let request = proto::SaveLayoutRequest {
+            name: name.to_owned(),
+            lines,
+            device: device.unwrap_or_default().to_owned(),
+            ..Default::default()
+        };
+        self.inner.save_layout(request).await?;
+        Ok(())
+    }
+
+    /// Sets the layout of `device` to `name`. With `key`, a world id or the name of a game, it
+    /// sets that entry, and an empty `name` removes the entry.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the call fails.
+    pub async fn use_layout(
+        &self,
+        device: &str,
+        name: &str,
+        key: Option<&str>,
+    ) -> Result<(), ClientError> {
+        let request = proto::UseLayoutRequest {
+            device: device.to_owned(),
+            name: name.to_owned(),
+            key: key.unwrap_or_default().to_owned(),
+            ..Default::default()
+        };
+        self.inner.use_layout(request).await?;
+        Ok(())
+    }
+
+    /// Applies one change to a layout, and saves the result.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the call fails.
+    pub async fn edit_layout(
+        &self,
+        request: proto::EditLayoutRequest,
+    ) -> Result<proto::EditLayoutResponse, ClientError> {
+        Ok(self.inner.edit_layout(request).await?.into_owned())
+    }
+
     /// One watch of the store hash, with no resume: the current hash, then each new one.
     ///
     /// # Errors

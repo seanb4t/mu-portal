@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::str::FromStr;
 
+use crate::names::{DeviceName, LayoutName, NameError};
+
 /// The id `<game>/<character>` of a world.
 ///
 /// Each part holds only `a` to `z`, digits and hyphens, and starts with a letter.
@@ -180,6 +182,22 @@ pub fn layout_for<V>(world: Option<&WorldId>, entries: &BTreeMap<String, V>) -> 
     } else {
         Choice::Default
     }
+}
+
+/// The name of the layout that a save from a built-in layout writes, for the device `device`
+/// and the choice in use: the device name for the field `layout`, and the device name, `.`
+/// and the key with `.` in place of `/` for an entry.
+///
+/// # Errors
+///
+/// A [`NameError`] for a name that is no good name of a layout file: a name of more than 64
+/// characters, the name of a built-in layout, `.` or `..`.
+pub fn save_target(choice: &Choice, device: &DeviceName) -> Result<LayoutName, NameError> {
+    let name = match choice {
+        Choice::Default => device.as_str().to_owned(),
+        Choice::Entry(key) => format!("{}.{}", device, key.as_str().replace('/', ".")),
+    };
+    LayoutName::new(&name)
 }
 
 #[cfg(test)]

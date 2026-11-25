@@ -69,4 +69,20 @@ views {
     mu.terminal.update -> mu.terminal.state 'replaces the echo and adds each new notice'
     mu.terminal.loop -> mu.terminal.render 'draws a frame'
   }
+
+  dynamic view layoutSave {
+    title 'A save of the layout'
+    description 'A change of the layout in the client goes to the server, which writes the file and gives each attached client the result.'
+    player -> mu.terminal.loop 'a command, a drag or Enter in arrange mode'
+    mu.terminal.loop -> mu.terminal.update 'changes the plan of the layout'
+    mu.terminal.loop -> mu.terminal.render 'draws the new layout at once'
+    mu.terminal.loop -> mu.server.api 'SaveLayout or UseLayout'
+    mu.server.api -> mu.server.store 'checks the plan, writes the file whole, and reads the directory again'
+    mu.terminal.loop <- mu.server.api 'the result of the save'
+    mu.server.store -> mu.server.api 'a new store hash'
+    mu.terminal.loop <- mu.server.api 'the new store hash on WatchConfig'
+    mu.terminal.loop -> mu.server.api 'GetClientConfig'
+    mu.terminal.loop <- mu.server.api 'a reply with the saved layout'
+    mu.terminal.loop -> mu.terminal.update 'applies the reply'
+  }
 }

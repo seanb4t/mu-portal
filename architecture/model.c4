@@ -71,14 +71,14 @@ model {
         description 'The ordered record of events for each world.'
       }
       store = part 'Configuration store' {
-        description 'Reads and checks the configuration directory: the worlds, server.toml and the client layers in clients/. It resolves the configuration of one client and reloads the client layers.'
+        description 'Reads and checks the configuration directory: the worlds, server.toml, the client layers and the layout files in clients/. It resolves the configuration of one client and reloads the client layers. It writes a layout file and the layout choice of a device layer.'
       }
 
       api -> sessions 'sends input'
       sessions -> journal 'records events'
       journal -> api 'feeds the event stream'
       store -> sessions 'the worlds of the start'
-      api -> store 'resolves one client, and asks for a reload'
+      api -> store 'resolves one client, asks for a reload, and writes a layout or a layout choice'
       store -> api 'each new store hash'
     }
 

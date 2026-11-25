@@ -257,6 +257,44 @@ The client draws the layout of the world in focus. It takes the entry of the wor
 
 If an entry names a layout that does not exist, the entry does not apply, and a notice names it.
 
+## Change a layout from the shell
+
+The verb `mu layout` changes a layout on a running server. A script or an agent uses the same commands. Each attached client draws the result.
+
+| Command | Result |
+|---|---|
+| `mu layout list` | Each layout with its picture |
+| `mu layout show <name>` | The numbered lines of one layout and its picture |
+| `mu layout use <name>` | The layout of this device |
+| `mu layout use <name> --world <world>` | The layout of one world on this device. `--game <game>` sets it for a game |
+| `mu layout forget --world <world>` | Removes the layout of one world. `--game <game>` removes it for a game |
+| `mu layout place <layout> "<sentence>"` | Puts a block on the screen, or moves it |
+| `mu layout hide <layout> <id>` | Takes a block off the screen |
+| `mu layout size <layout> <id> <size>` | Sets the size of a block |
+| `mu layout insert <layout> <number> "<sentence>"` | Puts a line at that number |
+| `mu layout edit <layout> <line> "<sentence>"` | Replaces a line. The line is a number or the id of its block |
+| `mu layout delete <layout> <line>` | Removes a line |
+| `mu layout describe <name>` | Each block with its rectangle and what it shows. `--json` prints one JSON document |
+
+Each command takes `--server` and `--device` as `mu client` does. No command starts a server.
+
+You cannot change a built-in layout. A change of one saves a new layout with the name of the device, and the layer of that device then names it. With `--world`, the new layout has the name `<device>.<game>.<character>`, and only the entry of that world names it.
+
+A change keeps your other lines where it can. If no change of one line gives the screen, mu writes the whole plan again and says so. Each block keeps its id.
+
+`mu layout describe` tells a caller with no screen where each block is:
+
+```text
+$ mu layout describe sidebar
+1. output (output): column 1, row 2, 55 by 21: the lines of the world in focus, and each stream with no output of its own
+2. tabs (tabs): column 1, row 1, 80 by 1: one tab for each world of the server
+3. editor (editor): column 1, row 23, 80 by 1: the text that the player types for the world in focus
+4. statusline (statusline): column 1, row 24, 80 by 1: the segments of the world in focus
+5. notices (output): column 57, row 2, 24 by 21: the stream notices of the world in focus
+```
+
+An agent cannot see the live screen of a client: the world in focus, the block in front of a stack, and the scroll position.
+
 ## Before a step back to an earlier mu
 
 An earlier `mu` does not know the fields of this guide. It refuses a layer that holds one of them. Before you install an earlier binary:

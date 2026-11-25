@@ -43,4 +43,10 @@ Before the screen opens, `mu client` lists the worlds, opens `WatchConfig`, wait
 
 <LikeC4View viewId="configReload" />
 
+## A save of the layout
+
+A client changes its layout with a command, with the mouse or in arrange mode. The screen shows the change at once. The client then calls `SaveLayout`, `EditLayout` or `UseLayout`. The store checks the plan with the same rules as the client, writes the file as a whole, and reads the directory again. Each attached client then gets the saved layout, as after a reload. An agent or a script makes the same calls through `mu layout`.
+
+<LikeC4View viewId="layoutSave" />
+
 The [configuration ownership decision](/decisions/configuration-ownership/) gives the reason for this design.

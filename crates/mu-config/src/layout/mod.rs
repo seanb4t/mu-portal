@@ -13,9 +13,10 @@ use std::fmt;
 
 pub use block::{BLOCKS, BlockKind, BlockRow, SizeRule};
 pub use builtin::{BUILT_IN, BuiltIn, DEFAULT_LAYOUT, LayoutFile};
-pub use change::{Changed, LineRef, PANE_COLUMNS_MIN, PANE_ROWS_MIN, RESIZE_STEP};
+pub use change::{Change, Changed, LineRef, PANE_COLUMNS_MIN, PANE_ROWS_MIN, RESIZE_STEP};
 pub use parse::LineError;
 pub use solve::{Area, Border, Placed, Solved, preview, solve};
+pub use solve::{Described, describe};
 pub use step::{
     BlockId, Dir, EDITOR_MAX, EDITOR_MAX_DEFAULT, Edge, ID_MAX, PERCENT_MAX, PERCENT_MIN, Place,
     Side, Size, Step, WORDS,

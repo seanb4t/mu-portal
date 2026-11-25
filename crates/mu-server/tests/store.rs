@@ -632,3 +632,92 @@ async fn a_second_reload_lists_the_world_change_again() {
     store.reload().await;
     assert_eq!(store.reload().await.restart, ["characters/alpha/aria.toml"]);
 }
+
+// The writes of the store (client-layout).
+
+use mu_server::write::{FieldEdit, edit_field};
+
+#[tokio::test]
+async fn a_write_that_makes_a_bad_layer_is_refused() {
+    let dir = world_dir();
+    write(
+        dir.path(),
+        "clients/devices/laptop.toml",
+        "echo = \"show\"\n",
+    );
+    let store = open(dir.path());
+    // The file changes after the server read it, and no reload ran. So the store still holds a
+    // good layer, and the text on the disk is a bad one.
+    write(
+        dir.path(),
+        "clients/devices/laptop.toml",
+        "[server]\nconnect_wait_seconds = 2\n",
+    );
+    let error = store
+        .use_layout("laptop", "status", None)
+        .await
+        .expect_err("the edited text is a bad layer")
+        .to_string();
+    assert!(error.contains("clients/devices/laptop.toml"), "{error}");
+    let text = fs::read_to_string(dir.path().join("clients/devices/laptop.toml")).unwrap();
+    assert_eq!(text, "[server]\nconnect_wait_seconds = 2\n");
+}
+
+#[tokio::test]
+async fn a_use_sets_the_layout_of_the_device() {
+    let dir = world_dir();
+    let store = open(dir.path());
+    store
+        .use_layout("laptop", "status", None)
+        .await
+        .expect("the use");
+    assert_eq!(laptop(&store).layout_name, "status");
+}
+
+/// One line of a device layer that the edit must keep.
+fn kept_line() -> impl Strategy<Value = String> {
+    prop_oneof![
+        "# [a-z ]{0,20}",
+        Just(String::new()),
+        Just("echo = \"show\"".to_owned()),
+        Just("echo = \"hide\" # quiet".to_owned()),
+    ]
+}
+
+proptest! {
+    #[test]
+    fn a_device_write_keeps_each_other_line(
+        top in prop::collection::vec(kept_line(), 0..6),
+        keys in prop::collection::vec("\"alt\\+[a-z]\" = \"focus-next\"", 0..3),
+        entries in prop::collection::vec("[b-z][a-z]{0,6} = \"focus\"", 0..3),
+        key in prop_oneof![Just("alpha/aria"), Just("alpha")],
+        set_layout in any::<bool>(),
+    ) {
+        let mut lines = top;
+        if !keys.is_empty() {
+            lines.push("[keys]".to_owned());
+            lines.extend(keys);
+        }
+        if !entries.is_empty() {
+            lines.push("[world-layouts]".to_owned());
+            lines.extend(entries);
+        }
+        let mut text = lines.join("\n");
+        text.push('\n');
+        prop_assume!(text.parse::<toml_edit::DocumentMut>().is_ok());
+        let path: &[&str] = if set_layout { &["layout"] } else { &["world-layouts", key] };
+        let set = edit_field(&text, path, &FieldEdit::Set("status".to_owned()));
+        prop_assert!(set.is_ok(), "{:?}", set);
+        let set = set.expect("checked");
+        // Each line of the old text is in the new text, in its order.
+        let mut rest = set.lines();
+        for line in text.lines() {
+            prop_assert!(rest.any(|each| each == line), "{:?} is gone from {:?}", line, set);
+        }
+        // The removal gives the old text back, but for a table that the write made.
+        let removed = edit_field(&set, path, &FieldEdit::Remove).expect("the removal");
+        let wanted: Vec<&str> = text.lines().filter(|line| !line.is_empty()).collect();
+        let found: Vec<&str> = removed.lines().filter(|line| !line.is_empty()).collect();
+        prop_assert_eq!(found, wanted);
+    }
+}

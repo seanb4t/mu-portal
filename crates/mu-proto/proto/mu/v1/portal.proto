@@ -31,6 +31,18 @@ service PortalService {
 
   // Returns each built-in layout and each good layout file, and the notice of each bad one.
   rpc ListLayouts(ListLayoutsRequest) returns (ListLayoutsResponse);
+
+  // Returns each block of one layout with its rectangle on a screen of one size.
+  rpc DescribeLayout(DescribeLayoutRequest) returns (DescribeLayoutResponse);
+
+  // Writes a layout file. With a device, the layer of that device then names the layout.
+  rpc SaveLayout(SaveLayoutRequest) returns (SaveLayoutResponse);
+
+  // Applies one change to a layout, and saves the result.
+  rpc EditLayout(EditLayoutRequest) returns (EditLayoutResponse);
+
+  // Sets the layout of a device, or of one world or one game for that device.
+  rpc UseLayout(UseLayoutRequest) returns (UseLayoutResponse);
 }
 
 // `from_seq` is the first sequence number that the client wants. 0 and 1
@@ -211,6 +223,115 @@ message ListLayoutsResponse {
   repeated NamedLayout layouts = 1;
   // One notice for each bad layout file.
   repeated Notice notices = 2;
+}
+
+message DescribeLayoutRequest {
+  // The name of a built-in layout or of a layout file.
+  string name = 1;
+  // The columns and the rows of the screen.
+  uint32 width = 2;
+  uint32 height = 3;
+}
+
+message DescribeLayoutResponse {
+  // Each block of the layout, in the order of its lines.
+  repeated DescribedBlock blocks = 1;
+}
+
+// One block of a layout on a screen of one size.
+message DescribedBlock {
+  // The id of the block.
+  string id = 1;
+  // The name of the block in a sentence, such as `output`.
+  string name = 2;
+  // The number of its line, from 1.
+  uint32 line = 3;
+  // The rectangle of its pane: the first column and the first row, from 0, and the counts of
+  // the columns and of the rows.
+  uint32 x = 4;
+  uint32 y = 5;
+  uint32 width = 6;
+  uint32 height = 7;
+  // Whether the block is the first of its pane, which shows when a client starts.
+  bool front = 8;
+  // What the block shows, as text.
+  string data_source = 9;
+}
+
+message SaveLayoutRequest {
+  // The name of the layout file.
+  string name = 1;
+  // The lines of the plan, in order.
+  repeated string lines = 2;
+  // The device whose layer then names the layout. Empty for no device.
+  string device = 3;
+}
+
+message SaveLayoutResponse {}
+
+message UseLayoutRequest {
+  string device = 1;
+  // The name of the layout. Empty with a key removes the entry of that key.
+  string name = 2;
+  // A world id or the name of a game, for an entry of `[world-layouts]`. Empty for the field
+  // `layout`.
+  string key = 3;
+}
+
+message UseLayoutResponse {}
+
+message EditLayoutRequest {
+  // The name of the layout to change.
+  string name = 1;
+  // The device, which a change of a built-in layout needs. Empty for no device.
+  string device = 2;
+  // A world id. A change of a built-in layout then sets the choice that gives the layout of
+  // that world. Empty for the field `layout`.
+  string world = 3;
+  oneof change {
+    // Put the block of this sentence on the screen.
+    string place = 4;
+    // Take the block with this id off the screen.
+    string hide = 5;
+    // Set the size of a block.
+    SizeChange size = 6;
+    // Put a line into the plan.
+    InsertLine insert = 7;
+    // Replace a line of the plan.
+    ReplaceLine replace = 8;
+    // Remove the line with this number or this id.
+    string delete = 9;
+  }
+}
+
+message SizeChange {
+  // The id of the block.
+  string id = 1;
+  // The size, such as `30%`, `12` or `max 3`.
+  string size = 2;
+}
+
+message InsertLine {
+  // The number of the new line, from 1.
+  uint32 number = 1;
+  // The sentence.
+  string line = 2;
+}
+
+message ReplaceLine {
+  // The number or the id of the line.
+  string line = 1;
+  // The new sentence.
+  string sentence = 2;
+}
+
+message EditLayoutResponse {
+  // The name of the layout that the edit wrote.
+  string name = 1;
+  // The lines of that layout, in order.
+  repeated string lines = 2;
+  // Whether mu wrote the whole plan again, because no edit of one line gave the screen.
+  bool rewritten = 3;
 }
 
 message ReloadConfigRequest {}

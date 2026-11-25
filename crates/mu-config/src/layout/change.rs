@@ -38,6 +38,23 @@ impl LineRef {
     }
 }
 
+/// One change of a layout: a change of the screen, or an edit of one line.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Change {
+    /// Put the block of this step on the screen. A block that is on the screen moves.
+    Place(Step),
+    /// Take this block off the screen.
+    Hide(BlockId),
+    /// Set the size on the line of this block.
+    Size(BlockId, Size),
+    /// Put this step at the line of this number.
+    Insert(usize, Step),
+    /// Replace this line with this step.
+    Replace(LineRef, Step),
+    /// Remove this line.
+    Delete(LineRef),
+}
+
 /// The result of a change of the screen.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Changed {
@@ -64,6 +81,26 @@ fn percent_range(total: u16, dir: Dir) -> Option<(u32, u32)> {
 }
 
 impl Layout {
+    /// Applies `change`.
+    ///
+    /// # Errors
+    ///
+    /// A [`LayoutError`] for a change that the layout rules refuse.
+    pub fn apply(&self, change: Change) -> Result<Changed, LayoutError> {
+        let edited = |layout: Self| Changed {
+            layout,
+            rewritten: false,
+        };
+        match change {
+            Change::Place(step) => self.place(step),
+            Change::Hide(id) => self.hide(&id),
+            Change::Size(id, size) => self.resize(&id, size),
+            Change::Insert(number, step) => self.insert(number, step).map(edited),
+            Change::Replace(line, step) => self.replace(&line, step).map(edited),
+            Change::Delete(line) => self.delete(&line).map(edited),
+        }
+    }
+
     fn index_of(&self, id: &BlockId) -> Result<usize, LayoutError> {
         self.steps
             .iter()

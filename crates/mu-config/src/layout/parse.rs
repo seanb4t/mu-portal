@@ -161,6 +161,25 @@ fn line(input: &mut &str) -> ModalResult<Step> {
     })
 }
 
+impl Size {
+    /// Reads a size, such as `30%`, `12` or `max 3`.
+    ///
+    /// # Errors
+    ///
+    /// A [`LineError`] that names the word where the reader stopped.
+    pub fn parse(text: &str) -> Result<Self, LineError> {
+        let bad = || LineError {
+            word: text.trim().to_owned(),
+            column: 1,
+            reason: BAD_SIZE.to_owned(),
+        };
+        (space0, size, space0, eof)
+            .map(|(_, size, _, _)| size)
+            .parse(text)
+            .map_err(|_| bad())
+    }
+}
+
 impl Step {
     /// Reads one line.
     ///

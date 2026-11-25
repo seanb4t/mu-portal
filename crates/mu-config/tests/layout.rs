@@ -1016,3 +1016,78 @@ fn a_stream_with_no_output_goes_to_the_first() {
 fn a_plan_with_no_output() {
     assert_eq!(layout(&["editor"]).route("notices"), None);
 }
+
+// The name of a layout that a save from a built-in layout writes.
+
+use mu_config::{Choice, DeviceName, LayoutName, WorldKey, save_target};
+
+fn device(name: &str) -> DeviceName {
+    DeviceName::new(name).expect("a device name")
+}
+
+fn entry(key: &str) -> Choice {
+    Choice::Entry(key.parse::<WorldKey>().expect("a world key"))
+}
+
+#[test]
+fn a_save_from_the_field_takes_the_device_name() {
+    let name = save_target(&Choice::Default, &device("laptop")).expect("good");
+    assert_eq!(name.as_str(), "laptop");
+}
+
+#[test]
+fn a_world_entry_gives_a_name_with_the_world() {
+    let name = save_target(&entry("alpha/aria"), &device("laptop")).expect("good");
+    assert_eq!(name.as_str(), "laptop.alpha.aria");
+}
+
+#[test]
+fn a_game_entry_gives_a_name_with_the_game() {
+    let name = save_target(&entry("alpha"), &device("laptop")).expect("good");
+    assert_eq!(name.as_str(), "laptop.alpha");
+}
+
+#[test]
+fn a_name_over_64_characters_is_an_error() {
+    let error = save_target(&entry("alpha/aria"), &device(&"a".repeat(60))).expect_err("71");
+    assert!(error.to_string().contains("64"), "{error}");
+}
+
+#[test]
+fn a_saved_name_of_64_characters() {
+    // The device name, a dot and the key `alpha` make 64 characters.
+    assert!(save_target(&entry("alpha"), &device(&"a".repeat(58))).is_ok());
+}
+
+#[test]
+fn a_saved_name_of_65_characters() {
+    assert!(save_target(&entry("alpha"), &device(&"a".repeat(59))).is_err());
+}
+
+#[test]
+fn a_device_with_a_built_in_name() {
+    let error = save_target(&Choice::Default, &device("focus")).expect_err("built in");
+    assert!(error.to_string().contains("built-in"), "{error}");
+}
+
+#[test]
+fn a_device_named_dot() {
+    assert!(save_target(&Choice::Default, &device(".")).is_err());
+    assert!(save_target(&Choice::Default, &device("..")).is_err());
+}
+
+proptest! {
+    #[test]
+    fn a_save_target_is_a_good_name(
+        device_name in "[a-z0-9._-]{1,64}",
+        game in "[a-z][a-z0-9-]{0,12}",
+        character in proptest::option::of("[a-z][a-z0-9-]{0,12}"),
+        with_entry in any::<bool>(),
+    ) {
+        let key = character.map_or_else(|| game.clone(), |character| format!("{game}/{character}"));
+        let choice = if with_entry { entry(&key) } else { Choice::Default };
+        if let Ok(name) = save_target(&choice, &device(&device_name)) {
+            prop_assert_eq!(LayoutName::new(name.as_str()), Ok(name));
+        }
+    }
+}

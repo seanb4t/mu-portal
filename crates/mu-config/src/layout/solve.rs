@@ -501,3 +501,59 @@ pub fn preview(layout: &Layout, width: u16, height: u16) -> Vec<String> {
         .map(|cells| cells.into_iter().collect::<String>().trim_end().to_owned())
         .collect()
 }
+
+/// One block of a layout for a caller that cannot see the screen: where it is and what it
+/// shows.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Described {
+    /// The id of the block.
+    pub id: BlockId,
+    /// The name of the block in a sentence.
+    pub name: &'static str,
+    /// The number of its line, from 1.
+    pub line: usize,
+    /// The rectangle of its pane. A block with no room has an empty rectangle.
+    pub area: Area,
+    /// Whether the block is the first of its pane, which shows when the client starts.
+    pub front: bool,
+    /// What the block shows.
+    pub source: String,
+}
+
+/// Each block of `layout` on a screen of `width` columns and `height` rows, in the order of
+/// the plan.
+#[must_use]
+pub fn describe(layout: &Layout, width: u16, height: u16) -> Vec<Described> {
+    let solved = solve(layout, Area::new(width, height), &|_, _| 1);
+    let first_output = layout.ids_of(BlockKind::Output).next();
+    layout
+        .steps()
+        .iter()
+        .enumerate()
+        .map(|(index, step)| {
+            let pane = solved.pane_of(&step.id);
+            let source = match step.kind {
+                BlockKind::Tabs => "one tab for each world of the server".to_owned(),
+                BlockKind::Editor => {
+                    "the text that the player types for the world in focus".to_owned()
+                }
+                BlockKind::Statusline => "the segments of the world in focus".to_owned(),
+                BlockKind::Output if Some(&step.id) == first_output => {
+                    "the lines of the world in focus, and each stream with no output of its own"
+                        .to_owned()
+                }
+                BlockKind::Output => format!("the stream {} of the world in focus", step.id),
+            };
+            Described {
+                id: step.id.clone(),
+                name: step.kind.name(),
+                line: index + 1,
+                area: pane.map_or_else(Area::default, |pane| pane.area),
+                front: pane.is_none_or(|pane| {
+                    pane.blocks.first().is_some_and(|block| block.id == step.id)
+                }),
+                source,
+            }
+        })
+        .collect()
+}

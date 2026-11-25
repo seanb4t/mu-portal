@@ -291,3 +291,493 @@ async fn five_editors() {
     lines.extend((1..5).map(|number| format!("editor as e{number} above editor")));
     bad_layout(&lines, &[FILE, "editor"]).await;
 }
+
+// The write calls.
+
+use mu_proto::__buffa::oneof::edit_layout_request::Change as EditChange;
+use support::process::{Answers, PtyClient, Session};
+
+/// The lines of the layout file `name` under `dir`.
+fn place_of(dir: &Path, name: &str) -> Vec<String> {
+    let text = fs::read_to_string(dir.join(format!("clients/layouts/{name}.toml")))
+        .unwrap_or_else(|error| panic!("the layout file {name}: {error}"));
+    let file: toml::Table = text.parse().expect("the layout file is TOML");
+    file["place"]
+        .as_array()
+        .expect("place is a list")
+        .iter()
+        .map(|line| line.as_str().expect("a line is text").to_owned())
+        .collect()
+}
+
+fn lines(lines: &[&str]) -> Vec<String> {
+    lines.iter().map(ToString::to_string).collect()
+}
+
+/// Runs `mu config show --device laptop` on `server`.
+async fn show_config(server: &ServerProcess) -> String {
+    let url = server_url(server.socket());
+    let output = mu_async(
+        &["config", "show", "--server", &url, "--device", "laptop"],
+        &[],
+    )
+    .await;
+    stdout(&output)
+}
+
+fn device_file(dir: &Path) -> std::path::PathBuf {
+    dir.join("clients/devices/laptop.toml")
+}
+
+#[tokio::test]
+async fn a_save_writes_the_file() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    server
+        .client()
+        .save_layout("mine", lines(&["output", "editor below output"]), None)
+        .await
+        .expect("the save");
+    assert_eq!(
+        place_of(dir.path(), "mine"),
+        ["output", "editor below output"]
+    );
+    let listed = layout(&server, &["list"]).await;
+    assert!(
+        stdout(&listed).lines().any(|line| line == "mine"),
+        "{}",
+        stdout(&listed)
+    );
+}
+
+#[tokio::test]
+async fn a_save_of_a_bad_layout() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let error = server
+        .client()
+        .save_layout("mine", lines(&["output"]), None)
+        .await
+        .expect_err("no editor")
+        .to_string();
+    assert!(error.contains("editor"), "{error}");
+    assert!(!dir.path().join("clients/layouts/mine.toml").exists());
+}
+
+#[tokio::test]
+async fn a_save_with_a_built_in_name() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let error = server
+        .client()
+        .save_layout("classic", lines(&["editor"]), None)
+        .await
+        .expect_err("a built-in name")
+        .to_string();
+    assert!(error.contains("classic"), "{error}");
+}
+
+#[tokio::test]
+async fn a_save_with_a_bad_name() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let result = server
+        .client()
+        .save_layout("../x", lines(&["editor"]), None)
+        .await;
+    assert!(result.is_err());
+    assert!(!dir.path().join("clients").exists());
+    assert!(!dir.path().join("x.toml").exists());
+}
+
+#[tokio::test]
+async fn a_save_with_the_name_of_two_dots() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let error = server
+        .client()
+        .save_layout("..", lines(&["output", "editor below output"]), None)
+        .await
+        .expect_err("two dots")
+        .to_string();
+    assert!(error.contains(".."), "{error}");
+    assert!(!dir.path().join("clients").exists());
+}
+
+#[tokio::test]
+async fn a_clients_path_that_is_a_file() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let clients = dir.path().join("clients");
+    fs::write(&clients, "").unwrap();
+    let error = server
+        .client()
+        .save_layout("mine", lines(&["output", "editor below output"]), None)
+        .await
+        .expect_err("clients is a file")
+        .to_string();
+    assert!(error.contains("clients"), "{error}");
+    assert_eq!(fs::read(&clients).unwrap(), b"");
+}
+
+#[tokio::test]
+async fn a_device_file_with_a_comment() {
+    let dir = ConfigDir::empty().file(
+        "clients/devices/laptop.toml",
+        "# my laptop\necho = \"show\"\n",
+    );
+    let server = start(dir.path()).await;
+    server
+        .client()
+        .use_layout("laptop", "status", None)
+        .await
+        .expect("the use");
+    let text = fs::read_to_string(device_file(dir.path())).unwrap();
+    for line in ["# my laptop", "echo = \"show\"", "layout = \"status\""] {
+        assert!(text.lines().any(|each| each == line), "{text}");
+    }
+}
+
+#[tokio::test]
+async fn no_device_file() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let output = layout(&server, &["use", "focus", "--device", "laptop"]).await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = fs::read_to_string(device_file(dir.path())).unwrap();
+    assert_eq!(text.trim(), "layout = \"focus\"");
+}
+
+#[tokio::test]
+async fn an_unknown_layout() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let output = layout(&server, &["use", "gone", "--device", "laptop"]).await;
+    assert!(
+        output.status.code() == Some(1) && stderr(&output).contains("gone"),
+        "{}",
+        stderr(&output)
+    );
+    assert!(!device_file(dir.path()).exists());
+}
+
+#[tokio::test]
+async fn a_bad_device_layer() {
+    let dir = ConfigDir::empty().file("clients/devices/laptop.toml", "echo = ");
+    let server = start(dir.path()).await;
+    let error = server
+        .client()
+        .use_layout("laptop", "status", None)
+        .await
+        .expect_err("a bad layer")
+        .to_string();
+    assert!(error.contains("clients/devices/laptop.toml"), "{error}");
+    assert_eq!(
+        fs::read_to_string(device_file(dir.path())).unwrap(),
+        "echo = "
+    );
+}
+
+#[tokio::test]
+async fn a_use_from_the_command_line() {
+    let config = ConfigDir::empty();
+    let mut session = Session::start(
+        ServerBuilder::new()
+            .fake_worlds(&["alpha/aria"])
+            .arg("--config")
+            .arg(config.path()),
+    )
+    .await;
+    session.welcome("alpha/aria").await;
+    let client = PtyClient::start_args(
+        session.server.socket(),
+        session.server.dir().path(),
+        Answers::Default,
+        &["--device".as_ref(), "laptop".as_ref()],
+        &[],
+    );
+    client.wait_greeting().await;
+    let output = layout(&session.server, &["use", "status", "--device", "laptop"]).await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    client
+        .wait_rows("the statusline", |rows| {
+            rows.get(23)
+                .is_some_and(|row| row.starts_with("alpha/aria | "))
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn a_use_for_one_world() {
+    let dir = ConfigDir::empty().file(
+        "clients/devices/laptop.toml",
+        "# my laptop\nlayout = \"status\"\n",
+    );
+    let server = start(dir.path()).await;
+    let output = layout(
+        &server,
+        &[
+            "use",
+            "focus",
+            "--world",
+            "alpha/aria",
+            "--device",
+            "laptop",
+        ],
+    )
+    .await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = fs::read_to_string(device_file(dir.path())).unwrap();
+    for line in [
+        "# my laptop",
+        "layout = \"status\"",
+        "[world-layouts]",
+        "\"alpha/aria\" = \"focus\"",
+    ] {
+        assert!(text.lines().any(|each| each == line), "{text}");
+    }
+}
+
+#[tokio::test]
+async fn a_use_for_a_game() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let output = layout(
+        &server,
+        &["use", "focus", "--game", "alpha", "--device", "laptop"],
+    )
+    .await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    let shown = show_config(&server).await;
+    for line in [
+        "world-layouts.alpha = \"focus\" # clients/devices/laptop.toml",
+        "layout = \"classic\" # default",
+    ] {
+        assert!(shown.lines().any(|each| each == line), "{shown}");
+    }
+}
+
+#[tokio::test]
+async fn forget_the_layout_of_a_world() {
+    let dir = ConfigDir::empty().file(
+        "clients/devices/laptop.toml",
+        "[world-layouts]\n\"alpha/aria\" = \"focus\"\nalpha = \"status\"\n",
+    );
+    let server = start(dir.path()).await;
+    let output = layout(
+        &server,
+        &["forget", "--world", "alpha/aria", "--device", "laptop"],
+    )
+    .await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = fs::read_to_string(device_file(dir.path())).unwrap();
+    assert!(
+        text.lines().any(|line| line == "alpha = \"status\"") && !text.contains("alpha/aria"),
+        "{text}"
+    );
+}
+
+#[tokio::test]
+async fn a_use_with_a_bad_world_id() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let output = layout(
+        &server,
+        &["use", "focus", "--world", "a/b/c", "--device", "laptop"],
+    )
+    .await;
+    assert!(
+        output.status.code() == Some(1) && stderr(&output).contains("a/b/c"),
+        "{}",
+        stderr(&output)
+    );
+    assert!(!device_file(dir.path()).exists());
+}
+
+#[tokio::test]
+async fn a_use_with_an_empty_name_and_no_key() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let result = server.client().use_layout("laptop", "", None).await;
+    assert!(result.is_err());
+    assert!(!device_file(dir.path()).exists());
+}
+
+// The edits and the description.
+
+const TWO_LINES: &[&str] = &["output", "editor below output"];
+
+#[tokio::test]
+async fn an_edit_places_a_block() {
+    let dir = mine(TWO_LINES);
+    let server = start(dir.path()).await;
+    let output = layout(
+        &server,
+        &["place", "mine", "output as notices right of output, 30%"],
+    )
+    .await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    let shown = layout(&server, &["show", "mine"]).await;
+    let text = stdout(&shown);
+    assert!(
+        text.lines()
+            .any(|line| line == "3. output as notices right of output, 30%"),
+        "{text}"
+    );
+    assert_eq!(place_of(dir.path(), "mine").len(), 3);
+}
+
+#[tokio::test]
+async fn an_edit_of_a_built_in_layout() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let output = layout(&server, &["hide", "classic", "tabs", "--device", "laptop"]).await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(place_of(dir.path(), "laptop"), TWO_LINES);
+    let shown = show_config(&server).await;
+    assert!(
+        shown
+            .lines()
+            .any(|line| line == "layout = \"laptop\" # clients/devices/laptop.toml"),
+        "{shown}"
+    );
+}
+
+#[tokio::test]
+async fn an_edit_of_the_built_in_layout_of_one_world() {
+    let dir = ConfigDir::empty().file(
+        "clients/global.toml",
+        "[world-layouts]\n\"alpha/aria\" = \"focus\"\n",
+    );
+    let server = start(dir.path()).await;
+    let output = layout(
+        &server,
+        &[
+            "place",
+            "focus",
+            "tabs at top",
+            "--device",
+            "laptop",
+            "--world",
+            "alpha/aria",
+        ],
+    )
+    .await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(place_of(dir.path(), "laptop.alpha.aria").len(), 3);
+    let shown = show_config(&server).await;
+    for line in [
+        "world-layouts.\"alpha/aria\" = \"laptop.alpha.aria\" # clients/devices/laptop.toml",
+        "layout = \"classic\" # default",
+    ] {
+        assert!(shown.lines().any(|each| each == line), "{shown}");
+    }
+}
+
+#[tokio::test]
+async fn a_bad_edit() {
+    let dir = mine(TWO_LINES);
+    let server = start(dir.path()).await;
+    let output = layout(&server, &["hide", "mine", "editor"]).await;
+    assert!(
+        output.status.code() == Some(1) && stderr(&output).contains("editor"),
+        "{}",
+        stderr(&output)
+    );
+    assert_eq!(place_of(dir.path(), "mine"), TWO_LINES);
+}
+
+#[tokio::test]
+async fn an_insert_from_the_command_line() {
+    let dir = mine(TWO_LINES);
+    let server = start(dir.path()).await;
+    let output = layout(
+        &server,
+        &["insert", "mine", "2", "output as notices right of output"],
+    )
+    .await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    let shown = layout(&server, &["show", "mine"]).await;
+    let text = stdout(&shown);
+    for line in [
+        "2. output as notices right of output",
+        "3. editor below output",
+    ] {
+        assert!(text.lines().any(|each| each == line), "{text}");
+    }
+}
+
+#[tokio::test]
+async fn a_delete_by_id() {
+    let dir = mine(&[
+        "output",
+        "editor below output",
+        "output as side right of output",
+    ]);
+    let server = start(dir.path()).await;
+    let output = layout(&server, &["delete", "mine", "side"]).await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(place_of(dir.path(), "mine"), TWO_LINES);
+}
+
+#[tokio::test]
+async fn an_edit_with_a_number_past_the_plan() {
+    let dir = mine(TWO_LINES);
+    let server = start(dir.path()).await;
+    let request = mu_proto::EditLayoutRequest {
+        name: "mine".to_owned(),
+        change: Some(EditChange::Delete("3".to_owned())),
+        ..Default::default()
+    };
+    let error = server
+        .client()
+        .edit_layout(request)
+        .await
+        .expect_err("line 3")
+        .to_string();
+    assert!(error.contains('3'), "{error}");
+    assert_eq!(place_of(dir.path(), "mine"), TWO_LINES);
+}
+
+#[tokio::test]
+async fn describe_gives_each_block() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let output = layout(
+        &server,
+        &[
+            "describe", "sidebar", "--width", "80", "--height", "24", "--json",
+        ],
+    )
+    .await;
+    let blocks: Vec<serde_json::Value> = serde_json::from_str(&stdout(&output))
+        .unwrap_or_else(|error| panic!("{error}: {}", stdout(&output)));
+    let ids: Vec<&str> = blocks
+        .iter()
+        .map(|block| block["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["output", "tabs", "editor", "statusline", "notices"]);
+    let lines: Vec<u64> = blocks
+        .iter()
+        .map(|block| block["line"].as_u64().unwrap())
+        .collect();
+    assert_eq!(lines, [1, 2, 3, 4, 5]);
+    let of = |id: &str| blocks.iter().find(|block| block["id"] == id).unwrap();
+    assert_eq!(of("notices")["width"], 24);
+    assert_eq!(
+        (of("tabs")["width"].as_u64(), of("tabs")["height"].as_u64()),
+        (Some(80), Some(1))
+    );
+}
+
+#[tokio::test]
+async fn describe_of_an_unknown_layout() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let output = layout(&server, &["describe", "gone"]).await;
+    assert!(
+        output.status.code() == Some(1) && stderr(&output).contains("gone"),
+        "{}",
+        stderr(&output)
+    );
+}
