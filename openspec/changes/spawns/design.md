@@ -40,20 +40,20 @@ See proposal.md for the motivation and the model. These facts shape the design:
 
 `mu-config` gets the module `stream` with `StreamName` and `Streams`. It owns the names `main` and `notices` as `stream::MAIN` and `stream::NOTICES`. `block::MAIN` and `layout::NOTICES_STREAM` go away, and their users read the names from `stream`.
 
-`BlockId::new` turns each upper-case letter to lower case before its check. `StreamName` wraps `BlockId::new`. So a stream name and an output id have one rule, both are always lower case, and one place refuses the words of the sentences. `Streams` is a list of 1 to 8 names with no name twice, in the order of the rule. `Streams::main()` is the list of the one name `main`. `Streams::from_wire(&[String])` returns `Streams::main()` for an empty list or a bad name. The server, the client and the layout grammar all use these types.
+`BlockId::new` turns each upper-case letter to lower case before its check. `StreamName` wraps `BlockId::new`. So a stream name and an output id have one rule, both are always lower case, and one place refuses the words of the sentences. `Streams` is a list of 1 to 8 names with no name twice, in the order of the rule. `Streams::main()` is the list of the one name `main`. `Streams::from_wire(&[String])` drops a name that is in the list twice. It returns `Streams::main()` for an empty list, a list of more than 8 names, or a bad name. The server, the client and the layout grammar all use these types.
 
 ### D2. Rules are checked per layer and compiled at the resolve
 
 A new module `crates/mu-core/src/rules.rs` holds these types:
 
-- `Rule`: a `Match` and a list of `Action`. `Rule::compile(&Entry)` returns `Ok(None)` for an entry with no action field, so the rules with only an `id` keep their meaning.
+- `Rule`: a `Match` and a list of `Action`. `Rule::compile(id, &toml::Table)` returns `Ok(None)` for a table with no action field, so the rules with only an `id` keep their meaning. It takes the id and the table, because a layer holds its rules as tables, as `check_ids` reads them.
 - `Action`: one variant, `Stream(Vec<Template>)`. #59 adds variants.
 - `Rules`: the rules of one world in merged order. It keeps each `Entry`, and the compiled `Rule` of each entry that has an action.
 - `RuleState`: the capture that runs, and the pairs of rule id and error kind that were reported.
 
-`check_layer` calls `Rule::compile` on each entry of the layer, beside `check_ids`. Each error is a `FieldError` with the id and the field, so it reaches the `ConfigError` of the layer with its `LayerOrigin`. Thus `mu world list`, `mu world show`, `mu server` and the configuration store report it with no new code. A rule that a later layer overrides by id is still checked in its own layer.
+`check_layer` calls `Rule::compile` on each rule table of the layer, beside `check_ids`. Each error is a `FieldError` with the id and the field, so it reaches the `ConfigError` of the layer with its `LayerOrigin`. Thus `mu world list`, `mu world show`, `mu server` and the configuration store report it with no new code. A rule that a later layer overrides by id is still checked in its own layer.
 
-`finish` in `world/resolve.rs` builds `Rules` from the merged entries. Each entry passed `check_layer`, so a compile error there is a bug, and `finish` returns it as a `ConfigError`. `ResolvedWorld.rules` becomes `Rules`, an `Arc` inside, because the session and the CLI both hold it. `render` in `world.rs` reads the entries from it. Thus one field holds the rules, and they cannot drift apart.
+`finish` in `world/resolve.rs` builds `Rules` from the merged entries, and passes `entry.table` to `Rule::compile`. Each entry passed `check_layer`, so a compile error there is a bug, and `finish` returns it as a `ConfigError`. `ResolvedWorld.rules` becomes `Rules`, an `Arc` inside, because the session and the CLI both hold it. `render` in `world.rs` reads the entries from it. Thus one field holds the rules, and they cannot drift apart.
 
 Alternative: compile in the session at the connect. Rejected, because a bad pattern then shows only at the connect, and not at the load.
 
@@ -79,17 +79,17 @@ ErrorKind { BadName, SlowMatch }
 ```
 
 - If a capture runs, the line gets its streams. The capture counts the line. If the line matches `until`, or the count reaches `lines`, the capture ends. `until` is never tried on the line that started the capture.
-- If no capture runs, each rule tries `pattern` in order. The first match expands each template, turns it to lower case, and makes a `Streams`. If one name is not valid, the line gets `Streams::main()` and a `BadName` error.
+- If no capture runs, each rule tries `pattern` in order. The first match expands each template, turns it to lower case, and makes a `Streams`. If one name is not valid, the line gets `Streams::main()` and a `BadName` error, and no capture starts.
 - A rule with `until` starts a capture with a count of 1. If the count already reaches `lines`, which is the case for `lines = 1`, the capture ends at once. So a capture never holds more than `lines` lines.
-- A match error at the backtrack limit counts as no match, and gives a `SlowMatch` error for the rule. The next rule then runs, and it can give a second error for the same line.
+- A match error at the backtrack limit counts as no match, and gives a `SlowMatch` error for the rule. For `pattern`, the next rule then runs, and it can give a second error for the same line. For `until`, the line stays in the capture, and the capture goes on.
 - Each pair of rule id and error kind is reported at most one time until `reset()`. The session calls `reset()` at each connect and each disconnect, and `reset()` also ends a capture.
 - No match gives `Streams::main()`.
 
-The session calls `route` after the hooks, for `Inbound::Line` only. It records each error as a `ScriptError` event, in order, before the line. Each other event gets `Streams::main()`.
+The session calls `route` after the hooks on each `Inbound::Line`, and only there. A capture sees each game line, so `route` also runs on a line that a hook gagged or routed. It counts the line and tries `until` on the text after the hooks. The streams that a hook set win for that line, and a gagged line makes no event. The session records each error of `route` as a `ScriptError` event, in order, before the line. Each other event gets `Streams::main()`.
 
 ### D6. A hook can rewrite and route a line in one result
 
-`HookAction` becomes `Pass`, `Gag` or `Change { text: Option<String>, streams: Option<Streams> }`. `Change` with only `text` is the old `Replace`. `run_hooks` returns the text and the streams that the hooks set. If a hook on a game line set streams, the session does not run the rules for that line. `run_hooks` also serves the hooks on player lines. A player event always has the one stream `main`, so the session drops the streams of a `Change` from a player-line hook. No hook of this change sets streams. It is the seam for #60. A test hook in `crates/mu-core/tests/scripts.rs` proves that it works.
+`HookAction` becomes `Pass`, `Gag` or `Change { text: Option<String>, streams: Option<Streams> }`. `Change` with only `text` is the old `Replace`. `run_hooks` returns the text and the streams that the hooks set. If a hook on a game line set streams, those streams win over the rules for that line. The capture state of D5 still sees the line. `run_hooks` also serves the hooks on player lines. A player event always has the one stream `main`, so the session drops the streams of a `Change` from a player-line hook. No hook of this change sets streams. It is the seam for #60. A test hook in `crates/mu-core/tests/scripts.rs` proves that it works.
 
 ### D7. Each event has a ULID and its streams
 
@@ -101,29 +101,31 @@ The owner chose a ULID. Its text has 26 characters and sorts by time. `uuid` v7 
 
 `mu-config`: `tree::Block` and the step of an `output` both get a `Selection` with `scope` (`World` or `AllWorlds`) and `patterns`. `step` in `write.rs` copies the `Selection` from the block into the step, so a rewritten plan keeps it. A `Pattern` is a glob and a flag for `!`. `Selection::shows(&StreamName) -> bool` is the one match rule of the spec. With no `showing`, the patterns are the id of the block, or `main` and `notices` for `main`.
 
-The parser reads `of all worlds` and then `showing`, right after `as <id>`. The list of patterns ends at the first word of a place, or at the end of the line. The words of a place are `above`, `below`, `left`, `right`, `with` and `at`. So the comma of a size stays after the place. A pattern holds only the characters of a stream name, `*`, `?` and a first `!`. The parser turns it to lower case. An empty list, a lone `!`, a list of only exclusions, and a pattern that starts with `re:` or `/` are refused. The writer of the plan writes the scope and the patterns back. If the patterns are the default, it writes no `showing`.
+The parser reads `of all worlds` and then `showing`, right after `as <id>`. The list of patterns ends where the existing `place` parser of `parse.rs` matches, or at the end of the line. So the comma of a size stays after the place, and a new place form needs no second list of words. A pattern holds only the characters of a stream name, `*`, `?` and a first `!`. The parser turns it to lower case. An empty list, a lone `!`, a list of only exclusions, and a pattern that starts with `re:` or `/` are refused. The writer of the plan writes the scope and the patterns back. If the patterns are the default, it writes no `showing`.
 
 The glob match uses an existing crate. Task 1.5 compares `wildmatch` and `globset` for `*` and `?` on short names, and picks one by size and license.
 
-`Layout::from_steps` refuses a layout with no `main` or with no output that shows `notices`, after its loop over the blocks. Each operation of `change.rs` builds its result through `from_steps`. So `/pane hide`, `/place`, the mouse and arrange mode refuse such a result, with no new code in `mu-tui`. `main_output()` and `route()` go away.
+`Layout::from_steps` refuses a layout with no `main` or with no output that shows `notices`, after its loop over the blocks. It also refuses `main` with the scope `AllWorlds`, with the line number and the word `main`. Each operation of `change.rs` builds its result through `from_steps`. So `/pane hide`, `/place`, the mouse and arrange mode refuse such a result, with no new code in `mu-tui`. `main_output()` and `route()` go away.
 
 ### D9. The client routes by selection
 
-`mu-tui`: each `output` block has its own pane, keyed by `PaneKey { owner: Owner, id: BlockId }`. `Owner` is `World(String)`, `Client` or `All`. A block of scope `AllWorlds` uses `Owner::All`. The editors use the same `PaneKey`, with `Owner::Client` where they used `None`. `world.pane` and the stand-in rules go away.
+`mu-tui`: each `output` block has its own pane, keyed by `PaneKey { owner: Owner, id: BlockId }`. `Owner` is `World(String)`, `Client` or `All`. A block of scope `AllWorlds` uses `Owner::All`. The editors use the same `PaneKey`, with `Owner::Client` where they used `None`. `world.pane`, `PaneId::NOTICES`, `focused_pane` and the stand-in rules go away. So `PaneKey` with `Owner::Client` is the one name of a pane that belongs to no world.
+
+`default_layout` in `model.rs` falls back to the plan `output` and `editor below main`, because a plan of one editor is now bad.
 
 On an event, the client reads its streams with `Streams::from_wire`. It takes the layout of the world of the event. For each stream, it finds the outputs whose `Selection` shows it. It pushes the line one time into each pane that one or more streams found. For each stream that found no output, it shows the notice of a stream with no output. It remembers the pair of stream and world, and does not show that notice again.
 
-A notice of the client is a line of the stream `notices` that belongs to a world. The notice of a refused line belongs to the world of the line. Each other notice belongs to the world in focus. A notice with no such world belongs to no world, and its pane owner is `Owner::Client`. The client routes a notice as a line of its world. In a pane of `Owner::All`, each push adds the dim prefix of the owner of the line as a styled span: the world id, or `client` for a notice that belongs to no world.
+A notice of the client is a line of the stream `notices` that belongs to a world. The notice of a refused line belongs to the world of the line. Each other notice belongs to the world in focus. A notice with no such world belongs to no world, and its pane owner is `Owner::Client`. The client routes a notice as a line of its world. The kept notices keep their owner. `Model::notice` and `replay_notices` route each one through this same routing. A replay skips a pane of `Owner::All`, because that pane keeps its lines at a focus change and already shows the notice. In a pane of `Owner::All`, each push adds the dim prefix of the owner of the line as a styled span: the world id, or `client` for a notice that belongs to no world.
 
 The waiting notices go away, because each layout has an output for `notices`: the field `unshown`, `UNSHOWN_MAX`, `show_unshown`, and the branch of `replay_notices` that fills `unshown`. `Late::Waiting` and its probe tests stay.
 
 ### D10. `mu world match`
 
-`crates/mu-cli/src/world.rs` gets the verb `match`. It resolves the world as `mu world show` does, builds one `RuleState`, and calls `route` on each line of stdin. It prints the names of `Streams` with commas, a tab and the line. It prints each error on stderr, and exits 0. It needs no server, so it is the main test seam for D5.
+`crates/mu-cli/src/world.rs` gets the verb `match`. It resolves the world as `mu world show` does, builds one `RuleState`, and calls `route` on each line of stdin. It prints the names of `Streams` with commas, a tab and the line, with `crate::print`. It prints each error on stderr with `crate::warn`, and exits 0. It needs no server, so it is the main test seam for D5.
 
 ### D11. A fake world takes the rules of global.toml
 
-`server.rs` resolves the global layer of `--config` alone, with its `disable`, and gives its `Rules` to each fake world. A fake world takes no other field. This is a test seam, and it lets the owner try a rule with `--fake-world`.
+`Store::open` in `crates/mu-server/src/store.rs` resolves the global layer, with its `disable`, from the same start snapshot as the worlds. It returns the global `Rules` in `Opened`, beside the worlds. `server.rs` gives these `Rules` to each fake world. A fake world takes no other field. This is a test seam, and it lets the owner try a rule with `--fake-world`.
 
 ### What enforces each rule
 
