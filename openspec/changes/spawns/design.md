@@ -67,7 +67,7 @@ The owner asked for the full syntax of a regular expression: named groups, looka
 
 `mu-config` gets the module `ansi` with `walk(text: &str, map: &ControlMap, sink: &mut impl Sink)`. It runs the `vte` parser. It gives the sink each printable character after the `ControlMap`, and the parameters of each SGR sequence. It drops each other escape sequence. `vte` moves from the row of `mu-tui` to the row of `mu-config` in the allowlist.
 
-`convert` in `crates/mu-tui/src/convert.rs` becomes a `Sink` that builds the styled text, with its `SCREEN` map. `rules::plain(&str) -> Cow<str>` is a `Sink` that keeps only the characters, with a map that keeps a tab. A line with no escape byte and no control character returns borrowed. So the text that a pattern sees is the text that the screen shows, without its colors. The journal records the original text.
+The map `SCREEN` and its placeholder character move from `crates/mu-tui/src/text.rs` to `mu-config` as `ansi::SCREEN`. This map shows a tab as a space. `convert` in `crates/mu-tui/src/convert.rs` becomes a `Sink` that builds the styled text. `rules::plain(&str) -> Cow<str>` is a `Sink` that keeps only the characters. Both use `ansi::SCREEN`. A line with no escape byte and no control character returns borrowed. So the text that a pattern sees is the text that the screen shows, without its colors. The journal records the original text.
 
 ### D5. One function decides the streams
 
@@ -89,7 +89,7 @@ The session calls `route` after the hooks, for `Inbound::Line` only. It records 
 
 ### D6. A hook can rewrite and route a line in one result
 
-`HookAction` becomes `Pass`, `Gag` or `Change { text: Option<String>, streams: Option<Streams> }`. `Change` with only `text` is the old `Replace`. `run_hooks` returns the text and the streams that the hooks set. If a hook set streams, the session does not run the rules for that line. No hook of this change sets streams. It is the seam for #60. A test hook in `crates/mu-core/tests/scripts.rs` proves that it works.
+`HookAction` becomes `Pass`, `Gag` or `Change { text: Option<String>, streams: Option<Streams> }`. `Change` with only `text` is the old `Replace`. `run_hooks` returns the text and the streams that the hooks set. If a hook on a game line set streams, the session does not run the rules for that line. `run_hooks` also serves the hooks on player lines. A player event always has the one stream `main`, so the session drops the streams of a `Change` from a player-line hook. No hook of this change sets streams. It is the seam for #60. A test hook in `crates/mu-core/tests/scripts.rs` proves that it works.
 
 ### D7. Each event has a ULID and its streams
 
@@ -150,7 +150,7 @@ The waiting notices go away, because each layout has an output for `notices`: th
 
 - [A pattern with heavy backtracking slows the session of a world] → The backtrack limit stops each match. One script error names the rule. A pattern with no fancy feature runs on the linear `regex` engine.
 - [A line in several streams shows in several panes, and the owner sees it twice] → That is the choice of the owner. A `!` pattern removes a stream from an output.
-- [A layout from #172 can have an output for `notices` and a bare `output`. Then the notices show twice.] → The built-in `sidebar` writes `output as main showing main`. The guide tells the owner to make the same change to a layout file, and task 7.5 adds that advice.
+- [A layout from #172 can have an output for `notices` and a bare `output`. Then the notices show twice.] → The built-in `sidebar` writes `output as main showing main`. The guide tells the owner to make the same change to a layout file, and task 7.6 adds that advice.
 - [The words `all`, `worlds` and `showing` can no longer be ids] → No release exists. A layout with such an id fails with the line number.
 - [The shared walk of game text changes `convert.rs`] → The tests of `convert` stay green, and they cover the client side of the walk.
 - [The removal of the main-output role touches code that #172 tested] → Tasks 3.2 and 7.1 name each test that goes with a removed requirement.
