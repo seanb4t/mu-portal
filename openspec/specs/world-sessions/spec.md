@@ -6,7 +6,7 @@ Defines how the server keeps several worlds connected at once and how a command 
 ## Requirements
 
 ### Requirement: A world id names one character on one game
-Each world SHALL have an id of the form `<game>/<character>`. Each id SHALL have exactly one slash. Each part SHALL hold only the ASCII letters `a` to `z`, the digits and hyphens, and SHALL start with a letter. Each command to a world SHALL name its id, and each event SHALL carry one.
+Each world SHALL have an id of the form `<game>/<character>`. Each id SHALL have exactly one slash. Each part SHALL hold 1 to 64 characters, only the ASCII letters `a` to `z`, the digits and hyphens, and SHALL start with a letter. Each command to a world SHALL name its id, and each event SHALL carry one.
 
 #### Scenario: A bad world id is refused
 - **WHEN** the user runs `mu server --socket <dir>/s.sock --fake-world Alpha_1=env:PW`
@@ -20,6 +20,10 @@ Each world SHALL have an id of the form `<game>/<character>`. Each id SHALL have
 #### Scenario: Ids inside the rule
 - **WHEN** the engine parses `alpha/aria`, `alpha-2/bea` and `a/b-9`
 - **THEN** each parse succeeds, and the display of each id is the text it came from
+
+#### Scenario: A part of 65 characters
+- **WHEN** the engine parses an id whose game part has 65 characters, and an id whose two parts have 64 characters each
+- **THEN** the first parse fails, and the second succeeds
 
 ### Requirement: The fake world stands in for a game
 The hidden flag `--fake-world <id>=env:<NAME>` of `mu server` SHALL add a fake world. The flag can repeat. The fake world SHALL take the password from the environment variable `<NAME>` and the login name from the character part of the id. It SHALL greet, accept the login line `connect <login> <password>`, and answer each later line `<text>` with `You say, "<text>"`. The line `@drop` SHALL make the fake world close the connection from its side. The fake world SHALL answer `IAC DO TIMING-MARK` with `IAC WILL TIMING-MARK`, after it answers every line that came before the mark, before and after the login. A mark SHALL NOT count as a line that the game got. A fake world SHALL send its login as soon as it connects. It SHALL have no keepalive, SHALL NOT reconnect, and SHALL have `line_break = "%r"`. `mu server --help` SHALL NOT list the flag.

@@ -59,7 +59,7 @@ The field `echo` SHALL be one of `show`, `dim` and `hide`, and its default SHALL
 - **THEN** stderr holds one line that contains `clients/global.toml` and `echo`
 
 ### Requirement: The fields of a client layer
-A client layer SHALL hold only the field `echo` and the table `[keys]`. Each SHALL be optional. An unknown field or table SHALL make the layer bad. So SHALL a value of the wrong type. The notice SHALL name the file and the field.
+A client layer SHALL hold only the field `echo` and the field `layout`, and the tables `[keys]`, `[tabs]`, `[statusline]` and `[world-layouts]`. Each SHALL be optional. An unknown field or table SHALL make the layer bad. So SHALL a value of the wrong type. The notice SHALL name the file and the field.
 
 #### Scenario: A server table
 - **GIVEN** `clients/global.toml` holds `[server]` with `connect_wait_seconds = 2`, and a server serves that directory on `<dir>/s.sock`
@@ -81,6 +81,29 @@ A client layer SHALL hold only the field `echo` and the table `[keys]`. Each SHA
 - **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
 - **THEN** stderr holds one line that contains `clients/global.toml`
 - **AND** the exit status is 0
+
+#### Scenario: The three new fields
+- **GIVEN** `clients/global.toml` holds `layout = "focus"`, `[tabs]` with `label = "{character}"`, and `[statusline]` with `left = ["world"]`
+- **AND** a server serves that directory on `<dir>/s.sock`
+- **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
+- **THEN** stderr is empty
+- **AND** stdout holds `layout = "focus"`, `label = "{character}"` and `left = ["world"]`, each with the source `clients/global.toml`
+
+#### Scenario: A layout table
+- **GIVEN** `clients/global.toml` holds `[layout]` with `shape = "wide"`, and a server serves that directory on `<dir>/s.sock`
+- **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
+- **THEN** stderr holds one line that contains `clients/global.toml` and `layout`
+
+#### Scenario: An unknown field of tabs
+- **GIVEN** `clients/global.toml` holds `[tabs]` with `colour = "red"`, and a server serves that directory on `<dir>/s.sock`
+- **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
+- **THEN** stderr holds one line that contains `clients/global.toml` and `colour`
+
+#### Scenario: A world layouts table
+- **GIVEN** `clients/global.toml` holds `[world-layouts]` with `"alpha/aria" = "focus"`, and a server serves that directory on `<dir>/s.sock`
+- **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
+- **THEN** stderr is empty
+- **AND** stdout holds `world-layouts."alpha/aria" = "focus"` with the source `clients/global.toml`
 
 ### Requirement: A bad binding makes its layer bad
 A binding of `[keys]` SHALL make its layer bad in each of these cases:
