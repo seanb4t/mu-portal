@@ -237,12 +237,37 @@ The client SHALL save the layout after each of these: a command that changed it,
 - **THEN** the second client shows no tabs
 
 ### Requirement: A new configuration ends an edit of the layout
-When the client takes a new configuration from the server, arrange mode and a drag of a border SHALL end with no save, because their layouts belong to the old configuration. The client SHALL show a notice that arrange mode ended.
+Arrange mode and a drag of a border SHALL end with no save when the client takes a configuration with a new revision, when a save fails, and when the focus moves to another world, because their layouts belong to the configuration and the world of their start. After a move of the focus, the layout from before the edit SHALL be back under that world. The client SHALL show a line that names what ended the edit.
 
 #### Scenario: A new configuration ends arrange mode
 - **GIVEN** the layout `mine` is in use, and arrange mode is on with a block picked
 - **WHEN** the client takes a configuration with a new revision that names the layout `other`
 - **THEN** arrange mode is off, and after Esc the layout `other` still holds its own lines
+
+#### Scenario: A new configuration ends a drag
+- **GIVEN** the layout `sidebar` is in use as the player layout `mine`, and the user holds a drag of the divider 10 columns to the left
+- **WHEN** the client takes a configuration with a new revision, and the user releases the mouse
+- **THEN** the client asks the server for no save, and the pane of `notices` shows a line that contains `the drag ended`
+
+#### Scenario: The same configuration keeps arrange mode
+- **GIVEN** the layout `mine` is in use, and arrange mode is on
+- **WHEN** the client takes a configuration with the revision that it has
+- **THEN** arrange mode is still on, and no notice says that it ended
+
+#### Scenario: A failed save ends arrange mode
+- **GIVEN** the layout `mine` is in use, and arrange mode is on
+- **WHEN** a save of the layout fails
+- **THEN** arrange mode is off, and one notice contains `did not take the change` and `arrange mode ended`
+
+#### Scenario: A focus move ends arrange mode
+- **GIVEN** the layout `mine` is in use for both worlds, arrange mode is on, and the user hid the tabs in the mode
+- **WHEN** the entry `focus-next` runs
+- **THEN** arrange mode is off, the layout holds the tabs again, and a notice contains `the focus moved`
+
+#### Scenario: A focus move ends a drag
+- **GIVEN** the layout `sidebar` is in use as the player layout `mine`, and the user holds a drag of the divider 10 columns to the left
+- **WHEN** the user runs the command `/focus beta/bryn`, and then moves and releases the mouse
+- **THEN** the plan holds the lines of `sidebar`, the client asks the server for no save, and the pane of `notices` shows a line that contains `the drag ended`
 
 ### Requirement: A resize with no room is refused
 A resize of a block SHALL be refused if no percent from 10 to 90 leaves the block and the rest of its split at the smallest size of a pane. The client SHALL say why: in the last row in arrange mode, and as a line of the notices after a drag.
@@ -258,13 +283,18 @@ A resize of a block SHALL be refused if no percent from 10 to 90 leaves the bloc
 - **THEN** the client asks the server for no save, and the screen shows a line that contains `has no room`
 
 ### Requirement: A failed save puts the layout of the server back
-If the server refuses a save or does not answer, the client SHALL show a notice with the reason. It SHALL put back the layouts of its last configuration, and SHALL ask the server for its configuration again. So the screen shows what the server holds, and the next change saves as a first change does.
+If the server refuses a save or does not answer, the client SHALL show a notice with the reason. It SHALL put back the layouts that its last configuration gave, and SHALL ask the server for its configuration again. So the screen shows what the server holds, and the next change saves as a first change does.
 
 #### Scenario: The server refuses
 - **GIVEN** `clients/devices/laptop.toml` holds `echo = `, and `mu client --device laptop` shows the layout `classic`
 - **WHEN** the user runs the command `/pane hide tabs`
 - **THEN** the screen shows a line that starts with `-- ` and contains `clients/devices/laptop.toml`
 - **AND** the screen shows the tabs again, and `clients/layouts/laptop.toml` does not exist
+
+#### Scenario: The last good layout comes back
+- **GIVEN** the client took the layout `classic`, and then a configuration whose layout it cannot read, so `classic` stayed
+- **WHEN** a save of `/pane hide tabs` fails
+- **THEN** the layout in use is `classic` with its three lines, and the notice of the bad layout shows one time
 
 #### Scenario: A change after a failed save
 - **GIVEN** the layout `classic` is in use on the device `laptop`, and a save of `/pane hide tabs` failed

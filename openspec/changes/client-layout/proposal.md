@@ -76,8 +76,9 @@ The change has five layers. Each layer works and has its tests before the next o
 | A save from a built-in layout | To a new layout. Its name is the device name, or `<device>.<game>.<character>` if a world entry chose the built-in layout. The device layer then names it. |
 | A saved name that is not good | No save, and a notice names `/layout save`. Such a name has more than 64 characters, or is a built-in name, `.` or `..`. |
 | A failed save | A notice gives the reason, and the screen goes back to the layout that the server holds. |
-| Limits | A line of a plan has at most 256 characters and names no anchor twice. A key of `[world-layouts]` has at most 129 characters. |
-| A linked file | A save to a layout file or a device file that is a symbolic link writes the linked file and keeps the link. |
+| Limits | A line of a plan has at most 256 characters and names no anchor twice. Each part of a world id has at most 64 characters, so a key of `[world-layouts]` has at most 129. |
+| A linked file | A save to a layout file or a device file that is a symbolic link to a regular file writes the linked file and keeps the link. A link to anything else is refused. |
+| An edit that ends | A new configuration, a failed save and a move of the focus end arrange mode and a drag with no save, and a line says why. |
 | Two clients that save at once | The last save wins. |
 | Arrange mode key | `alt+l`, and the command `/arrange`. |
 | A letter bound to `undo` | In arrange mode, a letter always picks a block. |

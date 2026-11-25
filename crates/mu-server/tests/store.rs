@@ -403,21 +403,21 @@ fn world_dir() -> tempfile::TempDir {
 }
 
 /// The store of `root`, whose check of `server.toml` refuses a file that holds `bad`.
-fn open(root: &Path) -> Store {
+fn open(root: &Path) -> Arc<Store> {
     let check = Box::new(|entry: Option<&SnapEntry>| match entry {
         Some(SnapEntry::File(bytes)) if bytes.windows(3).any(|w| w == b"bad") => {
             Err("server.toml: telemetry: bad".to_owned())
         }
         _ => Ok(()),
     });
-    Store::open(
+    let opened = Store::open(
         Some(root),
         DirSnapshot::take(root).unwrap(),
         check,
         Box::new(|_| {}),
     )
-    .unwrap()
-    .store
+    .unwrap();
+    Arc::new(opened.store)
 }
 
 fn laptop(store: &Store) -> ClientConfig {
@@ -840,16 +840,16 @@ async fn a_line_over_256_characters_is_refused() {
 }
 
 #[tokio::test]
-async fn a_key_over_129_characters_is_refused() {
+async fn a_key_with_a_part_over_64_characters_is_refused() {
     let dir = world_dir();
     let store = open(dir.path());
     let key = format!("{}/{}", "a".repeat(64), "b".repeat(65));
     let error = store
         .use_layout("laptop", "status", Some(&key))
         .await
-        .expect_err("a long key")
+        .expect_err("a long part")
         .to_string();
-    assert!(error.contains("129"), "{error}");
+    assert!(error.contains("64"), "{error}");
     assert!(!dir.path().join("clients/devices/laptop.toml").exists());
 }
 
@@ -937,4 +937,127 @@ fn an_error_of_a_text_that_is_no_toml_holds_no_part_of_the_text() {
     .expect_err("no TOML");
     assert!(!error.contains("hunter2"), "{error}");
     assert!(error.contains("line 2"), "{error}");
+}
+
+// The later checks of a call, a link to something that is no file, and a call that goes away.
+
+#[tokio::test]
+async fn a_save_that_makes_a_good_layer_bad_writes_no_layout_file() {
+    let dir = world_dir();
+    write(
+        dir.path(),
+        "clients/devices/laptop.toml",
+        "echo = \"show\"\n",
+    );
+    let store = open(dir.path());
+    // The layer on the disk changes after the server read it. The edit of this text gives a
+    // bad layer, which only the check after the edit finds.
+    write(
+        dir.path(),
+        "clients/devices/laptop.toml",
+        "[server]\nconnect_wait_seconds = 2\n",
+    );
+    store
+        .save_layout("mine", lines_of(&["editor"]), Some("laptop"), None)
+        .await
+        .expect_err("the edited text is a bad layer");
+    assert!(!dir.path().join("clients/layouts/mine.toml").exists());
+}
+
+#[tokio::test]
+async fn a_refused_call_makes_no_directory() {
+    let dir = world_dir();
+    let store = open(dir.path());
+    store
+        .use_layout("laptop", "", Some("alpha/ari"))
+        .await
+        .expect_err("no such entry");
+    assert!(!dir.path().join("clients").exists());
+}
+
+#[tokio::test]
+async fn a_removal_of_a_missing_entry_is_refused_for_each_form_of_the_file() {
+    // The file has no final newline, CRLF line ends, or an empty table.
+    for text in [
+        "layout = \"status\"",
+        "layout = \"status\"\r\necho = \"show\"\r\n",
+        "layout = \"status\"\n\n[world-layouts]\n",
+    ] {
+        let dir = world_dir();
+        write(dir.path(), "clients/devices/laptop.toml", text);
+        let store = open(dir.path());
+        store
+            .use_layout("laptop", "", Some("alpha/aria"))
+            .await
+            .expect_err("no such entry");
+        let after = fs::read_to_string(dir.path().join("clients/devices/laptop.toml")).unwrap();
+        assert_eq!(after, text);
+    }
+}
+
+#[tokio::test]
+async fn a_link_to_a_directory_is_not_written() {
+    let dir = world_dir();
+    let outside = tempfile::tempdir().expect("a directory");
+    fs::write(outside.path().join("keep.txt"), "keep").unwrap();
+    fs::create_dir_all(dir.path().join("clients/layouts")).unwrap();
+    let link = dir.path().join("clients/layouts/mine.toml");
+    std::os::unix::fs::symlink(outside.path(), &link).expect("a link");
+    let store = open(dir.path());
+    let error = store
+        .save_layout("mine", lines_of(&["editor"]), None, None)
+        .await
+        .expect_err("a link to a directory")
+        .to_string();
+    assert!(error.contains("clients/layouts/mine.toml"), "{error}");
+    assert!(error.contains("no regular file"), "{error}");
+    // The error holds no path outside the configuration directory.
+    assert!(
+        !error.contains(&outside.path().display().to_string()),
+        "{error}"
+    );
+    assert!(link.is_symlink());
+    assert_eq!(
+        fs::read_to_string(outside.path().join("keep.txt")).unwrap(),
+        "keep"
+    );
+}
+
+#[tokio::test]
+async fn a_link_to_nothing_is_not_written() {
+    let dir = world_dir();
+    fs::create_dir_all(dir.path().join("clients/layouts")).unwrap();
+    let link = dir.path().join("clients/layouts/mine.toml");
+    std::os::unix::fs::symlink(dir.path().join("gone.toml"), &link).expect("a link");
+    let store = open(dir.path());
+    let error = store
+        .save_layout("mine", lines_of(&["editor"]), None, None)
+        .await
+        .expect_err("a link to nothing")
+        .to_string();
+    assert!(error.contains("a link to nothing"), "{error}");
+    assert!(!dir.path().join("gone.toml").exists());
+}
+
+#[tokio::test]
+async fn a_write_whose_caller_goes_away_still_ends_with_a_reload() {
+    let dir = world_dir();
+    let store = open(dir.path());
+    let mut watch = store.watch();
+    let before = watch.borrow_and_update().store_hash().to_owned();
+    {
+        let save = store.save_layout("mine", lines_of(&["editor"]), None, None);
+        tokio::pin!(save);
+        // One poll starts the write. The caller then drops the call, as a call with a
+        // deadline that ends does.
+        tokio::select! {
+            biased;
+            _ = &mut save => {}
+            () = std::future::ready(()) => {}
+        }
+    }
+    // The store still writes the file and reads the directory again.
+    watch.changed().await.expect("the store lives");
+    assert_ne!(watch.borrow().store_hash(), before);
+    assert!(dir.path().join("clients/layouts/mine.toml").exists());
 }

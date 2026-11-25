@@ -3512,3 +3512,107 @@ fn a_hint_with_no_output_shows_when_an_output_comes() {
     let rows = block_rows(&mut app, "main");
     assert!(rows.contains(&"-- 1. tabs".to_owned()), "{rows:?}");
 }
+
+// The lines that wait for an output.
+
+/// A configuration with the player layout `name` of `lines`.
+fn named_config(name: &str, lines: &[&str]) -> GetClientConfigResponse {
+    let mut config = config_with(lines, &[], "{world}", &["world"], &[]);
+    name.clone_into(&mut config.layout_name);
+    config
+}
+
+#[test]
+fn a_waiting_notice_shows_when_a_new_configuration_has_an_output() {
+    let mut app = laptop();
+    app.apply_config(named_config("bare", &["editor"]));
+    enter(&mut app, "/layout plan");
+    app.apply_config(named_config("mine", &["output", "editor below main"]));
+    let rows = block_rows(&mut app, "main");
+    assert!(rows.contains(&"-- 1. editor".to_owned()), "{rows:?}");
+}
+
+#[test]
+fn waiting_lines_show_one_time_and_in_their_order() {
+    let mut app = laptop();
+    app.apply_config(named_config("bare", &["editor"]));
+    // The first line is a kept notice, and the second is a hint.
+    enter(&mut app, "/focus nowhere/nobody");
+    app.apply_config(named_config("mine", &["output", "editor below main"]));
+    enter_cleared(&mut app, "/layout plan");
+    let rows = block_rows(&mut app, "main");
+    let notice = rows.iter().position(|row| row.contains("nowhere/nobody"));
+    let hint = rows.iter().position(|row| row == "-- 1. output");
+    assert!(notice.is_some() && notice < hint, "{rows:?}");
+    let shown = rows
+        .iter()
+        .filter(|row| row.contains("nowhere/nobody"))
+        .count();
+    assert_eq!(shown, 1, "{rows:?}");
+}
+
+/// Clears the editor, types `text` and presses Enter.
+fn enter_cleared(app: &mut Model, text: &str) -> Vec<Effect> {
+    let typed = app.input().chars().count();
+    for _ in 0..typed {
+        press(app, key(KeyCode::Backspace));
+    }
+    enter(app, text)
+}
+
+#[test]
+fn a_waiting_notice_shows_when_the_focus_moves_to_a_world_with_an_output() {
+    let mut app = laptop();
+    let bare: &[&str] = &["editor"];
+    app.apply_config(config_with(
+        &["output", "tabs above main", "editor below main"],
+        &[("alpha/aria", bare)],
+        "{world}",
+        &["world"],
+        &[],
+    ));
+    assert_eq!(app.layout().lines(), ["editor"]);
+    enter(&mut app, "/layout plan");
+    enter(&mut app, "/focus beta/bryn");
+    let rows = block_rows(&mut app, "main");
+    assert!(rows.contains(&"-- 1. editor".to_owned()), "{rows:?}");
+}
+
+// An edit of the layout and the focus.
+
+#[test]
+fn a_focus_move_during_a_drag_ends_the_drag_and_puts_the_layout_back() {
+    let mut app = laptop_with(SIDEBAR_LINES);
+    draw(&mut app);
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 55, 5);
+    mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), 45, 5);
+    draw(&mut app);
+    assert_ne!(app.layout().lines(), SIDEBAR_LINES);
+    // The key of the next world moves the focus while the button is down.
+    enter_cleared(&mut app, "/focus beta/bryn");
+    assert_eq!(app.layout().lines(), SIDEBAR_LINES);
+    mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), 40, 5);
+    let effects = mouse(&mut app, MouseEventKind::Up(MouseButton::Left), 40, 5);
+    assert_eq!(effects, []);
+    assert_eq!(app.layout().lines(), SIDEBAR_LINES);
+    let rows = block_rows(&mut app, "notices");
+    assert!(
+        rows.iter().any(|row| row.contains("the drag ended")),
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn a_new_configuration_ends_a_drag_and_says_so() {
+    let mut app = laptop_with(SIDEBAR_LINES);
+    draw(&mut app);
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 55, 5);
+    mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), 45, 5);
+    // The configuration of the server changes while the button is down.
+    app.apply_config(named_config("other", SIDEBAR_LINES));
+    assert_eq!(app.layout().lines(), SIDEBAR_LINES);
+    let effects = mouse(&mut app, MouseEventKind::Up(MouseButton::Left), 45, 5);
+    assert_eq!(effects, []);
+    let rows = block_rows(&mut app, "notices").join(" ");
+    assert!(rows.contains("the drag ended"), "{rows}");
+}

@@ -142,6 +142,8 @@ pub struct Model {
     pub(crate) layout_name: String,
     /// The layout and its name for each entry of `[world-layouts]`, by the key of the entry.
     pub(crate) world_layouts: BTreeMap<String, (String, Layout)>,
+    /// The layouts that the last configuration gave, which a save that failed puts back.
+    pub(crate) served: Option<Served>,
     /// The label of a world tab.
     pub(crate) label: Label,
     /// The segments of the statusline from the left edge, and to the right edge.
@@ -187,6 +189,20 @@ pub struct Model {
     pub(crate) arrange: Option<crate::arrange::Arrange>,
 }
 
+/// The layouts of one configuration of the server.
+#[derive(Clone, Debug)]
+pub(crate) struct Served {
+    /// The name of the layout of the field `layout`.
+    pub(crate) name: String,
+    /// The layout of the field `layout`.
+    pub(crate) layout: Layout,
+    /// The layout of each entry of `[world-layouts]`, by its key.
+    pub(crate) worlds: BTreeMap<String, (String, Layout)>,
+}
+
+/// The most lines that wait for a pane of the notices. A new line past it drops the oldest.
+const UNSHOWN_MAX: usize = 200;
+
 /// The drag of a border between two panes.
 #[derive(Clone, Debug)]
 pub(crate) struct Drag {
@@ -202,8 +218,6 @@ pub(crate) struct Drag {
     pub(crate) moved: bool,
     /// The reason that the layout rules refused the last report of the drag.
     pub(crate) refused: Option<String>,
-    /// Whether the last report of the drag made mu write the whole plan again.
-    pub(crate) rewritten: bool,
 }
 
 /// Whether an [`Effect::Wait`](crate::update::Effect::Wait) for
@@ -273,6 +287,7 @@ impl Model {
             layout: default_layout(),
             layout_name: DEFAULT_LAYOUT.to_owned(),
             world_layouts: BTreeMap::new(),
+            served: None,
             label: Label::default(),
             segments: (
                 Segment::LEFT_DEFAULT.to_vec(),
@@ -563,6 +578,13 @@ impl Model {
         if self.first_list {
             return;
         }
+        // A drag and arrange mode belong to the layout of the world in focus. So a move of the
+        // focus ends them, and puts their first layout back under that world.
+        let ended = if self.focus == Some(index) {
+            crate::config::Ended::Nothing
+        } else {
+            self.take_edits(true)
+        };
         let had_focus = self.focus.is_some();
         self.focus = Some(index);
         let world = &mut self.worlds[index];
@@ -586,16 +608,28 @@ impl Model {
             }
             self.replay_notices();
         }
+        self.show_unshown();
+        // The player now reads the notices of this world, so the line goes there.
+        self.say_ended("the focus moved", ended);
     }
 
     /// Adds the kept notices at the bottom of the pane that shows the notices of the world in
     /// focus.
     pub(crate) fn replay_notices(&mut self) {
-        let Some(pane) = self.pane_for(NOTICES_STREAM) else {
-            return;
-        };
-        for line in self.notices.clone() {
-            self.push(pane, &line);
+        // A kept notice that waited shows only one time, in the list of the kept notices.
+        let hints: Vec<String> = std::mem::take(&mut self.unshown)
+            .into_iter()
+            .filter(|line| !self.notices.contains(line))
+            .collect();
+        let lines: Vec<String> = self.notices.iter().cloned().chain(hints).collect();
+        match self.pane_for(NOTICES_STREAM) {
+            Some(pane) => {
+                for line in &lines {
+                    self.push(pane, line);
+                }
+            }
+            // No pane shows the notices now, so each line waits for one.
+            None => self.unshown = lines,
         }
     }
 
@@ -756,16 +790,17 @@ impl Model {
             .map_or(PaneId::NOTICES, |world| world.pane)
     }
 
-    /// Adds the system line `-- <text>` at the bottom of the pane of the notices. After a Reset
-    /// clears the panes of the worlds, the line comes back in the pane of the world in focus.
+    /// Adds the system line `-- <text>` at the bottom of the pane that shows the notices of the
+    /// world in focus. After a Reset clears the panes of the worlds, the line comes back in the
+    /// pane that shows the notices then.
     pub(crate) fn notice(&mut self, text: &str) {
         let line = format!("-- {text}");
         self.show_notice(&line);
         self.notices.push(line);
     }
 
-    /// Adds the line `-- <text>` at the bottom of the pane of the notices, for a key that did
-    /// nothing.
+    /// Adds the line `-- <text>` at the bottom of the pane that shows the notices of the world
+    /// in focus, for a key that did nothing.
     /// Unlike [`Self::notice`], the line does not come back after a Reset, because it is about
     /// one moment.
     pub(crate) fn hint(&mut self, text: &str) {
@@ -775,9 +810,15 @@ impl Model {
     /// Adds `line` at the bottom of the pane that shows the notices of the world in focus. A
     /// layout with no `output` has no such pane, so the line waits for one.
     fn show_notice(&mut self, line: &str) {
-        match self.pane_for(NOTICES_STREAM) {
-            Some(pane) => self.push(pane, line),
-            None => self.unshown.push(line.to_owned()),
+        // The lines that waited show first, so the lines keep their order.
+        self.show_unshown();
+        if let Some(pane) = self.pane_for(NOTICES_STREAM) {
+            self.push(pane, line);
+        } else {
+            if self.unshown.len() == UNSHOWN_MAX {
+                self.unshown.remove(0);
+            }
+            self.unshown.push(line.to_owned());
         }
     }
 

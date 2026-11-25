@@ -2435,7 +2435,7 @@ async fn an_unknown_layout_for_this_world() {
     client
         .wait_rows("the notice", |rows| {
             rows.iter()
-                .any(|row| row.starts_with("-- the save of the layout failed"))
+                .any(|row| row.starts_with("-- the server did not take the change"))
                 && joined(rows).contains("gone")
         })
         .await;

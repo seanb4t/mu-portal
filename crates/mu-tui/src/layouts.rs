@@ -32,7 +32,6 @@ impl Model {
     /// saves it. The choice in use then names it.
     fn save_as(&mut self, name: &LayoutName, layout: Layout) -> Vec<Effect> {
         let lines = layout.lines();
-        // The choice in use then names the saved layout.
         let then = Some(self.choice());
         self.set_chosen(name.as_str().to_owned(), layout);
         vec![Effect::SaveLayout {

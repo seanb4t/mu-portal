@@ -27,9 +27,21 @@ impl fmt::Display for LineError {
         write!(
             f,
             "column {}, `{}`: {}",
-            self.column, self.word, self.reason
+            self.column,
+            shown(&self.word),
+            self.reason
         )
     }
+}
+
+/// The word `word` of a line for the text of an error: its first 64 characters, with U+FFFD in
+/// place of each control character. A word comes from a request or a file, so it can hold any
+/// character.
+pub(crate) fn shown(word: &str) -> String {
+    word.chars()
+        .take(64)
+        .map(|c| if c.is_control() { '\u{fffd}' } else { c })
+        .collect()
 }
 
 impl std::error::Error for LineError {}

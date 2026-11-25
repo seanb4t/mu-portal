@@ -372,7 +372,7 @@ impl Layout {
     }
 
     /// Sets the size of `id` to `percent`, kept in the range that [`percent_range`] gives. With
-    /// no such range, the plan stays as it is.
+    /// no such range, the split has no room for another size, which is an error.
     fn resize_within(
         &self,
         id: &BlockId,
@@ -397,8 +397,8 @@ impl Layout {
     ///
     /// # Errors
     ///
-    /// A [`LayoutError`] for an id that the layout does not have, and for a block that takes
-    /// no size.
+    /// A [`LayoutError`] for an id that the layout does not have, for a block that takes no
+    /// size, and for a split with no room for another size.
     pub fn resize_by(
         &self,
         id: &BlockId,
@@ -422,8 +422,8 @@ impl Layout {
     ///
     /// # Errors
     ///
-    /// A [`LayoutError`] for an id that the layout does not have, and for a block that takes
-    /// no size.
+    /// A [`LayoutError`] for an id that the layout does not have, for a block that takes no
+    /// size, and for a split with no room for another size.
     pub fn resize_border(
         &self,
         id: &BlockId,

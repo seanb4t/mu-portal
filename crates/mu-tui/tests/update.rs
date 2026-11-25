@@ -1405,3 +1405,23 @@ fn a_list_that_says_disconnected_clears_the_connect_time() {
     );
     assert_eq!(status_row(&model), "disconnected");
 }
+
+#[test]
+fn a_failed_save_puts_back_the_last_good_layout_of_the_server() {
+    let mut model = laptop();
+    let mut good = layout_config(CLASSIC, &[], &["world"], &[]);
+    "classic".clone_into(&mut good.layout_name);
+    configure(&mut model, good);
+    // The next reply holds a layout that this client cannot read, so the layout stays.
+    let mut bad = layout_config(&["bogus"], &[], &["world"], &[]);
+    "h2".clone_into(&mut bad.store_hash);
+    store_hash(&mut model, "h2");
+    update(&mut model, Msg::Config(Ok(Box::new(bad))));
+    assert_eq!(model.layout().lines(), CLASSIC);
+    run_command(&mut model, "/pane hide tabs");
+    update(&mut model, Msg::LayoutSaved(Err("down".to_owned())));
+    assert_eq!(model.layout().lines(), CLASSIC);
+    assert_eq!(model.layout_name(), "classic");
+    // The notice of the bad layout shows one time, not again at the restore.
+    assert_eq!(notices_of(&model, "the bad layout"), 1);
+}

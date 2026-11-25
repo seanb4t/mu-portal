@@ -30,7 +30,7 @@ The API has these calls for the configuration:
 | `ReloadConfig` | Reads the directory again. It applies the client layers, and lists the bad files and the changed files that apply only at the restart |
 | `ListLayouts` | Returns each layout with its lines: the built-in ones and the good layout files |
 | `DescribeLayout` | Takes a layout name, a width and a height. It returns the rectangle and the data source of each block |
-| `SaveLayout` | Writes a layout file. With a device name, the layer of that device then names the layout |
+| `SaveLayout` | Writes a layout file. With a device name, the layer of that device then names the layout. With a key too, the entry of that world or game names it |
 | `EditLayout` | Applies one change to a layout, and saves the result |
 | `UseLayout` | Sets the layout of a device, or the layout of one world or one game on that device |
 
@@ -38,13 +38,13 @@ The revision is a hash of the layer files of one client. Only a change to a laye
 
 ## The start of a client
 
-Before the screen opens, `mu client` lists the worlds, opens `WatchConfig`, waits for the first store hash and calls `GetClientConfig`. The three steps share one wait, the `connect_wait` option of the server URL. The client builds its keymap and its echo setting from the reply, and shows a notice for each bad layer.
+Before the screen opens, `mu client` lists the worlds, opens `WatchConfig`, waits for the first store hash and calls `GetClientConfig`. The three steps share one wait, the `connect_wait` option of the server URL. The client builds its keymap, its echo setting, its layouts, its tab label and its statusline from the reply, and shows a notice for each bad layer.
 
 <LikeC4View viewId="clientStart" />
 
 ## A reload
 
-`mu config reload` asks the server to read its directory again. The store applies the new client layers and sends a new store hash on `WatchConfig`. Each attached client then calls `GetClientConfig`. If the revision is new, the client replaces its keymap and its echo setting without a restart. A change to a world or to `server.toml` applies only at the restart of the server.
+`mu config reload` asks the server to read its directory again. The store applies the new client layers and sends a new store hash on `WatchConfig`. Each attached client then calls `GetClientConfig`. If the revision is new, the client replaces its keymap, its echo setting, its layouts, its tab label and its statusline without a restart. A change to a world or to `server.toml` applies only at the restart of the server.
 
 <LikeC4View viewId="configReload" />
 

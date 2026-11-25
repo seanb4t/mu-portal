@@ -316,7 +316,7 @@ If the new name is not a good layout name, the client does not save, and a notic
 
 If the server refuses a save, a notice gives the reason, and the screen goes back to the layout that the server holds.
 
-A layout file or a device file can be a symbolic link. A save then writes the linked file and keeps the link.
+A layout file or a device file can be a symbolic link to a regular file. A save then writes the linked file and keeps the link. The server refuses a save through a link to anything else.
 
 A line of a plan has at most 256 characters, and names an anchor only once.
 

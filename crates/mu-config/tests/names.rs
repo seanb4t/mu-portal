@@ -159,10 +159,25 @@ fn a_world_key_of_129_characters_is_read() {
 }
 
 #[test]
-fn a_world_key_of_130_characters_is_refused() {
+fn a_world_key_with_a_part_of_65_characters_is_refused() {
     let key = format!("{}/{}", "a".repeat(64), "b".repeat(65));
-    let text = key.parse::<WorldKey>().expect_err("a long key").to_string();
-    assert!(text.contains("129"), "{text}");
+    let text = key
+        .parse::<WorldKey>()
+        .expect_err("a long part")
+        .to_string();
+    assert!(text.contains("64"), "{text}");
+}
+
+#[test]
+fn a_part_has_at_most_64_characters() {
+    assert!(mu_config::is_part(&"a".repeat(64)));
+    assert!(!mu_config::is_part(&"a".repeat(65)));
+    // A world id, a game name and a world key hold the limit of a part.
+    let long = format!("{}/b", "a".repeat(65));
+    assert!(long.parse::<WorldId>().is_err());
+    assert!(long.parse::<WorldKey>().is_err());
+    assert!(GameName::new(&"a".repeat(65)).is_none());
+    assert_eq!(mu_config::WORLD_KEY_MAX, 129);
 }
 
 #[test]

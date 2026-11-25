@@ -312,8 +312,10 @@ fn step(model: &mut Model, msg: Msg) -> Vec<Effect> {
         }
         Msg::LayoutSaved(Err(reason)) => {
             // The screen goes back to what the server holds, and the next fetch confirms it.
+            model.notice(&format!(
+                "the server did not take the change of the layout: {reason}"
+            ));
             model.restore_layouts();
-            model.notice(&format!("the save of the layout failed: {reason}"));
             vec![Effect::FetchConfig]
         }
         Msg::Layouts { next, names } => on_layouts(model, next, names),
@@ -604,7 +606,6 @@ fn press_left(model: &mut Model, column: u16, row: u16) {
             pressed: (column, row),
             moved: false,
             refused: None,
-            rewritten: false,
         });
         return;
     }
@@ -650,18 +651,17 @@ fn drag_left(model: &mut Model, column: u16, row: u16) {
         let resized = drag
             .from
             .resize_border(&border.owner, border.cells_at(at), border.total);
-        let (refused, rewritten) = match resized {
+        // A resize changes one line of the plan, so mu never writes the plan again here.
+        let refused = match resized {
             Ok(changed) => {
-                let rewritten = changed.rewritten;
                 model.show_layout(changed.layout);
-                (None, rewritten)
+                None
             }
-            Err(error) => (Some(error.to_string()), false),
+            Err(error) => Some(error.to_string()),
         };
         if let Some(drag) = &mut model.drag {
             drag.moved = true;
             drag.refused = refused;
-            drag.rewritten = rewritten;
         }
         return;
     }
@@ -686,9 +686,6 @@ fn release_left(model: &mut Model) -> Vec<Effect> {
                     model.hint(reason);
                 }
                 return Vec::new();
-            }
-            if drag.rewritten {
-                model.notice(mu_config::layout::REWRITTEN);
             }
             return model.save_shown();
         }

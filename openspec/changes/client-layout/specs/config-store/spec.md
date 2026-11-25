@@ -110,7 +110,7 @@ Before a write, the server SHALL make `clients`, `clients/layouts` and `clients/
 - **AND** `<dir>/clients` is still an empty file
 
 ### Requirement: A write checks first, and keeps links and permissions
-The server SHALL make each check of a write call before its first write, so a refused call writes nothing. It SHALL store the lines of a layout as mu writes them. A write to a file that is a symbolic link SHALL replace the file that the link names, and SHALL keep the link. A write SHALL keep the permissions of a file that it replaces. An error of a write SHALL hold no line of a file.
+The server SHALL make each check of a write call before its first write, so a refused call writes no file and makes no directory. It SHALL store the lines of a layout as mu writes them. A write to a symbolic link to a regular file SHALL replace that file and keep the link. A link to anything else SHALL be an error. A write SHALL keep the permissions of a file that it replaces. An error of a write SHALL hold no line of a file.
 
 #### Scenario: A refused save writes no layout file
 - **GIVEN** `<dir>/clients/devices/laptop.toml` holds `echo = `, and a server serves `<dir>`
@@ -127,6 +127,27 @@ The server SHALL make each check of a write call before its first write, so a re
 - **WHEN** a client calls `UseLayout` with the device `laptop` and the layout `status`
 - **THEN** the path is still a symbolic link, and the linked file holds `# shared` and `layout = "status"`
 
+#### Scenario: A link to a directory
+- **GIVEN** `<dir>/clients/layouts/mine.toml` is a symbolic link to a directory outside `<dir>`
+- **WHEN** a client calls `SaveLayout` with the name `mine` and the line `editor`
+- **THEN** the call fails, its error contains `clients/layouts/mine.toml` and `no regular file`, and holds no path outside `<dir>`
+- **AND** the path is still a symbolic link, and the directory holds what it held
+
+#### Scenario: A link to nothing
+- **GIVEN** `<dir>/clients/layouts/mine.toml` is a symbolic link to a file that does not exist
+- **WHEN** a client calls `SaveLayout` with the name `mine` and the line `editor`
+- **THEN** the call fails, its error contains `a link to nothing`, and the file still does not exist
+
+#### Scenario: A refused call makes no directory
+- **GIVEN** a server serves `<dir>`, which holds no `clients` directory
+- **WHEN** a client calls `UseLayout` with the device `laptop`, an empty layout name and the key `alpha/ari`
+- **THEN** the call fails, and `<dir>/clients` does not exist
+
+#### Scenario: A save that makes a good layer bad
+- **GIVEN** the text of `<dir>/clients/devices/laptop.toml` changed after the server read it, so that the edit of the field `layout` gives a bad layer
+- **WHEN** a client calls `SaveLayout` with the name `mine`, the line `editor` and the device `laptop`
+- **THEN** the call fails, and `<dir>/clients/layouts/mine.toml` does not exist
+
 #### Scenario: A write keeps the permissions
 - **GIVEN** `<dir>/clients/devices/laptop.toml` has the mode 0640
 - **WHEN** a client calls `UseLayout` with the device `laptop` and the layout `status`
@@ -141,6 +162,14 @@ The server SHALL make each check of a write call before its first write, so a re
 - **GIVEN** a server serves an empty configuration directory
 - **WHEN** a client calls `SaveLayout` with the lines `  output  ` and `editor   below   main`
 - **THEN** the layout file holds the lines `output` and `editor below main`
+
+### Requirement: A write ends with a reload if its caller goes away
+A write call SHALL finish its files and the reload after it, also if its caller goes away in the middle, as a call with a deadline that ends does. So the server never serves an older state than its files hold after a write.
+
+#### Scenario: The caller goes away
+- **GIVEN** a server serves `<dir>`, and a client calls `SaveLayout` with the name `mine` and the line `editor`
+- **WHEN** the client drops the call after the server started it
+- **THEN** `<dir>/clients/layouts/mine.toml` exists, and the store hash of the server changed
 
 ### Requirement: SaveLayout with a key sets the entry of a world
 The call `SaveLayout` SHALL also take an optional key, which is a world id or the name of a game. With a device name and a key, the server SHALL set the entry of that key in `[world-layouts]` of the device layer, in the same write as the layout file, and SHALL NOT set the field `layout`. A key with no device name SHALL be an error, and SHALL write nothing.
@@ -332,6 +361,11 @@ A key of `[world-layouts]` SHALL be a world id or the name of a game. Any other 
 - **GIVEN** a server serves `<dir>`, which holds no `clients` directory
 - **WHEN** the user runs `mu layout forget --world alpha/ari --device laptop`
 - **THEN** the exit status is 1, stderr holds `alpha/ari`, and `<dir>/clients/devices/laptop.toml` does not exist
+
+#### Scenario: Forget an entry that is not there, in each form of the file
+- **GIVEN** the device file has no final newline, or CRLF line ends, or an empty `[world-layouts]` table, and holds no entry `alpha/aria`
+- **WHEN** a client calls `UseLayout` with an empty layout name and the key `alpha/aria`
+- **THEN** the call fails, and the text of the file is the same as before
 
 #### Scenario: A use with a bad world id
 - **GIVEN** a server serves `<dir>`

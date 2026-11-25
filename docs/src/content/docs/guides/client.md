@@ -7,7 +7,7 @@ sidebar:
 
 This guide shows how `mu client` finds its server and how long it waits for it. It also shows how to change the keys, the echo line and the tab label of the client. The guide [Layouts](/guides/layouts/) shows how to change the screen. The echo line is the row that shows each text that you send, after `> `.
 
-The server owns the configuration. The client reads no configuration file. It gets its keys and its echo line from the server that it attaches to.
+The server owns the configuration. The client reads no configuration file. It gets its keys, its echo line, its layout, its tab label and its statusline from the server that it attaches to.
 
 ## The server URL
 

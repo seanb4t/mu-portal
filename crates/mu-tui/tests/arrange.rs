@@ -511,3 +511,75 @@ fn rows_sized(app: &mut Model, width: u16) -> Vec<String> {
         })
         .collect()
 }
+
+/// The configuration of [`laptop_with`] for `lines`.
+fn mine_config(lines: &[&str]) -> GetClientConfigResponse {
+    GetClientConfigResponse {
+        revision: format!("{lines:?}"),
+        echo: "dim".to_owned(),
+        layout_name: "mine".to_owned(),
+        layout: lines.iter().map(ToString::to_string).collect(),
+        tab_label: "{world}".to_owned(),
+        statusline_left: vec!["world".to_owned()],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn a_configuration_with_the_same_revision_keeps_arrange_mode() {
+    let lines = ["output", "editor below main"];
+    let mut app = laptop_with(&lines);
+    arrange(&mut app);
+    // The fetch after a failed save can bring the same configuration again.
+    app.apply_config(mine_config(&lines));
+    assert!(app.arranges());
+    assert!(
+        !app.notices()
+            .iter()
+            .any(|line| line.contains("arrange mode ended"))
+    );
+}
+
+#[test]
+fn a_failed_save_ends_arrange_mode_with_its_own_reason() {
+    let mut app = laptop_with(&["output", "editor below main"]);
+    arrange(&mut app);
+    let effects = update(&mut app, Msg::LayoutSaved(Err("down".to_owned())));
+    assert_eq!(effects, [Effect::FetchConfig]);
+    assert!(!app.arranges());
+    let ended: Vec<&String> = app
+        .notices()
+        .iter()
+        .filter(|line| line.contains("arrange mode ended"))
+        .collect();
+    assert_eq!(ended.len(), 1, "{:?}", app.notices());
+    assert!(ended[0].contains("did not take the change"), "{ended:?}");
+    assert!(!ended[0].contains("configuration changed"), "{ended:?}");
+}
+
+#[test]
+fn a_focus_move_ends_arrange_mode_and_puts_the_layout_back() {
+    let lines = ["output", "tabs above main", "editor below main"];
+    let mut app = laptop_with(&lines);
+    arrange(&mut app);
+    // The letters follow the screen: tabs, main, editor. The key `-` hides the tabs.
+    keys(&mut app, "a-");
+    assert_ne!(app.layout().lines(), lines);
+    update(
+        &mut app,
+        Msg::Run {
+            entry: mu_tui::EntryId::named("focus-next").expect("an entry"),
+            arg: None,
+        },
+    );
+    assert!(!app.arranges());
+    // The layout is one layout for both worlds here, and it is the one from before the mode.
+    assert_eq!(app.layout().lines(), lines);
+    assert!(
+        app.notices()
+            .iter()
+            .any(|line| line.contains("the focus moved") && line.contains("arrange mode ended")),
+        "{:?}",
+        app.notices()
+    );
+}

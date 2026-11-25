@@ -46,7 +46,7 @@ target/debug/mu client
 
 `mu` with no verb also starts the client. The client finds the server on the same default socket. To name another socket, give the client a server URL, such as `--server unix:///tmp/mu/s.sock`. If no server answers, the client starts one in the background with only the configured worlds. That server writes its output to `server.log` next to the socket.
 
-Before the screen opens, the client gets its keys and its echo line from the server. The server picks them for the device name of the client. The default device name is the host name of the machine. The guide [The client configuration](/guides/client/) describes the server URL, the device name and the client layers.
+Before the screen opens, the client gets its keys, its echo line and its layout from the server. The server picks them for the device name of the client. The default device name is the host name of the machine. The guide [The client configuration](/guides/client/) describes the server URL, the device name and the client layers.
 
 The top row lists the worlds. The world in focus is in square brackets: `[alpha/aria] beta/bryn`. A world with lines that wait for the server shows their count, for example `(2 waiting)`. The rows below show the lines of the world in focus. The bottom row is the pose editor, where you write the text to send. It grows with its text.
 

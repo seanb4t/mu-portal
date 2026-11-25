@@ -79,6 +79,29 @@ The lines of a world SHALL stay together, and the main output SHALL show them, a
 - **WHEN** the user runs the command `/pane hide main`, the world sends the line `While no output.`, and the user runs the command `/place output above editor`
 - **THEN** the pane of `main` shows `Welcome, aria.` and `While no output.`
 
+### Requirement: A notice waits for an output
+If the layout on the screen holds no `output`, a notice and a hint of the client SHALL wait. The client SHALL show the lines that wait, in the order of their arrival and one time each, as soon as the layout on the screen holds an `output`: after a change of the layout, a new configuration, or a move of the focus to a world with another layout.
+
+#### Scenario: A hint with no output
+- **GIVEN** the layout `classic` is in use, and the user ran `/pane hide main` and then `/layout plan`
+- **WHEN** the user runs the command `/place output above editor`
+- **THEN** the pane of `main` shows the line `-- 1. tabs`
+
+#### Scenario: A new configuration brings an output
+- **GIVEN** the layout in use holds only the line `editor`, and the user ran `/layout plan`
+- **WHEN** the client takes a configuration whose layout holds the lines `output` and `editor below main`
+- **THEN** the pane of `main` shows the line `-- 1. editor`
+
+#### Scenario: The focus moves to a world with an output
+- **GIVEN** the world `alpha/aria` has a layout of the one line `editor`, the world `beta/bryn` has the layout `classic`, and the user ran `/layout plan` with the focus on `alpha/aria`
+- **WHEN** the user runs the command `/focus beta/bryn`
+- **THEN** the pane of `main` shows the line `-- 1. editor`
+
+#### Scenario: Lines that waited show one time and in order
+- **GIVEN** the layout in use holds only the line `editor`, and a notice that contains `nowhere/nobody` waits
+- **WHEN** the client takes a configuration with an `output`, and the user then runs `/layout plan`
+- **THEN** the notice shows one time, above the line `-- 1. output`
+
 ### Requirement: A line stays in the output where it arrived
 The client SHALL put each line into one `output` when the line arrives. That SHALL be the `output` that shows the stream of the line at that time, for the world of the line. A later change of the layout SHALL NOT move the line to the lines of another stream. A notice SHALL be a line of the stream `notices` for the world in focus. The notice of a line that the server refused SHALL be a line of the stream `notices` for the world of that line.
 
@@ -188,7 +211,7 @@ A layout SHALL be a plan: a list of 1 to 32 lines in order. mu SHALL show each l
 - **THEN** stdout holds `1. output`, `2. tabs above main` and `3. editor below main`
 
 ### Requirement: A line and a key have a limit
-A line of a plan SHALL have at most 256 characters, and SHALL NOT name one anchor twice. A key of `[world-layouts]` SHALL have at most 129 characters. A line or a key past a limit SHALL be an error that names the limit.
+A line of a plan SHALL have at most 256 characters as mu writes it, and SHALL NOT name one anchor twice. Each part of a key of `[world-layouts]` SHALL have at most 64 characters, so a key has at most 129. A line or a key past a limit SHALL be an error that names the limit.
 
 #### Scenario: A line of 257 characters
 - **GIVEN** a plan whose first line is `editor` and then 251 spaces
@@ -200,10 +223,20 @@ A line of a plan SHALL have at most 256 characters, and SHALL NOT name one ancho
 - **WHEN** mu reads the plan
 - **THEN** the error names line 2 and holds `twice`
 
-#### Scenario: A key of 130 characters
+#### Scenario: A key with a part of 65 characters
 - **GIVEN** a key of a part of 64 characters, `/` and a part of 65 characters
 - **WHEN** mu reads the key
-- **THEN** the error holds `129`
+- **THEN** the error holds `64`
+
+#### Scenario: A line that mu writes with 257 characters
+- **GIVEN** a plan whose last line has 256 characters and ends with the size `,300`, which mu writes as `, 300`
+- **WHEN** mu reads the plan
+- **THEN** the error names that line and holds `256`
+
+#### Scenario: A resize that makes a line too long
+- **GIVEN** a plan whose last line has 255 characters and ends with the size `, 3`
+- **WHEN** mu sets the size of that block to 300 cells
+- **THEN** the change is refused with an error that holds `256`
 
 ### Requirement: The order of the lines decides the shape
 A line SHALL split only the pane that its anchor has after the lines before it. So the same lines in another order can give another screen.

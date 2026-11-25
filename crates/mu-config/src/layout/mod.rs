@@ -84,7 +84,7 @@ impl fmt::Display for LayoutError {
         if let Some(column) = self.column {
             write!(f, "column {column}, ")?;
         }
-        write!(f, "`{}`: {}", self.word, self.reason)
+        write!(f, "`{}`: {}", parse::shown(&self.word), self.reason)
     }
 }
 
@@ -142,6 +142,17 @@ impl Layout {
                     line,
                     row.name,
                     format!("a layout holds `{}` at most {} times", row.name, row.max),
+                ));
+            }
+            // The limit is on the line as mu writes it, so each plan reads back.
+            let written = step.to_string();
+            if written.chars().count() > LINE_MAX {
+                return Err(LayoutError::at(
+                    line,
+                    step.id.as_str(),
+                    format!(
+                        "a line has at most {LINE_MAX} characters, and mu writes this one with more"
+                    ),
                 ));
             }
             tree::apply(&mut root, step, line)?;

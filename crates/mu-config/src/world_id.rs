@@ -57,13 +57,19 @@ impl WorldId {
 }
 
 /// The rule of one part of a world id, as the end of a sentence.
-pub const PART_RULE: &str = "holds only a-z, 0-9 and '-', and starts with a letter";
+pub const PART_RULE: &str =
+    "holds 1 to 64 characters of a-z, 0-9 and '-', and starts with a letter";
+
+/// The most characters of one part of a world id.
+pub const PART_MAX: usize = 64;
 
 /// Whether `part` is one part of a world id. [`PART_RULE`] states the rule.
 #[must_use]
 pub fn is_part(part: &str) -> bool {
     let mut chars = part.chars();
-    chars.next().is_some_and(|first| first.is_ascii_lowercase())
+    // Each character is one byte, so the count of the bytes is the count of the characters.
+    part.len() <= PART_MAX
+        && chars.next().is_some_and(|first| first.is_ascii_lowercase())
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
@@ -130,8 +136,9 @@ impl GameName {
     }
 }
 
-/// The most characters of a world key: two parts of 64 characters and the `/`.
-pub const WORLD_KEY_MAX: usize = 129;
+/// The most characters of a world key: two parts of a world id and the `/`. Each key holds
+/// it, because each part holds [`PART_MAX`].
+pub const WORLD_KEY_MAX: usize = 2 * PART_MAX + 1;
 
 impl WorldKey {
     /// The key as text.
@@ -154,7 +161,7 @@ impl fmt::Display for BadWorldKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{:?} is not a world id of the form <game>/<character>, and not the name of a game: each part {PART_RULE}, and a key has at most {WORLD_KEY_MAX} characters",
+            "{:?} is not a world id of the form <game>/<character>, and not the name of a game: each part {PART_RULE}",
             self.text
         )
     }
@@ -169,9 +176,6 @@ impl FromStr for WorldKey {
         let bad = || BadWorldKey {
             text: text.to_owned(),
         };
-        if text.chars().count() > WORLD_KEY_MAX {
-            return Err(bad());
-        }
         if let Some(game) = GameName::new(text) {
             return Ok(Self::Game(game));
         }

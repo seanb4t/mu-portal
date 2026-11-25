@@ -222,8 +222,8 @@ async fn save_layout(
     Msg::LayoutSaved(within(call, CALL_LIMIT, UNKNOWN_RESULT).await)
 }
 
-/// The end of the text of a call of the layouts that got no answer in time. The server can
-/// still do the write.
+/// The end of the text of a save or a choice of a layout that got no answer in time. The
+/// server can still do the write.
 const UNKNOWN_RESULT: &str = ", so the server can have the change or not";
 
 /// The key of the entry of `choice`, or none for the field `layout`.

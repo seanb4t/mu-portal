@@ -39,10 +39,23 @@ pub fn ensure_dir(dir: &Path, shown: &str) -> Result<(), DirError> {
     }
 }
 
-/// The file that a write to `target` replaces: the file that a link names, or `target`.
-fn resolved(target: &Path) -> io::Result<PathBuf> {
+/// The file that a write to `target` replaces: the file that a link names, or `target`. The
+/// write follows a link only to a regular file.
+///
+/// The error is the text of the reason, with no path of the file system in it.
+fn resolved(target: &Path) -> Result<PathBuf, String> {
     match fs::symlink_metadata(target) {
-        Ok(found) if found.file_type().is_symlink() => fs::canonicalize(target),
+        Ok(found) if found.file_type().is_symlink() => {
+            let named = fs::canonicalize(target)
+                .map_err(|_| "is a link to nothing, so the server does not write it".to_owned())?;
+            match fs::metadata(&named) {
+                Ok(found) if found.is_file() => Ok(named),
+                _ => Err(
+                    "is a link to something that is no regular file, so the server does not write it"
+                        .to_owned(),
+                ),
+            }
+        }
         _ => Ok(target.to_path_buf()),
     }
 }
@@ -60,7 +73,10 @@ pub fn write_whole(target: &Path, shown: &str, text: &str) -> Result<(), String>
     let dir = target
         .parent()
         .ok_or_else(|| failed(&"the path has no directory"))?;
-    let mut file = tempfile::NamedTempFile::new_in(dir).map_err(|error| failed(&error))?;
+    // The error of `tempfile` holds the path of the directory, which can be outside the
+    // configuration directory for a linked file. The kind of the error says enough.
+    let mut file = tempfile::NamedTempFile::new_in(dir)
+        .map_err(|error| failed(&io::Error::from(error.kind())))?;
     file.write_all(text.as_bytes())
         .map_err(|error| failed(&error))?;
     // A file that the write replaces keeps its permissions.
@@ -97,7 +113,7 @@ fn not_toml(text: &str, error: &toml_edit::TomlError) -> String {
     let Some(span) = error.span() else {
         return error.message().to_owned();
     };
-    let before = &text[..span.start.min(text.len())];
+    let before = text.get(..span.start).unwrap_or(text);
     let line = before.matches('\n').count() + 1;
     let column = before
         .rsplit('\n')
@@ -105,6 +121,23 @@ fn not_toml(text: &str, error: &toml_edit::TomlError) -> String {
         .map_or(0, |last| last.chars().count())
         + 1;
     format!("line {line}, column {column}: {}", error.message())
+}
+
+/// Whether the layer `text` holds a value at `path`, which is as in [`edit_field`].
+///
+/// # Errors
+///
+/// The text of the error for a text that is no TOML.
+pub fn has_field(text: &str, path: &[&str]) -> Result<bool, String> {
+    let file: DocumentMut = text.parse().map_err(|error| not_toml(text, &error))?;
+    Ok(match path {
+        [field] => file.get(field).is_some(),
+        [table, key] => file
+            .get(table)
+            .and_then(Item::as_table_like)
+            .is_some_and(|entries| entries.contains_key(key)),
+        _ => false,
+    })
 }
 
 /// One change of a device layer.

@@ -1423,3 +1423,73 @@ fn a_step_with_no_anchor_is_an_error() {
 fn a_save_from_a_built_in_layout_with_no_device_is_an_error() {
     assert!(mu_config::save_target(&Choice::Default, "classic", None).is_err());
 }
+
+/// A plan of six outputs with ids of 32 characters above the editor, and then the line `last`
+/// with a seventh output above all six. `size` is the text of its size, with its comma.
+fn seven_outputs(size: &str) -> Vec<String> {
+    let ids: Vec<String> = "abcdef"
+        .chars()
+        .map(|first| format!("{first}{}", "x".repeat(31)))
+        .collect();
+    let mut lines = vec!["editor".to_owned()];
+    lines.extend(ids.iter().map(|id| format!("output as {id} above editor")));
+    let last = format!("g{}", "x".repeat(17));
+    lines.push(format!(
+        "output as {last} above {}{size}",
+        ids.join(" and ")
+    ));
+    lines
+}
+
+#[test]
+fn a_line_that_mu_writes_with_256_characters_is_read() {
+    let lines = seven_outputs(", 30");
+    assert_eq!(lines[7].chars().count(), 256);
+    let layout = Layout::parse(&lines).expect("good");
+    assert_eq!(layout.lines(), lines);
+}
+
+#[test]
+fn a_line_that_mu_writes_with_more_than_256_characters_is_refused() {
+    // The line has 256 characters, and mu writes `,300` as `, 300`, which makes 257.
+    let lines = seven_outputs(",300");
+    assert_eq!(lines[7].chars().count(), 256);
+    let text = Layout::parse(&lines)
+        .expect_err("the written line is too long")
+        .to_string();
+    assert!(text.contains("line 8") && text.contains("256"), "{text}");
+}
+
+#[test]
+fn a_resize_that_makes_a_line_too_long_is_refused() {
+    // The line has 255 characters with the size `, 3`, 256 with `, 30` and 257 with `, 300`.
+    let lines = seven_outputs(", 3");
+    assert_eq!(lines[7].chars().count(), 255);
+    let layout = Layout::parse(&lines).expect("good");
+    let last = id_of(&format!("g{}", "x".repeat(17)));
+    assert!(layout.resize(&last, Size::Cells(30)).is_ok());
+    let text = layout
+        .resize(&last, Size::Cells(300))
+        .expect_err("257 characters")
+        .to_string();
+    assert!(text.contains("256"), "{text}");
+}
+
+#[test]
+fn a_word_of_an_error_holds_no_control_character() {
+    let text = Layout::parse(&["editor", "\u{1b}[2J above editor"])
+        .expect_err("no block")
+        .to_string();
+    assert!(!text.chars().any(char::is_control), "{text:?}");
+    let size = Size::parse("\u{1b}[2J").expect_err("no size").to_string();
+    assert!(!size.chars().any(char::is_control), "{size:?}");
+}
+
+proptest! {
+    #[test]
+    fn the_lines_of_a_plan_read_back(moves in prop::collection::vec(a_move(), 0..24)) {
+        let layout = grown(&moves);
+        let read = Layout::parse(&layout.lines());
+        prop_assert_eq!(read, Ok(layout));
+    }
+}

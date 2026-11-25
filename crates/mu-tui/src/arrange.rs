@@ -45,7 +45,7 @@ pub(crate) enum Drop {
 #[derive(Clone, Debug)]
 pub(crate) struct Arrange {
     /// The layout from before the mode, which Esc restores.
-    before: Layout,
+    pub(crate) before: Layout,
     /// The layout before each change of the mode, and whether mu wrote the plan again before
     /// it, for the undo.
     undo: Vec<(Layout, bool)>,

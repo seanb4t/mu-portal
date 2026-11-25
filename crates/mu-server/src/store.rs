@@ -773,7 +773,7 @@ impl Store {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WriteError {
     /// The request is one that the rules refuse. The store checks a request before its first
-    /// write, so nothing was written.
+    /// write, so it wrote no file and made no directory.
     Refused(String),
     /// The server could not write.
     Failed(String),
@@ -834,14 +834,27 @@ struct ChoiceEdit {
 }
 
 impl ChoiceEdit {
-    /// Writes the layer.
-    fn write(&self) -> Result<(), WriteError> {
+    /// Writes the layer, and makes its directory first if it is missing.
+    fn write(&self, root: &Path) -> Result<(), WriteError> {
+        ensure_dirs(root)?;
         write::write_whole(&self.target, &self.path, &self.text).map_err(WriteError::Failed)
+    }
+
+    /// Writes the layer after the write of the layout file at `layout`. An error says that
+    /// the layout file is written, because the call fails with one of its two files changed.
+    fn write_after(&self, root: &Path, layout: &str) -> Result<(), WriteError> {
+        self.write(root).map_err(|error| match error {
+            WriteError::Failed(reason) => {
+                WriteError::Failed(format!("{reason}. The layout file {layout} is written"))
+            }
+            refused @ WriteError::Refused(_) => refused,
+        })
     }
 }
 
 /// The change that sets the choice `choice` of the device layer of `device` under `root` to
-/// the layout `name`, or removes it for no name. It writes no file of the layer. The layer
+/// the layout `name`, or removes it for no name. It writes no file and makes no directory. The
+/// layer
 /// must be good before the change and after it, and a removal must find its entry. A caller
 /// makes this check before its first write, so a refused request writes nothing.
 fn choice_edit(
@@ -855,7 +868,6 @@ fn choice_edit(
     if let Some(notice) = part.bad_at(&path) {
         return Err(WriteError::Refused(notice.text));
     }
-    ensure_dirs(root)?;
     let target = root.join(&path);
     let text = match std::fs::read_to_string(&target) {
         Ok(text) => text,
@@ -871,7 +883,8 @@ fn choice_edit(
     }
     .map_err(|error| WriteError::Refused(format!("{path}: {error}")))?;
     if let (None, Choice::Entry(key)) = (name, choice)
-        && edited == text
+        && !write::has_field(&text, &[WORLD_LAYOUTS_TABLE, key.as_str()])
+            .map_err(|error| WriteError::Refused(format!("{path}: {error}")))?
     {
         return Err(WriteError::Refused(format!(
             "{path} holds no entry {:?} of [{WORLD_LAYOUTS_TABLE}]",
@@ -904,7 +917,22 @@ impl Store {
     ///
     /// A `work` that is done with a reload that failed is an error: the files hold the change,
     /// and the server does not serve it yet.
+    ///
+    /// The lock, the work and the reload run in a task of their own. So a caller that goes
+    /// away in the middle, such as a call with a deadline that ends, does not stop the write
+    /// between its files or before the reload.
     async fn write<T: Send + 'static>(
+        self: &Arc<Self>,
+        work: impl FnOnce(&Path, &ClientPart) -> Result<T, WriteError> + Send + 'static,
+    ) -> Result<T, WriteError> {
+        let store = Arc::clone(self);
+        tokio::spawn(async move { store.write_locked(work).await })
+            .await
+            .map_err(|error| WriteError::Failed(error.to_string()))?
+    }
+
+    /// The write of [`Self::write`], in the task that the caller cannot stop.
+    async fn write_locked<T: Send + 'static>(
         &self,
         work: impl FnOnce(&Path, &ClientPart) -> Result<T, WriteError> + Send + 'static,
     ) -> Result<T, WriteError> {
@@ -942,7 +970,7 @@ impl Store {
     /// A [`WriteError`] for a bad name, a bad plan, a bad device, a bad key, a key with no
     /// device, a bad device layer, and for a failed write.
     pub async fn save_layout(
-        &self,
+        self: &Arc<Self>,
         name: &str,
         lines: Vec<String>,
         device: Option<&str>,
@@ -969,7 +997,9 @@ impl Store {
                 .map(|device| choice_edit(root, part, &device, &choice, Some(name.as_str())))
                 .transpose()?;
             put_layout(root, &name, &lines)?;
-            chosen.map_or(Ok(()), |edit| edit.write())
+            chosen.map_or(Ok(()), |edit| {
+                edit.write_after(root, &layout_path(name.as_str()))
+            })
         })
         .await
     }
@@ -982,7 +1012,7 @@ impl Store {
     /// A [`WriteError`] for an unknown layout, a bad device, a bad key, a bad device layer, and
     /// a failed write.
     pub async fn use_layout(
-        &self,
+        self: &Arc<Self>,
         device: &str,
         name: &str,
         key: Option<&str>,
@@ -1002,7 +1032,7 @@ impl Store {
             {
                 return Err(no_layout(part, name));
             }
-            choice_edit(root, part, &device, &choice, name.as_deref())?.write()
+            choice_edit(root, part, &device, &choice, name.as_deref())?.write(root)
         })
         .await
     }
@@ -1016,7 +1046,7 @@ impl Store {
     /// A [`WriteError`] for an unknown layout, a change that the layout rules refuse, a bad
     /// device, a bad world, and a failed write.
     pub async fn edit_layout(
-        &self,
+        self: &Arc<Self>,
         name: &str,
         change: Change,
         device: Option<&str>,
@@ -1065,7 +1095,7 @@ impl Store {
             };
             put_layout(root, target.name(), &lines)?;
             if let Some(edit) = chosen {
-                edit.write()?;
+                edit.write_after(root, &layout_path(target.name().as_str()))?;
             }
             let saved = target.name().as_str().to_owned();
             Ok(Edited {
