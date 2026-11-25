@@ -156,6 +156,31 @@ message GetClientConfigResponse {
   // One notice for each bad layer that applies to the client, and for each bad entry at the
   // path of a layer directory.
   repeated Notice notices = 6;
+  // The name of the layout of the screen: a built-in layout or a layout file.
+  string layout_name = 7;
+  // The lines of that layout, in order.
+  repeated string layout = 8;
+  // The label of a world tab.
+  string tab_label = 9;
+  // The names of the segments of the statusline from the left edge.
+  repeated string statusline_left = 10;
+  // The names of the segments of the statusline to the right edge.
+  repeated string statusline_right = 11;
+  // The layout of a world or of a game, for each entry of `[world-layouts]` with a good layout.
+  repeated NamedLayout world_layouts = 12;
+}
+
+// One layout with its lines.
+message NamedLayout {
+  // The key of a `[world-layouts]` entry: a world id or the name of a game. Empty in a list of
+  // layouts.
+  string key = 1;
+  // The name of the layout.
+  string name = 2;
+  // The lines of the layout, in order.
+  repeated string lines = 3;
+  // Whether mu ships the layout.
+  bool built_in = 4;
 }
 
 message Binding {

@@ -17,7 +17,7 @@ use tracing::{Instrument as _, Span};
 use crate::convert;
 use mu_config::{DeviceName, Kind, NameError, Os};
 
-use crate::store::{ClientPart, Notice, Reloaded, Store};
+use crate::store::{ClientPart, NamedLayout, Notice, Reloaded, Store};
 
 /// The API of one server instance.
 pub struct PortalApi {
@@ -157,8 +157,24 @@ pub fn client_config(
             .collect(),
         sources: config.sources.into_iter().collect(),
         notices: config.notices.iter().map(notice).collect(),
+        layout_name: config.layout_name,
+        layout: config.layout,
+        tab_label: config.tab_label,
+        statusline_left: config.statusline_left,
+        statusline_right: config.statusline_right,
+        world_layouts: config.world_layouts.into_iter().map(named_layout).collect(),
         ..Default::default()
     })
+}
+
+fn named_layout(layout: NamedLayout) -> proto::NamedLayout {
+    proto::NamedLayout {
+        key: layout.key,
+        name: layout.name,
+        lines: layout.lines,
+        built_in: layout.built_in,
+        ..Default::default()
+    }
 }
 
 fn notice(notice: &Notice) -> proto::Notice {

@@ -7,7 +7,9 @@ use std::process::ExitCode;
 
 use clap::{Args, Subcommand};
 use mu_client::PortalClient;
-use mu_config::{FIELD_PATHS, Kind, Os, REPORT, STORE, filter};
+use mu_config::{
+    FIELD_PATHS, KEYS_TABLE, Kind, Os, REPORT, STORE, WORLD_LAYOUTS_TABLE, filter, keyed_path,
+};
 use mu_proto as proto;
 
 use crate::bootstrap::{BootstrapArgs, Server};
@@ -129,9 +131,29 @@ pub fn restart_lines(restart: &[String]) -> String {
 /// that the reply does not carry.
 #[must_use]
 pub fn field_value(reply: &proto::GetClientConfigResponse, path: &str) -> Option<toml::Value> {
+    let list = |names: &[String]| {
+        toml::Value::Array(names.iter().cloned().map(toml::Value::String).collect())
+    };
     match path {
         "echo" => Some(toml::Value::String(reply.echo.clone())),
+        "layout" => Some(toml::Value::String(reply.layout_name.clone())),
+        "tabs.label" => Some(toml::Value::String(reply.tab_label.clone())),
+        "statusline.left" => Some(list(&reply.statusline_left)),
+        "statusline.right" => Some(list(&reply.statusline_right)),
         _ => None,
+    }
+}
+
+/// The key `key` as a part of a dotted TOML key: bare if TOML allows it, and quoted if not.
+fn key_part(key: &str) -> String {
+    let bare = !key.is_empty()
+        && key
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_');
+    if bare {
+        key.to_owned()
+    } else {
+        toml::Value::String(key.to_owned()).to_string()
     }
 }
 
@@ -153,6 +175,21 @@ pub fn render(reply: &proto::GetClientConfigResponse) -> String {
             let _ = writeln!(text, "{path} = {value} # {}", source(path));
         }
     }
+    // A dotted key is TOML only before the first table header, so these lines come before
+    // `[keys]`.
+    for entry in &reply.world_layouts {
+        let name = toml::Value::String(entry.name.clone());
+        let _ = writeln!(
+            text,
+            "{WORLD_LAYOUTS_TABLE}.{} = {name} # {}",
+            key_part(&entry.key),
+            source(&keyed_path(WORLD_LAYOUTS_TABLE, &entry.key))
+        );
+    }
+    let _ = writeln!(text, "# the lines of the layout {}:", reply.layout_name);
+    for (index, line) in reply.layout.iter().enumerate() {
+        let _ = writeln!(text, "#   {}. {line}", index + 1);
+    }
     if !reply.bindings.is_empty() {
         text.push_str("\n[keys]\n");
     }
@@ -162,8 +199,47 @@ pub fn render(reply: &proto::GetClientConfigResponse) -> String {
         let _ = writeln!(
             text,
             "{key} = {entry} # {}",
-            source(&format!("keys.{}", binding.key))
+            source(&keyed_path(KEYS_TABLE, &binding.key))
         );
     }
     filter(&text, &REPORT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn world_layouts_print_before_the_keys_header() {
+        let reply = proto::GetClientConfigResponse {
+            world_layouts: vec![
+                proto::NamedLayout {
+                    key: "alpha/aria".to_owned(),
+                    name: "focus".to_owned(),
+                    ..Default::default()
+                },
+                proto::NamedLayout {
+                    key: "alpha".to_owned(),
+                    name: "status".to_owned(),
+                    ..Default::default()
+                },
+            ],
+            bindings: vec![proto::Binding {
+                key: "alt+n".to_owned(),
+                entry: "focus-next".to_owned(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let text = render(&reply);
+        let world = text
+            .find("world-layouts.\"alpha/aria\" = \"focus\" # default")
+            .expect("the world entry");
+        let game = text
+            .find("world-layouts.alpha = \"status\" # default")
+            .expect("the game entry");
+        let keys = text.find("[keys]").expect("the header");
+        assert!(world < keys && game < keys, "{text}");
+        assert!(text.parse::<toml::Table>().is_ok(), "{text}");
+    }
 }

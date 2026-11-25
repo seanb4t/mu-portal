@@ -2,7 +2,7 @@
 title: The layout model
 description: The layout of the client is a short plan of lines that mu reads and writes.
 sidebar:
-  order: 23
+  order: 24
 ---
 
 ## Decision

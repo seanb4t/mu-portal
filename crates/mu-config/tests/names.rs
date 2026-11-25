@@ -1,6 +1,8 @@
 //! The names of a client.
 
-use mu_config::{DeviceName, Kind, Os};
+use std::collections::BTreeMap;
+
+use mu_config::{Choice, DeviceName, Kind, LayoutName, Os, WorldId, WorldKey, layout_for};
 
 #[test]
 fn a_device_name_of_64() {
@@ -61,4 +63,86 @@ fn a_list_of_names() {
         mu_config::listed(&["a", "b", "c"]),
     ];
     assert_eq!(lists, ["", "a", "a and b", "a, b and c"]);
+}
+
+#[test]
+fn a_game_key_is_good() {
+    assert_eq!("alpha".parse(), Ok(WorldKey::Game("alpha".to_owned())));
+}
+
+#[test]
+fn a_world_key_is_good() {
+    let world: WorldId = "alpha/aria".parse().expect("a world id");
+    assert_eq!("alpha/aria".parse(), Ok(WorldKey::World(world)));
+}
+
+#[test]
+fn a_key_with_an_empty_part() {
+    for text in ["", "alpha/", "/aria", "a/b/c"] {
+        let error = text.parse::<WorldKey>().expect_err(text).to_string();
+        assert!(error.contains(&format!("{text:?}")), "{error}");
+    }
+}
+
+#[test]
+fn a_key_with_an_uppercase_letter() {
+    assert!("Alpha".parse::<WorldKey>().is_err());
+    assert!("alpha/Aria".parse::<WorldKey>().is_err());
+}
+
+#[test]
+fn a_layout_name_of_a_built_in_layout() {
+    let error = LayoutName::new("classic")
+        .expect_err("built in")
+        .to_string();
+    assert!(
+        error.contains("classic") && error.contains("built-in"),
+        "{error}"
+    );
+}
+
+#[test]
+fn a_layout_name_of_one_dot() {
+    assert!(LayoutName::new(".").is_err());
+    assert!(LayoutName::new("..").is_err());
+    assert!(LayoutName::new("a.b").is_ok());
+}
+
+fn entries(keys: &[&str]) -> BTreeMap<String, &'static str> {
+    keys.iter()
+        .map(|key| ((*key).to_owned(), "focus"))
+        .collect()
+}
+
+fn aria() -> WorldId {
+    "alpha/aria".parse().expect("a world id")
+}
+
+#[test]
+fn the_world_entry_comes_first() {
+    assert_eq!(
+        layout_for(Some(&aria()), &entries(&["alpha", "alpha/aria"])),
+        Choice::Entry(WorldKey::World(aria()))
+    );
+}
+
+#[test]
+fn the_game_entry_comes_second() {
+    assert_eq!(
+        layout_for(Some(&aria()), &entries(&["alpha", "beta/bryn"])),
+        Choice::Entry(WorldKey::Game("alpha".to_owned()))
+    );
+}
+
+#[test]
+fn the_default_comes_last() {
+    assert_eq!(
+        layout_for(Some(&aria()), &entries(&["beta"])),
+        Choice::Default
+    );
+}
+
+#[test]
+fn no_world_gives_the_default() {
+    assert_eq!(layout_for(None, &entries(&["alpha"])), Choice::Default);
 }

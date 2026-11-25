@@ -53,7 +53,7 @@ pub enum Msg {
     Listed(Result<Vec<ProtoWorld>, String>),
     /// The client configuration after an [`Effect::FetchConfig`], or the reason that the call
     /// failed.
-    Config(Result<mu_proto::GetClientConfigResponse, String>),
+    Config(Result<Box<mu_proto::GetClientConfigResponse>, String>),
     /// The wait of an [`Effect::RetryConfig`] ended.
     RetryConfig,
     /// The result of an [`Effect::Connect`] or an [`Effect::Disconnect`].
@@ -218,7 +218,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
         Msg::Client(item) => on_client(model, item),
         Msg::Config(Ok(reply)) => {
             if model.latest_hash.as_ref() == Some(&reply.store_hash) {
-                model.apply_config(reply);
+                model.apply_config(*reply);
                 model.config_failures = 0;
             }
             Vec::new()

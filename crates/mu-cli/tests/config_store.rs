@@ -992,3 +992,338 @@ fn mu_config_show_has_a_value_for_each_field_path() {
         .collect();
     assert!(missing.is_empty(), "{missing:?}");
 }
+
+// The layout files, the layout field and the new fields of a layer (client-layout).
+
+/// The content of a layout file with `lines`.
+fn layout_file(lines: &[&str]) -> String {
+    let quoted: Vec<String> = lines.iter().map(|line| format!("{line:?}")).collect();
+    format!("place = [{}]\n", quoted.join(", "))
+}
+
+/// Whether stdout of `output` holds each of `lines`.
+fn has_lines(output: &Output, lines: &[&str]) -> bool {
+    lines.iter().all(|line| has_line(output, line))
+}
+
+#[tokio::test]
+async fn a_layout_file_in_use() {
+    let dir = ConfigDir::empty()
+        .file(
+            "clients/layouts/mine.toml",
+            &layout_file(&["output", "editor below output"]),
+        )
+        .file("clients/global.toml", "layout = \"mine\"\n");
+    let output = show_dir(&dir).await;
+    assert!(
+        has_line(&output, "layout = \"mine\" # clients/global.toml") && stderr(&output).is_empty(),
+        "{}{}",
+        stdout(&output),
+        stderr(&output)
+    );
+}
+
+#[tokio::test]
+async fn a_bad_layout_file_at_start() {
+    let dir = ConfigDir::base().file("clients/layouts/mine.toml", &layout_file(&["output"]));
+    one_notice(dir.path(), &["clients/layouts/mine.toml", "editor"]).await;
+}
+
+#[tokio::test]
+async fn a_file_with_a_built_in_name() {
+    let dir = ConfigDir::base().file("clients/layouts/classic.toml", &layout_file(&["editor"]));
+    one_notice(dir.path(), &["clients/layouts/classic.toml", "built-in"]).await;
+}
+
+#[tokio::test]
+async fn an_unknown_field_of_a_layout_file() {
+    let dir = ConfigDir::base().file(
+        "clients/layouts/mine.toml",
+        "place = [\"editor\"]\ncolour = \"red\"\n",
+    );
+    one_notice(dir.path(), &["clients/layouts/mine.toml", "colour"]).await;
+}
+
+#[tokio::test]
+async fn the_device_names_another_layout() {
+    let dir = ConfigDir::empty()
+        .file("clients/global.toml", "layout = \"status\"\n")
+        .file("clients/devices/laptop.toml", "layout = \"focus\"\n");
+    let output = show_dir(&dir).await;
+    assert!(
+        has_line(&output, "layout = \"focus\" # clients/devices/laptop.toml"),
+        "{}",
+        stdout(&output)
+    );
+}
+
+#[tokio::test]
+async fn a_layout_that_does_not_exist() {
+    let dir = ConfigDir::empty().file("clients/global.toml", "layout = \"gone\"\n");
+    let output = show_dir(&dir).await;
+    one_line_with(&output, &["clients/global.toml", "gone"]);
+    assert!(
+        has_lines(
+            &output,
+            &[
+                "#   1. output",
+                "#   2. tabs above output",
+                "#   3. editor below output"
+            ]
+        ),
+        "{}",
+        stdout(&output)
+    );
+}
+
+#[tokio::test]
+async fn a_change_to_a_layout_file_changes_the_revision() {
+    let dir = ConfigDir::empty()
+        .file(
+            "clients/layouts/mine.toml",
+            &layout_file(&["output", "editor below output"]),
+        )
+        .file("clients/global.toml", "layout = \"mine\"\n");
+    let server = start(dir.path()).await;
+    let before = show(&server, "laptop").await;
+    let dir = dir.file(
+        "clients/layouts/mine.toml",
+        &layout_file(&["output", "editor below output", "tabs above output"]),
+    );
+    reload(&server).await;
+    let after = show(&server, "laptop").await;
+    assert_ne!(first_line(&before), first_line(&after));
+    drop(dir);
+}
+
+#[tokio::test]
+async fn the_default_layout() {
+    let output = show_dir(&ConfigDir::base()).await;
+    assert!(
+        has_line(&output, "layout = \"classic\" # default"),
+        "{}",
+        stdout(&output)
+    );
+}
+
+#[tokio::test]
+async fn the_three_new_fields() {
+    let dir = ConfigDir::empty().file(
+        "clients/global.toml",
+        "layout = \"focus\"\n[tabs]\nlabel = \"{character}\"\n[statusline]\nleft = [\"world\"]\n",
+    );
+    let output = show_dir(&dir).await;
+    assert!(stderr(&output).is_empty(), "{}", stderr(&output));
+    assert!(
+        has_lines(
+            &output,
+            &[
+                "layout = \"focus\" # clients/global.toml",
+                "tabs.label = \"{character}\" # clients/global.toml",
+                "statusline.left = [\"world\"] # clients/global.toml",
+            ]
+        ),
+        "{}",
+        stdout(&output)
+    );
+}
+
+#[tokio::test]
+async fn a_layout_table() {
+    let dir = ConfigDir::empty().file("clients/global.toml", "[layout]\nshape = \"wide\"\n");
+    one_line_with(&show_dir(&dir).await, &["clients/global.toml", "layout"]);
+}
+
+#[tokio::test]
+async fn an_unknown_field_of_tabs() {
+    let dir = ConfigDir::empty().file("clients/global.toml", "[tabs]\ncolour = \"red\"\n");
+    one_line_with(&show_dir(&dir).await, &["clients/global.toml", "colour"]);
+}
+
+/// Asserts the notice of a layer whose `[tabs]` holds the label `label`.
+async fn bad_label(label: &str, texts: &[&str]) {
+    let dir = ConfigDir::empty().file(
+        "clients/global.toml",
+        &format!("[tabs]\nlabel = {label:?}\n"),
+    );
+    let mut wanted = vec!["clients/global.toml", "tabs.label"];
+    wanted.extend(texts);
+    one_line_with(&show_dir(&dir).await, &wanted);
+}
+
+#[tokio::test]
+async fn an_unknown_label_field() {
+    bad_label("{mood}", &["mood"]).await;
+}
+
+#[tokio::test]
+async fn an_open_brace() {
+    bad_label("{world", &[]).await;
+}
+
+#[tokio::test]
+async fn a_label_too_long() {
+    bad_label(&"a".repeat(65), &[]).await;
+}
+
+#[tokio::test]
+async fn an_unknown_segment() {
+    let dir = ConfigDir::empty().file("clients/global.toml", "[statusline]\nleft = [\"mood\"]\n");
+    one_line_with(
+        &show_dir(&dir).await,
+        &["clients/global.toml", "statusline.left", "mood"],
+    );
+}
+
+#[tokio::test]
+async fn a_segment_twice() {
+    let dir = ConfigDir::empty().file(
+        "clients/global.toml",
+        "[statusline]\nright = [\"idle\", \"idle\"]\n",
+    );
+    one_line_with(
+        &show_dir(&dir).await,
+        &["clients/global.toml", "statusline.right", "idle"],
+    );
+}
+
+#[tokio::test]
+async fn a_device_sets_the_left_list() {
+    let dir = ConfigDir::empty()
+        .file(
+            "clients/global.toml",
+            "[statusline]\nleft = [\"world\", \"state\"]\nright = [\"typed\"]\n",
+        )
+        .file(
+            "clients/devices/laptop.toml",
+            "[statusline]\nleft = [\"idle\"]\n",
+        );
+    let output = show_dir(&dir).await;
+    assert!(
+        has_lines(
+            &output,
+            &[
+                "statusline.left = [\"idle\"] # clients/devices/laptop.toml",
+                "statusline.right = [\"typed\"] # clients/global.toml",
+            ]
+        ),
+        "{}",
+        stdout(&output)
+    );
+}
+
+#[tokio::test]
+async fn a_world_layouts_table() {
+    let dir = ConfigDir::empty().file(
+        "clients/global.toml",
+        "[world-layouts]\n\"alpha/aria\" = \"focus\"\n",
+    );
+    let output = show_dir(&dir).await;
+    assert!(stderr(&output).is_empty(), "{}", stderr(&output));
+    assert!(
+        has_line(
+            &output,
+            "world-layouts.\"alpha/aria\" = \"focus\" # clients/global.toml"
+        ),
+        "{}",
+        stdout(&output)
+    );
+}
+
+#[tokio::test]
+async fn a_device_adds_an_entry() {
+    let dir = ConfigDir::empty()
+        .file(
+            "clients/global.toml",
+            "[world-layouts]\nalpha = \"focus\"\n",
+        )
+        .file(
+            "clients/devices/laptop.toml",
+            "[world-layouts]\n\"alpha/aria\" = \"status\"\n",
+        );
+    let output = show_dir(&dir).await;
+    assert!(
+        has_lines(
+            &output,
+            &[
+                "world-layouts.alpha = \"focus\" # clients/global.toml",
+                "world-layouts.\"alpha/aria\" = \"status\" # clients/devices/laptop.toml",
+            ]
+        ),
+        "{}",
+        stdout(&output)
+    );
+}
+
+#[tokio::test]
+async fn a_device_replaces_an_entry() {
+    let dir = ConfigDir::empty()
+        .file(
+            "clients/global.toml",
+            "[world-layouts]\nalpha = \"focus\"\n",
+        )
+        .file(
+            "clients/devices/laptop.toml",
+            "[world-layouts]\nalpha = \"status\"\n",
+        );
+    let output = show_dir(&dir).await;
+    assert!(
+        has_line(
+            &output,
+            "world-layouts.alpha = \"status\" # clients/devices/laptop.toml"
+        ) && !stdout(&output).contains("world-layouts.alpha = \"focus\""),
+        "{}",
+        stdout(&output)
+    );
+}
+
+#[tokio::test]
+async fn an_entry_for_a_world_that_the_server_does_not_have() {
+    let dir = ConfigDir::empty().file(
+        "clients/global.toml",
+        "[world-layouts]\n\"zeta/zed\" = \"focus\"\n",
+    );
+    let output = show_dir(&dir).await;
+    assert!(stderr(&output).is_empty(), "{}", stderr(&output));
+}
+
+#[tokio::test]
+async fn a_change_to_the_layout_file_of_an_entry_changes_the_revision() {
+    let dir = ConfigDir::empty()
+        .file(
+            "clients/layouts/mine.toml",
+            &layout_file(&["output", "editor below output"]),
+        )
+        .file("clients/global.toml", "[world-layouts]\nalpha = \"mine\"\n");
+    let server = start(dir.path()).await;
+    let before = show(&server, "laptop").await;
+    let dir = dir.file(
+        "clients/layouts/mine.toml",
+        &layout_file(&["output", "editor below output", "tabs above output"]),
+    );
+    reload(&server).await;
+    let after = show(&server, "laptop").await;
+    assert_ne!(first_line(&before), first_line(&after));
+    drop(dir);
+}
+
+#[tokio::test]
+async fn a_key_with_two_slashes() {
+    let dir = ConfigDir::empty().file(
+        "clients/global.toml",
+        "[world-layouts]\n\"a/b/c\" = \"focus\"\n",
+    );
+    one_line_with(&show_dir(&dir).await, &["clients/global.toml", "a/b/c"]);
+}
+
+#[tokio::test]
+async fn an_entry_with_a_layout_that_does_not_exist() {
+    let dir = ConfigDir::empty().file("clients/global.toml", "[world-layouts]\nalpha = \"gone\"\n");
+    let output = show_dir(&dir).await;
+    one_line_with(&output, &["clients/global.toml", "alpha", "gone"]);
+    assert!(
+        !stdout(&output).contains("world-layouts.alpha"),
+        "{}",
+        stdout(&output)
+    );
+}

@@ -11,7 +11,7 @@ mod write;
 use std::fmt;
 
 pub use block::{BLOCKS, BlockKind, BlockRow, SizeRule};
-pub use builtin::{BUILT_IN, BuiltIn, DEFAULT_LAYOUT};
+pub use builtin::{BUILT_IN, BuiltIn, DEFAULT_LAYOUT, LayoutFile};
 pub use change::{Changed, LineRef, PANE_COLUMNS_MIN, PANE_ROWS_MIN, RESIZE_STEP};
 pub use parse::LineError;
 pub use step::{

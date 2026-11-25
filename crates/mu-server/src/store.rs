@@ -7,8 +7,11 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use mu_config::layout::{BUILT_IN, BuiltIn, DEFAULT_LAYOUT, Layout, LayoutFile};
 use mu_config::{
-    ClientLayer, DeviceName, Echo, FIELD_PATHS, Kind, NameError, Os, STORE, check_keys, filter,
+    ClientLayer, DeviceName, Echo, FIELD_PATHS, KEYS_TABLE, Kind, LABEL_DEFAULT, LayoutName,
+    NameError, Os, STORE, Segment, WORLD_LAYOUTS_TABLE, check_fields, check_keys, filter,
+    keyed_path,
 };
 use mu_core::ResolvedWorld;
 use mu_core::world::{
@@ -62,6 +65,8 @@ impl fmt::Display for Notice {
 enum State {
     /// A good layer, its keys under their canonical names.
     Good(ClientLayer),
+    /// A good layout file.
+    Layout(Layout),
     /// A bad entry, with its notice.
     Bad(Notice),
 }
@@ -89,12 +94,51 @@ pub struct ClientConfig {
     pub echo: Echo,
     /// Each key, by its canonical name, and the entry that it runs, or `none`.
     pub bindings: Vec<(String, String)>,
+    /// The name of the layout of the screen.
+    pub layout_name: String,
+    /// The lines of that layout.
+    pub layout: Vec<String>,
+    /// The layout of a world or of a game, for each entry of `[world-layouts]` with a good
+    /// layout.
+    pub world_layouts: Vec<NamedLayout>,
+    /// The label of a world tab.
+    pub tab_label: String,
+    /// The names of the segments of the statusline from the left edge.
+    pub statusline_left: Vec<String>,
+    /// The names of the segments of the statusline to the right edge.
+    pub statusline_right: Vec<String>,
     /// The path of each field, such as `echo` or `keys.alt+n`, and the layer that set it, or
     /// `default`.
     pub sources: BTreeMap<String, String>,
     /// One notice for each bad layer that applies to the client, and for each bad entry at the
     /// path of a layer directory.
     pub notices: Vec<Notice>,
+}
+
+/// The layouts that the layers of one client choose.
+struct Chosen {
+    /// The name of the layout of the screen.
+    name: String,
+    /// Its lines.
+    lines: Vec<String>,
+    /// The layout of each world entry with a good layout.
+    worlds: Vec<NamedLayout>,
+    /// Each layout name that the layers give, good or not.
+    files: Vec<String>,
+}
+
+/// One layout with what names it: the key of a `[world-layouts]` entry, or nothing for a row of
+/// the list of every layout.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NamedLayout {
+    /// The key of the entry: a world id or the name of a game. Empty in a list of layouts.
+    pub key: String,
+    /// The name of the layout.
+    pub name: String,
+    /// The lines of the layout.
+    pub lines: Vec<String>,
+    /// Whether mu ships the layout.
+    pub built_in: bool,
 }
 
 /// The content of one entry of the input of a hash.
@@ -177,6 +221,46 @@ const PLACES: [Place; 3] = [
     },
 ];
 
+/// The directory of the layout files.
+pub const LAYOUTS_DIR: &str = "clients/layouts";
+/// The directory of the device layers.
+pub const DEVICES_DIR: &str = "clients/devices";
+
+/// The path of the layout file of `name`.
+#[must_use]
+pub fn layout_path(name: &str) -> String {
+    format!("{LAYOUTS_DIR}/{name}.toml")
+}
+
+/// The name of the layout file at `path`, or none for a path that is not in the directory of
+/// the layout files.
+fn layout_file(path: &str) -> Option<&str> {
+    path.strip_prefix(LAYOUTS_DIR)?
+        .strip_prefix('/')?
+        .strip_suffix(".toml")
+        .filter(|name| !name.contains('/'))
+}
+
+/// What the layout file `name` at `path` holds.
+fn layout_state(path: &str, name: &str, entry: &SnapEntry) -> State {
+    let bad = |reason: &str| State::Bad(Notice::new(path, reason));
+    if let Err(error) = LayoutName::new(name) {
+        return bad(&error.to_string());
+    }
+    let text = match entry.text() {
+        Ok(text) => text,
+        Err(reason) => return bad(&reason),
+    };
+    let file: LayoutFile = match parse_toml(&path, text, Hidden::All) {
+        Ok(file) => file,
+        Err(error) => return State::Bad(Notice::whole(path, &error.to_string())),
+    };
+    match Layout::parse(&file.place) {
+        Ok(layout) => State::Layout(layout),
+        Err(error) => bad(&error.to_string()),
+    }
+}
+
 /// The directories on the path of each layer of a client.
 fn layer_dirs<'a>() -> impl Iterator<Item = &'a str> {
     std::iter::once(CLIENTS_DIR).chain(PLACES.iter().map(|place| place.dir))
@@ -189,7 +273,7 @@ fn not_a_layer() -> String {
         .map(|place| format!("{}/{}.toml", place.dir, place.shown))
         .collect();
     format!(
-        "not a layer file: the layer files are {GLOBAL}, {}",
+        "not a layer file: the layer files are {GLOBAL}, {}. A layout file is {LAYOUTS_DIR}/<name>.toml",
         mu_config::listed(&places)
     )
 }
@@ -215,6 +299,9 @@ fn layer_rule(path: &str) -> Result<(), String> {
 /// What the entry at `path` under `clients/` holds.
 fn state(path: &str, entry: &SnapEntry) -> State {
     let bad = |reason: &str| State::Bad(Notice::new(path, reason));
+    if let Some(name) = layout_file(path) {
+        return layout_state(path, name, entry);
+    }
     if let SnapEntry::File(_) = entry
         && let Err(reason) = layer_rule(path)
     {
@@ -239,8 +326,17 @@ fn state(path: &str, entry: &SnapEntry) -> State {
                         .collect(),
                 );
             }
-            Err(error) => return bad(&format!("keys.{}: {}", error.key, error.reason)),
+            Err(error) => {
+                return bad(&format!(
+                    "{}: {}",
+                    keyed_path(KEYS_TABLE, &error.key),
+                    error.reason
+                ));
+            }
         }
+    }
+    if let Err((path, error)) = check_fields(&layer) {
+        return bad(&format!("{path}: {error}"));
     }
     State::Good(layer)
 }
@@ -282,9 +378,127 @@ impl ClientPart {
             .values()
             .filter_map(|state| match state {
                 State::Bad(notice) => Some(notice.clone()),
-                State::Good(_) => None,
+                State::Good(_) | State::Layout(_) => None,
             })
             .collect()
+    }
+
+    /// The lines of the good layout `name`, and whether mu ships it.
+    fn layout_named(&self, name: &str) -> Option<(Vec<String>, bool)> {
+        if let Some(built_in) = BuiltIn::named(name) {
+            let lines = built_in.lines.iter().map(ToString::to_string).collect();
+            return Some((lines, true));
+        }
+        match self.states.get(&layout_path(name)) {
+            Some(State::Layout(layout)) => Some((layout.lines(), false)),
+            _ => None,
+        }
+    }
+
+    /// Each built-in layout and each good layout file, in the order of the names, and the
+    /// notice of each bad layout file.
+    #[must_use]
+    pub fn layouts(&self) -> (Vec<NamedLayout>, Vec<Notice>) {
+        let mut names: BTreeSet<&str> = BUILT_IN.iter().map(|each| each.name).collect();
+        let mut notices = Vec::new();
+        for (path, state) in &self.states {
+            let Some(name) = layout_file(path) else {
+                continue;
+            };
+            match state {
+                State::Layout(_) => {
+                    names.insert(name);
+                }
+                State::Bad(notice) => notices.push(notice.clone()),
+                State::Good(_) => {}
+            }
+        }
+        let layouts = names
+            .into_iter()
+            .filter_map(|name| {
+                let (lines, built_in) = self.layout_named(name)?;
+                Some(NamedLayout {
+                    key: String::new(),
+                    name: name.to_owned(),
+                    lines,
+                    built_in,
+                })
+            })
+            .collect();
+        (layouts, notices)
+    }
+
+    /// The notice of the layout file `name`, if the file is bad.
+    #[must_use]
+    pub fn layout_notice(&self, name: &str) -> Option<Notice> {
+        match self.states.get(&layout_path(name)) {
+            Some(State::Bad(notice)) => Some(notice.clone()),
+            _ => None,
+        }
+    }
+
+    /// Whether the entry at `path` is a bad layer, with its notice.
+    #[must_use]
+    pub fn bad_at(&self, path: &str) -> Option<Notice> {
+        match self.states.get(path) {
+            Some(State::Bad(notice)) => Some(notice.clone()),
+            _ => None,
+        }
+    }
+
+    /// The layout of the screen and the layout of each world entry. A name of no good layout
+    /// gives a notice, and the next choice applies.
+    fn chosen(
+        &self,
+        layout: Option<String>,
+        entries: BTreeMap<String, String>,
+        sources: &mut BTreeMap<String, String>,
+        notices: &mut Vec<Notice>,
+    ) -> Chosen {
+        let wanted = layout.unwrap_or_else(|| DEFAULT_LAYOUT.to_owned());
+        let mut files = vec![wanted.clone()];
+        let (name, lines) = if let Some((lines, _)) = self.layout_named(&wanted) {
+            (wanted, lines)
+        } else {
+            let source = sources.insert("layout".to_owned(), "default".to_owned());
+            notices.push(Notice::new(
+                source.as_deref().unwrap_or(CLIENTS_DIR),
+                &format!(
+                    "layout: no good layout is named {wanted}, so the layout is {DEFAULT_LAYOUT}"
+                ),
+            ));
+            let lines = self
+                .layout_named(DEFAULT_LAYOUT)
+                .map_or_else(Vec::new, |(lines, _)| lines);
+            (DEFAULT_LAYOUT.to_owned(), lines)
+        };
+        let mut worlds = Vec::new();
+        for (key, entry) in entries {
+            files.push(entry.clone());
+            let path = keyed_path(WORLD_LAYOUTS_TABLE, &key);
+            if let Some((lines, built_in)) = self.layout_named(&entry) {
+                worlds.push(NamedLayout {
+                    key,
+                    name: entry,
+                    lines,
+                    built_in,
+                });
+            } else {
+                let source = sources.remove(&path);
+                notices.push(Notice::new(
+                    source.as_deref().unwrap_or(CLIENTS_DIR),
+                    &format!(
+                        "{path}: no good layout is named {entry}, so the entry does not apply"
+                    ),
+                ));
+            }
+        }
+        Chosen {
+            name,
+            lines,
+            worlds,
+            files,
+        }
     }
 
     /// The configuration of a client of `kind` on `os` with the name `device`.
@@ -305,16 +519,9 @@ impl ClientPart {
             match self.states.get(path) {
                 Some(State::Bad(notice)) => notices.push(notice.clone()),
                 Some(State::Good(layer)) => good.push((path, layer)),
-                None => {}
+                Some(State::Layout(_)) | None => {}
             }
         }
-        let revision = digest(&framed(
-            layer_dirs()
-                .chain(files.iter().map(String::as_str))
-                .collect::<BTreeSet<&str>>()
-                .into_iter()
-                .filter_map(|path| Some((path, Content::of(self.entries.get(path)?)))),
-        ));
         let defaults = ClientLayer::defaults();
         let mut layers = vec![&defaults];
         layers.extend(good.iter().map(|(_, layer)| *layer));
@@ -324,15 +531,25 @@ impl ClientPart {
             .filter_map(|(_, layer)| layer.keys.as_ref())
             .flat_map(BTreeMap::keys)
             .collect();
-        paths.extend(keys.iter().map(|key| format!("keys.{key}")));
-        let (merged, places) = merge_layers(&layers, &paths).unwrap_or_else(|error| {
+        paths.extend(keys.iter().map(|key| keyed_path(KEYS_TABLE, key)));
+        let world_keys: BTreeSet<&String> = good
+            .iter()
+            .filter_map(|(_, layer)| layer.world_layouts.as_ref())
+            .flat_map(BTreeMap::keys)
+            .collect();
+        paths.extend(
+            world_keys
+                .iter()
+                .map(|key| keyed_path(WORLD_LAYOUTS_TABLE, key)),
+        );
+        let (mut merged, places) = merge_layers(&layers, &paths).unwrap_or_else(|error| {
             notices.push(Notice::new(
                 CLIENTS_DIR,
                 &format!("the merge of the layers failed, so the defaults apply: {error}"),
             ));
             (defaults.clone(), BTreeMap::new())
         });
-        let sources = places
+        let mut sources: BTreeMap<String, String> = places
             .into_iter()
             .map(|(path, place)| {
                 let source = place
@@ -342,11 +559,37 @@ impl ClientPart {
                 (path, source.to_owned())
             })
             .collect();
+        let chosen = self.chosen(
+            merged.layout.take(),
+            merged.world_layouts.take().unwrap_or_default(),
+            &mut sources,
+            &mut notices,
+        );
+        let layout_files: Vec<String> = chosen.files.iter().map(|name| layout_path(name)).collect();
+        let revision = digest(&framed(
+            layer_dirs()
+                .chain(files.iter().map(String::as_str))
+                .chain(layout_files.iter().map(String::as_str))
+                .collect::<BTreeSet<&str>>()
+                .into_iter()
+                .filter_map(|path| Some((path, Content::of(self.entries.get(path)?)))),
+        ));
+        let tabs = merged.tabs.unwrap_or_default();
+        let statusline = merged.statusline.unwrap_or_default();
+        let segments = |list: Option<Vec<String>>, default: &[Segment]| {
+            list.unwrap_or_else(|| default.iter().map(|each| each.name().to_owned()).collect())
+        };
         ClientConfig {
             store_hash: self.store_hash.clone(),
             revision,
             echo: merged.echo.unwrap_or_default(),
             bindings: merged.keys.unwrap_or_default().into_iter().collect(),
+            layout_name: chosen.name,
+            layout: chosen.lines,
+            world_layouts: chosen.worlds,
+            tab_label: tabs.label.unwrap_or_else(|| LABEL_DEFAULT.to_owned()),
+            statusline_left: segments(statusline.left, &Segment::LEFT_DEFAULT),
+            statusline_right: segments(statusline.right, &Segment::RIGHT_DEFAULT),
             sources,
             notices,
         }

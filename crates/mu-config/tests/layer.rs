@@ -4,16 +4,35 @@ use std::collections::BTreeSet;
 
 use mu_config::{ClientLayer, FIELD_PATHS, Label, Segment};
 
+/// The path of each value of `table` that is not a table, with `.` between the parts.
+fn paths(prefix: &str, table: &toml::Table, all: &mut BTreeSet<String>) {
+    for (key, value) in table {
+        let path = if prefix.is_empty() {
+            key.clone()
+        } else {
+            format!("{prefix}.{key}")
+        };
+        match value {
+            toml::Value::Table(inner) => paths(&path, inner, all),
+            _ => {
+                all.insert(path);
+            }
+        }
+    }
+}
+
 #[test]
 fn the_defaults_set_each_field_path() {
     let value = toml::Value::try_from(ClientLayer::defaults()).unwrap();
-    let fields: BTreeSet<&str> = value
-        .as_table()
-        .unwrap()
-        .keys()
-        .map(String::as_str)
-        .collect();
-    assert_eq!(fields, FIELD_PATHS.iter().copied().collect());
+    let mut fields = BTreeSet::new();
+    paths("", value.as_table().unwrap(), &mut fields);
+    let wanted: BTreeSet<String> = FIELD_PATHS.iter().map(ToString::to_string).collect();
+    assert_eq!(fields, wanted);
+}
+
+#[test]
+fn the_defaults_pass_the_check() {
+    assert_eq!(mu_config::check_fields(&ClientLayer::defaults()), Ok(()));
 }
 
 fn label(text: &str) -> Label {

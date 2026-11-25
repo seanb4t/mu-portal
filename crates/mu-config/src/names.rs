@@ -168,3 +168,47 @@ impl fmt::Display for DeviceName {
         f.write_str(&self.0)
     }
 }
+
+/// The name of a layout file: a name by the rule of a device name that is not the name of a
+/// built-in layout, and not `.` or `..`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct LayoutName(String);
+
+impl LayoutName {
+    /// Checks `name`.
+    ///
+    /// # Errors
+    ///
+    /// A [`NameError`] that names the layout name and the rule.
+    pub fn new(name: &str) -> Result<Self, NameError> {
+        let bad = |reason: String| NameError {
+            what: "layout",
+            name: name.to_owned(),
+            reason,
+        };
+        DeviceName::new(name).map_err(|_| {
+            bad(format!(
+                "a layout name has 1 to {DEVICE_MAX} characters from a to z, 0 to 9, -, _ and ."
+            ))
+        })?;
+        if name == "." || name == ".." {
+            return Err(bad("a layout name is not . or ..".to_owned()));
+        }
+        if crate::layout::BuiltIn::named(name).is_some() {
+            return Err(bad("the name of a built-in layout".to_owned()));
+        }
+        Ok(Self(name.to_owned()))
+    }
+
+    /// The name.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for LayoutName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}

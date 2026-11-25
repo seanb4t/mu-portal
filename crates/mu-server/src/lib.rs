@@ -7,4 +7,7 @@ pub mod store;
 
 pub use serve::{SERVING, ServeError, lock_path, serve, signals};
 pub use service::PortalApi;
-pub use store::{ClientConfig, ClientPart, Notice, Opened, Reloaded, ServerCheck, Store};
+pub use store::{
+    ClientConfig, ClientPart, DEVICES_DIR, LAYOUTS_DIR, NamedLayout, Notice, Opened, Reloaded,
+    ServerCheck, Store, layout_path,
+};

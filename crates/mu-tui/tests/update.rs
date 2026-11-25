@@ -549,7 +549,7 @@ fn store_hash(model: &mut Model, hash: &str) -> Vec<Effect> {
 /// Sends the store hash of `reply`, then `reply`.
 fn new_config(model: &mut Model, reply: mu_proto::GetClientConfigResponse) {
     store_hash(model, &reply.store_hash);
-    update(model, Msg::Config(Ok(reply)));
+    update(model, Msg::Config(Ok(Box::new(reply))));
 }
 
 fn revision(model: &Model) -> Option<&str> {
@@ -582,9 +582,15 @@ fn a_stale_reply_is_dropped() {
     let mut model = configured(reply("h1", "r1", &[]));
     store_hash(&mut model, "h2");
     store_hash(&mut model, "h3");
-    update(&mut model, Msg::Config(Ok(reply("h2", "r2", &[]))));
+    update(
+        &mut model,
+        Msg::Config(Ok(Box::new(reply("h2", "r2", &[])))),
+    );
     let stale = revision(&model).map(str::to_owned);
-    update(&mut model, Msg::Config(Ok(reply("h3", "r3", &[]))));
+    update(
+        &mut model,
+        Msg::Config(Ok(Box::new(reply("h3", "r3", &[])))),
+    );
     assert_eq!(
         (stale.as_deref(), revision(&model)),
         (Some("r1"), Some("r3"))
@@ -652,7 +658,7 @@ proptest::proptest! {
                     let before = revision(&model).map(str::to_owned);
                     update(
                         &mut model,
-                        Msg::Config(Ok(reply(&format!("h{n}"), &format!("r{n}"), &[]))),
+                        Msg::Config(Ok(Box::new(reply(&format!("h{n}"), &format!("r{n}"), &[])))),
                     );
                     if revision(&model).map(str::to_owned) != before {
                         let applied = model.config().map(|config| config.store_hash.clone());
@@ -694,7 +700,10 @@ fn each_failed_fetch_waits_longer_until_an_apply() {
         ));
         update(&mut model, Msg::RetryConfig);
     }
-    update(&mut model, Msg::Config(Ok(reply("h2", "r2", &[]))));
+    update(
+        &mut model,
+        Msg::Config(Ok(Box::new(reply("h2", "r2", &[])))),
+    );
     store_hash(&mut model, "h3");
     effects.extend(update(
         &mut model,
@@ -726,7 +735,10 @@ fn a_failed_fetch_of_an_applied_hash_fetches_nothing() {
 fn a_late_failure_of_an_old_fetch_does_not_count() {
     let mut model = configured(reply("h1", "r1", &[]));
     store_hash(&mut model, "h2");
-    update(&mut model, Msg::Config(Ok(reply("h2", "r2", &[]))));
+    update(
+        &mut model,
+        Msg::Config(Ok(Box::new(reply("h2", "r2", &[])))),
+    );
     let late = update(&mut model, Msg::Config(Err("old".to_owned())));
     store_hash(&mut model, "h3");
     let failed = update(&mut model, Msg::Config(Err("unavailable".to_owned())));

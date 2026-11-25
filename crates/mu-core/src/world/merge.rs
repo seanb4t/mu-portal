@@ -25,12 +25,18 @@ pub fn merge_layers<T: Serialize + DeserializeOwned>(
         figment = figment.merge(Named::new(place.to_string(), Serialized::defaults(layer)));
     }
     let merged: T = figment.extract().map_err(|error| error.to_string())?;
+    // The tag of a merged list is the tag of the first list, so the tags do not give the layer
+    // of a list. Each layer alone says whether it sets a path.
+    let alone: Vec<Figment> = layers
+        .iter()
+        .map(|layer| Figment::new().merge(Serialized::defaults(layer)))
+        .collect();
     let mut sources = BTreeMap::new();
     for path in paths {
-        if let Some(metadata) = figment.find_metadata(path)
-            && figment.find_value(path).is_ok()
-            && let Ok(place) = metadata.name.parse::<usize>()
-            && place < layers.len()
+        if figment.find_value(path).is_ok()
+            && let Some(place) = alone
+                .iter()
+                .rposition(|layer| layer.find_value(path).is_ok())
         {
             sources.insert(path.clone(), place);
         }

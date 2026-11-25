@@ -1,6 +1,16 @@
 //! The layouts that mu ships.
 
+use serde::{Deserialize, Serialize};
+
 use super::Layout;
+
+/// The content of a layout file: the lines of the plan, in order.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LayoutFile {
+    /// The lines of the plan.
+    pub place: Vec<String>,
+}
 
 /// A layout that mu ships: its name and its lines.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

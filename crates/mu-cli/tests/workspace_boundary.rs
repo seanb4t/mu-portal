@@ -18,7 +18,7 @@ mod support;
 /// Each member and the members that it can depend on.
 const ALLOWED_EDGES: &[(&str, &[&str])] = &[
     ("mu-proto", &[]),
-    ("mu-core", &[]),
+    ("mu-core", &["mu-config"]),
     ("mu-config", &[]),
     ("mu-fake-server", &["mu-core"]),
     ("mu-server", &["mu-config", "mu-core", "mu-proto"]),

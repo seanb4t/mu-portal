@@ -185,6 +185,7 @@ async fn config_of(client: PortalClient, device: String) -> Msg {
     let call = async {
         crate::config::fetch(&client, &device)
             .await
+            .map(Box::new)
             .map_err(|error| error.to_string())
     };
     Msg::Config(within(call, CALL_LIMIT, "").await)
