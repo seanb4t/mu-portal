@@ -84,6 +84,11 @@ The command `/place <sentence>` SHALL take one placement sentence that is not a 
 ### Requirement: A change keeps the other lines of the plan
 A change from `/place`, `/pane`, the mouse or arrange mode asks for one screen. It SHALL change only the line of its block, if that plan gives the screen. A line of a moved block SHALL go to the end of the plan if its new anchor comes later. If no such plan exists, mu SHALL write the whole plan again from the screen, and the client SHALL show a notice that the lines changed.
 
+#### Scenario: Arrange mode writes the plan again
+- **GIVEN** the layout in use holds the lines `output`, `output as notices right of main`, `tabs above notices` and `editor at bottom`, and arrange mode is on
+- **WHEN** the user picks `notices`, presses `-` and then Enter
+- **THEN** the plan holds no `notices`, and the client shows a notice that contains `plan`
+
 #### Scenario: A resize changes one line
 - **GIVEN** the layout `sidebar` is in use
 - **WHEN** the user runs the command `/pane size notices 40%`
@@ -231,14 +236,40 @@ The client SHALL save the layout after each of these: a command that changed it,
 - **WHEN** the user of the first client runs the command `/pane hide tabs`
 - **THEN** the second client shows no tabs
 
-### Requirement: A failed save keeps the screen
-If the server refuses a save or does not answer, the client SHALL keep the changed layout on the screen. It SHALL show a notice with the reason.
+### Requirement: A new configuration ends an edit of the layout
+When the client takes a new configuration from the server, arrange mode and a drag of a border SHALL end with no save, because their layouts belong to the old configuration. The client SHALL show a notice that arrange mode ended.
+
+#### Scenario: A new configuration ends arrange mode
+- **GIVEN** the layout `mine` is in use, and arrange mode is on with a block picked
+- **WHEN** the client takes a configuration with a new revision that names the layout `other`
+- **THEN** arrange mode is off, and after Esc the layout `other` still holds its own lines
+
+### Requirement: A resize with no room is refused
+A resize of a block SHALL be refused if no percent from 10 to 90 leaves the block and the rest of its split at the smallest size of a pane. The client SHALL say why: in the last row in arrange mode, and as a line of the notices after a drag.
+
+#### Scenario: A larger block in a small split
+- **GIVEN** a terminal of 20 columns, a layout with `output as notices right of main, 30%`, and arrange mode with `notices` picked
+- **WHEN** the user presses `>`
+- **THEN** the line still holds `30%`, and the last row contains `no room`
+
+#### Scenario: A border that cannot move
+- **GIVEN** a terminal of 20 columns, and a layout with `output as notices right of main, 50%`
+- **WHEN** the user drags the divider 3 columns to the left and releases
+- **THEN** the client asks the server for no save, and the screen shows a line that contains `has no room`
+
+### Requirement: A failed save puts the layout of the server back
+If the server refuses a save or does not answer, the client SHALL show a notice with the reason. It SHALL put back the layouts of its last configuration, and SHALL ask the server for its configuration again. So the screen shows what the server holds, and the next change saves as a first change does.
 
 #### Scenario: The server refuses
 - **GIVEN** `clients/devices/laptop.toml` holds `echo = `, and `mu client --device laptop` shows the layout `classic`
 - **WHEN** the user runs the command `/pane hide tabs`
-- **THEN** the screen shows no tabs
-- **AND** the screen shows a line that starts with `-- ` and contains `clients/devices/laptop.toml`
+- **THEN** the screen shows a line that starts with `-- ` and contains `clients/devices/laptop.toml`
+- **AND** the screen shows the tabs again, and `clients/layouts/laptop.toml` does not exist
+
+#### Scenario: A change after a failed save
+- **GIVEN** the layout `classic` is in use on the device `laptop`, and a save of `/pane hide tabs` failed
+- **WHEN** the user runs the command `/pane hide tabs` again
+- **THEN** the client asks the server to save the layout `laptop`, and to set the field `layout` of the device to it
 
 ### Requirement: The layout commands choose and name a layout
 `/layout use <name>` SHALL set the field `layout` of the device layer. `/layout save <name>` SHALL save the layout on the screen under that name, and SHALL set the choice in use to it. `/layout list` SHALL show the name of each layout. The entry `layout-next` SHALL set the choice in use to the next layout in the order of the names, and after the last the first. An unknown name and the name of a built-in layout in a save SHALL give a notice and change nothing.

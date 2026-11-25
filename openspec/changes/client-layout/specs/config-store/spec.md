@@ -109,6 +109,39 @@ Before a write, the server SHALL make `clients`, `clients/layouts` and `clients/
 - **THEN** the call fails, and its error contains `clients`
 - **AND** `<dir>/clients` is still an empty file
 
+### Requirement: A write checks first, and keeps links and permissions
+The server SHALL make each check of a write call before its first write, so a refused call writes nothing. It SHALL store the lines of a layout as mu writes them. A write to a file that is a symbolic link SHALL replace the file that the link names, and SHALL keep the link. A write SHALL keep the permissions of a file that it replaces. An error of a write SHALL hold no line of a file.
+
+#### Scenario: A refused save writes no layout file
+- **GIVEN** `<dir>/clients/devices/laptop.toml` holds `echo = `, and a server serves `<dir>`
+- **WHEN** a client calls `SaveLayout` with the name `mine`, the line `editor` and the device `laptop`
+- **THEN** the call fails, and `<dir>/clients/layouts/mine.toml` does not exist
+
+#### Scenario: A refused edit of a built-in layout writes no layout file
+- **GIVEN** `<dir>/clients/devices/laptop.toml` holds `echo = `, and a server serves `<dir>`
+- **WHEN** a client calls `EditLayout` on `classic` with the hide of `tabs` and the device `laptop`
+- **THEN** the call fails, and `<dir>/clients/layouts/laptop.toml` does not exist
+
+#### Scenario: A write to a linked device file
+- **GIVEN** `<dir>/clients/devices/laptop.toml` is a symbolic link to a file that holds `# shared` and `echo = "show"`
+- **WHEN** a client calls `UseLayout` with the device `laptop` and the layout `status`
+- **THEN** the path is still a symbolic link, and the linked file holds `# shared` and `layout = "status"`
+
+#### Scenario: A write keeps the permissions
+- **GIVEN** `<dir>/clients/devices/laptop.toml` has the mode 0640
+- **WHEN** a client calls `UseLayout` with the device `laptop` and the layout `status`
+- **THEN** the file has the mode 0640
+
+#### Scenario: An error holds no line of the file
+- **GIVEN** the text of a layer is `echo = "show"` and then the line `password hunter2`
+- **WHEN** the server edits the field `layout` of that text
+- **THEN** the error holds `line 2`, and does not hold `hunter2`
+
+#### Scenario: A save stores the lines as mu writes them
+- **GIVEN** a server serves an empty configuration directory
+- **WHEN** a client calls `SaveLayout` with the lines `  output  ` and `editor   below   main`
+- **THEN** the layout file holds the lines `output` and `editor below main`
+
 ### Requirement: SaveLayout with a key sets the entry of a world
 The call `SaveLayout` SHALL also take an optional key, which is a world id or the name of a game. With a device name and a key, the server SHALL set the entry of that key in `[world-layouts]` of the device layer, in the same write as the layout file, and SHALL NOT set the field `layout`. A key with no device name SHALL be an error, and SHALL write nothing.
 
@@ -277,7 +310,7 @@ A key of `[world-layouts]` SHALL be a world id or the name of a game. Any other 
 - **AND** stdout does not hold `world-layouts.alpha`
 
 ### Requirement: UseLayout can set the layout of one world
-`UseLayout` SHALL also take a world id or the name of a game. The server SHALL then set that entry of `[world-layouts]` in the device file, and SHALL NOT change the field `layout`. With an empty layout name, it SHALL remove the entry. `mu layout use <name>` with `--world <world>` or `--game <game>` SHALL set the entry. `mu layout forget` with one of the two flags SHALL remove it. A bad key SHALL be an error, and SHALL write nothing.
+`UseLayout` SHALL also take a world id or the name of a game. The server SHALL then set that entry of `[world-layouts]` in the device file, and SHALL NOT change the field `layout`. With an empty layout name, it SHALL remove the entry. `mu layout use <name>` with `--world <world>` or `--game <game>` SHALL set the entry. `mu layout forget` with one of the two flags SHALL remove it. A bad key, and a removal of an entry that the device file does not hold, SHALL be an error, and SHALL write nothing.
 
 #### Scenario: A use for one world
 - **GIVEN** `<dir>/clients/devices/laptop.toml` holds the comment `# my laptop` and `layout = "status"`, and a server serves `<dir>`
@@ -294,6 +327,11 @@ A key of `[world-layouts]` SHALL be a world id or the name of a game. Any other 
 - **GIVEN** `<dir>/clients/devices/laptop.toml` holds `[world-layouts]` with `"alpha/aria" = "focus"` and `alpha = "status"`, and a server serves `<dir>`
 - **WHEN** the user runs `mu layout forget --world alpha/aria --device laptop`
 - **THEN** the file holds `alpha = "status"`, and does not hold `alpha/aria`
+
+#### Scenario: Forget an entry that is not there
+- **GIVEN** a server serves `<dir>`, which holds no `clients` directory
+- **WHEN** the user runs `mu layout forget --world alpha/ari --device laptop`
+- **THEN** the exit status is 1, stderr holds `alpha/ari`, and `<dir>/clients/devices/laptop.toml` does not exist
 
 #### Scenario: A use with a bad world id
 - **GIVEN** a server serves `<dir>`

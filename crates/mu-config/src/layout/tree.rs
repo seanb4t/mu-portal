@@ -311,11 +311,29 @@ fn beside(
     new: Part,
     line: usize,
 ) -> Result<(), LayoutError> {
+    if let Some(twice) = anchors
+        .iter()
+        .enumerate()
+        .find_map(|(index, anchor)| anchors[..index].contains(anchor).then_some(anchor))
+    {
+        return Err(LayoutError::at(
+            line,
+            twice.as_str(),
+            "the line names this anchor twice",
+        ));
+    }
     let paths = anchors
         .iter()
         .map(|anchor| path_to(tree, anchor, line))
         .collect::<Result<Vec<_>, _>>()?;
-    let first = &paths[0];
+    // A caller can make a step with no anchor, which no sentence gives.
+    let Some(first) = paths.first() else {
+        return Err(LayoutError::at(
+            line,
+            new.owner.as_ref().map_or("", BlockId::as_str),
+            "a place beside needs an anchor",
+        ));
+    };
     let common = (0..first.len())
         .find(|&depth| paths.iter().any(|path| path.get(depth) != first.get(depth)))
         .unwrap_or(first.len());

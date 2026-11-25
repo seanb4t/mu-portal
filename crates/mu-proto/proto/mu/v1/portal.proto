@@ -310,7 +310,7 @@ message EditLayoutRequest {
 message SizeChange {
   // The id of the block.
   string id = 1;
-  // The size, such as `30%`, `12` or `max 3`.
+  // The size, such as `30%`, `12` or `max 3`, or `fill` for no size.
   string size = 2;
 }
 

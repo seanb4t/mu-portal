@@ -879,3 +879,45 @@ async fn a_save_with_a_key_and_no_device_is_refused() {
     assert!(error.contains("device"), "{error}");
     assert!(!dir.path().join("clients/layouts/mine.toml").exists());
 }
+
+#[tokio::test]
+async fn describe_of_a_bad_layout_file_says_what_is_wrong() {
+    // The plan of the file has no editor.
+    let dir = mine(&["output"]);
+    let server = start(dir.path()).await;
+    let output = layout(&server, &["describe", "mine"]).await;
+    assert_eq!(output.status.code(), Some(1));
+    let text = stderr(&output);
+    assert!(text.contains("clients/layouts/mine.toml"), "{text}");
+    assert!(text.contains("editor"), "{text}");
+}
+
+#[tokio::test]
+async fn describe_refuses_a_width_over_65535() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let error = server
+        .client()
+        .describe_layout("classic", 70_000, 24)
+        .await
+        .expect_err("a width over 65535")
+        .to_string();
+    assert!(
+        error.contains("70000") && error.contains("65535"),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn forget_of_an_entry_that_is_not_there_fails() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let output = layout(
+        &server,
+        &["forget", "--world", "alpha/ari", "--device", "laptop"],
+    )
+    .await;
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr(&output).contains("alpha/ari"), "{}", stderr(&output));
+    assert!(!dir.path().join("clients/devices/laptop.toml").exists());
+}

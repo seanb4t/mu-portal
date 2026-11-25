@@ -2,7 +2,8 @@
 //! with keys or with a drag, and sees each step. Enter saves, and Esc restores.
 
 use mu_config::layout::{
-    Area, BLOCKS, Block, BlockId, BlockKind, Change, Layout, Place, Placed, Side, Solved, Step,
+    Area, BLOCKS, Block, BlockId, BlockKind, Change, LINES_MAX, Layout, Place, Placed, REWRITTEN,
+    Side, Solved, Step,
 };
 use termina::event::{KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
@@ -45,8 +46,11 @@ pub(crate) enum Drop {
 pub(crate) struct Arrange {
     /// The layout from before the mode, which Esc restores.
     before: Layout,
-    /// The layouts before each change of the mode, for the undo.
-    undo: Vec<Layout>,
+    /// The layout before each change of the mode, and whether mu wrote the plan again before
+    /// it, for the undo.
+    undo: Vec<(Layout, bool)>,
+    /// Whether a change of the mode made mu write the whole plan again.
+    rewritten: bool,
     /// The picked block.
     pub(crate) picked: Option<Pick>,
     /// The second block, which the picked block goes beside.
@@ -79,9 +83,9 @@ pub(crate) fn addable(layout: &Layout) -> Vec<(BlockKind, BlockId)> {
         .filter(|row| layout.ids_of(row.kind).count() < row.max)
         .filter_map(|row| {
             let taken = |id: &str| layout.steps().iter().any(|step| step.id.as_str() == id);
-            // A layout holds a block at most `max` times, so one of these ids is free.
-            let id = std::iter::once(row.name.to_owned())
-                .chain((2..=row.max + 1).map(|number| format!("{}-{number}", row.name)))
+            // A plan has at most `LINES_MAX` ids, so one of these candidates is free.
+            let id = std::iter::once(row.id.to_owned())
+                .chain((2..=LINES_MAX + 2).map(|number| format!("{}-{number}", row.id)))
                 .find(|id| !taken(id))?;
             BlockId::new(&id).ok().map(|id| (row.kind, id))
         })
@@ -167,6 +171,7 @@ impl Model {
         self.arrange = Some(Arrange {
             before: self.layout().clone(),
             undo: Vec::new(),
+            rewritten: false,
             picked: None,
             second: None,
             adding: false,
@@ -235,9 +240,9 @@ impl Model {
         before: Layout,
         changed: Result<mu_config::layout::Changed, mu_config::layout::LayoutError>,
     ) -> bool {
-        let (shown, message) = match changed {
-            Ok(changed) => (Some(changed.layout), None),
-            Err(error) => (None, Some(error.to_string())),
+        let (shown, rewritten, message) = match changed {
+            Ok(changed) => (Some(changed.layout), changed.rewritten, None),
+            Err(error) => (None, false, Some(error.to_string())),
         };
         let good = shown.is_some();
         if let Some(layout) = shown {
@@ -245,7 +250,8 @@ impl Model {
         }
         if let Some(mode) = &mut self.arrange {
             if good {
-                mode.undo.push(before);
+                mode.undo.push((before, mode.rewritten));
+                mode.rewritten |= rewritten;
             }
             mode.message = message;
         }
@@ -330,10 +336,14 @@ impl Model {
         if &mode.before == self.layout() {
             return Vec::new();
         }
+        if mode.rewritten {
+            self.notice(REWRITTEN);
+        }
         self.save_shown()
     }
 
-    /// A key in arrange mode. No key reaches the editor or the keymap.
+    /// A key in arrange mode. No key reaches the editor. The keymap gives only the key of the
+    /// entry `undo`.
     pub(crate) fn arrange_key(&mut self, key: KeyEvent) -> Vec<Effect> {
         let plain = key.modifiers.is_empty() || key.modifiers == Modifiers::SHIFT;
         let (picked, second) = self.arrange.as_ref().map_or((None, None), |mode| {
@@ -401,7 +411,14 @@ impl Model {
             }
             _ => {
                 if self.keymap.get(&key) == Some(EntryId::of("undo")) {
-                    let last = self.arrange.as_mut().and_then(|mode| mode.undo.pop());
+                    let last = self.arrange.as_mut().and_then(|mode| {
+                        let (layout, rewritten) = mode.undo.pop()?;
+                        mode.rewritten = rewritten;
+                        // The pick can name a block that the older layout does not hold.
+                        mode.picked = None;
+                        mode.second = None;
+                        Some(layout)
+                    });
                     if let Some(last) = last {
                         self.show_layout(last);
                     }

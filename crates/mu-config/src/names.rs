@@ -5,7 +5,7 @@ use std::fmt;
 /// A name that a check refuses.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NameError {
-    /// What the name is for: `kind`, `os` or `device`.
+    /// What the name is for: `kind`, `os`, `device` or `layout`.
     pub what: &'static str,
     /// The name.
     pub name: String,

@@ -993,7 +993,7 @@ fn mu_config_show_has_a_value_for_each_field_path() {
     assert!(missing.is_empty(), "{missing:?}");
 }
 
-// The layout files, the layout field and the new fields of a layer (client-layout).
+// The layout files, the layout field, and the tabs and statusline fields of a layer.
 
 /// Whether stdout of `output` holds each of `lines`.
 fn has_lines(output: &Output, lines: &[&str]) -> bool {

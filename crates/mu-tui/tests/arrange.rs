@@ -3,7 +3,7 @@
 use mu_client::ClientEvent;
 use mu_config::layout::BlockId;
 use mu_proto::{Event, EventKind, GetClientConfigResponse, Source};
-use mu_tui::{Effect, Model, Msg, Then, update, view};
+use mu_tui::{Effect, Model, Msg, update, view};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
@@ -269,6 +269,9 @@ fn a_larger_block_in_a_small_split_keeps_its_size() {
         app.layout().lines()[2],
         "output as notices right of main, 30%"
     );
+    // The last row says why, and the refused step is no step of the undo list.
+    let shown = rows(&mut app);
+    assert!(shown[23].contains("no room"), "{shown:?}");
     // The same keys on a wider screen change the block, so the pick is on it.
     draw_sized(&mut app, 80);
     keys(&mut app, ">");
@@ -330,7 +333,7 @@ fn enter_saves() {
             name: "laptop".to_owned(),
             lines: vec!["output".to_owned(), "editor below main".to_owned()],
             device: "laptop".to_owned(),
-            then: Then::SetField,
+            then: Some(mu_config::Choice::Default),
         }]
     );
     assert!(!app.arranges());
@@ -407,4 +410,104 @@ fn the_drop_part_is_marked() {
     assert!(marked(target.0, target.1));
     assert!(marked(x + width - width / 3, y + height / 2));
     assert!(!marked(x + width / 2, y + height / 2));
+}
+
+const ANCHORED: &[&str] = &[
+    "output",
+    "output as notices right of main",
+    "tabs above notices",
+    "editor at bottom",
+];
+
+#[test]
+fn a_change_that_writes_the_plan_again_gives_a_notice_at_the_save() {
+    let mut app = laptop_with(ANCHORED);
+    arrange(&mut app);
+    // The letters follow the screen: main, tabs, notices, editor.
+    keys(&mut app, "c-");
+    assert!(
+        !app.layout()
+            .lines()
+            .iter()
+            .any(|line| line.contains("notices"))
+    );
+    let effects = key(&mut app, KeyCode::Enter, Modifiers::NONE);
+    assert!(
+        matches!(effects.as_slice(), [Effect::SaveLayout { .. }]),
+        "{effects:?}"
+    );
+    assert!(
+        app.notices().iter().any(|line| line.contains("plan")),
+        "{:?}",
+        app.notices()
+    );
+}
+
+#[test]
+fn a_new_configuration_ends_arrange_mode() {
+    let mut app = laptop_with(&["output", "editor below main"]);
+    arrange(&mut app);
+    keys(&mut app, "b");
+    let other = ["output", "tabs above main", "editor below main"];
+    app.apply_config(GetClientConfigResponse {
+        revision: "other".to_owned(),
+        echo: "dim".to_owned(),
+        layout_name: "other".to_owned(),
+        layout: other.iter().map(ToString::to_string).collect(),
+        tab_label: "{world}".to_owned(),
+        ..Default::default()
+    });
+    assert!(!app.arranges());
+    // Esc has no older layout to put under the new name.
+    key(&mut app, KeyCode::Escape, Modifiers::NONE);
+    assert_eq!(app.layout_name(), "other");
+    assert_eq!(app.layout().lines(), other);
+}
+
+#[test]
+fn a_border_that_cannot_move_says_why() {
+    let mut app = laptop_with(&[
+        "output",
+        "editor below main",
+        "output as notices right of main, 50%",
+    ]);
+    draw_sized(&mut app, 20);
+    let divider = area_of(&app, "notices").0 - 1;
+    mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        divider,
+        5,
+    );
+    mouse(
+        &mut app,
+        MouseEventKind::Drag(MouseButton::Left),
+        divider - 3,
+        5,
+    );
+    let effects = mouse(
+        &mut app,
+        MouseEventKind::Up(MouseButton::Left),
+        divider - 3,
+        5,
+    );
+    assert_eq!(effects, []);
+    // The pane of `notices` is narrow, so the hint wraps: the test reads its words.
+    let shown = rows_sized(&mut app, 20).join(" ");
+    let plain = shown.replace('│', " ");
+    let words: Vec<&str> = plain.split_whitespace().collect();
+    assert!(words.join(" ").contains("has no room"), "{shown}");
+}
+
+/// The rows of a screen of `width` columns, with no trailing spaces.
+fn rows_sized(app: &mut Model, width: u16) -> Vec<String> {
+    let buffer = draw_sized(app, width);
+    (0..buffer.area.height)
+        .map(|y| {
+            let row: String = (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect();
+            row.trim_end().to_owned()
+        })
+        .collect()
 }

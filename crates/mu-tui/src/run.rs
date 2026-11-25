@@ -15,7 +15,9 @@ use crate::kitty;
 use crate::model::Model;
 use crate::probe;
 use crate::screen::{self, Restore, Screen};
-use crate::update::{Effect, Msg, Reply, Then, Timer, update};
+use mu_config::Choice;
+
+use crate::update::{Effect, Msg, Reply, Timer, update};
 use crate::view::view;
 
 /// Runs the client with the client configuration `config` of `device` on the alternate screen
@@ -163,14 +165,22 @@ fn layout_call(replies: &mpsc::UnboundedSender<Msg>, client: &PortalClient, effe
             device,
             then,
         } => spawn_reply(replies, save_layout(client, name, lines, device, then)),
-        Effect::UseLayout { device, name, key } => spawn_reply(replies, async move {
+        Effect::UseLayout {
+            device,
+            name,
+            choice,
+        } => spawn_reply(replies, async move {
             let call = async {
                 client
-                    .use_layout(&device, &name, key.as_deref())
+                    .use_layout(
+                        &device,
+                        name.as_deref().unwrap_or_default(),
+                        key_of(&choice),
+                    )
                     .await
                     .map_err(|error| error.to_string())
             };
-            Msg::LayoutSaved(within(call, CALL_LIMIT, "").await)
+            Msg::LayoutSaved(within(call, CALL_LIMIT, UNKNOWN_RESULT).await)
         }),
         Effect::ListLayouts { next } => spawn_reply(replies, async move {
             let call = async {
@@ -196,13 +206,12 @@ async fn save_layout(
     name: String,
     lines: Vec<String>,
     device: String,
-    then: Then,
+    then: Option<Choice>,
 ) -> Msg {
     // The server writes the layout file and the choice of the device in one write.
     let (device, key) = match &then {
-        Then::Nothing => (None, None),
-        Then::SetField => (Some(device.as_str()), None),
-        Then::SetEntry(key) => (Some(device.as_str()), Some(key.as_str())),
+        None => (None, None),
+        Some(choice) => (Some(device.as_str()), key_of(choice)),
     };
     let call = async {
         client
@@ -210,7 +219,19 @@ async fn save_layout(
             .await
             .map_err(|error| error.to_string())
     };
-    Msg::LayoutSaved(within(call, CALL_LIMIT, "").await)
+    Msg::LayoutSaved(within(call, CALL_LIMIT, UNKNOWN_RESULT).await)
+}
+
+/// The end of the text of a call of the layouts that got no answer in time. The server can
+/// still do the write.
+const UNKNOWN_RESULT: &str = ", so the server can have the change or not";
+
+/// The key of the entry of `choice`, or none for the field `layout`.
+fn key_of(choice: &Choice) -> Option<&str> {
+    match choice {
+        Choice::Entry(key) => Some(key.as_str()),
+        Choice::Default => None,
+    }
 }
 
 /// The time of the system clock, in milliseconds since the Unix epoch.

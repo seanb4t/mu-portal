@@ -2,7 +2,7 @@ views {
   view index {
     title 'System context'
     description 'The player, the clients, the server, the games and the collector.'
-    include player, games, collector, mu, mu.terminal, mu.configVerb, mu.devices, mu.server
+    include player, games, collector, mu, mu.terminal, mu.configVerb, mu.layoutVerb, mu.devices, mu.server
   }
 
   view serverAndClients of mu {

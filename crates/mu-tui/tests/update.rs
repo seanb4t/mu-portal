@@ -783,7 +783,7 @@ fn a_hash_back_to_the_applied_one_resets_the_failures() {
     );
 }
 
-// The world state, the times and the tick of the clock (client-layout).
+// The world state, the times and the tick of the clock.
 
 use mu_proto::{GetClientConfigResponse, NamedLayout};
 use proptest::prelude::*;
@@ -1143,9 +1143,14 @@ proptest! {
     }
 }
 
-// The commands of the layout and the save (layout-editing).
+// The commands of the layout and the save.
 
-use mu_tui::Then;
+use mu_config::Choice;
+
+/// The choice of the entry of the world `alpha/aria`.
+fn aria_entry() -> Choice {
+    Choice::Entry("alpha/aria".parse().expect("a world key"))
+}
 
 /// Types `text` and presses Enter, and returns the effects of the Enter.
 fn run_command(model: &mut Model, text: &str) -> Vec<Effect> {
@@ -1200,7 +1205,7 @@ fn a_save_from_a_built_in_layout_takes_the_device_name() {
             name: "laptop".to_owned(),
             lines: vec!["output".to_owned(), "editor below main".to_owned()],
             device: "laptop".to_owned(),
-            then: Then::SetField,
+            then: Some(Choice::Default),
         }]
     );
     assert_eq!(model.layout_name(), "laptop");
@@ -1220,7 +1225,7 @@ fn a_save_from_the_built_in_layout_of_a_world_sets_its_entry() {
             name: "laptop.alpha.aria".to_owned(),
             lines: vec!["output".to_owned(), "editor below main".to_owned()],
             device: "laptop".to_owned(),
-            then: Then::SetEntry("alpha/aria".to_owned()),
+            then: Some(aria_entry()),
         }]
     );
     // The other world keeps the layout of the field `layout`.
@@ -1245,22 +1250,57 @@ fn a_save_to_a_player_layout_keeps_its_name() {
                 "tabs at top".to_owned()
             ],
             device: "laptop".to_owned(),
-            then: Then::Nothing,
+            then: None,
         }]
     );
 }
 
 #[test]
-fn a_failed_save_keeps_the_screen() {
+fn a_failed_save_puts_the_layout_back() {
     let mut model = laptop();
+    let mut config = layout_config(CLASSIC, &[], &["world"], &[]);
+    "classic".clone_into(&mut config.layout_name);
+    configure(&mut model, config);
     run_command(&mut model, "/pane hide tabs");
+    assert_eq!(model.layout_name(), "laptop");
     let effects = update(
         &mut model,
         Msg::LayoutSaved(Err("clients/devices/laptop.toml: bad".to_owned())),
     );
-    assert_eq!(effects, []);
-    assert_eq!(model.layout().lines(), ["output", "editor below main"]);
+    // The screen shows what the server holds, and the client asks for it again.
+    assert_eq!(effects, [Effect::FetchConfig]);
+    assert_eq!(model.layout().lines(), CLASSIC);
+    assert_eq!(model.layout_name(), "classic");
     assert_eq!(notices_of(&model, "clients/devices/laptop.toml"), 1);
+}
+
+#[test]
+fn a_change_after_a_failed_save_sets_the_choice_again() {
+    let mut model = laptop();
+    let mut config = layout_config(CLASSIC, &[], &["world"], &[]);
+    "classic".clone_into(&mut config.layout_name);
+    configure(&mut model, config);
+    run_command(&mut model, "/pane hide tabs");
+    update(&mut model, Msg::LayoutSaved(Err("down".to_owned())));
+    // The layout is the built-in one again, so the next save sets the choice of the device.
+    let effects = run_command(&mut model, "/pane hide tabs");
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [Effect::SaveLayout { name, then: Some(Choice::Default), .. }] if name == "laptop"
+        ),
+        "{effects:?}"
+    );
+}
+
+#[test]
+fn a_failed_save_with_no_configuration_gives_the_default_layout() {
+    let mut model = laptop();
+    run_command(&mut model, "/pane hide tabs");
+    let effects = update(&mut model, Msg::LayoutSaved(Err("down".to_owned())));
+    assert_eq!(effects, [Effect::FetchConfig]);
+    assert_eq!(model.layout_name(), "classic");
+    assert_eq!(model.layout().lines(), CLASSIC);
 }
 
 #[test]
@@ -1309,8 +1349,8 @@ fn the_next_layout_wraps() {
     };
     let use_of = |name: &str| Effect::UseLayout {
         device: "laptop".to_owned(),
-        name: name.to_owned(),
-        key: None,
+        name: Some(name.to_owned()),
+        choice: Choice::Default,
     };
     assert_eq!(next(&mut model), [use_of("focus")]);
     let mut config = layout_config(&["output", "editor below main"], &[], &["world"], &[]);
@@ -1326,16 +1366,42 @@ fn layout_here_sets_the_entry_of_the_world_in_focus() {
         run_command(&mut model, "/layout here focus"),
         [Effect::UseLayout {
             device: "laptop".to_owned(),
-            name: "focus".to_owned(),
-            key: Some("alpha/aria".to_owned()),
+            name: Some("focus".to_owned()),
+            choice: aria_entry(),
         }]
     );
     assert_eq!(
         run_command(&mut model, "/layout here"),
         [Effect::UseLayout {
             device: "laptop".to_owned(),
-            name: String::new(),
-            key: Some("alpha/aria".to_owned()),
+            name: None,
+            choice: aria_entry(),
         }]
     );
+}
+
+#[test]
+fn a_list_that_says_disconnected_clears_the_connect_time() {
+    let mut model = status_model(&["state", "connected"], &[]);
+    update(
+        &mut model,
+        world_event(
+            EventKind::EVENT_KIND_CONNECTED,
+            Source::SOURCE_SYSTEM,
+            40_000,
+        ),
+    );
+    update(&mut model, Msg::Tick(100_000));
+    assert_eq!(status_row(&model), "connected | 1:00");
+    // The list says that the world is not connected, and no disconnect event came.
+    let world = |id: &str| mu_proto::World {
+        id: id.to_owned(),
+        state: mu_proto::WorldState::WORLD_STATE_DISCONNECTED.into(),
+        ..Default::default()
+    };
+    update(
+        &mut model,
+        Msg::Listed(Ok(vec![world("alpha/aria"), world("beta/bryn")])),
+    );
+    assert_eq!(status_row(&model), "disconnected");
 }

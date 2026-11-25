@@ -69,7 +69,7 @@ enum LayoutCommand {
         #[command(flatten)]
         edit: EditArgs,
     },
-    /// Set the size of a block of a layout, such as 30%, 12 or "max 3"
+    /// Set the size of a block of a layout, such as 30%, 12 or "max 3", or fill for no size
     Size {
         /// The name of the layout
         layout: String,
@@ -378,13 +378,13 @@ fn describe(
                 "{}. {} ({}): column {}, row {}, {} by {}{}: {}",
                 block.line,
                 filter(&block.id, &STORE),
-                block.name,
+                filter(&block.name, &STORE),
                 block.x + 1,
                 block.y + 1,
                 block.width,
                 block.height,
                 if block.front { "" } else { ", behind" },
-                block.data_source,
+                filter(&block.data_source, &STORE),
             );
             text
         })

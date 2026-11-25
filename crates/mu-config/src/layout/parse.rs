@@ -161,12 +161,15 @@ fn line(input: &mut &str) -> ModalResult<Step> {
     })
 }
 
+/// The most characters of one line of a plan.
+pub const LINE_MAX: usize = 256;
+
 impl Size {
     /// Reads a size, such as `30%`, `12` or `max 3`.
     ///
     /// # Errors
     ///
-    /// A [`LineError`] that names the word where the reader stopped.
+    /// A [`LineError`] that names the whole text.
     pub fn parse(text: &str) -> Result<Self, LineError> {
         let bad = || LineError {
             word: text.trim().to_owned(),
@@ -192,6 +195,13 @@ impl Step {
                 word: String::new(),
                 column: 1,
                 reason: "an empty line".to_owned(),
+            });
+        }
+        if text.chars().count() > LINE_MAX {
+            return Err(LineError {
+                word: text.chars().take(16).collect(),
+                column: 1,
+                reason: format!("a line has at most {LINE_MAX} characters"),
             });
         }
         line.parse(text).map_err(|error| {

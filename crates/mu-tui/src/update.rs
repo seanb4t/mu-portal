@@ -29,6 +29,7 @@ use crate::probe::{self, Outcome};
 use crate::registry::{ArgKind, EntryId, candidates};
 use crate::store::Image;
 use crate::text::{clean, clean_paste, echo_rows, line};
+use mu_config::Choice;
 use mu_config::layout::{BlockId, BlockKind};
 
 /// One input of the model.
@@ -217,18 +218,19 @@ pub enum Effect {
         lines: Vec<String>,
         /// The name of this device.
         device: String,
-        /// What the device layer then names the layout with.
-        then: Then,
+        /// The choice of the device layer that then names the layout, or none if the layers
+        /// stay as they are.
+        then: Option<Choice>,
     },
     /// Ask the server to set a layout choice of the device layer, and give the result back as a
     /// [`Msg::LayoutSaved`].
     UseLayout {
         /// The name of this device.
         device: String,
-        /// The name of the layout. Empty with a key removes the entry.
-        name: String,
-        /// The key of an entry of `[world-layouts]`, or none for the field `layout`.
-        key: Option<String>,
+        /// The name of the layout, or none to remove the entry.
+        name: Option<String>,
+        /// The choice that takes the name.
+        choice: Choice,
     },
     /// Ask the server for the names of the layouts, and give them back as a [`Msg::Layouts`].
     ListLayouts {
@@ -245,17 +247,6 @@ pub enum Effect {
         /// The bytes of a PNG file.
         png: Vec<u8>,
     },
-}
-
-/// What a save of a layout does after it writes the layout file.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Then {
-    /// Nothing: the layers that name the layout stay as they are.
-    Nothing,
-    /// The field `layout` of the device layer names the layout.
-    SetField,
-    /// The entry of this key of `[world-layouts]` of the device layer names the layout.
-    SetEntry(String),
 }
 
 /// What an [`Effect::Wait`] is for.
@@ -319,11 +310,11 @@ fn step(model: &mut Model, msg: Msg) -> Vec<Effect> {
             model.tick = TickWait::Idle;
             Vec::new()
         }
-        Msg::LayoutSaved(result) => {
-            if let Err(reason) = result {
-                model.notice(&format!("the server did not save the layout: {reason}"));
-            }
-            Vec::new()
+        Msg::LayoutSaved(Err(reason)) => {
+            // The screen goes back to what the server holds, and the next fetch confirms it.
+            model.restore_layouts();
+            model.notice(&format!("the save of the layout failed: {reason}"));
+            vec![Effect::FetchConfig]
         }
         Msg::Layouts { next, names } => on_layouts(model, next, names),
         Msg::Terminal(TermEvent::Key(key)) => on_key(model, key),
@@ -347,7 +338,8 @@ fn step(model: &mut Model, msg: Msg) -> Vec<Effect> {
             }
             Vec::new()
         }
-        Msg::Terminal(_) => Vec::new(),
+        // A save that is done needs nothing: the watch of the store brings the new configuration.
+        Msg::LayoutSaved(Ok(())) | Msg::Terminal(_) => Vec::new(),
         Msg::Run { entry, arg } => run_entry(model, entry, arg),
         Msg::Client(item) => on_client(model, item),
         Msg::Config(Ok(reply)) => {
@@ -542,8 +534,10 @@ fn on_input_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
     }
 }
 
-/// The wheel scrolls the pane in focus. A drag of the left button selects in the pane in focus,
-/// and its release copies the selection. A press on no position clears the selection.
+/// The wheel scrolls the pane in focus. A press of the left button on a divider or on a title
+/// row starts a drag of the border or a click on a name, and a press on an editor gives it the
+/// input focus. Any other drag of the left button selects in the pane of the press, and its
+/// release copies the selection. A press on no position clears the selection.
 fn on_mouse(model: &mut Model, mouse: MouseEvent) -> Vec<Effect> {
     if model.arrange.is_some() {
         model.arrange_mouse(mouse);
@@ -609,6 +603,8 @@ fn press_left(model: &mut Model, column: u16, row: u16) {
             border,
             pressed: (column, row),
             moved: false,
+            refused: None,
+            rewritten: false,
         });
         return;
     }
@@ -651,14 +647,21 @@ fn drag_left(model: &mut Model, column: u16, row: u16) {
             return;
         }
         // Each report resizes the layout of the press, so the result does not drift.
-        if let Ok(changed) =
-            drag.from
-                .resize_border(&border.owner, border.cells_at(at), border.total)
-        {
-            model.show_layout(changed.layout);
-        }
+        let resized = drag
+            .from
+            .resize_border(&border.owner, border.cells_at(at), border.total);
+        let (refused, rewritten) = match resized {
+            Ok(changed) => {
+                let rewritten = changed.rewritten;
+                model.show_layout(changed.layout);
+                (None, rewritten)
+            }
+            Err(error) => (Some(error.to_string()), false),
+        };
         if let Some(drag) = &mut model.drag {
             drag.moved = true;
+            drag.refused = refused;
+            drag.rewritten = rewritten;
         }
         return;
     }
@@ -678,7 +681,14 @@ fn release_left(model: &mut Model) -> Vec<Effect> {
         if drag.moved {
             // A drag that ends on the plan of its start changed nothing, so it saves nothing.
             if model.layout() == &drag.from {
+                // A border that the rules do not let move says why.
+                if let Some(reason) = &drag.refused {
+                    model.hint(reason);
+                }
                 return Vec::new();
+            }
+            if drag.rewritten {
+                model.notice(mu_config::layout::REWRITTEN);
             }
             return model.save_shown();
         }

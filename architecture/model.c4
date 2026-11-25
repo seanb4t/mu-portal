@@ -30,10 +30,10 @@ model {
         description 'Changes the model for a Msg and returns the effects. It parses a client command and builds the Action of an entry. It does no I/O.'
       }
       state = part 'Model' {
-        description 'The focus, the worlds, the pane states by pane id, the editors by editor id, the lines of a send of each line and the layout tree.'
+        description 'The focus, the worlds, the pane states by pane id, the editors by world and block id, the lines of a send of each line and the checked layouts.'
       }
       render = part 'view' {
-        description 'Walks the layout tree and renders each widget with its state.'
+        description 'Asks the solver of mu-config for the rectangle of each block, and renders each block with its state.'
       }
       outputPane = part 'Output pane' {
         description 'A StatefulWidget over a line store. One for each world.'
@@ -48,6 +48,10 @@ model {
       loop -> render 'draws a frame'
       render -> state 'reads'
       render -> outputPane 'renders'
+    }
+
+    layoutVerb = client 'mu layout' {
+      description 'Lists, shows, chooses and changes the layouts of a running server. It never starts a server.'
     }
 
     configVerb = client 'mu config' {
@@ -84,12 +88,14 @@ model {
 
     terminal.loop -> server.api 'commands, event stream and configuration watch'
     configVerb -> server.api 'GetClientConfig and ReloadConfig'
+    layoutVerb -> server.api 'ListLayouts, DescribeLayout, UseLayout and EditLayout'
     devices -> server.api 'commands and event stream'
   }
 
   player -> mu.terminal 'plays in'
   player -> mu.devices 'plays on'
   player -> mu.configVerb 'shows and reloads the configuration'
+  player -> mu.layoutVerb 'shows, chooses and changes the layouts'
   mu.server.sessions -> games 'telnet'
   mu.server -> collector 'OTLP traces and metrics, when an endpoint is set'
 

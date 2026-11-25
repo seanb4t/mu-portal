@@ -1520,7 +1520,7 @@ async fn a_clients_directory_that_turns_unlistable() {
     std::fs::set_permissions(&clients, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
-// The layout of the screen (client-layout).
+// The layout of the screen.
 
 /// A configuration directory whose `clients/global.toml` names the layout `mine` of `lines`, and
 /// then holds `rest`.
@@ -2071,7 +2071,7 @@ async fn the_input_focus_after_a_change_of_the_world() {
     .await;
 }
 
-// The saves of the layout from the client (layout-editing).
+// The saves of the layout from the client.
 
 use support::process::wait_until;
 
@@ -2194,13 +2194,20 @@ async fn the_server_refuses() {
     client.send(b"/pane hide tabs\r");
     client
         .wait_rows("the notice of the refused save", |rows| {
+            // The notice names the bad layer, and the tabs are back on the screen.
             rows.iter().any(|row| row.starts_with("-- "))
-                && rows
-                    .iter()
-                    .any(|row| row.contains("clients/devices/laptop.toml"))
-                && !rows[0].starts_with("[alpha/aria]")
+                && joined(rows).contains("clients/devices/laptop.toml")
+                && rows[0].starts_with("[alpha/aria]")
         })
         .await;
+    // The refused save wrote no layout file.
+    assert!(
+        !config
+            .path()
+            .join("clients/layouts")
+            .join("laptop.toml")
+            .exists()
+    );
 }
 
 #[tokio::test]
@@ -2428,7 +2435,7 @@ async fn an_unknown_layout_for_this_world() {
     client
         .wait_rows("the notice", |rows| {
             rows.iter()
-                .any(|row| row.starts_with("-- the server did not save"))
+                .any(|row| row.starts_with("-- the save of the layout failed"))
                 && joined(rows).contains("gone")
         })
         .await;

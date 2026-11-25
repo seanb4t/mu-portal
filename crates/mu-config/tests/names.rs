@@ -2,7 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use mu_config::{Choice, DeviceName, Kind, LayoutName, Os, WorldId, WorldKey, layout_for};
+use mu_config::{
+    Choice, DeviceName, GameName, Kind, LayoutName, Os, WorldId, WorldKey, layout_for,
+};
 
 #[test]
 fn a_device_name_of_64() {
@@ -67,7 +69,10 @@ fn a_list_of_names() {
 
 #[test]
 fn a_game_key_is_good() {
-    assert_eq!("alpha".parse(), Ok(WorldKey::Game("alpha".to_owned())));
+    assert_eq!(
+        "alpha".parse(),
+        Ok(WorldKey::Game(GameName::new("alpha").expect("a game")))
+    );
 }
 
 #[test]
@@ -130,7 +135,7 @@ fn the_world_entry_comes_first() {
 fn the_game_entry_comes_second() {
     assert_eq!(
         layout_for(Some(&aria()), &entries(&["alpha", "beta/bryn"])),
-        Choice::Entry(WorldKey::Game("alpha".to_owned()))
+        Choice::Entry(WorldKey::Game(GameName::new("alpha").expect("a game")))
     );
 }
 
@@ -145,4 +150,23 @@ fn the_default_comes_last() {
 #[test]
 fn no_world_gives_the_default() {
     assert_eq!(layout_for(None, &entries(&["alpha"])), Choice::Default);
+}
+
+#[test]
+fn a_world_key_of_129_characters_is_read() {
+    let key = format!("{}/{}", "a".repeat(64), "b".repeat(64));
+    assert!(key.parse::<WorldKey>().is_ok());
+}
+
+#[test]
+fn a_world_key_of_130_characters_is_refused() {
+    let key = format!("{}/{}", "a".repeat(64), "b".repeat(65));
+    let text = key.parse::<WorldKey>().expect_err("a long key").to_string();
+    assert!(text.contains("129"), "{text}");
+}
+
+#[test]
+fn a_game_name_follows_the_rule_of_a_part() {
+    assert!(GameName::new("alpha").is_some());
+    assert!(GameName::new("Not A Game/..").is_none());
 }

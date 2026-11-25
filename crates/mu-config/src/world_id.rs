@@ -109,8 +109,29 @@ pub enum WorldKey {
     /// One world.
     World(WorldId),
     /// Each world of the game of this name.
-    Game(String),
+    Game(GameName),
 }
+
+/// The name of a game: the first part of a world id.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct GameName(String);
+
+impl GameName {
+    /// Checks `text`, which is a name if it follows [`PART_RULE`].
+    #[must_use]
+    pub fn new(text: &str) -> Option<Self> {
+        is_part(text).then(|| Self(text.to_owned()))
+    }
+
+    /// The name.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// The most characters of a world key: two parts of 64 characters and the `/`.
+pub const WORLD_KEY_MAX: usize = 129;
 
 impl WorldKey {
     /// The key as text.
@@ -118,7 +139,7 @@ impl WorldKey {
     pub fn as_str(&self) -> &str {
         match self {
             Self::World(id) => id.as_str(),
-            Self::Game(game) => game,
+            Self::Game(game) => game.as_str(),
         }
     }
 }
@@ -133,7 +154,7 @@ impl fmt::Display for BadWorldKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{:?} is not a world id of the form <game>/<character>, and not the name of a game: each part {PART_RULE}",
+            "{:?} is not a world id of the form <game>/<character>, and not the name of a game: each part {PART_RULE}, and a key has at most {WORLD_KEY_MAX} characters",
             self.text
         )
     }
@@ -145,12 +166,16 @@ impl FromStr for WorldKey {
     type Err = BadWorldKey;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
-        if is_part(text) {
-            return Ok(Self::Game(text.to_owned()));
-        }
-        text.parse().map(Self::World).map_err(|_| BadWorldKey {
+        let bad = || BadWorldKey {
             text: text.to_owned(),
-        })
+        };
+        if text.chars().count() > WORLD_KEY_MAX {
+            return Err(bad());
+        }
+        if let Some(game) = GameName::new(text) {
+            return Ok(Self::Game(game));
+        }
+        text.parse().map(Self::World).map_err(|_| bad())
     }
 }
 
@@ -179,7 +204,7 @@ pub fn layout_for<V>(world: Option<&WorldId>, entries: &BTreeMap<String, V>) -> 
     if entries.contains_key(world.as_str()) {
         Choice::Entry(WorldKey::World(world.clone()))
     } else if entries.contains_key(world.game()) {
-        Choice::Entry(WorldKey::Game(world.game().to_owned()))
+        Choice::Entry(WorldKey::Game(GameName(world.game().to_owned())))
     } else {
         Choice::Default
     }
@@ -206,7 +231,8 @@ impl SaveTarget {
 }
 
 /// Where a save of the layout `layout` goes, for the device named `device` and the choice in
-/// use. A layout of the player keeps its name, and needs no device. A built-in layout gives a new layout: with the device
+/// use. A layout of the player keeps its name, and needs no device. A built-in layout with no
+/// device is an error. A built-in layout gives a new layout: with the device
 /// name for the field `layout`, and with the device name, `.` and the key with `.` in place of
 /// `/` for an entry.
 ///
@@ -214,11 +240,16 @@ impl SaveTarget {
 ///
 /// A [`NameError`] for a name that is no good name of a layout file: a name of more than 64
 /// characters, the name of a built-in layout, `.` or `..`.
-pub fn save_target(choice: &Choice, layout: &str, device: &str) -> Result<SaveTarget, NameError> {
+pub fn save_target(
+    choice: &Choice,
+    layout: &str,
+    device: Option<&str>,
+) -> Result<SaveTarget, NameError> {
     if BuiltIn::named(layout).is_none() {
         return LayoutName::new(layout).map(SaveTarget::Same);
     }
-    let device = DeviceName::new(device)?;
+    // A new layout takes its name from the device, so no device is the error of no name.
+    let device = DeviceName::new(device.unwrap_or_default())?;
     let name = match choice {
         Choice::Default => device.as_str().to_owned(),
         Choice::Entry(key) => format!("{}.{}", device, key.as_str().replace('/', ".")),

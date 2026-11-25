@@ -3,23 +3,47 @@
 //! place, so a reader never sees a part of a file.
 
 use std::fs;
-use std::io::Write as _;
-use std::path::Path;
+use std::io::{self, Write as _};
+use std::path::{Path, PathBuf};
 
 use toml_edit::{Array, DocumentMut, Item, Table, value};
+
+/// Why a directory of the store is not there for a write.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DirError {
+    /// The path exists and is no directory.
+    NotADirectory(String),
+    /// The server could not read the path or make the directory.
+    Failed(String),
+}
 
 /// Makes `dir` if it is missing.
 ///
 /// # Errors
 ///
-/// The text of the error for a path that exists and is no directory, and for a directory that
-/// the server cannot make. It names `shown`, the path relative to the configuration directory.
-pub fn ensure_dir(dir: &Path, shown: &str) -> Result<(), String> {
+/// A [`DirError`] for a path that exists and is no directory, and for a directory that the
+/// server cannot read or make. Its text names `shown`, the path relative to the configuration
+/// directory.
+pub fn ensure_dir(dir: &Path, shown: &str) -> Result<(), DirError> {
+    let failed = |error: io::Error| DirError::Failed(format!("{shown}: {error}"));
     // A link to a directory is a directory here, as it is for the reader of the layers.
     match fs::metadata(dir) {
         Ok(found) if found.is_dir() => Ok(()),
-        Ok(_) => Err(format!("{shown} is not a directory")),
-        Err(_) => fs::create_dir_all(dir).map_err(|error| format!("{shown}: {error}")),
+        Ok(_) => Err(DirError::NotADirectory(format!(
+            "{shown} is not a directory"
+        ))),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            fs::create_dir_all(dir).map_err(failed)
+        }
+        Err(error) => Err(failed(error)),
+    }
+}
+
+/// The file that a write to `target` replaces: the file that a link names, or `target`.
+fn resolved(target: &Path) -> io::Result<PathBuf> {
+    match fs::symlink_metadata(target) {
+        Ok(found) if found.file_type().is_symlink() => fs::canonicalize(target),
+        _ => Ok(target.to_path_buf()),
     }
 }
 
@@ -31,13 +55,22 @@ pub fn ensure_dir(dir: &Path, shown: &str) -> Result<(), String> {
 /// directory.
 pub fn write_whole(target: &Path, shown: &str, text: &str) -> Result<(), String> {
     let failed = |error: &dyn std::fmt::Display| format!("{shown}: {error}");
+    // A link stays a link: the write replaces the file that it names.
+    let target = resolved(target).map_err(|error| failed(&error))?;
     let dir = target
         .parent()
         .ok_or_else(|| failed(&"the path has no directory"))?;
     let mut file = tempfile::NamedTempFile::new_in(dir).map_err(|error| failed(&error))?;
     file.write_all(text.as_bytes())
         .map_err(|error| failed(&error))?;
-    file.persist(target).map_err(|error| failed(&error.error))?;
+    // A file that the write replaces keeps its permissions.
+    if let Ok(old) = fs::metadata(&target) {
+        fs::set_permissions(file.path(), old.permissions()).map_err(|error| failed(&error))?;
+    }
+    // The text is on the disk before the rename, so a crash leaves the old file or the new one.
+    file.as_file().sync_all().map_err(|error| failed(&error))?;
+    file.persist(&target)
+        .map_err(|error| failed(&error.error))?;
     Ok(())
 }
 
@@ -58,6 +91,22 @@ pub fn layout_text(lines: &[String]) -> String {
     file.to_string()
 }
 
+/// The text of the error for `text` that is no TOML: the line, the column and the reason. It
+/// holds no part of `text`, because a line of a layer can hold what the player keeps private.
+fn not_toml(text: &str, error: &toml_edit::TomlError) -> String {
+    let Some(span) = error.span() else {
+        return error.message().to_owned();
+    };
+    let before = &text[..span.start.min(text.len())];
+    let line = before.matches('\n').count() + 1;
+    let column = before
+        .rsplit('\n')
+        .next()
+        .map_or(0, |last| last.chars().count())
+        + 1;
+    format!("line {line}, column {column}: {}", error.message())
+}
+
 /// One change of a device layer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FieldEdit {
@@ -74,7 +123,7 @@ pub enum FieldEdit {
 ///
 /// The text of the error for a text that is no TOML, and for a path whose table is a value.
 pub fn edit_field(text: &str, path: &[&str], edit: &FieldEdit) -> Result<String, String> {
-    let mut file: DocumentMut = text.parse().map_err(|error| format!("{error}"))?;
+    let mut file: DocumentMut = text.parse().map_err(|error| not_toml(text, &error))?;
     match path {
         [field] => match edit {
             FieldEdit::Set(new) => file[*field] = value(new.as_str()),

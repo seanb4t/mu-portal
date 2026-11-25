@@ -84,7 +84,7 @@ pub enum Verb {
     Client(ClientArgs),
     /// Show the configuration of one client, or reload the directory, on a running server
     Config(config_verb::ConfigVerbArgs),
-    /// List and show the layouts of a running server
+    /// List, show, choose and change the layouts of a running server
     Layout(layout_verb::LayoutArgs),
     /// Run the server
     Server(ServerArgs),

@@ -187,6 +187,24 @@ A layout SHALL be a plan: a list of 1 to 32 lines in order. mu SHALL show each l
 - **WHEN** the user runs `mu layout show classic`
 - **THEN** stdout holds `1. output`, `2. tabs above main` and `3. editor below main`
 
+### Requirement: A line and a key have a limit
+A line of a plan SHALL have at most 256 characters, and SHALL NOT name one anchor twice. A key of `[world-layouts]` SHALL have at most 129 characters. A line or a key past a limit SHALL be an error that names the limit.
+
+#### Scenario: A line of 257 characters
+- **GIVEN** a plan whose first line is `editor` and then 251 spaces
+- **WHEN** mu reads the plan
+- **THEN** the error names line 1 and holds `256`
+
+#### Scenario: An anchor twice
+- **GIVEN** a plan with the lines `output` and `editor below main and main`
+- **WHEN** mu reads the plan
+- **THEN** the error names line 2 and holds `twice`
+
+#### Scenario: A key of 130 characters
+- **GIVEN** a key of a part of 64 characters, `/` and a part of 65 characters
+- **WHEN** mu reads the key
+- **THEN** the error holds `129`
+
 ### Requirement: The order of the lines decides the shape
 A line SHALL split only the pane that its anchor has after the lines before it. So the same lines in another order can give another screen.
 

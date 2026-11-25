@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use mu_client::{ClientError, PortalClient};
 pub use mu_config::Echo;
-use mu_config::layout::Layout;
+use mu_config::layout::{DEFAULT_LAYOUT, Layout};
 use mu_config::{Kind, Label, Os, Segment};
 use mu_proto::GetClientConfigResponse;
 
@@ -34,9 +34,10 @@ impl Model {
     ///   stays, and a notice names the bad binding.
     /// - The echo takes its echo if [`Echo::named`] knows the name. Else the echo stays, and a
     ///   notice names it.
-    /// - The layout, the layout of each world entry, the label and the segments take their
-    ///   values if they pass the checks of `mu-config`. Else the old value stays, and a notice
-    ///   names the field.
+    /// - The layout, the label and the segments take their values if they pass the checks of
+    ///   `mu-config`. Else the old value stays, and a notice names the field. The layouts of
+    ///   the world entries replace the old ones, and a bad one gives a notice and no entry.
+    /// - Arrange mode and a drag of a border end, because their layouts are of the old reply.
     /// - Each of its notices that the last applied reply did not hold becomes a notice line.
     pub fn apply_config(&mut self, reply: GetClientConfigResponse) {
         let last = self.config.take();
@@ -62,6 +63,7 @@ impl Model {
             Some(echo) => self.echo = echo,
             None => self.notice(&format!("the server sent the bad echo {:?}", reply.echo)),
         }
+        self.end_edits();
         self.apply_layouts(&reply);
         for notice in &reply.notices {
             let shown = last
@@ -74,8 +76,30 @@ impl Model {
         self.config = Some(reply);
     }
 
+    /// Ends arrange mode and a drag of a border, whose layouts belong to the layouts that a
+    /// reply is about to replace.
+    fn end_edits(&mut self) {
+        self.drag = None;
+        if self.arrange.take().is_some() {
+            self.notice("the configuration changed, so arrange mode ended with no save");
+        }
+    }
+
+    /// Puts the layouts of the last applied reply back, after a save that failed. With no
+    /// reply yet, that is the default layout and no layout of a world.
+    pub(crate) fn restore_layouts(&mut self) {
+        self.end_edits();
+        if let Some(reply) = self.config.clone() {
+            self.apply_layouts(&reply);
+        } else {
+            self.layout = crate::model::default_layout();
+            DEFAULT_LAYOUT.clone_into(&mut self.layout_name);
+            self.world_layouts.clear();
+        }
+    }
+
     /// Takes the layouts, the label and the segments of `reply`. A reply with no line of a
-    /// layout gives the default layout.
+    /// layout keeps the layout.
     fn apply_layouts(&mut self, reply: &GetClientConfigResponse) {
         if !reply.layout.is_empty() {
             match Layout::parse(&reply.layout) {

@@ -27,7 +27,7 @@ mu builds a tree from the plan. The tree has two kinds of node:
 
 The plan is the layout. The server stores the plan, the API carries it, and the client holds it. The tree is a result of the plan, and mu builds it again after each change.
 
-Each block has an id. The id is the name of the block, or the word after `as`. The one exception is `output`, whose id is `main`: that block shows the lines of the world and each stream with no block of its own, and a block named `output` beside a block named `notices` did not say that. Commands, anchors and API calls name a block by its id. An id is written in the line, so no change to another line changes it.
+Each block has an id. The id is the name of the block, or the word after `as`. The one exception is `output`, whose id is `main`. That block shows the lines of the world and each stream with no block of its own. A block named `output` beside a block named `notices` did not say that. Commands, anchors and API calls name a block by its id. An id is written in the line, so no change to another line changes it.
 
 A size belongs to one line. Only a placed block takes a size, and the side of its anchor shares the rest. So a resize is an edit of one line.
 
@@ -45,7 +45,7 @@ A sentence for each block reads as a person says it: "the notices are right of t
 
 Clients that players like, such as BeipMU and Mudlet, let the player arrange the live screen and then remember the result. The plan supports that. A drag or a key is one operation, and the result is a small change to the file.
 
-The plan is the source of truth, and not the tree, for one reason: the lines of the player stay as the player wrote them. A model that stored the tree and wrote sentences from it would write the whole file again after each drag.
+The plan is the source of truth, and not the tree, for one reason: the lines of the player stay as the player wrote them. A model that stores the tree and writes sentences from it writes the whole file again after each drag.
 
 ## Consequences
 

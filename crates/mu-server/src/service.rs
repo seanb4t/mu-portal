@@ -171,7 +171,7 @@ pub fn client_config(
 
 fn named_layout(layout: NamedLayout) -> proto::NamedLayout {
     proto::NamedLayout {
-        key: layout.key,
+        key: layout.key.unwrap_or_default(),
         name: layout.name,
         lines: layout.lines,
         built_in: layout.built_in,
@@ -273,13 +273,21 @@ fn write_status(error: &WriteError) -> ConnectError {
     }
 }
 
+/// The text `text` of a request for an error message: its first 64 characters in quotes, with
+/// each control character escaped.
+fn shown(text: &str) -> String {
+    let start: String = text.chars().take(64).collect();
+    format!("{start:?}")
+}
+
 /// The change of an `EditLayout` request.
 fn change_of(change: Option<EditChange>) -> Result<Change, ConnectError> {
     let refused = |error: &dyn std::fmt::Display| ConnectError::invalid_argument(error.to_string());
-    let step = |line: &str| Step::parse(line).map_err(|error| refused(&format!("{line}: {error}")));
-    let id = |text: &str| BlockId::new(text).map_err(|error| refused(&format!("{text}: {error}")));
-    let line_ref =
-        |text: &str| LineRef::parse(text).map_err(|error| refused(&format!("{text}: {error}")));
+    let named =
+        |text: &str, error: &dyn std::fmt::Display| refused(&format!("{}: {error}", shown(text)));
+    let step = |line: &str| Step::parse(line).map_err(|error| named(line, &error));
+    let id = |text: &str| BlockId::new(text).map_err(|error| named(text, &error));
+    let line_ref = |text: &str| LineRef::parse(text).map_err(|error| named(text, &error));
     match change {
         None => Err(ConnectError::invalid_argument("the request has no change")),
         Some(EditChange::Place(line)) => Ok(Change::Place(step(&line)?)),
@@ -454,17 +462,34 @@ impl proto::PortalService for PortalApi {
         request: ServiceRequest<'_, proto::DescribeLayoutRequest>,
     ) -> ServiceResult<proto::DescribeLayoutResponse> {
         traced("DescribeLayout", async {
-            let (layouts, _) = self.store.client().layouts();
+            let part = self.store.client();
+            let (layouts, _) = part.layouts();
             let named = layouts
                 .iter()
                 .find(|layout| layout.name == request.name)
-                .ok_or_else(|| {
-                    ConnectError::not_found(format!("no good layout is named {}", request.name))
+                .ok_or_else(|| match part.layout_notice(request.name) {
+                    // The file is there and bad, so the reply says what is wrong with it.
+                    Some(notice) => ConnectError::invalid_argument(notice.text),
+                    None => ConnectError::not_found(format!(
+                        "no good layout is named {}",
+                        shown(request.name)
+                    )),
                 })?;
             let layout = Layout::parse(&named.lines)
                 .map_err(|error| ConnectError::internal(error.to_string()))?;
-            let cells = |count: u32| u16::try_from(count).unwrap_or(u16::MAX);
-            let blocks = describe(&layout, cells(request.width), cells(request.height))
+            let cells = |count: u32, what: &str| {
+                u16::try_from(count).map_err(|_| {
+                    ConnectError::invalid_argument(format!(
+                        "the {what} {count} is over {}",
+                        u16::MAX
+                    ))
+                })
+            };
+            let (width, height) = (
+                cells(request.width, "width")?,
+                cells(request.height, "height")?,
+            );
+            let blocks = describe(&layout, width, height)
                 .into_iter()
                 .map(|block| proto::DescribedBlock {
                     id: block.id.to_string(),

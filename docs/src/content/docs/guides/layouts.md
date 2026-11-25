@@ -304,7 +304,7 @@ Alt+L, or the command `/arrange`, starts arrange mode. Each block shows a letter
 
 You can also drag a block onto another block. A release near an edge places it on that side, and a release in the middle makes a stack. The part where the block lands shows a mark while the button is down.
 
-Nothing is saved before Enter. If the layout rules refuse a move, the screen stays, and the last row shows the reason.
+The client saves nothing before Enter. If the layout rules refuse a move, the screen stays, and the last row shows the reason. If the configuration changes while arrange mode is on, the mode ends with no save.
 
 ### Where a change is saved
 
@@ -314,7 +314,11 @@ Nothing is saved before Enter. If the layout rules refuse a move, the screen sta
 
 If the new name is not a good layout name, the client does not save, and a notice tells you to use `/layout save <name>`. That happens for a name of more than 64 characters, and for a device with the name of a built-in layout.
 
-If the server refuses a save, the screen keeps the change, and a notice gives the reason.
+If the server refuses a save, a notice gives the reason, and the screen goes back to the layout that the server holds.
+
+A layout file or a device file can be a symbolic link. A save then writes the linked file and keeps the link.
+
+A line of a plan has at most 256 characters, and names an anchor only once.
 
 ## Change a layout from the shell
 

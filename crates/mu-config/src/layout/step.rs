@@ -211,7 +211,7 @@ impl fmt::Display for Size {
 pub struct Step {
     /// The block.
     pub kind: BlockKind,
-    /// The id of the block: its name, or the word after `as`.
+    /// The id of the block: the default id of its kind, or the word after `as`.
     pub id: BlockId,
     /// Where the block goes.
     pub place: Place,

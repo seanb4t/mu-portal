@@ -2400,7 +2400,7 @@ fn a_focus_command_before_the_first_list() {
     );
 }
 
-// The layout of the screen (client-layout).
+// The layout of the screen.
 
 use mu_config::layout::{BUILT_IN, BlockId, Layout, preview};
 use mu_proto::{GetClientConfigResponse, NamedLayout};
@@ -2995,7 +2995,7 @@ fn the_default_max() {
     assert_eq!(rect_of(&app, "editor"), (1, 80, 17, 24));
 }
 
-// The commands of the layout (layout-editing).
+// The commands of the layout.
 
 const SIDEBAR_LINES: &[&str] = &[
     "output",
@@ -3301,7 +3301,7 @@ fn a_drag_down_past_the_smallest_pane() {
 fn a_click_on_a_title() {
     let mut app = laptop_with(&["output", "editor below main", "output as notices with main"]);
     assert_eq!(screen(&mut app)[0], "[main] notices");
-    // The name `notices` starts at column 10 of the title row.
+    // The name `notices` takes columns 8 to 14 of the title row `[main] notices`.
     mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 10, 0);
     let effects = mouse(&mut app, MouseEventKind::Up(MouseButton::Left), 10, 0);
     assert_eq!(effects, []);
@@ -3500,4 +3500,15 @@ fn the_earlier_lines_of_a_stand_in_come_back_with_main() {
     let rows = block_rows(&mut app, "notices");
     assert!(rows.contains(&down), "{rows:?}");
     assert!(!rows.contains(&"Welcome, aria.".to_owned()), "{rows:?}");
+}
+
+#[test]
+fn a_hint_with_no_output_shows_when_an_output_comes() {
+    let mut app = laptop();
+    enter(&mut app, "/pane hide main");
+    // The plan has no `output`, so the lines of `/layout plan` have no pane yet.
+    enter(&mut app, "/layout plan");
+    enter(&mut app, "/place output above editor");
+    let rows = block_rows(&mut app, "main");
+    assert!(rows.contains(&"-- 1. tabs".to_owned()), "{rows:?}");
 }

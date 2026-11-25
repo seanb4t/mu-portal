@@ -224,8 +224,15 @@ impl Layout {
                 });
             }
         }
+        let layout = Self::from_steps(write::plan(wanted))?;
+        if &layout.tree != wanted {
+            return Err(LayoutError::whole(
+                "plan",
+                "mu found no plan that gives this screen",
+            ));
+        }
         Ok(Changed {
-            layout: Self::from_steps(write::plan(wanted))?,
+            layout,
             rewritten: true,
         })
     }
@@ -295,8 +302,8 @@ impl Layout {
     ///
     /// # Errors
     ///
-    /// A [`LayoutError`] for an id that the layout does not have, for the block of the first
-    /// line, and for a size that the block refuses.
+    /// A [`LayoutError`] for an id that the layout does not have, for a percent or a count of
+    /// cells on the block of the first line, and for a size that the block refuses.
     pub fn resize(&self, id: &BlockId, size: Size) -> Result<Changed, LayoutError> {
         let index = self.index_of(id)?;
         if index == 0 && !matches!(size, Size::Max(_)) {
@@ -351,7 +358,7 @@ impl Layout {
         })
     }
 
-    /// The direction of the split that the line of `id` adds a part to.
+    /// The direction of the split that the line `index` adds a part to.
     fn dir_of(&self, index: usize) -> Result<Dir, LayoutError> {
         match &self.steps[index].place {
             Place::Beside { side, .. } => Ok(side.dir()),
@@ -374,10 +381,11 @@ impl Layout {
     ) -> Result<Changed, LayoutError> {
         let index = self.index_of(id)?;
         let Some((low, high)) = percent_range(total, self.dir_of(index)?) else {
-            return Ok(Changed {
-                layout: self.clone(),
-                rewritten: false,
-            });
+            return Err(LayoutError::at(
+                index + 1,
+                id.as_str(),
+                "the split has no room for another size",
+            ));
         };
         let percent = u8::try_from(percent.clamp(low, high)).unwrap_or(PERCENT_MAX);
         self.resize(id, Size::Percent(percent))

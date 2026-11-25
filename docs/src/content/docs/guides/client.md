@@ -5,7 +5,7 @@ sidebar:
   order: 4
 ---
 
-This guide shows how `mu client` finds its server and how long it waits for it. It also shows how to change the keys and the echo line of the client. The echo line is the row that shows each text that you send, after `> `.
+This guide shows how `mu client` finds its server and how long it waits for it. It also shows how to change the keys, the echo line and the tab label of the client. The guide [Layouts](/guides/layouts/) shows how to change the screen. The echo line is the row that shows each text that you send, after `> `.
 
 The server owns the configuration. The client reads no configuration file. It gets its keys and its echo line from the server that it attaches to.
 
@@ -109,7 +109,7 @@ label = "{number}:{character}"
 | `{character}` | The part of the id after the `/` |
 | `{number}` | The place of the world in the tabs, from 1 |
 
-Write `{{` for the character `{`, and `}}` for the character `}`. The client keeps its marks around the label: square brackets for the world in focus, `*` for unseen lines, and the count of the sends that wait.
+Write `{{` for the character `{`, and `}}` for the character `}`. The client keeps its marks around the label. The marks are square brackets for the world in focus, `*` for unseen lines, and the count of the sends that wait.
 
 ## The statusline
 
@@ -205,7 +205,7 @@ To make the server read its configuration directory again, run:
 mu config reload
 ```
 
-`mu config reload` takes the flag `--server` with the same rules as `mu client`. It never starts a server. The server applies the new client layers, and each attached client gets its new keys and echo line.
+`mu config reload` takes the flag `--server` with the same rules as `mu client`. It never starts a server. The server applies the new client layers, and each attached client gets its new keys, echo line, layout, tab label and statusline.
 
 The server does not apply a change to a world or to `server.toml`. For each such file that changed after the start of the server, the command prints one line on stdout: `<path>: the change applies at the restart of the server`. To apply such a change, stop the server and start it again.
 

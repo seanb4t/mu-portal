@@ -816,8 +816,15 @@ fn a_border_stops_at_ten_percent() {
 #[test]
 fn a_border_in_a_split_of_20_columns() {
     let plan = layout(SIDEBAR);
-    let changed = plan.resize_border(&id_of("notices"), 12, 20).expect("good");
-    assert_eq!(changed.layout, plan);
+    // No percent gives both panes 10 columns beside the divider.
+    let text = plan
+        .resize_border(&id_of("notices"), 12, 20)
+        .expect_err("no room")
+        .to_string();
+    assert!(
+        text.contains("notices") && text.contains("no room"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -827,8 +834,14 @@ fn a_border_in_a_split_of_3_rows() {
         "editor below main",
         "output as notices below main, 50%",
     ]);
-    let changed = plan.resize_border(&id_of("notices"), 1, 3).expect("good");
-    assert_eq!(changed.layout, plan);
+    let text = plan
+        .resize_border(&id_of("notices"), 1, 3)
+        .expect_err("no room")
+        .to_string();
+    assert!(
+        text.contains("notices") && text.contains("no room"),
+        "{text}"
+    );
 }
 
 /// One change of the screen for the property test.
@@ -1060,7 +1073,8 @@ use mu_config::{Choice, DeviceName, LayoutName, SaveTarget, WorldKey};
 
 /// The name that a save of a change of the built-in layout `classic` writes.
 fn save_target(choice: &Choice, device: &DeviceName) -> Result<LayoutName, mu_config::NameError> {
-    mu_config::save_target(choice, "classic", device.as_str()).map(|target| target.name().clone())
+    mu_config::save_target(choice, "classic", Some(device.as_str()))
+        .map(|target| target.name().clone())
 }
 
 fn device(name: &str) -> DeviceName {
@@ -1152,7 +1166,7 @@ proptest! {
 
 #[test]
 fn a_save_to_a_layout_of_the_player_keeps_its_name() {
-    let target = mu_config::save_target(&entry("alpha/aria"), "mine", "");
+    let target = mu_config::save_target(&entry("alpha/aria"), "mine", None);
     assert_eq!(
         target,
         Ok(SaveTarget::Same(LayoutName::new("mine").expect("a name")))
@@ -1161,7 +1175,7 @@ fn a_save_to_a_layout_of_the_player_keeps_its_name() {
 
 #[test]
 fn a_save_from_a_built_in_layout_gives_a_new_layout() {
-    let target = mu_config::save_target(&Choice::Default, "classic", "laptop");
+    let target = mu_config::save_target(&Choice::Default, "classic", Some("laptop"));
     assert_eq!(
         target,
         Ok(SaveTarget::New(LayoutName::new("laptop").expect("a name")))
@@ -1292,11 +1306,12 @@ proptest! {
         let good: Vec<u8> = (10..=90)
             .filter(|percent| a_good_percent(&plan, *percent, area, dir, total))
             .collect();
-        let changed = plan.resize_border(&id_of("notices"), cells, total).expect("good");
+        let changed = plan.resize_border(&id_of("notices"), cells, total);
         if good.is_empty() {
-            // No percent keeps both panes, so the plan stays as it is.
-            prop_assert_eq!(changed.layout.lines(), plan.lines());
+            // No percent keeps both panes, so the change is refused.
+            prop_assert!(changed.is_err(), "{:?}", changed);
         } else {
+            let changed = changed.expect("a good percent exists");
             let line = changed.layout.lines()[2].clone();
             let percent: u8 = line
                 .rsplit_once(", ")
@@ -1363,4 +1378,48 @@ fn an_output_line_with_no_as_has_the_id_main() {
 fn the_numbered_lines_of_a_plan() {
     let plan = layout(&["output", "editor below main"]);
     assert_eq!(plan.numbered(), ["1. output", "2. editor below main"]);
+}
+
+// The limits of a line, and a step that no sentence gives.
+
+#[test]
+fn a_line_of_256_characters_is_read() {
+    let line = format!("editor{}", " ".repeat(250));
+    assert_eq!(line.chars().count(), 256);
+    assert!(Layout::parse(&[line]).is_ok());
+}
+
+#[test]
+fn a_line_of_257_characters_is_refused() {
+    let line = format!("editor{}", " ".repeat(251));
+    let text = Layout::parse(&[line]).expect_err("a long line").to_string();
+    assert!(text.contains("line 1") && text.contains("256"), "{text}");
+}
+
+#[test]
+fn an_anchor_twice_in_one_line_is_refused() {
+    let text = error(&["output", "editor below main and main"]);
+    assert!(text.contains("line 2") && text.contains("twice"), "{text}");
+}
+
+#[test]
+fn a_step_with_no_anchor_is_an_error() {
+    let bad = Step {
+        kind: BlockKind::Editor,
+        id: BlockId::of(BlockKind::Editor),
+        place: Place::Beside {
+            side: Side::Below,
+            anchors: Vec::new(),
+        },
+        size: None,
+    };
+    let text = Layout::from_steps(vec![step_of("output"), bad])
+        .expect_err("no anchor")
+        .to_string();
+    assert!(text.contains("line 2") && text.contains("anchor"), "{text}");
+}
+
+#[test]
+fn a_save_from_a_built_in_layout_with_no_device_is_an_error() {
+    assert!(mu_config::save_target(&Choice::Default, "classic", None).is_err());
 }

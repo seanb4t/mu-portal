@@ -16,7 +16,7 @@ pub use builtin::{BUILT_IN, BuiltIn, DEFAULT_LAYOUT, LayoutFile};
 pub use change::{
     Change, Changed, FILL, LineRef, PANE_COLUMNS_MIN, PANE_ROWS_MIN, RESIZE_STEP, REWRITTEN,
 };
-pub use parse::LineError;
+pub use parse::{LINE_MAX, LineError};
 pub use solve::{Area, Border, Placed, Solved, preview, solve};
 pub use solve::{Described, describe};
 pub use step::{
@@ -66,7 +66,7 @@ impl LayoutError {
         }
     }
 
-    fn whole(word: impl Into<String>, reason: impl Into<String>) -> Self {
+    pub(crate) fn whole(word: impl Into<String>, reason: impl Into<String>) -> Self {
         Self {
             line: None,
             word: word.into(),
@@ -102,7 +102,8 @@ impl Layout {
     ///
     /// # Errors
     ///
-    /// A [`LayoutError`] that names the line and the word.
+    /// A [`LayoutError`] that names the line and the word. An error about the plan as a whole,
+    /// such as too many lines, names no line.
     pub fn parse<S: AsRef<str>>(lines: &[S]) -> Result<Self, LayoutError> {
         count_lines(lines.len())?;
         let steps = lines
@@ -124,7 +125,8 @@ impl Layout {
     ///
     /// # Errors
     ///
-    /// A [`LayoutError`] that names the line and the id.
+    /// A [`LayoutError`] that names the line and the id. An error about the plan as a whole
+    /// names no line.
     pub fn from_steps(steps: Vec<Step>) -> Result<Self, LayoutError> {
         count_lines(steps.len())?;
         let mut root = None;

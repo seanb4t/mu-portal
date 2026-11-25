@@ -126,8 +126,8 @@ pub struct Model {
     /// The editor with the input focus. [`Model::input_id`] gives the editor of the layout on
     /// the screen that it stands for.
     pub(crate) input: BlockId,
-    /// The pane of each `output` that is not the first one of its plan, by the id of its world
-    /// and the id of its block.
+    /// The pane of each `output` that is not the main output of its plan, by the id of its
+    /// world and the id of its block.
     pub(crate) extra_panes: HashMap<(Option<String>, BlockId), PaneId>,
     /// The block in front of each stack, by the id of the first block of its pane.
     pub(crate) fronts: HashMap<BlockId, BlockId>,
@@ -149,6 +149,8 @@ pub struct Model {
     pub(crate) late: Late,
     /// The notices of the client, which a reset of the panes keeps.
     pub(crate) notices: Vec<String>,
+    /// The notices and the hints that no pane showed, because the layout held no `output`.
+    pub(crate) unshown: Vec<String>,
     /// True if a late answer gave mode 2027 as set before the probe.
     pub(crate) keeps_grapheme_mode: bool,
     /// Set by a Quit while a send has no reply yet, the send with the server included. A second
@@ -198,9 +200,14 @@ pub(crate) struct Drag {
     pub(crate) pressed: (u16, u16),
     /// Whether the mouse moved the border since the press.
     pub(crate) moved: bool,
+    /// The reason that the layout rules refused the last report of the drag.
+    pub(crate) refused: Option<String>,
+    /// Whether the last report of the drag made mu write the whole plan again.
+    pub(crate) rewritten: bool,
 }
 
-/// Whether an [`Effect::RetryConfig`](crate::update::Effect::RetryConfig) waits, so a second
+/// Whether an [`Effect::Wait`](crate::update::Effect::Wait) for
+/// [`Timer::RetryConfig`](crate::update::Timer::RetryConfig) waits, so a second
 /// one does not start.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum ConfigRetry {
@@ -273,6 +280,7 @@ impl Model {
             ),
             late: Late::None,
             notices: Vec::new(),
+            unshown: Vec::new(),
             keeps_grapheme_mode: false,
             quit_arm: None,
             listing: Listing::Idle,
@@ -667,6 +675,10 @@ impl Model {
                 Some(mu_proto::WorldState::WORLD_STATE_RECONNECTING) => WorldStatus::Reconnecting,
                 Some(mu_proto::WorldState::WORLD_STATE_UNSPECIFIED) | None => WorldStatus::Unknown,
             };
+            // The time of the connect is a fact of a connected world only.
+            if world.state != WorldStatus::Connected {
+                world.connected_ms = None;
+            }
         }
     }
 
@@ -744,22 +756,40 @@ impl Model {
             .map_or(PaneId::NOTICES, |world| world.pane)
     }
 
-    /// Adds the system line `-- <text>` at the bottom of the pane in focus. After a Reset
+    /// Adds the system line `-- <text>` at the bottom of the pane of the notices. After a Reset
     /// clears the panes of the worlds, the line comes back in the pane of the world in focus.
     pub(crate) fn notice(&mut self, text: &str) {
         let line = format!("-- {text}");
-        if let Some(pane) = self.pane_for(NOTICES_STREAM) {
-            self.push(pane, &line);
-        }
+        self.show_notice(&line);
         self.notices.push(line);
     }
 
-    /// Adds the line `-- <text>` at the bottom of the pane in focus, for a key that did nothing.
+    /// Adds the line `-- <text>` at the bottom of the pane of the notices, for a key that did
+    /// nothing.
     /// Unlike [`Self::notice`], the line does not come back after a Reset, because it is about
     /// one moment.
     pub(crate) fn hint(&mut self, text: &str) {
+        self.show_notice(&format!("-- {text}"));
+    }
+
+    /// Adds `line` at the bottom of the pane that shows the notices of the world in focus. A
+    /// layout with no `output` has no such pane, so the line waits for one.
+    fn show_notice(&mut self, line: &str) {
+        match self.pane_for(NOTICES_STREAM) {
+            Some(pane) => self.push(pane, line),
+            None => self.unshown.push(line.to_owned()),
+        }
+    }
+
+    /// Adds each line that waited for a pane of the notices, if the layout has one now.
+    pub(crate) fn show_unshown(&mut self) {
+        if self.unshown.is_empty() {
+            return;
+        }
         if let Some(pane) = self.pane_for(NOTICES_STREAM) {
-            self.push(pane, &format!("-- {text}"));
+            for line in std::mem::take(&mut self.unshown) {
+                self.push(pane, &line);
+            }
         }
     }
 
@@ -779,7 +809,7 @@ impl Model {
 }
 
 /// The layout of a client whose configuration names none.
-fn default_layout() -> Layout {
+pub(crate) fn default_layout() -> Layout {
     let lines = BUILT_IN
         .iter()
         .find(|each| each.name == DEFAULT_LAYOUT)

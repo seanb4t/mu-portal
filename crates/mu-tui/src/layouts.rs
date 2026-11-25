@@ -2,10 +2,10 @@
 //! and returns the effect that saves it on the server.
 
 use mu_config::layout::{Block, BlockId, Change, Layout, LineRef, REWRITTEN, Step};
-use mu_config::{Choice, LayoutName, SaveTarget, save_target};
+use mu_config::{Choice, LayoutName, SaveTarget, WorldKey, save_target};
 
 use crate::model::Model;
-use crate::update::{Effect, Then};
+use crate::update::Effect;
 
 impl Model {
     /// The key of the entry that gives the layout on the screen, or none for the field `layout`.
@@ -14,11 +14,6 @@ impl Model {
             Choice::Entry(key) => Some(key.as_str().to_owned()),
             Choice::Default => None,
         }
-    }
-
-    /// What a save does after its write, so that the choice in use names the saved layout.
-    fn then_choose(&self) -> Then {
-        self.choice_key().map_or(Then::SetField, Then::SetEntry)
     }
 
     /// Puts `layout` on the screen under the name `name`, in place of the layout of the choice
@@ -30,13 +25,15 @@ impl Model {
             self.layout_name = name;
             self.layout = layout;
         }
+        self.show_unshown();
     }
 
     /// Puts `layout` on the screen under the new name `name`, and returns the effect that
     /// saves it. The choice in use then names it.
     fn save_as(&mut self, name: &LayoutName, layout: Layout) -> Vec<Effect> {
         let lines = layout.lines();
-        let then = self.then_choose();
+        // The choice in use then names the saved layout.
+        let then = Some(self.choice());
         self.set_chosen(name.as_str().to_owned(), layout);
         vec![Effect::SaveLayout {
             name: name.as_str().to_owned(),
@@ -59,9 +56,8 @@ impl Model {
         let name = self.layout_name().to_owned();
         let layout = self.layout().clone();
         let lines = layout.lines();
-        match save_target(&self.choice(), &name, &self.device) {
+        match save_target(&self.choice(), &name, Some(&self.device)) {
             Ok(SaveTarget::Same(name)) => {
-                // Each world that uses this layout gets the change.
                 if self.layout_name == name.as_str() {
                     self.layout = layout.clone();
                 }
@@ -74,7 +70,7 @@ impl Model {
                     name: name.as_str().to_owned(),
                     lines,
                     device: self.device.clone(),
-                    then: Then::Nothing,
+                    then: None,
                 }]
             }
             Ok(SaveTarget::New(target)) => self.save_as(&target, layout),
@@ -148,7 +144,7 @@ impl Model {
         }
     }
 
-    /// Shows the next block of the first stack of the plan.
+    /// Shows the next block of the first stack of the screen, in the order of the tree.
     pub(crate) fn pane_next(&mut self) {
         let mut stacks: Vec<Vec<Block>> = Vec::new();
         collect_stacks(self.layout().tree(), &mut stacks);
@@ -233,8 +229,8 @@ impl Model {
         }
         vec![Effect::UseLayout {
             device: self.device.clone(),
-            name: name.to_owned(),
-            key: None,
+            name: Some(name.to_owned()),
+            choice: Choice::Default,
         }]
     }
 
@@ -244,10 +240,16 @@ impl Model {
             self.notice("no world has the focus, so /layout here sets no layout");
             return Vec::new();
         };
+        let Ok(key) = world.parse::<WorldKey>() else {
+            self.notice(&format!(
+                "{world} is no world id, so /layout here sets no layout"
+            ));
+            return Vec::new();
+        };
         vec![Effect::UseLayout {
             device: self.device.clone(),
-            name: name.unwrap_or_default().to_owned(),
-            key: Some(world),
+            name: name.map(str::to_owned),
+            choice: Choice::Entry(key),
         }]
     }
 
@@ -276,8 +278,8 @@ impl Model {
         let next = place.map_or(0, |place| (place + 1) % names.len());
         vec![Effect::UseLayout {
             device: self.device.clone(),
-            name: names[next].clone(),
-            key: self.choice_key(),
+            name: Some(names[next].clone()),
+            choice: self.choice(),
         }]
     }
 }

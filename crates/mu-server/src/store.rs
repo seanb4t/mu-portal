@@ -133,8 +133,8 @@ struct Chosen {
 /// the list of every layout.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NamedLayout {
-    /// The key of the entry: a world id or the name of a game. Empty in a list of layouts.
-    pub key: String,
+    /// The key of the entry: a world id or the name of a game. None in a list of layouts.
+    pub key: Option<String>,
     /// The name of the layout.
     pub name: String,
     /// The lines of the layout.
@@ -437,7 +437,7 @@ impl ClientPart {
             .filter_map(|name| {
                 let (lines, built_in) = self.layout_named(name)?;
                 Some(NamedLayout {
-                    key: String::new(),
+                    key: None,
                     name: name.to_owned(),
                     lines,
                     built_in,
@@ -497,7 +497,7 @@ impl ClientPart {
             let path = keyed_path(WORLD_LAYOUTS_TABLE, &key);
             if let Some((lines, built_in)) = self.layout_named(&entry) {
                 worlds.push(NamedLayout {
-                    key,
+                    key: Some(key),
                     name: entry,
                     lines,
                     built_in,
@@ -633,6 +633,8 @@ pub struct Reloaded {
     /// The path of each world file and of `server.toml` that differs from the snapshot of the
     /// start. The change applies at the next start. No path holds a control character.
     pub restart: Vec<String>,
+    /// Whether the reload read the directory. If not, the store serves what it served before.
+    pub read: bool,
 }
 
 impl Reloaded {
@@ -641,6 +643,7 @@ impl Reloaded {
         Self {
             notices: vec![notice],
             restart: Vec::new(),
+            read: false,
         }
     }
 }
@@ -761,6 +764,7 @@ impl Store {
         Reloaded {
             notices,
             restart: changed(&self.start, snapshot),
+            read: true,
         }
     }
 }
@@ -768,7 +772,8 @@ impl Store {
 /// Why a write of the store did not happen.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WriteError {
-    /// The request is one that the rules refuse. Nothing was written.
+    /// The request is one that the rules refuse. The store checks a request before its first
+    /// write, so nothing was written.
     Refused(String),
     /// The server could not write.
     Failed(String),
@@ -802,7 +807,10 @@ pub struct Edited {
 /// Makes the directories of the client configuration under `root`.
 fn ensure_dirs(root: &Path) -> Result<(), WriteError> {
     for dir in [CLIENTS_DIR, LAYOUTS_DIR, DEVICES_DIR] {
-        write::ensure_dir(&root.join(dir), dir).map_err(WriteError::Refused)?;
+        write::ensure_dir(&root.join(dir), dir).map_err(|error| match error {
+            write::DirError::NotADirectory(reason) => WriteError::Refused(reason),
+            write::DirError::Failed(reason) => WriteError::Failed(reason),
+        })?;
     }
     Ok(())
 }
@@ -815,15 +823,34 @@ fn put_layout(root: &Path, name: &LayoutName, lines: &[String]) -> Result<(), Wr
         .map_err(WriteError::Failed)
 }
 
-/// Sets the choice `choice` of the device layer of `device` under `root` to the layout `name`,
-/// or removes it for no name. The layer must be good before the write and after it.
-fn put_choice(
+/// A checked change of a device layer that is not written yet.
+struct ChoiceEdit {
+    /// The file of the layer.
+    target: PathBuf,
+    /// The path of the file under the configuration directory.
+    path: String,
+    /// The text of the layer after the change.
+    text: String,
+}
+
+impl ChoiceEdit {
+    /// Writes the layer.
+    fn write(&self) -> Result<(), WriteError> {
+        write::write_whole(&self.target, &self.path, &self.text).map_err(WriteError::Failed)
+    }
+}
+
+/// The change that sets the choice `choice` of the device layer of `device` under `root` to
+/// the layout `name`, or removes it for no name. It writes no file of the layer. The layer
+/// must be good before the change and after it, and a removal must find its entry. A caller
+/// makes this check before its first write, so a refused request writes nothing.
+fn choice_edit(
     root: &Path,
     part: &ClientPart,
     device: &DeviceName,
     choice: &Choice,
     name: Option<&str>,
-) -> Result<(), WriteError> {
+) -> Result<ChoiceEdit, WriteError> {
     let path = path_in(DEVICES_DIR, device.as_str());
     if let Some(notice) = part.bad_at(&path) {
         return Err(WriteError::Refused(notice.text));
@@ -843,15 +870,40 @@ fn put_choice(
         Choice::Entry(key) => write::edit_field(&text, &[WORLD_LAYOUTS_TABLE, key.as_str()], &edit),
     }
     .map_err(|error| WriteError::Refused(format!("{path}: {error}")))?;
+    if let (None, Choice::Entry(key)) = (name, choice)
+        && edited == text
+    {
+        return Err(WriteError::Refused(format!(
+            "{path} holds no entry {:?} of [{WORLD_LAYOUTS_TABLE}]",
+            key.as_str()
+        )));
+    }
     if let State::Bad(notice) = state(&path, &SnapEntry::File(edited.clone().into_bytes())) {
         return Err(WriteError::Refused(notice.text));
     }
-    write::write_whole(&target, &path, &edited).map_err(WriteError::Failed)
+    Ok(ChoiceEdit {
+        target,
+        path,
+        text: edited,
+    })
+}
+
+/// The error of a request that names the layout `name`, which is no good layout. It holds the
+/// notice of a layout file with that name that is bad.
+fn no_layout(part: &ClientPart, name: &str) -> WriteError {
+    match part.layout_notice(name) {
+        Some(notice) => WriteError::Refused(notice.text),
+        None => WriteError::Refused(format!("no good layout is named {name:?}")),
+    }
 }
 
 impl Store {
     /// Runs `work` with the root of the configuration directory and the current client part,
-    /// then reads the directory again. One write or reload runs at a time.
+    /// then reads the directory again, also after a `work` that failed, because it can fail
+    /// after a write. One write or reload runs at a time.
+    ///
+    /// A `work` that is done with a reload that failed is an error: the files hold the change,
+    /// and the server does not serve it yet.
     async fn write<T: Send + 'static>(
         &self,
         work: impl FnOnce(&Path, &ClientPart) -> Result<T, WriteError> + Send + 'static,
@@ -863,17 +915,32 @@ impl Store {
         let part = self.client();
         let done = tokio::task::spawn_blocking(move || work(&root, &part))
             .await
-            .map_err(|error| WriteError::Failed(error.to_string()))??;
-        self.reload_locked().await;
-        Ok(done)
+            .map_err(|error| WriteError::Failed(error.to_string()));
+        let reloaded = self.reload_locked().await;
+        let done = done??;
+        if reloaded.read {
+            Ok(done)
+        } else {
+            let reasons: Vec<&str> = reloaded
+                .notices
+                .iter()
+                .map(|notice| notice.text.as_str())
+                .collect();
+            Err(WriteError::Failed(format!(
+                "the files hold the change, but the server could not read the configuration directory again: {}",
+                reasons.join("; ")
+            )))
+        }
     }
 
-    /// Writes the layout file `name` with `lines`. With `device`, the field `layout` of the
-    /// layer of that device then names it.
+    /// Writes the layout file `name` with `lines`. With `device`, the layer of that device then
+    /// names it: in the field `layout`, or with `key` in the entry of that key of
+    /// `[world-layouts]`.
     ///
     /// # Errors
     ///
-    /// A [`WriteError`] for a bad name, a bad plan or a bad device, and for a failed write.
+    /// A [`WriteError`] for a bad name, a bad plan, a bad device, a bad key, a key with no
+    /// device, a bad device layer, and for a failed write.
     pub async fn save_layout(
         &self,
         name: &str,
@@ -882,7 +949,10 @@ impl Store {
         key: Option<&str>,
     ) -> Result<(), WriteError> {
         let name = LayoutName::new(name).map_err(|error| refused(&error))?;
-        Layout::parse(&lines).map_err(|error| refused(&format!("{name}: {error}")))?;
+        // The file holds the lines as mu writes them, not the text of the request.
+        let lines = Layout::parse(&lines)
+            .map_err(|error| refused(&format!("{name}: {error}")))?
+            .lines();
         let device = device
             .map(DeviceName::new)
             .transpose()
@@ -894,11 +964,12 @@ impl Store {
             ));
         }
         self.write(move |root, part| {
+            // Each check runs before the first write.
+            let chosen = device
+                .map(|device| choice_edit(root, part, &device, &choice, Some(name.as_str())))
+                .transpose()?;
             put_layout(root, &name, &lines)?;
-            match device {
-                Some(device) => put_choice(root, part, &device, &choice, Some(name.as_str())),
-                None => Ok(()),
-            }
+            chosen.map_or(Ok(()), |edit| edit.write())
         })
         .await
     }
@@ -929,11 +1000,9 @@ impl Store {
             if let Some(name) = &name
                 && part.layout_named(name).is_none()
             {
-                return Err(WriteError::Refused(format!(
-                    "no good layout is named {name}"
-                )));
+                return Err(no_layout(part, name));
             }
-            put_choice(root, part, &device, &choice, name.as_deref())
+            choice_edit(root, part, &device, &choice, name.as_deref())?.write()
         })
         .await
     }
@@ -964,7 +1033,7 @@ impl Store {
         let name = name.to_owned();
         self.write(move |root, part| {
             let Some((lines, built_in)) = part.layout_named(&name) else {
-                return Err(WriteError::Refused(format!("no good layout is named {name}")));
+                return Err(no_layout(part, &name));
             };
             let layout = Layout::parse(&lines).map_err(|error| refused(&error))?;
             let changed = layout.apply(change).map_err(|error| refused(&error))?;
@@ -974,7 +1043,7 @@ impl Store {
                     .resolve(Kind::Tui, Os::current(), device)
                     .world_layouts
                     .into_iter()
-                    .map(|entry| (entry.key, entry.name))
+                    .filter_map(|entry| Some((entry.key?, entry.name)))
                     .collect(),
                 _ => BTreeMap::new(),
             };
@@ -984,12 +1053,19 @@ impl Store {
                     "{name} is a built-in layout: a change of it needs a device, and saves a new layout for that device"
                 )));
             }
-            let device_name = device.as_ref().map_or("", DeviceName::as_str);
+            let device_name = device.as_ref().map(DeviceName::as_str);
             let target =
                 save_target(&choice, &name, device_name).map_err(|error| refused(&error))?;
+            // Each check runs before the first write.
+            let chosen = match (&target, &device) {
+                (SaveTarget::New(new), Some(device)) => {
+                    Some(choice_edit(root, part, device, &choice, Some(new.as_str()))?)
+                }
+                _ => None,
+            };
             put_layout(root, target.name(), &lines)?;
-            if let (SaveTarget::New(new), Some(device)) = (&target, &device) {
-                put_choice(root, part, device, &choice, Some(new.as_str()))?;
+            if let Some(edit) = chosen {
+                edit.write()?;
             }
             let saved = target.name().as_str().to_owned();
             Ok(Edited {
