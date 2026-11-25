@@ -521,6 +521,9 @@ fn on_cut_reply_key(model: &mut Model, mut bytes: Vec<u8>, key: KeyEvent) -> Vec
 }
 
 fn on_input_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
+    if model.arrange.is_some() {
+        return model.arrange_key(key);
+    }
     if let Some(entry) = model.keymap.get(&key) {
         run_entry(model, entry, None)
     } else {
@@ -535,6 +538,10 @@ fn on_input_key(model: &mut Model, key: KeyEvent) -> Vec<Effect> {
 /// The wheel scrolls the pane in focus. A drag of the left button selects in the pane in focus,
 /// and its release copies the selection. A press on no position clears the selection.
 fn on_mouse(model: &mut Model, mouse: MouseEvent) -> Vec<Effect> {
+    if model.arrange.is_some() {
+        model.arrange_mouse(mouse);
+        return Vec::new();
+    }
     match mouse.kind {
         MouseEventKind::ScrollUp => wheel(model, Wheel::Up),
         MouseEventKind::ScrollDown => wheel(model, Wheel::Down),
@@ -576,8 +583,7 @@ fn on_layouts(model: &mut Model, next: bool, names: Result<Vec<String>, String>)
 fn press_left(model: &mut Model, column: u16, row: u16) {
     model.drag = None;
     model.pressed_pane = None;
-    let (width, height) = model.screen;
-    let solved = crate::view::solved(model, width, height);
+    let solved = crate::view::solved_now(model);
     let pane = solved.pane_at(column, row).cloned();
     let on_title = pane
         .as_ref()
@@ -680,8 +686,7 @@ fn release_left(model: &mut Model) -> Vec<Effect> {
 
 /// A click on the title row at this cell: the block of the name under it shows.
 fn click_title(model: &mut Model, column: u16, row: u16) {
-    let (width, height) = model.screen;
-    let solved = crate::view::solved(model, width, height);
+    let solved = crate::view::solved_now(model);
     let Some(pane) = solved
         .pane_at(column, row)
         .filter(|pane| pane.title && pane.area.y == row)
@@ -876,7 +881,7 @@ fn act_layout(model: &mut Model, action: &Action) -> Vec<Effect> {
         Action::LayoutEdit(text) => model.layout_edit(text),
         Action::LayoutHere(name) => model.layout_here(name.as_deref()),
         Action::Arrange => {
-            model.hint("arrange mode is not here yet");
+            model.start_arrange();
             Vec::new()
         }
         _ => Vec::new(),

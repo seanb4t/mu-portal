@@ -4,6 +4,7 @@
 use mu_config::layout::{Area, BLOCKS, Block, BlockId, BlockKind, Placed, Solved, solve};
 use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::style::{Modifier, Style};
 use ratatui::widgets::Paragraph;
 
 use crate::editor::Editor;
@@ -59,7 +60,7 @@ pub fn solved(model: &Model, width: u16, height: u16) -> Solved {
 pub fn view(model: &mut Model, frame: &mut Frame) {
     let area = frame.area();
     model.screen = (area.width, area.height);
-    let solved = solved(model, area.width, area.height);
+    let solved = solved_now(model);
     for divider in &solved.dividers {
         let column = vec!["│"; usize::from(divider.height)].join("\n");
         frame.render_widget(Paragraph::new(column), rect(*divider));
@@ -71,6 +72,52 @@ pub fn view(model: &mut Model, frame: &mut Frame) {
         if let Some((_, draw)) = DRAWS.iter().find(|(each, _)| *each == kind) {
             draw(model, pane, frame);
         }
+    }
+    if model.arrange.is_some() {
+        draw_arrange(model, &solved, frame);
+    }
+}
+
+/// The rectangle of each pane of the layout on the screen, in the area of the last frame. In
+/// arrange mode, the last row is for the keys of the mode.
+#[must_use]
+pub fn solved_now(model: &Model) -> Solved {
+    let (width, height) = model.screen;
+    let rows = if model.arrange.is_some() {
+        height.saturating_sub(1)
+    } else {
+        height
+    };
+    solved(model, width, rows)
+}
+
+/// The marks of arrange mode: the letter of each block on the first cells of its pane, the part
+/// where a dragged block lands, and the keys of the mode on the last row.
+fn draw_arrange(model: &Model, solved: &Solved, frame: &mut Frame) {
+    let marked = Style::default().add_modifier(Modifier::REVERSED);
+    for pane in &solved.panes {
+        let letters = crate::arrange::marks(model.layout(), pane);
+        let row = Area {
+            height: 1,
+            width: pane
+                .area
+                .width
+                .min(u16::try_from(letters.len()).unwrap_or(u16::MAX)),
+            ..pane.area
+        };
+        frame.render_widget(Paragraph::new(letters).style(marked), rect(row));
+    }
+    let drag = model.arrange.as_ref().and_then(|mode| mode.drag.as_ref());
+    if let Some((from, column, row)) = drag
+        && let Some((pane, drop)) = crate::arrange::drop_target(solved, from, *column, *row)
+    {
+        let part = rect(crate::arrange::drop_area(pane.area, drop));
+        frame.buffer_mut().set_style(part, marked);
+    }
+    let (width, height) = model.screen;
+    if height > 0 {
+        let last = Rect::new(0, height - 1, width, 1);
+        frame.render_widget(Paragraph::new(model.arrange_row()), last);
     }
 }
 

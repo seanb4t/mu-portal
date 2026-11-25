@@ -175,6 +175,8 @@ pub struct Model {
     pub(crate) drag: Option<Drag>,
     /// The pane that took the last press of the mouse, for its drag and its release.
     pub(crate) pressed_pane: Option<PaneId>,
+    /// The state of arrange mode, while the mode is on.
+    pub(crate) arrange: Option<crate::arrange::Arrange>,
 }
 
 /// The drag of a border between two panes.
@@ -282,6 +284,7 @@ impl Model {
             layout_names: BUILT_IN.iter().map(|each| each.name.to_owned()).collect(),
             drag: None,
             pressed_pane: None,
+            arrange: None,
         };
         let input = model.input.clone();
         model.editor_of(None, &input);

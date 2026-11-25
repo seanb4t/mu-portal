@@ -5,6 +5,7 @@
 //! model. The layout of the screen is a plan of `mu-config`, and its solver gives each pane its
 //! rectangle.
 
+pub mod arrange;
 pub mod command;
 pub mod config;
 pub mod convert;
@@ -37,4 +38,4 @@ pub use registry::{Arg, ArgKind, ENTRIES, Entry, EntryId, candidates};
 pub use run::{CALL_LIMIT, control_of, ended, reply_of, run, timed, within};
 pub use text::echo_rows;
 pub use update::{Action, Effect, Msg, Reply, TICK, Then, Timer, update};
-pub use view::{catalog_blocks, drawn_blocks, solved, view};
+pub use view::{catalog_blocks, drawn_blocks, solved, solved_now, view};

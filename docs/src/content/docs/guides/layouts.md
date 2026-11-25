@@ -285,6 +285,26 @@ The mouse changes sizes:
 
 A drag inside a pane still selects text. A size from a drag is a whole percent, from 10% to 90%.
 
+### Arrange mode
+
+Alt+L, or the command `/arrange`, starts arrange mode. Each block shows a letter at its top left corner, and the last row shows the keys of the mode. Typed text does not reach the editor, and the editor keeps its text.
+
+| Key | Result |
+|---|---|
+| A letter | Picks that block |
+| A second letter, then an arrow | Places the picked block on that side of the second block |
+| A second letter, then `=` | Puts the picked block in the pane of the second block, as a stack |
+| `>` and `<` | Make the picked block 5 percent larger or smaller |
+| `-` | Hides the picked block |
+| `+` | Lists the blocks that the layout can take. A letter of the list picks one |
+| The undo key | Takes back the last change of the mode |
+| Enter | Saves the layout and leaves the mode |
+| Esc | Drops the pick. With no pick, it restores the layout and leaves the mode |
+
+You can also drag a block onto another block. A release near an edge places it on that side, and a release in the middle makes a stack. The part where the block lands shows a mark while the button is down.
+
+Nothing is saved before Enter. If the layout rules refuse a move, the screen stays, and the last row shows the reason.
+
 ### Where a change is saved
 
 - If the layout on the screen is one of your own layouts, the change goes into that file. Each world that uses the layout gets the change.

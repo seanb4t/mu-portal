@@ -198,7 +198,7 @@ impl Keymap {
 
 impl Default for Keymap {
     /// Ctrl+C quits, Ctrl+N and Ctrl+P move the focus, and Alt+1 to Alt+9 give it to the world
-    /// at that place. Alt+E gives the input focus to the next editor. Alt+Home and Alt+End scroll
+    /// at that place. Alt+E gives the input focus to the next editor, and Alt+L starts arrange mode. Alt+Home and Alt+End scroll
     /// the pane to its ends. The page keys scroll one
     /// page, and each step of the mouse wheel scrolls three rows.
     ///
@@ -219,6 +219,10 @@ impl Default for Keymap {
         keymap.bind(
             Chord::with(KeyCode::Char('e'), Modifiers::ALT),
             EntryId::of("editor-next"),
+        );
+        keymap.bind(
+            Chord::with(KeyCode::Char('l'), Modifiers::ALT),
+            EntryId::of("arrange"),
         );
         keymap.bind(Chord::plain(KeyCode::Enter), EntryId::of("send"));
         keymap.bind(Chord::ctrl('m'), EntryId::of("send"));

@@ -59,11 +59,11 @@ Each of the groups 2 to 6 is one layer. Finish a layer, with its tests and its d
 
 ## 6. Layer 5: arrange mode
 
-- [ ] 6.1 Add the mode to the model, the letters and the row of keys (design.md D10). Make sure that the tests `the_letters`, `typing_in_arrange_mode` and `events_still_show_in_arrange_mode` in `arrange.rs` pass.
-- [ ] 6.2 Add the keys of the mode. Make sure that the tests `the_tabs_go_below_the_output`, `a_refused_stack`, `add_the_statusline`, `undo`, `a_larger_and_a_smaller_block`, `a_larger_block_stops_at_ninety_percent`, `a_larger_block_in_a_small_split_keeps_its_size`, `a_letter_bound_to_undo_still_picks`, `esc_drops_the_pick`, `esc_restores` and `enter_saves` in `arrange.rs` pass.
-- [ ] 6.3 Add the drag of a block with its mark. Make sure that the tests `a_drag_to_the_right_edge`, `a_drag_to_the_middle_stacks` and `the_drop_part_is_marked` in `arrange.rs` pass.
-- [ ] 6.4 Make sure that the binary test `arrange_mode_saves_through_the_server` in `client.rs` passes. It starts the mode with Alt+L, moves the tabs, presses Enter, and reads the layout file.
-- [ ] 6.5 Update `guides/layouts.md` with arrange mode, and `architecture/terminal-client.mdx` with the layout model and the mode. Make sure that `mise run docs:check` passes.
+- [x] 6.1 Add the mode to the model, the letters and the row of keys (design.md D10). Make sure that the tests `the_letters`, `typing_in_arrange_mode` and `events_still_show_in_arrange_mode` in `arrange.rs` pass.
+- [x] 6.2 Add the keys of the mode. Make sure that the tests `the_tabs_go_below_the_output`, `a_refused_stack`, `add_the_statusline`, `undo`, `a_larger_and_a_smaller_block`, `a_larger_block_stops_at_ninety_percent`, `a_larger_block_in_a_small_split_keeps_its_size`, `a_letter_bound_to_undo_still_picks`, `esc_drops_the_pick`, `esc_restores` and `enter_saves` in `arrange.rs` pass.
+- [x] 6.3 Add the drag of a block with its mark. Make sure that the tests `a_drag_to_the_right_edge`, `a_drag_to_the_middle_stacks` and `the_drop_part_is_marked` in `arrange.rs` pass.
+- [x] 6.4 Make sure that the binary test `arrange_mode_saves_through_the_server` in `client.rs` passes. It starts the mode with Alt+L, moves the tabs, presses Enter, and reads the layout file.
+- [x] 6.5 Update `guides/layouts.md` with arrange mode, and `architecture/terminal-client.mdx` with the layout model and the mode. Make sure that `mise run docs:check` passes.
 
 ## 7. Review and integration
 

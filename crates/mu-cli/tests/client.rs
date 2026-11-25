@@ -2494,3 +2494,32 @@ async fn the_next_layout_of_a_world_entry() {
         "{shown}"
     );
 }
+
+#[tokio::test]
+async fn arrange_mode_saves_through_the_server() {
+    let (session, mut client, config) = with_layer(&["alpha/aria"], "").await;
+    // Alt+L starts the mode, and its last row shows the keys.
+    client.send(b"\x1bl");
+    wait_row(&client, 24, "the keys of arrange mode", |row| {
+        row.contains("Enter") && row.contains("Esc")
+    })
+    .await;
+    // The tabs are block A, and the output is block B: A, B and Down put the tabs below it.
+    client.send(b"ab\x1b[B");
+    wait_row(&client, 22, "the tabs above the editor", |row| {
+        row.contains("alpha/aria]")
+    })
+    .await;
+    after_save(
+        &session,
+        &mut client,
+        b"\r",
+        "the layout of the device",
+        |shown| has_config_line(shown, "layout = \"laptop\" # clients/devices/laptop.toml"),
+    )
+    .await;
+    assert_eq!(
+        place_of(config.path(), "laptop"),
+        ["output", "editor below output", "tabs below output"]
+    );
+}
