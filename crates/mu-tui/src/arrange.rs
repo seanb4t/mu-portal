@@ -100,13 +100,13 @@ pub(crate) fn marks(layout: &Layout, pane: &Placed) -> String {
         .collect()
 }
 
-/// The part of `area` at the cell: the outer third of a side, or the middle.
 /// The cells of the part at one edge of a pane of `extent` cells, where a drop goes beside
 /// the pane: a third, and one cell at least.
 fn third(extent: u16) -> u16 {
     (extent / 3).max(1)
 }
 
+/// The part of `area` at the cell: the outer third of a side, or the middle.
 pub(crate) fn drop_at(area: Area, column: u16, row: u16) -> Drop {
     let (x, y) = (column.saturating_sub(area.x), row.saturating_sub(area.y));
     if x < third(area.width) && area.width >= 3 {
