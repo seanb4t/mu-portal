@@ -1,10 +1,10 @@
 ---
-verdict: changes-requested
+verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-25T14:21:40+00:00
-head: d3bceb71013766854fc8e1c20fef7ff25f0d69e0
-round: 6
-next_id: 105
+reviewed_at: 2026-11-25T14:48:11+00:00
+head: a983b5c30a423d2c79d396fecf2679622b8c75ad
+round: 7
+next_id: 126
 lenses:
   spec-lint: not-applicable
   approach: partial
@@ -18,16 +18,17 @@ lenses:
 
 ## Incomplete lenses
 
-- approach: partial, gaps: 3
-  - The grammar and error forms of D4 (winnow ParseError offset and cause) are checked by name only, not against every case of parse.rs.
-  - The build rules of D2 (several anchors, edges, levels) in tree.rs are not read.
-  - The writer of D4 in write.rs is not read.
+- approach: partial, gaps: 2
+  - The scenario text of specs/config-store/spec.md was read at the requirement level only; its scenarios were not each traced to a step of the design.
+  - specs/client-config/spec.md and specs/terminal-client/spec.md were not read in full against the design.
 - test-honesty: partial, gaps: 2
-  - Sampled, not exhaustive: read crates/mu-tui/tests/arrange.rs in full, the new tail of crates/mu-tui/tests/update.rs, the save_target tests of crates/mu-config/tests/layout.rs and the is_err asserts of crates/mu-cli/tests/layout.rs. Not read: the rest of mu-config/tests/layout.rs, mu-cli/tests/client.rs, config_store.rs, mu-server/tests/store.rs, mu-tui/tests/app.rs and the in-file unit tests of mu-config and mu-tui src.
-  - No regex for a test body with no assertion could run (ripgrep without look-around), so no-assertion was checked by sampling only.
-- invariants: partial, gaps: 2
-  - The requirements of specs/config-store, client-statusline, client-config and terminal-client were read by heading and limiting clause only. Their scenarios were not traced to tests.
-  - D11 route() at the arrival of a line in mu-tui (the pane state of each world and output id) was not traced.
+  - The 40 assertions of config_store.rs, client.rs and app.rs beyond the sampled tests were not all read
+  - Specs and design were read only where a test named a scenario
+- invariants: partial, gaps: 4
+  - Decision D1 (the catalog BLOCKS): the code of the block counts was not read; only the test names four_editors, five_editors, eight_outputs and nine_outputs were matched.
+  - Requirement 'The client draws dividers and title rows' and 'The tab label' of specs/client-layout/spec.md: the draw code in view.rs was not read.
+  - Requirement 'Arrange mode moves a block with a drag' of specs/layout-editing/spec.md: the thirds of the drop part in arrange.rs were not read.
+  - Requirements 'ListLayouts gives every layout' and 'DescribeLayout gives the panes of a layout' of specs/config-store/spec.md: service.rs list and describe were not read.
 
 The verdict covers only what the lenses checked. While the `ctl-lens` row of an incomplete lens is open, the verdict cannot be `approve`.
 
@@ -35,38 +36,36 @@ The verdict covers only what the lenses checked. While the `ctl-lens` row of an 
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-8 | fit | blocker | in-change | Label::render splits the world text at '/' itself. That is a third copy of the split, beside WorldId and the `order` split of mu-tui, which D5 says the type replaces. | crates/mu-config/src/label.rs:131 — "let (game, character) = world.split_once('/').unwrap_or((world, ""));" | Make Label::render take a &WorldId and use game() and character(). Sort the worlds of mu-tui by the Ord of WorldId, and remove `order`. | new-evidence | severity? should-fix 0.68 | drift |
-| R-74 | approach | should-fix | in-change | No decision produces `/pane size <id> fill`. D3 lists no fill operation, so the client adds Change::Fill on its own, while EditLayout parses the size with Size::parse, which refuses `fill`. `mu layout size <name> <id> fill` fails where the client command of the same name works. | specs/layout-editing/spec.md > Requirement: The pane commands hide and resize a block — "`/pane size <id> <size>` SHALL set the size on the line of the block, and a size of `fill` SHALL remove it." | Add `fill(id)` to the table of screen changes in D3, map the size `fill` of SizeChange to Change::Fill in the service, and test `mu layout size mine notices fill`. |  |  | unmet-requirement |
-| R-75 | approach | should-fix | in-change | Enter in arrange mode saves nothing when the layout equals the layout from before the mode. D10 says Enter returns Effect::SaveLayout, and the spec says Enter saves; design.md records no deviation. | design.md > D10. Layer 5: arrange mode — "Enter drops the mode and returns `Effect::SaveLayout`." | Record in D10 and in the requirement that Enter with no change leaves the mode and saves nothing, or make Enter save in every case. |  |  | unmet-requirement |
-| R-76 | approach,fit | should-fix | in-change | fit-2: D9 makes the save rule one function, save_target(choice, layout name, device). The code drops the layout name, so the client and EditLayout each write their own branch for a built-in layout around it.; app-3: D9 cites save_target with three inputs that gives the name and the entry or field. At head it takes the choice and the device only, and returns the LayoutName alone. | design.md > D9. Layer 4: commands and the mouse — "The save rule of the spec is one function of `mu-config`, `save_target(choice in use, layout name, device name)`." | fit-2: Give save_target the layout name, as D9 states. It returns the name to save under and whether the choice changes. The client and edit_layout then only act on that result.; app-3: Write `save_target(choice, device) -> LayoutName` in D9, and say that the caller sets the field or the entry from the choice. |  |  | drift |
-| R-102 | approach | should-fix | in-change | lens approach reported partial, gaps: 3 | review > lens-status — "approach partial" | rerun the lens or accept the gap in the review |  |  | unmet-requirement |
-| R-77 | fit | should-fix | in-change | Two places turn the text of a size into a Change, and they already differ. `/pane size <id> fill` gives Change::Fill. EditLayout runs Size::parse alone, which refuses `fill`, so `mu layout size` cannot do the same change. | crates/mu-tui/src/layouts.rs:138 — "if size == "fill" {" | Add one function to mu-config that reads an id and a size text, `fill` included, into Change::Size or Change::Fill. Call it from pane_size and from change_of. |  |  | drift |
-| R-78 | fit | should-fix | in-change | `mu layout show` writes the path of a layout file by hand to find its notice. mu-server already exports layout_path, and mu-cli depends on mu-server. | crates/mu-cli/src/layout_verb.rs:287 — "let file = format!("clients/layouts/{name}.toml");" | Call mu_server::layout_path(name) in show. |  |  | drift |
-| R-79 | fit | should-fix | in-change | The notice that mu wrote the whole plan again is written twice, once in the client and once in `mu layout`. D3 gives the flag one meaning for every caller. | crates/mu-tui/src/layouts.rs:11 — "const REWRITTEN: &str = "no change of one line gives this screen, so mu wrote the whole plan again";" | Move REWRITTEN to mu-config beside Changed, and use it in both places. |  |  | drift |
-| R-80 | fit | should-fix | in-change | The new DEVICES_DIR repeats the literal that PLACES already holds for the device layers. The write path uses the constant and the read path uses PLACES, so the two can name different directories. | crates/mu-server/src/store.rs:220 — "dir: "clients/devices"," | Write `dir: DEVICES_DIR` in the device row of PLACES. |  |  | drift |
-| R-81 | fit | should-fix | in-change | layout_file repeats the chain in layer_rule that takes a file name out of a path under one directory: strip the dir, strip '/', strip '.toml', and refuse a '/'. | crates/mu-server/src/store.rs:240 — "path.strip_prefix(LAYOUTS_DIR)?" | Add one function, name_in(path, dir) -> Option<&str>, and call it from layout_file and layer_rule. |  | severity? suggestion 0.69 | drift |
-| R-82 | fit | should-fix | in-change | LayoutName::new calls DeviceName::new, then throws its error away and writes out the character rule of a device name a second time. | crates/mu-config/src/names.rs:153 — ""a device name has 1 to {DEVICE_MAX} characters from a to z, 0 to 9, -, _ and ."" | Hold the text of the character rule once in names.rs, and use it in both errors. |  |  | drift |
-| R-83 | fit | should-fix | in-change | The rule of the block in front of a stack is read twice. view::front and pane_next each look up `fronts` by the first id and fall back to the first block. | crates/mu-tui/src/view.rs:127 — "let wanted = model.fronts.get(&first.id);" | Give Model one method that returns the block in front of a stack of blocks, and call it from view::front and pane_next. |  | severity? suggestion 0.68 | drift |
-| R-84 | invariants | should-fix | in-change | percent_range caps the high bound at floor((total-least-divider)*100/total), which refuses whole percents that keep the anchor side at its smallest size. Because the solver rounds a percent down, a split of 21 columns has the good percents 48 to 52, yet the code gives no range and the drag changes nothing. At 80 columns the cap is 86, not 87. In a split of 4 rows it is 50, not 74. The only boundary tests use 20 columns and 3 rows, where no percent exists, so nothing tests one past the limit. | crates/mu-config/src/layout/change.rs:81 — "let high = u32::from(PERCENT_MAX).min(total.checked_sub(least + divider)? * 100 / total);" | Set high to the largest p with floor(p*total/100) <= total-least-divider, i.e. (100*(total-least-divider+1)-1)/total, capped at 90. Add unit tests: resize_border in a 21-column split gives 48%, and resize_by up in an 80-column split stops at 87%. |  |  | wrong-behaviour |
-| R-104 | invariants | should-fix | in-change | lens invariants reported partial, gaps: 2 | review > lens-status — "invariants partial" | rerun the lens or accept the gap in the review |  |  | unmet-requirement |
-| R-85 | test-coverage | should-fix | in-change | The test for a letter bound to undo asserts the plan lines, not the drawn row that the THEN step names. | crates/mu-tui/tests/arrange.rs:278 — "assert_eq!(app.layout().lines()[2], "tabs below output");" | In a_letter_bound_to_undo_still_picks, draw the model and assert that the row above the editor contains `alpha/aria]`, as the_tabs_go_below_the_output does with rows[21]. |  |  | false-test |
-| R-96 | test-coverage | should-fix | in-change | covered row 'An unknown field' has no verification run | review > not-run — "An unknown field" | run the covering test and record it in verification-runs.txt |  |  | unmet-requirement |
-| R-97 | test-coverage | should-fix | in-change | covered row 'The editor after the notices' has no verification run | review > not-run — "The editor after the notices" | run the covering test and record it in verification-runs.txt |  |  | unmet-requirement |
-| R-98 | test-coverage | should-fix | in-change | covered row 'The editor before the notices' has no verification run | review > not-run — "The editor before the notices" | run the covering test and record it in verification-runs.txt |  |  | unmet-requirement |
-| R-99 | test-coverage | should-fix | in-change | covered row 'No world in focus' has no verification run | review > not-run — "No world in focus" | run the covering test and record it in verification-runs.txt |  |  | unmet-requirement |
-| R-100 | test-coverage | should-fix | in-change | covered row 'Under an hour' has no verification run | review > not-run — "Under an hour" | run the covering test and record it in verification-runs.txt |  |  | unmet-requirement |
-| R-101 | test-coverage | should-fix | in-change | covered row 'Over an hour' has no verification run | review > not-run — "Over an hour" | run the covering test and record it in verification-runs.txt |  |  | unmet-requirement |
-| R-103 | test-honesty | should-fix | in-change | lens test-honesty reported partial, gaps: 2 | review > lens-status — "test-honesty partial" | rerun the lens or accept the gap in the review |  |  | unmet-requirement |
-| R-86 | approach | suggestion | in-change | D5 says the shared function of the keyed paths quotes a key as TOML needs. At head keyed_path joins the table and the key with no quote; the quote is added by key_part in mu-cli at render. | design.md > D5. Layer 2: layouts on the server — "That block becomes one function with the name of the table as its parameter, and it quotes a key as TOML needs." | State in D5 that keyed_path gives the unquoted source path, and that render quotes the key with key_part. |  |  |  |
-| R-87 | approach | suggestion | in-change | D8 says the data source of DescribeLayout is a fixed text of the catalog, with `the journal of the world in focus` for output. At head BLOCKS holds no such text; describe() builds it per step, and the output text differs. | design.md > D8. Layer 3: the write calls — "The data source is a fixed text from the catalog, such as `the journal of the world in focus` for `output`." | State in D8 that describe() gives the data source, with the text of the first output and of a named stream. |  | severity? should-fix 0.69 |  |
-| R-88 | approach | suggestion | in-change | D5 cites layout_for with a default parameter. At head it takes the world and the entries, and returns only the Choice; the caller looks up the layout. | design.md > D5. Layer 2: layouts on the server — "`mu-config` gets `layout_for(world, entries, default)`: the entry of the world id, then the entry of the game, then the " | Write `layout_for(world, entries) -> Choice` in D5. |  | scope? deviates-design 0.60 |  |
-| R-89 | approach | suggestion | in-change | D7 and D11 say a map keyed by a world and an output id replaces the map of panes by PaneId. At head the map by PaneId stays, the first output uses the pane of the world, and only the other outputs are keyed by world and id. | design.md > D7. Layer 2: the streams, the tab label and the statusline — "The pane states of D11 replace the map of panes by `PaneId`." | State in D7 and D11 that the first output takes the pane of its world, and that extra_panes maps each other output to a PaneId. |  | severity? should-fix 0.63 |  |
-| R-90 | approach | suggestion | in-change | D7a names Model::input() as the function that resolves the stored editor id. At head that is Model::input_id(); Model::input() returns the text of the editor. | design.md > D7a. Layer 2: several editors — "`Model::input()` resolves the stored id against `Model::layout()` at each read." | Name Model::input_id() in D7a and in the D12 row of the input focus. |  | severity? should-fix 0.70 |  |
-| R-91 | approach | suggestion | in-change | D6 says solve returns Vec<Placed>. At head it returns Solved, which also holds the dividers and the borders that the drag and arrange mode use. | design.md > D6. Layer 2: how the client draws — "The solver is a pure function of `mu-config`, `solve(layout, area, rows_of) -> Vec<Placed>`." | Write `-> Solved` in D6 and name its panes, dividers and borders. |  |  |  |
-| R-92 | approach | suggestion | in-change | D3 cites resize_by(id, steps). At head it also takes the cells of the block and the total of its split, which the percent range needs. | design.md > D3. Layer 1: the changes — "`resize_by(id, steps)`" | Write `resize_by(id, steps, cells, total)` in the table of D3. |  | scope? deviates-design 0.70 |  |
-| R-93 | approach | suggestion | in-change | D5 names the message of a world entry WorldLayout. At head the field is `repeated NamedLayout world_layouts`, the message that ListLayouts also uses. | design.md > D5. Layer 2: layouts on the server — "`GetClientConfigResponse` gets `repeated WorldLayout world_layouts`, each with a key, a name and its sentences." | Write `repeated NamedLayout world_layouts` in D5. |  | severity? blocker 0.72 |  |
-| R-94 | fit | suggestion | in-change | The statusline cuts text to a width with two loops by graphemes, one from the end and one from the start. D7 says the cut uses the functions of width.rs, which gets none. | crates/mu-tui/src/statusline.rs:63 — "for grapheme in right.graphemes(true).rev() {" | Add one cut function to width.rs, with the side to keep (start or end) as its parameter, and call it for both sides. |  | severity? should-fix 0.72 |  |
-| R-95 | invariants | suggestion | in-change | The floor of 2 rows and 10 columns for an output pane ranges over any plan and any terminal size that has room. The property test solve_stays_inside_the_area checks only containment and overlap, and never the floor, so a solver change that drops the raise to the smallest size passes it. | specs/client-layout/spec.md > Requirement: A small terminal keeps each pane usable — "A pane of `output` SHALL keep at least 2 rows and 10 columns while the terminal has room for each pane at that size." | Use proptest in crates/mu-config/tests/layout.rs. Add a property next to solve_stays_inside_the_area: for any grown plan and an area at least 11 columns and 3 rows per output along each axis, such as 300 by 100 for at most 8 outputs, assert that each pane holding an output is at least 10 by 2. |  |  |  |
+| R-102 | approach | should-fix | in-change | lens approach reported partial, gaps: 2 | review > lens-status — "approach partial" | rerun the lens or accept the gap in the review | regression |  | unmet-requirement |
+| R-105 | approach | should-fix | in-change | D11 sends a notice to the pane that route gives for the stream notices. The notice that no world has the focus is pushed straight into PaneId::NOTICES, the pane of the first output, so with `output as notices` it shows in `output`. | design.md > D11. Streams, and what #102 adds — "A notice goes into the pane that `route` gives for the stream `notices` and the world in focus." | In world_to_send_to, push the line through model.pane_for(NOTICES_STREAM) (or call model.hint), or record the exception in D11. |  |  | wrong-behaviour |
+| R-106 | approach | should-fix | in-change | The notice of a failed send is pushed into the pane of the world of the send, not through route for the stream notices, so with `output as notices` a `-- ` line still shows in `output`. D11 records no such exception. | design.md > D11. Streams, and what #102 adds — "`Model::notice` and `Model::hint` push to the pane that `route` gives for `notices` and the world in focus." | Route the failed-send notice through the notices stream of its world, or state in D11 that this notice stays in the pane of its world and why. |  |  | wrong-behaviour |
+| R-107 | fit | should-fix | in-change | The save of the layout on the screen under a new name is written twice in layouts.rs: the New branch of save_shown and layout_save each take then_choose, call set_chosen and build the same Effect::SaveLayout. | crates/mu-tui/src/layouts.rs:67 — "let then = self.then_choose();" | Add one method, such as save_as(&mut self, name: &LayoutName, layout: Layout) -> Vec<Effect>, and call it from the New branch of save_shown and from layout_save. |  | severity? suggestion 0.93 | drift |
+| R-108 | fit | should-fix | in-change | The rule that the first output of the plan shows the pane of the world, and each other output a pane in extra_panes, is written in pane_of_block (the draw and the mouse) and again in pane_for (where lines go). If one changes alone, lines go into a pane that the draw does not show. | crates/mu-tui/src/model.rs:609 — "let first = self.layout().ids_of(BlockKind::Output).next()?;" | Make pane_for call pane_of_block for the id that route gives, and make a new pane only when pane_of_block gives none. |  |  | drift |
+| R-109 | fit | should-fix | in-change | The layout of a title row has two mechanisms: title_row in view.rs writes the ids with brackets and one space, and click_title in update.rs works out the columns of each name again from the same brackets and space. A change to the text of the row moves the names, and a click then picks the wrong block. | crates/mu-tui/src/view.rs:137 — "format!("[{}]", block.id)" | Give view.rs one function that returns each block of a title row with its column range, build title_row from it, and let click_title look up the column in it. |  |  | drift |
+| R-110 | fit | should-fix | in-change | The store builds the path of a file under clients/ as <dir>/<name>.toml in three places: layout_path, the layer files of resolve, and the device file of put_choice. name_in holds the inverse once. The write path and the read path of a device layer each format the path on their own. | crates/mu-server/src/store.rs:234 — "format!("{LAYOUTS_DIR}/{name}.toml")" | Add path_in(dir, name) beside name_in, and build each of the three paths with it, so that layout_path becomes path_in(LAYOUTS_DIR, name). |  |  | drift |
+| R-111 | fit | should-fix | in-change | Arrange mode states the rule of thirds twice: drop_at picks the part of a drop with its own third closure, and drop_area marks that part with a second copy. If one changes, the mark no longer shows where the block lands. | crates/mu-tui/src/arrange.rs:105 — "let third = \|extent: u16\| (extent / 3).max(1);" | Make third one function of the module, and call it from drop_at and drop_area. |  |  | drift |
+| R-112 | fit | should-fix | in-change | arrange_change and arrange_size each clone the layout, show the changed layout, push the old one on the undo stack and clear or set the message. A change to the undo rule must be made in both. | crates/mu-tui/src/arrange.rs:218 — "self.show_layout(changed.layout);" | Let one method take the old layout and the Result of the change, show it, push the undo and set the message, and call it from arrange_change and arrange_size. |  |  | drift |
+| R-104 | invariants | should-fix | in-change | lens invariants reported partial, gaps: 4 | review > lens-status — "invariants partial" | rerun the lens or accept the gap in the review | regression |  | unmet-requirement |
+| R-113 | invariants | should-fix | in-change | The early Msg::Tick of the run loop sets TickWait to Idle while the wait from the probe message is pending, so a starting layout with a time segment runs two tick chains and draws twice a second. No test sends a tick while a wait is pending that did not come from that wait. | crates/mu-tui/src/run.rs:86 — "early.push_back(Msg::Tick(now_ms()));" | Give the first clock read a message of its own that sets now_ms and leaves TickWait alone (or set now_ms in run before the loop), keep Msg::Tick for the end of a wait, and add a test in update.rs that a layout with a time segment yields exactly one wait across the probe message and the first clock read. |  |  | unmet-requirement |
+| R-114 | invariants | should-fix | in-change | ensure_dir uses symlink_metadata, so a clients or clients/layouts path that is a link to a directory fails with 'is not a directory', while the snapshot follows that link and reads the layers. No test passes a link, and D8 does not say a linked directory is refused. | crates/mu-server/src/write.rs:18 — "match fs::symlink_metadata(dir) {" | Decide the rule for a linked directory in D8. Either follow the link (fs::metadata) or refuse it with an error that says it is a link; then add a test in crates/mu-cli/tests/layout.rs that saves with clients as a link to a directory. |  |  | wrong-behaviour |
+| R-96 | test-coverage | should-fix | in-change | covered row 'An unknown field' has no verification run | review > not-run — "An unknown field" | run the covering test and record it in verification-runs.txt | regression |  | unmet-requirement |
+| R-97 | test-coverage | should-fix | in-change | covered row 'The editor after the notices' has no verification run | review > not-run — "The editor after the notices" | run the covering test and record it in verification-runs.txt | regression |  | unmet-requirement |
+| R-98 | test-coverage | should-fix | in-change | covered row 'The editor before the notices' has no verification run | review > not-run — "The editor before the notices" | run the covering test and record it in verification-runs.txt | regression |  | unmet-requirement |
+| R-99 | test-coverage | should-fix | in-change | covered row 'No world in focus' has no verification run | review > not-run — "No world in focus" | run the covering test and record it in verification-runs.txt | regression |  | unmet-requirement |
+| R-100 | test-coverage | should-fix | in-change | covered row 'Under an hour' has no verification run | review > not-run — "Under an hour" | run the covering test and record it in verification-runs.txt | regression |  | unmet-requirement |
+| R-101 | test-coverage | should-fix | in-change | covered row 'Over an hour' has no verification run | review > not-run — "Over an hour" | run the covering test and record it in verification-runs.txt | regression |  | unmet-requirement |
+| R-115 | test-coverage | should-fix | in-change | The test of 'A name that is too long' checks the text '/layout save' in the joined rows but not that the notice is a line that starts with '-- '. | crates/mu-cli/tests/client.rs:2309 — "joined(rows).contains("/layout save") && !rows[0].starts_with("[alpha/aria]")" | In not_saved in crates/mu-cli/tests/client.rs, also assert that a row starts with `-- ` and that the same notice holds `/layout save`. |  |  | false-test |
+| R-116 | test-coverage | should-fix | in-change | The test of 'A device with a built-in name' shares not_saved, so it also never asserts the '-- ' start of the notice line. | crates/mu-cli/tests/client.rs:2326 — "not_saved(&ConfigDir::empty(), "focus").await;" | The fix of tes-1 in not_saved covers this test too; assert the '-- ' prefix there. |  |  | false-test |
+| R-124 | test-coverage | should-fix | in-change | covered row 'A block beside two rows' has no verification run | review > not-run — "A block beside two rows" | run the covering test and record it in verification-runs.txt |  |  | unmet-requirement |
+| R-125 | test-coverage | should-fix | in-change | covered row 'An id in a later line' has no verification run | review > not-run — "An id in a later line" | run the covering test and record it in verification-runs.txt |  |  | unmet-requirement |
+| R-103 | test-honesty | should-fix | in-change | lens test-honesty reported partial, gaps: 2 | review > lens-status — "test-honesty partial" | rerun the lens or accept the gap in the review | regression |  | unmet-requirement |
+| R-117 | test-honesty | should-fix | in-change | The property re-validates a LayoutName with LayoutName::new, the constructor that save_target already used, and an Err result asserts nothing. | crates/mu-config/tests/layout.rs:1095 — "prop_assert_eq!(LayoutName::new(name.as_str()), Ok(name));" | Assert a property that LayoutName::new does not give by construction: for an Ok result the name equals the device name, or the device name and key joined by dots, and a name of at most 64 characters. For an Err result, assert that the joined name is over 64 characters or is a built-in name. |  |  | false-test |
+| R-118 | test-honesty | should-fix | in-change | The test starts at 90% and expects 90% after the larger-key. A no-op key, a missing clamp that the check then refuses, and a working clamp all give the same lines. | crates/mu-tui/tests/arrange.rs:236 — ""output as notices right of output, 90%"," | Start at 85%, press `>` so the clamp is reached (the result is 90%), and add a keypress sequence that shows the pick landed on the block. Do the same for the 20-column test, which starts at 30% and expects 30%. |  |  | false-test |
+| R-119 | test-honesty | should-fix | in-change | The drag past the smallest pane asserts only `>= 2` rows. A drag that moved nothing (12 rows left) passes. The sibling test for columns asserts the exact 10. | crates/mu-tui/tests/app.rs:3303 — "rows_of(&app, "notices") >= 2," | Assert `rows_of(&app, "notices") == 2` after the drag to row 22, and assert the rows of `output` as the rest of the split. |  |  | false-test |
+| R-120 | approach | suggestion | in-change | D5 says layer_rule gets the place of the layout files and checks the name with LayoutName. At head layer_rule only walks PLACES; state() sends a layout file to layout_state, which runs LayoutName::new. | design.md > D5. Layer 2: layouts on the server — "`layer_rule` gets this place, and checks the name with `LayoutName`." | Change D5 to say that state() checks a layout file with layout_state, which runs LayoutName, before layer_rule. |  | scope? deviates-design 0.64; severity? should-fix 0.65 |  |
+| R-121 | fit | suggestion | in-change | key_part writes the TOML rule of a bare key by hand to print an entry of [world-layouts]. toml_edit, already a workspace dependency, gives the same with Key::display_repr, and D5 names no alternative. | crates/mu-cli/src/config_verb.rs:130 — "let bare = !key.is_empty()" | Print the key with toml_edit::Key::new(key).display_repr(), add toml_edit to the row of mu-cli in workspace_boundary.rs, and drop key_part; or name the hand rule and the reason in D5. |  |  |  |
+| R-122 | invariants | suggestion | in-change | The range check of build, which guards resize for any Size a caller makes, is tested only at 95%. The reader refuses 9% and 91% before build runs, so a_percent_out_of_range never reaches this check, and no test passes 9%, 91%, a count of 0 or max 0 and 101 to resize. | crates/mu-config/src/layout/tree.rs:190 — "Some(Size::Percent(percent)) => (PERCENT_MIN..=PERCENT_MAX).contains(&percent)," | Extend a_resize_out_of_range_is_refused in crates/mu-config/tests/layout.rs to pass Size::Percent(9), Size::Percent(91), Size::Cells(0) and Size::Max(0) and Size::Max(101) to resize, and assert that Size::Percent(10) and Size::Percent(90) are good. |  | severity? should-fix 0.62 |  |
+| R-123 | invariants | suggestion | in-change | percent_range must give exactly the whole percents from 10 to 90 whose solved cells keep both sides at the smallest size, for any split total; the tests pin only the totals 20, 21, 80 and 300. | crates/mu-config/src/layout/change.rs:106 — "let high = u32::from(PERCENT_MAX).min((100 * (room + 1) - 1) / total);" | Add a proptest in crates/mu-config/tests/layout.rs (the file of solve_stays_inside_the_area) over a total of 0..=u16::MAX cells and both directions: resize_border to any cell count gives a percent whose solve leaves both panes at 10 columns (or 2 rows) or more, or leaves the plan unchanged when no such percent exists. |  |  |  |
 
 ## Repeats
 
@@ -92,10 +91,11 @@ None.
 | 4 | plan | follow-up | 6c78c3f9426d5a2dc94654a44d57d87b3c468073 | 30e945c0cdd12743d13dd5a1582f22da0658f442f9cf7266152530053a4e75f9 | approve-with-notes | 1 | 0 | 2 | 27 | 0 |  |
 | 5 | plan | follow-up | dc8e5c3bdf083ba14f7b8ffa417a527aa6b701ad | a18bc81b621e5b0ba32cbccbbc069d6c4a573d3c823551ea6df1cbf68f8efdc8 | approve | 0 | 1 | 0 | 2 | 0 |  |
 | 6 | implementation | full | d3bceb71013766854fc8e1c20fef7ff25f0d69e0 | 9f2cbbc88f8b829cf9317c43ed658d28a97311f1f529ca48b13c3dced4b0961a | changes-requested | 31 | 0 | 0 | 0 | 0 |  |
+| 7 | implementation | full | a983b5c30a423d2c79d396fecf2679622b8c75ad | 743f642b3e1bcff96359d67603474b59625fa7315c2102f9842e22020c6c0acf | approve-with-notes | 21 | 0 | 9 | 0 | 0 | three lenses returned partial in round 6, and the operator asked for a full round after the fixes |
 
 ## Judge
 
-judge: 46 questions, 0.002 USD
+judge: 38 questions, 0.002 USD
 
 ## Coverage matrix
 
@@ -131,9 +131,9 @@ judge: 46 questions, 0.002 USD
 | The numbers of the lines | crates/mu-cli/tests/layout.rs: the_numbers_of_the_lines | covered | pass |
 | The editor after the notices | crates/mu-config/tests/layout.rs: the_editor_after_the_notices; crates/mu-tui/tests/app.rs: the_editor_after_the_notices_gets_its_rows | covered | not-run |
 | The editor before the notices | crates/mu-config/tests/layout.rs: the_editor_before_the_notices; crates/mu-tui/tests/app.rs: the_editor_before_the_notices_gets_its_columns | covered | not-run |
-| A block beside two rows | crates/mu-tui/tests/app.rs: a_block_beside_two_rows_gets_its_columns | covered | pass |
+| A block beside two rows | crates/mu-config/tests/layout.rs: a_block_beside_two_rows; crates/mu-tui/tests/app.rs: a_block_beside_two_rows_gets_its_columns | covered | not-run |
 | Anchors that are not neighbors | crates/mu-config/tests/layout.rs: anchors_that_are_not_neighbors | covered | pass |
-| An id in a later line | crates/mu-cli/tests/client.rs: an_id_in_a_later_line | covered | pass |
+| An id in a later line | crates/mu-config/tests/layout.rs: an_id_in_a_later_line; crates/mu-cli/tests/client.rs: an_id_in_a_later_line | covered | not-run |
 | An id twice | crates/mu-config/tests/layout.rs: an_id_twice | covered | pass |
 | An id that is a word of the sentences | crates/mu-config/tests/layout.rs: an_id_that_is_a_word_of_the_sentences | covered | pass |
 | The statusline at the bottom | crates/mu-cli/tests/client.rs: the_statusline_at_the_bottom | covered | pass |
@@ -255,8 +255,9 @@ judge: 46 questions, 0.002 USD
 | A refused stack | crates/mu-tui/tests/arrange.rs: a_refused_stack | covered | pass |
 | Add the statusline | crates/mu-tui/tests/arrange.rs: add_the_statusline | covered | pass |
 | Undo | crates/mu-tui/tests/arrange.rs: undo | covered | pass |
-| A letter bound to undo still picks | crates/mu-tui/tests/arrange.rs: a_letter_bound_to_undo_still_picks | partial | pass |
+| A letter bound to undo still picks | crates/mu-tui/tests/arrange.rs: a_letter_bound_to_undo_still_picks | covered | pass |
 | A drag to the right edge | crates/mu-tui/tests/arrange.rs: a_drag_to_the_right_edge | covered | pass |
+| Enter with no change | crates/mu-tui/tests/arrange.rs: enter_with_no_change_saves_nothing | covered | pass |
 | Esc restores | crates/mu-tui/tests/arrange.rs: esc_restores | covered | pass |
 | A save from a built-in layout | crates/mu-cli/tests/client.rs: a_save_from_a_built_in_layout | covered | pass |
 | A save to a player layout | crates/mu-cli/tests/client.rs: a_save_to_a_player_layout | covered | pass |
@@ -267,8 +268,8 @@ judge: 46 questions, 0.002 USD
 | A save over a built-in name | crates/mu-cli/tests/client.rs: a_save_over_a_built_in_name | covered | pass |
 | A save from the built-in layout of one world | crates/mu-cli/tests/client.rs: a_save_from_the_built_in_layout_of_one_world | covered | pass |
 | The other world keeps its layout | crates/mu-cli/tests/client.rs: the_other_world_keeps_its_layout | covered | pass |
-| A name that is too long | crates/mu-cli/tests/client.rs: a_name_that_is_too_long | covered | pass |
-| A device with a built-in name | crates/mu-cli/tests/client.rs: a_device_with_a_built_in_name | covered | pass |
+| A name that is too long | crates/mu-cli/tests/client.rs: a_name_that_is_too_long | partial | pass |
+| A device with a built-in name | crates/mu-cli/tests/client.rs: a_device_with_a_built_in_name | partial | pass |
 | A layout for this world | crates/mu-cli/tests/client.rs: a_layout_for_this_world | covered | pass |
 | Remove the layout of this world | crates/mu-cli/tests/client.rs: remove_the_layout_of_this_world | covered | pass |
 | An unknown layout for this world | crates/mu-cli/tests/client.rs: an_unknown_layout_for_this_world | covered | pass |
@@ -281,6 +282,8 @@ judge: 46 questions, 0.002 USD
 - An unknown field: no verification run names this row
 - The editor after the notices: no verification run names this row
 - The editor before the notices: no verification run names this row
+- A block beside two rows: no verification run names this row
+- An id in a later line: no verification run names this row
 - No world in focus: no verification run names this row
 - Under an hour: no verification run names this row
 - Over an hour: no verification run names this row
@@ -320,8 +323,10 @@ judge: 46 questions, 0.002 USD
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_editor_after_the_notices_gets_its_rows)'`
 - exit 0: `cargo nextest run -p mu-config --test layout --locked -E 'test(=the_editor_before_the_notices)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=the_editor_before_the_notices_gets_its_columns)'`
+- exit 0: `cargo nextest run -p mu-config --test layout --locked -E 'test(=a_block_beside_two_rows)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_block_beside_two_rows_gets_its_columns)'`
 - exit 0: `cargo nextest run -p mu-config --test layout --locked -E 'test(=anchors_that_are_not_neighbors)'`
+- exit 0: `cargo nextest run -p mu-config --test layout --locked -E 'test(=an_id_in_a_later_line)'`
 - exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=an_id_in_a_later_line)'`
 - exit 0: `cargo nextest run -p mu-config --test layout --locked -E 'test(=an_id_twice)'`
 - exit 0: `cargo nextest run -p mu-config --test layout --locked -E 'test(=an_id_that_is_a_word_of_the_sentences)'`
@@ -372,7 +377,9 @@ judge: 46 questions, 0.002 USD
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=no_connected_time_while_disconnected)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=no_world_in_the_statusline)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_time_under_an_hour)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_time_one_second_under_an_hour)'`
 - exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_time_over_an_hour)'`
+- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_time_of_one_hour)'`
 - exit 0: `cargo nextest run -p mu-tui --test update --locked -E 'test(=a_tick_moves_the_idle_time)'`
 - exit 0: `cargo nextest run -p mu-tui --test update --locked -E 'test(=no_tick_without_a_time_segment)'`
 - exit 0: `cargo nextest run -p mu-cli --test config_store --locked -E 'test(=an_unknown_segment)'`
@@ -447,6 +454,7 @@ judge: 46 questions, 0.002 USD
 - exit 0: `cargo nextest run -p mu-tui --test arrange --locked -E 'test(=undo)'`
 - exit 0: `cargo nextest run -p mu-tui --test arrange --locked -E 'test(=a_letter_bound_to_undo_still_picks)'`
 - exit 0: `cargo nextest run -p mu-tui --test arrange --locked -E 'test(=a_drag_to_the_right_edge)'`
+- exit 0: `cargo nextest run -p mu-tui --test arrange --locked -E 'test(=enter_with_no_change_saves_nothing)'`
 - exit 0: `cargo nextest run -p mu-tui --test arrange --locked -E 'test(=esc_restores)'`
 - exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_save_from_a_built_in_layout)'`
 - exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_save_to_a_player_layout)'`
@@ -465,8 +473,6 @@ judge: 46 questions, 0.002 USD
 - exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=a_use_behind_an_entry)'`
 - exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_next_layout_of_a_world_entry)'`
 - exit 0: `cargo nextest run -p mu-cli --test client --locked -E 'test(=the_default_layout_puts_the_tabs_first)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_time_one_second_under_an_hour)'`
-- exit 0: `cargo nextest run -p mu-tui --test app --locked -E 'test(=a_time_of_one_hour)'`
 
 ## Dropped
 
@@ -474,36 +480,42 @@ None.
 
 ## Lens notes
 
-- approach: R-22 (fixed): percent_range in crates/mu-config/src/layout/change.rs keeps the percent from 10 to 90 and both panes at their smallest size, and returns the plan unchanged when the bounds cross, so it is not raised again.
-- approach: The stale-citation findings app-3 to app-11 are graded suggestion, not should-fix: each is a wrong name or signature in design.md with none of the five consequences.
-- approach: Each test name of the D12 table that was searched exists at head.
-- fit: TickWait (crates/mu-tui/src/model.rs:84) has the same two variants as ConfigRetry (model.rs:200). D7 asks for a state of idle or waiting for each, so this is recorded as information and not as a finding.
-- fit: The repository rows of the library-preference table (openspec/config.yaml context) were read. The change takes winnow, toml_edit and tempfile through [workspace.dependencies], and no repository helper does an atomic write or a TOML field edit, so write.rs found no existing copy.
-- fit: remote::call (crates/mu-cli/src/remote.rs) is the one private-socket call for mu config and mu layout, as task 3.9 asks.
-- invariants: I1: A percent on a line is from 10 to 90 \| enforced at crates/mu-config/src/layout/tree.rs made() and parse.rs part_size \| boundary test a_percent_out_of_range (9, 91, 95), a_percent_of_90
-- invariants: I2: A drag or a key never gives a percent outside 10..90 or a pane below its smallest size \| enforced at crates/mu-config/src/layout/change.rs percent_range and resize_within; the high bound is too strict (inv-1) \| boundary test a_border_stops_at_ten_percent, a_larger_block_stops_at_ninety_percent, a_border_in_a_split_of_20_columns, a_border_in_a_split_of_3_rows (none one past the limit)
-- invariants: I3: An insert number is 1..=n+1, and a replace or delete number is 1..=n \| enforced at change.rs insert() and index() before any indexing \| boundary test an_insert_at_zero, an_insert_at_the_end, an_insert_past_the_end, a_delete_of_line_zero, a_replace_of_a_line_past_the_end
-- invariants: I4: A plan has at most 32 lines and 8 levels of splits \| enforced at layout/mod.rs count_lines and tree.rs apply (levels) \| boundary test too_many_lines, the_largest_plan, a_tree_of_8_levels, a_tree_too_deep
-- invariants: I5: An id has 1 to 32 characters, starts with a letter and is not a word \| enforced at layout/step.rs BlockId::new \| boundary test an_id_of_32_characters, an_id_of_33_characters, an_id_that_is_a_word_of_the_sentences
-- invariants: I6: A count of cells is from 1 to 65535 and a max from 1 to 100 \| enforced at parse.rs part_size and tree.rs made() \| boundary test a_count_of_zero_cells, a_count_of_65535, a_count_of_65536, an_editor_max_of_1_and_100, a_bad_editor_size
-- invariants: I7: A layout name follows the device name rule and is not a built-in name, . or .. \| enforced at crates/mu-config/src/names.rs LayoutName::new, used by store layout_state, save_layout, edit_layout and save_target \| boundary test a_saved_name_of_64_characters, a_saved_name_of_65_characters, a_device_named_dot, a_layout_name_of_one_dot
-- invariants: I8: save_target never gives a name the store refuses \| enforced by type: save_target returns LayoutName::new \| the property a_save_target_is_a_good_name re-checks LayoutName::new on a LayoutName, so it holds by construction
-- invariants: I9: A device write never leaves a bad layer \| enforced at crates/mu-server/src/store.rs put_choice (bad_at before, state() on the edited text before the rename) \| boundary test a_write_that_makes_a_bad_layer_is_refused, a_bad_device_layer
-- invariants: I10: The server writes only under clients/layouts and clients/devices \| enforced at store.rs put_layout and put_choice, whose paths come from LayoutName and DeviceName, which allow no /; ensure_dir refuses a non-directory \| boundary test a_save_with_a_bad_name, a_save_with_the_name_of_two_dots, a_clients_path_that_is_a_file
-- invariants: I11: A split never holds a split of its own direction, and each split has a part with no size \| enforced at tree.rs put_beside, beside() and without() \| boundary test any_layout_reads_back and a_screen_change_gives_the_wanted_screen (property)
-- invariants: I12: solve never leaves the area and never overlaps \| enforced at solve.rs sizes() and split() with saturating arithmetic \| boundary test solve_stays_inside_the_area (0..300 by 0..100, counts to u16::MAX), two_large_counts_in_one_split
-- invariants: I13: A tab label has 1 to 64 characters \| enforced at crates/mu-config/src/label.rs chars().count() \| boundary test an_empty_label, a_label_of_64_characters, a_label_of_64_wide_characters, a_label_too_long
-- invariants: I14: A plain lowercase letter in arrange mode always picks a block \| enforced at crates/mu-tui/src/arrange.rs arrange_key, which tests the letter before the keymap \| boundary test a_letter_bound_to_undo_still_picks
-- invariants: I15: The last editor cannot be hidden \| enforced at change.rs hide() (held <= row.min) \| boundary test hide_refuses_the_editor, hide_a_second_editor
-- invariants: Probe: scratchpad probe/percent_range.py mirrors percent_range in Python against the round-down rule of D6. It gives code None vs real (48, 52) at 21 columns, (13, 86) vs (13, 87) at 80 columns, and (50, 50) vs (50, 74) at 4 rows. The enforcement is Rust, so the probe mirrors it and does not run it.
-- invariants: No weakened check was found in the diff of merge_layers, the WorldId move or the keymap.
-- test-coverage: Assertions were read for the arrange-mode, drag, input-focus-after-world-change and config-edit scenarios. The other rows are graded covered because a named test exists in the file that tasks.md names, with confidence 0.6 for them.
-- test-coverage: The one-test command is in openspec/config.yaml, so tasks are not graded down for naming no command (R-35).
-- test-coverage: The client-config scenario An unknown field and the client-layout scenario An unknown field share one heading, as do the two scenarios No world in focus. Each pair has one row.
-- test-coverage: The only MODIFIED section is in client-config. No BREAKING requirement exists, so there is no breaking-unproven finding.
-- test-honesty: Grep over crates found no #[ignore], todo!, unimplemented!, assert!(true) or \|\| true: no disabled or vacuous-gate finding.
-- test-honesty: The proptest a_save_target_is_a_good_name in mu-config/tests/layout.rs checks its property only when save_target returns Ok, so it passes if save_target always errs. The example tests a_saved_name_of_64_characters and a_game_entry_gives_a_name_with_the_game cover the Ok path, so it is not raised as a finding.
-- test-honesty: The is_err asserts in mu-cli/tests/layout.rs (a_save_with_a_bad_name, a_use_with_an_empty_name_and_no_key) also assert that no file is written, so they are accepted.
+- approach: Re-checked the approach rows of prior.json marked fixed (R-8, R-22, R-74, R-75, R-76, R-84, R-86 to R-94). At head WorldId and is_part live in mu-config and mu-core re-exports them, percent_range gives the rounding-down high bound, Change::sized maps `fill`, Enter with no change returns no effect and D10 says so, save_target takes three inputs, keyed_path has no quote, layout_for returns Choice, extra_panes holds only the other outputs, input_id resolves the editor, solve returns Solved, resize_by takes cells and total, and NamedLayout is the field type. None is raised again.
+- approach: D5's claim that figment2 keeps the tag of the first list holds: coalesce.rs of figment2 0.11.5 matches (A(t, a), A(_, b), _) => A(t, ...).
+- approach: D3, D4, D6, D7, D7a, D8 (write path, single lock with reload_locked), D9 (registry kinds, two-call save for an entry) and D10 (letter before undo) were checked against the code at head and hold.
+- approach: Each property and unit test that D12 names exists at head.
+- fit: The fixed rows R-8, R-76, R-78, R-79, R-80, R-81, R-82, R-83 and R-90 were read at head, and their defects are gone: WorldId has one home in mu-config, save_target takes the layout name, mu layout show uses layout_path, REWRITTEN is one constant, PLACES uses DEVICES_DIR, name_in serves layer_rule and layout_file, LayoutName calls DeviceName::new, front_of holds the rule of the front block, and the statusline cuts with Profile::cut.
+- fit: R-67 (the two blocks of keyed paths in resolve) is resolved, and resolve at head still builds the paths of [keys] and [world-layouts] in two near-equal blocks; no new evidence, so it is not raised again.
+- fit: The next changes #173, #102, #175 and #167 were read against edit_field, route, the Then of SaveLayout and candidates(); none must move or wrap a component.
+- invariants: I1: a percent is 10 to 90 \| enforced at parse.rs part_size and tree.rs build in_range \| boundary test a_percent_out_of_range (9, 91), a_percent_of_90
+- invariants: I2: a resize from a drag or a key keeps 10..90 and both panes at their smallest size \| enforced at change.rs percent_range and resize_within \| boundary test a_border_in_a_split_of_20_columns, a_border_in_a_split_of_21_columns (48 and 52), a_larger_block_in_80_columns_stops_at_87_percent; probe percent_range.py over totals 0..1999 matched the solver rule with 0 mismatches
+- invariants: I3: a line number is 1..n (replace, delete) and 1..n+1 (insert) \| enforced at change.rs index and insert \| boundary test an_insert_at_zero, an_insert_past_the_end, a_replace_of_line_zero, a_delete_of_a_line_past_the_end
+- invariants: I4: an id has at most 32 characters \| enforced at step.rs BlockId::new \| boundary test an_id_of_32_characters, an_id_of_33_characters
+- invariants: I5: a count of cells is 1..65535 and max is 1..100 \| enforced at parse.rs count, max_rows \| boundary test a_count_of_zero_cells, a_count_of_65535, a_count_of_65536, a_bad_editor_size, an_editor_max_of_1_and_100
+- invariants: I6: a tree has at most 8 levels \| enforced at tree.rs levels check \| boundary test a_tree_of_8_levels, a_tree_too_deep
+- invariants: I7: a label has 1 to 64 characters \| enforced at label.rs Label::parse \| boundary test an_empty_label, a_label_of_64_characters, a_label_of_64_wide_characters, a_label_too_long
+- invariants: I8: a layout name follows the device rule and is not built in, . or .. \| enforced at names.rs LayoutName::new \| boundary test a_saved_name_of_64_characters, a_saved_name_of_65_characters, a_device_named_dot, property a_save_target_is_a_good_name
+- invariants: I9: one rule of a world id \| enforced at mu-config world_id.rs, re-exported by mu-core id.rs, used by mu-core dir.rs \| boundary test ids_outside_the_rule, world_id_refuses_a_foreign_char (R-8 holds at head)
+- invariants: I10: a device write never leaves a bad layer \| enforced at store.rs put_choice state() before write_whole \| boundary test a_write_that_makes_a_bad_layer_is_refused
+- invariants: I13: a text pane keeps 10 by 2 where the screen has room \| enforced at solve.rs sizes \| boundary test property a_text_pane_keeps_its_smallest_size (R-95 holds at head)
+- invariants: Rows R-22 and R-84 hold as fixed at head: resize_within clamps to percent_range, and the probe matched the solver rule.
+- invariants: I11: one tick waits at a time \| enforced at update.rs TickWait \| boundary test none for a tick that does not end a wait; run.rs sends one such tick at start (inv-1)
+- invariants: I12: a write path that is not a directory fails \| enforced at write.rs ensure_dir \| boundary test a_clients_path_that_is_a_file; a link to a directory is untested and refused (inv-2)
+- invariants: I14: the build check refuses any out-of-range Size from an operation \| enforced at tree.rs in_range \| boundary test a_resize_out_of_range_is_refused at 95 only (inv-3)
+- invariants: I15: the border owner of a drag is never the anchor part \| enforced at tree.rs, where the part of an anchor has owner None, and solve.rs border_owner \| boundary test a_drag_does_not_drift and the border tests
+- invariants: I16: a device write keeps each other line \| enforced at write.rs edit_field with toml_edit \| boundary test property a_device_write_keeps_each_other_line; the generator holds no dotted world-layouts key
+- invariants: Probe: percent_range.py under the probe directory of this handoff mirrors change.rs:93 and solve.rs:246-274 for totals 0..1999 in both directions, with 0 mismatches.
+- invariants: A layout or device file that is a link is replaced by a regular file at persist (rename); the reader follows such a link. No requirement states the rule, so it is not raised as a finding.
+- invariants: I17: route gives the output with the stream id, or the first output, or none \| enforced at layout/mod.rs route \| boundary test a_plan_with_no_output, a_stream_with_no_output_goes_to_the_first
+- invariants: I18: the source of a field path is the last layer that sets it \| enforced at mu-core merge.rs merge_layers (rposition over each layer alone) \| boundary test a_device_sets_the_left_list; the diff drops no check
+- test-coverage: Task 3.2a names layout_for tests in layout.rs of mu-config, but they sit in crates/mu-config/tests/names.rs; the names exist.
+- test-coverage: The scenario 'Enter with no change' is proven by enter_with_no_change_saves_nothing, which no task names.
+- test-coverage: The matrix has one row for each distinct heading text; 'An unknown field' and 'No world in focus' each occur under two capabilities and are one row.
+- test-honesty: No ignored, skipped or todo tests found (searched #[ignore], todo!, \|\| true across crates).
+- test-honesty: The round-trip properties any_layout_reads_back and a_line_reads_back compare a parse with a written plan, so they are not tautologies.
+- test-honesty: each_block_has_a_draw compares two independent tables (DRAWS and BLOCKS), so it is a real consistency check.
+- test-coverage gap: Assertion bodies were read for about 25 of the 170 scenarios. For the rest, the test name was matched and its existence checked, not its assertions.
+- test-coverage gap: The scenarios 'A key with two slashes', 'A layout table' and the config_store tests of layout files were not read for their assertion.
 
 ## Ledger
 
@@ -604,15 +616,36 @@ None.
 | R-93 | 6 | 6 | suggestion | in-change |  | ["artifact",["design.md","D5. Layer 2: layouts on the server"],"`GetClientConfigResponse` gets `repeated WorldLayout world_layouts`, each with a key, a name and its sentences."] | fixed | f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  | severity? blocker 0.72 | D5 names the message of a world entry WorldLayout. At head the field is `repeated NamedLayout world_layouts`, the message that ListLayouts also uses. |
 | R-94 | 6 | 6 | suggestion | in-change |  | ["path","crates/mu-tui/src/statusline.rs",63] | fixed | f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  | severity? should-fix 0.72 | The statusline cuts text to a width with two loops by graphemes, one from the end and one from the start. D7 says the cut uses the functions of width.rs, which gets none. |
 | R-95 | 6 | 6 | suggestion | in-change |  | ["artifact",["specs/client-layout/spec.md","Requirement: A small terminal keeps each pane usable"],"A pane of `output` SHALL keep at least 2 rows and 10 columns while the terminal has room for each pane at that size."] | fixed | f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | The floor of 2 rows and 10 columns for an output pane ranges over any plan and any terminal size that has room. The property test solve_stays_inside_the_area checks only containment and overlap, and never the floor, so a solver change that drops the raise to the smallest size passes it. |
-| R-96 | 6 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"An unknown field"] | fixed | f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | covered row 'An unknown field' has no verification run |
-| R-97 | 6 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"The editor after the notices"] | fixed | f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | covered row 'The editor after the notices' has no verification run |
-| R-98 | 6 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"The editor before the notices"] | fixed | f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | covered row 'The editor before the notices' has no verification run |
-| R-99 | 6 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"No world in focus"] | fixed | f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | covered row 'No world in focus' has no verification run |
-| R-100 | 6 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Under an hour"] | fixed | f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | covered row 'Under an hour' has no verification run |
-| R-101 | 6 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Over an hour"] | fixed | f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | covered row 'Over an hour' has no verification run |
-| R-102 | 6 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"approach partial"] | fixed | f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | lens approach reported partial, gaps: 3 |
-| R-103 | 6 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-honesty partial"] | fixed | f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | lens test-honesty reported partial, gaps: 2 |
-| R-104 | 6 | 6 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"invariants partial"] | fixed | f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | lens invariants reported partial, gaps: 2 |
+| R-96 | 6 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"An unknown field"] |  | regressed from fixed f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | covered row 'An unknown field' has no verification run |
+| R-97 | 6 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"The editor after the notices"] |  | regressed from fixed f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | covered row 'The editor after the notices' has no verification run |
+| R-98 | 6 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"The editor before the notices"] |  | regressed from fixed f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | covered row 'The editor before the notices' has no verification run |
+| R-99 | 6 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"No world in focus"] |  | regressed from fixed f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | covered row 'No world in focus' has no verification run |
+| R-100 | 6 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Under an hour"] |  | regressed from fixed f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | covered row 'Under an hour' has no verification run |
+| R-101 | 6 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"Over an hour"] |  | regressed from fixed f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | covered row 'Over an hour' has no verification run |
+| R-102 | 6 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"approach partial"] |  | regressed from fixed f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | lens approach reported partial, gaps: 3 |
+| R-103 | 6 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-honesty partial"] |  | regressed from fixed f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | lens test-honesty reported partial, gaps: 2 |
+| R-104 | 6 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"invariants partial"] |  | regressed from fixed f663eaeeb5ce9fba12d8dd5767d7f88958b1d2b3 | 6 |  |  | lens invariants reported partial, gaps: 2 |
+| R-105 | 7 | 7 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D11. Streams, and what #102 adds"],"A notice goes into the pane that `route` gives for the stream `notices` and the world in focus."] |  |  |  |  |  | D11 sends a notice to the pane that route gives for the stream notices. The notice that no world has the focus is pushed straight into PaneId::NOTICES, the pane of the first output, so with `output as notices` it shows in `output`. |
+| R-106 | 7 | 7 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D11. Streams, and what #102 adds"],"`Model::notice` and `Model::hint` push to the pane that `route` gives for `notices` and the world in focus."] |  |  |  |  |  | The notice of a failed send is pushed into the pane of the world of the send, not through route for the stream notices, so with `output as notices` a `-- ` line still shows in `output`. D11 records no such exception. |
+| R-107 | 7 | 7 | should-fix | in-change | drift | ["path","crates/mu-tui/src/layouts.rs",67] |  |  |  |  | severity? suggestion 0.93 | The save of the layout on the screen under a new name is written twice in layouts.rs: the New branch of save_shown and layout_save each take then_choose, call set_chosen and build the same Effect::SaveLayout. |
+| R-108 | 7 | 7 | should-fix | in-change | drift | ["path","crates/mu-tui/src/model.rs",609] |  |  |  |  |  | The rule that the first output of the plan shows the pane of the world, and each other output a pane in extra_panes, is written in pane_of_block (the draw and the mouse) and again in pane_for (where lines go). If one changes alone, lines go into a pane that the draw does not show. |
+| R-109 | 7 | 7 | should-fix | in-change | drift | ["path","crates/mu-tui/src/view.rs",137] |  |  |  |  |  | The layout of a title row has two mechanisms: title_row in view.rs writes the ids with brackets and one space, and click_title in update.rs works out the columns of each name again from the same brackets and space. A change to the text of the row moves the names, and a click then picks the wrong block. |
+| R-110 | 7 | 7 | should-fix | in-change | drift | ["path","crates/mu-server/src/store.rs",234] |  |  |  |  |  | The store builds the path of a file under clients/ as <dir>/<name>.toml in three places: layout_path, the layer files of resolve, and the device file of put_choice. name_in holds the inverse once. The write path and the read path of a device layer each format the path on their own. |
+| R-111 | 7 | 7 | should-fix | in-change | drift | ["path","crates/mu-tui/src/arrange.rs",105] |  |  |  |  |  | Arrange mode states the rule of thirds twice: drop_at picks the part of a drop with its own third closure, and drop_area marks that part with a second copy. If one changes, the mark no longer shows where the block lands. |
+| R-112 | 7 | 7 | should-fix | in-change | drift | ["path","crates/mu-tui/src/arrange.rs",218] |  |  |  |  |  | arrange_change and arrange_size each clone the layout, show the changed layout, push the old one on the undo stack and clear or set the message. A change to the undo rule must be made in both. |
+| R-113 | 7 | 7 | should-fix | in-change | unmet-requirement | ["path","crates/mu-tui/src/run.rs",86] |  |  |  |  |  | The early Msg::Tick of the run loop sets TickWait to Idle while the wait from the probe message is pending, so a starting layout with a time segment runs two tick chains and draws twice a second. No test sends a tick while a wait is pending that did not come from that wait. |
+| R-114 | 7 | 7 | should-fix | in-change | wrong-behaviour | ["path","crates/mu-server/src/write.rs",18] |  |  |  |  |  | ensure_dir uses symlink_metadata, so a clients or clients/layouts path that is a link to a directory fails with 'is not a directory', while the snapshot follows that link and reads the layers. No test passes a link, and D8 does not say a linked directory is refused. |
+| R-115 | 7 | 7 | should-fix | in-change | false-test | ["path","crates/mu-cli/tests/client.rs",2309] |  |  |  |  |  | The test of 'A name that is too long' checks the text '/layout save' in the joined rows but not that the notice is a line that starts with '-- '. |
+| R-116 | 7 | 7 | should-fix | in-change | false-test | ["path","crates/mu-cli/tests/client.rs",2326] |  |  |  |  |  | The test of 'A device with a built-in name' shares not_saved, so it also never asserts the '-- ' start of the notice line. |
+| R-117 | 7 | 7 | should-fix | in-change | false-test | ["path","crates/mu-config/tests/layout.rs",1095] |  |  |  |  |  | The property re-validates a LayoutName with LayoutName::new, the constructor that save_target already used, and an Err result asserts nothing. |
+| R-118 | 7 | 7 | should-fix | in-change | false-test | ["path","crates/mu-tui/tests/arrange.rs",236] |  |  |  |  |  | The test starts at 90% and expects 90% after the larger-key. A no-op key, a missing clamp that the check then refuses, and a working clamp all give the same lines. |
+| R-119 | 7 | 7 | should-fix | in-change | false-test | ["path","crates/mu-tui/tests/app.rs",3303] |  |  |  |  |  | The drag past the smallest pane asserts only `>= 2` rows. A drag that moved nothing (12 rows left) passes. The sibling test for columns asserts the exact 10. |
+| R-120 | 7 | 7 | suggestion | in-change |  | ["artifact",["design.md","D5. Layer 2: layouts on the server"],"`layer_rule` gets this place, and checks the name with `LayoutName`."] |  |  |  |  | scope? deviates-design 0.64; severity? should-fix 0.65 | D5 says layer_rule gets the place of the layout files and checks the name with LayoutName. At head layer_rule only walks PLACES; state() sends a layout file to layout_state, which runs LayoutName::new. |
+| R-121 | 7 | 7 | suggestion | in-change |  | ["path","crates/mu-cli/src/config_verb.rs",130] |  |  |  |  |  | key_part writes the TOML rule of a bare key by hand to print an entry of [world-layouts]. toml_edit, already a workspace dependency, gives the same with Key::display_repr, and D5 names no alternative. |
+| R-122 | 7 | 7 | suggestion | in-change |  | ["path","crates/mu-config/src/layout/tree.rs",190] |  |  |  |  | severity? should-fix 0.62 | The range check of build, which guards resize for any Size a caller makes, is tested only at 95%. The reader refuses 9% and 91% before build runs, so a_percent_out_of_range never reaches this check, and no test passes 9%, 91%, a count of 0 or max 0 and 101 to resize. |
+| R-123 | 7 | 7 | suggestion | in-change |  | ["path","crates/mu-config/src/layout/change.rs",106] |  |  |  |  |  | percent_range must give exactly the whole percents from 10 to 90 whose solved cells keep both sides at the smallest size, for any split total; the tests pin only the totals 20, 21, 80 and 300. |
+| R-124 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"A block beside two rows"] |  |  |  |  |  | covered row 'A block beside two rows' has no verification run |
+| R-125 | 7 | 7 | should-fix | in-change | unmet-requirement | ["artifact",["review","not-run"],"An id in a later line"] |  |  |  |  |  | covered row 'An id in a later line' has no verification run |
 
 ## Reviewed files
 
@@ -624,34 +657,34 @@ None.
 | architecture/views.c4 | 806536588b18b5861f18eff3f24b8cd30ab71aa0 |
 | crates/mu-cli/Cargo.toml | 15bf06e9513529c4a630b520070d6f6a2980c4a8 |
 | crates/mu-cli/src/config_verb.rs | e26575f54193b4632f2cf2c1b5b28932ec98a4f9 |
-| crates/mu-cli/src/layout_verb.rs | c8748eb7e07dd2e4690c0d9635aa1a529df5bb52 |
+| crates/mu-cli/src/layout_verb.rs | 133094950402d332244b2c85e0eb95763132b949 |
 | crates/mu-cli/src/lib.rs | 0d47527b1944ed448a29d739ab2d93370f08fcc0 |
 | crates/mu-cli/src/remote.rs | 7a523c62388d9ffc3f9c2c6497d16b38c6174acd |
 | crates/mu-cli/tests/cli.rs | 7797d83b8a7c4b599925ecce556bca6dc23de847 |
 | crates/mu-cli/tests/client.rs | 76e91962347f72d8edc2d2dd12fa8ff98077df0e |
 | crates/mu-cli/tests/config_store.rs | 8a7805eab0f2d8b365573ca29aa141856abdddd4 |
-| crates/mu-cli/tests/layout.rs | 7103f22d3b39aa4d0020e0ebcf5833855ad9db91 |
+| crates/mu-cli/tests/layout.rs | 2fcf5a7b241ed391dc6a8fa66de953115675006e |
 | crates/mu-cli/tests/workspace_boundary.rs | 8bb68830ea58ccf595b37f60e5f6afadbcca8ac1 |
 | crates/mu-client/src/lib.rs | e5993a64c4d28d09133da7708c9920aa92718edf |
 | crates/mu-config/Cargo.toml | 2b11bb4e888bd4ecd3e6da65bec8760b2466f9d4 |
 | crates/mu-config/src/entries.rs | 173656ccc3da020a40c5ac3bd5738ef1d18ee64f |
-| crates/mu-config/src/label.rs | d7565b753582c6edbb8455891e7ea7ee06194ffc |
+| crates/mu-config/src/label.rs | 10288472d774157a446a15d5dea3ef12c94b848f |
 | crates/mu-config/src/layer.rs | 3d1f69cd2e17f8b9b62ee67b849f03da4c51f18f |
 | crates/mu-config/src/layout/block.rs | 517cada593c0a77968a5f847ce006487717e5a14 |
 | crates/mu-config/src/layout/builtin.rs | 0837059c61e290513f61c4473ddae5150678e4bd |
-| crates/mu-config/src/layout/change.rs | 79c67c639f1a4442158f64d92bb2d9282c7eea31 |
-| crates/mu-config/src/layout/mod.rs | 177e936bed83b199710702f8f505c92d7e12df1d |
+| crates/mu-config/src/layout/change.rs | d36610e0b3526c565202636c0cff5d4fb45bdcc1 |
+| crates/mu-config/src/layout/mod.rs | 80021a0194ff0587f37ff71bac7d28fa848d6d2c |
 | crates/mu-config/src/layout/parse.rs | 5c31fa357e2adaa39939fa78ea26655583fcc32d |
-| crates/mu-config/src/layout/solve.rs | cc3ca0d7c96e07f762c9e15f938b5d97a6121220 |
+| crates/mu-config/src/layout/solve.rs | 723d50ae4ba8ba46f434fede9262518a92e02f1a |
 | crates/mu-config/src/layout/step.rs | 5a855e1068c9142fef75e73f52ebc910fdf43d2a |
 | crates/mu-config/src/layout/tree.rs | 234eec42524fe22e023105c526b9f836e419e2a0 |
 | crates/mu-config/src/layout/write.rs | db02174d0541c4c79d6ea4b8d0c05686f4b9ace5 |
-| crates/mu-config/src/lib.rs | 010df7d12ca79d0b1ca9558413323aff1186b850 |
-| crates/mu-config/src/names.rs | 01fd4c5f300c09a0bf0da3e82673e6193820195f |
-| crates/mu-config/src/world_id.rs | b5586c5e9c5e7c3fecaca68986da8ec47e3e1119 |
-| crates/mu-config/tests/layer.rs | 9b34d6a6e204bf76520efcb5abafd505a6c7c8cc |
+| crates/mu-config/src/lib.rs | a0bd98df708f7e54f36df123ccf800b72c6927c0 |
+| crates/mu-config/src/names.rs | fba014820cf321b8290d76fc672d7fd65e8a362f |
+| crates/mu-config/src/world_id.rs | 520b3410e6ff6307e9d0ca8c5a16eedfc290336a |
+| crates/mu-config/tests/layer.rs | f245d723f398870adc217b2ff2c62b554b72c0b6 |
 | crates/mu-config/tests/layout.proptest-regressions | 554ac208771e9ba606ab342bc66c8ab000597490 |
-| crates/mu-config/tests/layout.rs | a9cd6b4c75707c2a4d4b8c0cf955b853b883f9e7 |
+| crates/mu-config/tests/layout.rs | 0cbd191d43ed35fc31c6b8660730d54c7bb82455 |
 | crates/mu-config/tests/names.rs | a3bf5e9376ac783fe25303f3f603aaf66f888785 |
 | crates/mu-core/Cargo.toml | 89937e8493ca6d837f8eb28a58ff84981adc7d8f |
 | crates/mu-core/src/id.rs | 453174368922ff0a1b221f12e9dabe7de3b907b0 |
@@ -659,8 +692,8 @@ None.
 | crates/mu-proto/proto/mu/v1/portal.proto | 58f2ac83fdf68b02ca8ed30cb9efd7dd53f4e009 |
 | crates/mu-server/Cargo.toml | a53455fa1b31b187adcf337d18ed20c05f497e6d |
 | crates/mu-server/src/lib.rs | 8428a97973fcb851b3de9aaf01748fb20d847625 |
-| crates/mu-server/src/service.rs | 20077fd5b72a6c0ddea13d159c0207a174fd0e14 |
-| crates/mu-server/src/store.rs | 6f2ddff96360f2024a37cb0cc1a9936928068256 |
+| crates/mu-server/src/service.rs | 9140981ce05c83a6195b6e10519641bbb385a1fc |
+| crates/mu-server/src/store.rs | bb4b1ace98ff9b1933ba7c7f1690e18386f8257c |
 | crates/mu-server/src/write.rs | e121f8f9cb795d1215d72d4653594b24ced935b4 |
 | crates/mu-server/tests/store.rs | ede35486d76925e09c0a15a35a8cd41b297eeed4 |
 | crates/mu-tui/src/arrange.rs | 5efc06332ffcef72982c8773b99c15e0bae67fbe |
@@ -668,16 +701,17 @@ None.
 | crates/mu-tui/src/editor.rs | bf65a6b7efd456bb35a3accc565eaca4b471a3c8 |
 | crates/mu-tui/src/keymap.rs | 60e9ef84b8124b829806a350bc4145fc460bb4b2 |
 | crates/mu-tui/src/layout.rs | absent |
-| crates/mu-tui/src/layouts.rs | ba4074ed3729fcaadb25f0435b66d6f20f586922 |
+| crates/mu-tui/src/layouts.rs | 831a6f6e32c4b02f23867cec412637d93f5782e8 |
 | crates/mu-tui/src/lib.rs | 8e55962cb616d2f0f7dfdc89ce6353b6780640f2 |
-| crates/mu-tui/src/model.rs | 34f34aa8f7dead6f186502dd75d5df5c02dd7b21 |
+| crates/mu-tui/src/model.rs | 0f1da99d140b349498573292ec573f8755dc8eb7 |
 | crates/mu-tui/src/registry.rs | 6acfabe5ca36a9f4249aaeb78e8f63f7d6fb1ad3 |
 | crates/mu-tui/src/run.rs | 5732277738b85a820dcead564d708427f77ddd3b |
-| crates/mu-tui/src/statusline.rs | 79cc27bad1211f7c7c7049018a0bbc8a03389541 |
+| crates/mu-tui/src/statusline.rs | df28af7fb7db26ca5d9085079b17fa3bd1ada49c |
 | crates/mu-tui/src/update.rs | a7e305068b06d70b8ea5eeea606d99e2bb91b2a3 |
-| crates/mu-tui/src/view.rs | 6307aed91be434bcdb9f2d09e51f69ea6ee4099e |
+| crates/mu-tui/src/view.rs | f9379e7d57121bfeaf9855ef9d1403e545a0f32a |
+| crates/mu-tui/src/width.rs | 8894728414954329d5eab91707dd99f25dee4204 |
 | crates/mu-tui/tests/app.rs | 697e4bedd8a49e3d101c09db7ec7ddff9d430a82 |
-| crates/mu-tui/tests/arrange.rs | 5a0f76daf79df64ecfb926d029fc7a8a5959b1de |
+| crates/mu-tui/tests/arrange.rs | 0480ef999418549185c91e80a0db8ec9b202a6ff |
 | crates/mu-tui/tests/editor.rs | c7992ae680d306d88c22f875eb27a1f19a575a86 |
 | crates/mu-tui/tests/snapshots/app__a_percent_and_a_count_of_cells.snap | 551c7cbabc7e84f7c7f2d3cb69e97351ba373833 |
 | crates/mu-tui/tests/snapshots/app__the_picture_of_each_built_in_layout.snap | fd1fea48a5b4d0818d1599c7c63f92659f8f8e74 |
@@ -689,13 +723,13 @@ None.
 | docs/src/content/docs/guides/configuration.md | 1a6d9215d8fc6a948b4cd0eabebd881f0f5d9379 |
 | docs/src/content/docs/guides/layouts.md | 201b4249b3526fd20d2190003c8917a4763eaec4 |
 | openspec/changes/client-layout/.openspec.yaml | 880dcbddfbd01d2f90c77d58dcf594b444480b33 |
-| openspec/changes/client-layout/design.md | c59cd7424552313108ff545c2ff1a7b0609b367e |
+| openspec/changes/client-layout/design.md | 59b8dfaabd5ddd6e52abad3137c319b2b9821820 |
 | openspec/changes/client-layout/proposal.md | d550f0fe0cdff8f42df13f17023995bb988e33f0 |
 | openspec/changes/client-layout/specs/client-config/spec.md | 732875b42d24bcce5855b8e077ae1a36f615591b |
 | openspec/changes/client-layout/specs/client-layout/spec.md | ccf85dc7d4056bb523a04c87b4530b1e348c1696 |
 | openspec/changes/client-layout/specs/client-statusline/spec.md | ac3a3ba76dafc334996beeb1f82b4623b5a0b352 |
 | openspec/changes/client-layout/specs/config-store/spec.md | 1a19c989ed3db5c593eb792eee96e03e2f1d6ae8 |
-| openspec/changes/client-layout/specs/layout-editing/spec.md | 6d9fef7a3e9c3e335f05ed1d62a12de0b70b630c |
+| openspec/changes/client-layout/specs/layout-editing/spec.md | d08a3c1589078517b41dfcbea952b074dc18687a |
 | openspec/changes/client-layout/specs/terminal-client/spec.md | a42fcbd9684d5fea1a7bf612a60c2f0e2ea56f95 |
 | openspec/changes/client-layout/tasks.md | sha256:a64969ccfc3ca0cb5c8573b319b6b034c97dbae873c354a7c4f1dd63e656844e |
 | openspec/review.json | absent |
