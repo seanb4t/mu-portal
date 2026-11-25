@@ -69,7 +69,7 @@ Each of the groups 2 to 6 is one layer. Finish a layer, with its tests and its d
 
 - [x] 7.1 Run `/sb:openspec-review client-layout implementation`. Make sure that the verdict is not changes-requested.
 - [x] 7.2 Run `mise run check` and `cargo nextest run --workspace --locked`. Make sure that both pass.
-- [ ] 7.3 Run `/sb:suite-review` on the branch, and fix or triage each blocker and major finding. Make sure that the tests of each fix pass, and that the pull request body says `Fixes #172`.
+- [x] 7.3 Run `/sb:suite-review` on the branch, and fix or triage each blocker and major finding. Make sure that the tests of each fix pass, and that the pull request body says `Fixes #172`.
 
 ## Workflow follow-up
 
