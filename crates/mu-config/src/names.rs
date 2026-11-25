@@ -5,7 +5,7 @@ use std::fmt;
 /// A name that a check refuses.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NameError {
-    /// What the name is for: `kind`, `os` or `device`.
+    /// What the name is for: `kind`, `os`, `device` or `layout`.
     pub what: &'static str,
     /// The name.
     pub name: String,
@@ -127,6 +127,9 @@ impl Os {
 /// The longest device name, in characters.
 pub const DEVICE_MAX: usize = 64;
 
+/// The rule of the characters of a device name and of a layout name, as the end of a sentence.
+const NAME_RULE: &str = "1 to 64 characters from a to z, 0 to 9, -, _ and .";
+
 /// The name of a device: 1 to [`DEVICE_MAX`] characters from `a` to `z`, `0` to `9`, `-`, `_`
 /// and `.`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -149,9 +152,7 @@ impl DeviceName {
             Err(NameError {
                 what: "device",
                 name: name.to_owned(),
-                reason: format!(
-                    "a device name has 1 to {DEVICE_MAX} characters from a to z, 0 to 9, -, _ and ."
-                ),
+                reason: format!("a device name has {NAME_RULE}"),
             })
         }
     }
@@ -164,6 +165,46 @@ impl DeviceName {
 }
 
 impl fmt::Display for DeviceName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// The name of a layout file: a name by the rule of a device name that is not the name of a
+/// built-in layout, and not `.` or `..`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct LayoutName(String);
+
+impl LayoutName {
+    /// Checks `name`.
+    ///
+    /// # Errors
+    ///
+    /// A [`NameError`] that names the layout name and the rule.
+    pub fn new(name: &str) -> Result<Self, NameError> {
+        let bad = |reason: String| NameError {
+            what: "layout",
+            name: name.to_owned(),
+            reason,
+        };
+        DeviceName::new(name).map_err(|_| bad(format!("a layout name has {NAME_RULE}")))?;
+        if name == "." || name == ".." {
+            return Err(bad("a layout name is not . or ..".to_owned()));
+        }
+        if crate::layout::BuiltIn::named(name).is_some() {
+            return Err(bad("the name of a built-in layout".to_owned()));
+        }
+        Ok(Self(name.to_owned()))
+    }
+
+    /// The name.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for LayoutName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }

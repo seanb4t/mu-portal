@@ -1852,6 +1852,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "toml",
+ "toml_edit",
  "tonic",
  "tracing",
  "tracing-opentelemetry",
@@ -1881,6 +1882,7 @@ dependencies = [
  "proptest",
  "serde",
  "toml",
+ "winnow",
 ]
 
 [[package]]
@@ -1893,6 +1895,7 @@ dependencies = [
  "governor",
  "hex",
  "miniz_oxide",
+ "mu-config",
  "mu-fake-server",
  "proptest",
  "secrecy",
@@ -1940,6 +1943,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
+ "toml_edit",
  "tracing",
  "uuid",
 ]
@@ -3694,6 +3698,7 @@ dependencies = [
  "indexmap",
  "toml_datetime",
  "toml_parser",
+ "toml_writer",
  "winnow",
 ]
 

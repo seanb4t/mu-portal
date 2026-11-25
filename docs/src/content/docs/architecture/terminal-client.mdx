@@ -19,9 +19,21 @@ A client command is a send whose text starts with `/`, such as `/focus beta/bryn
 
 The keymap comes from the server. The client calls `GetClientConfig` before it opens the screen, and builds the keymap from the bindings of the reply. A binding can name any entry that needs no argument. After a reload that gives the client a new revision, the client replaces its keymap with no restart. The guide [The client configuration](/guides/client/) describes the bindings, and the page [Server and clients](/architecture/server-and-clients/) shows the start and the reload.
 
+## The layout
+
+The layout of the screen is a plan: an ordered list of lines, each of which places one block. A block is `tabs`, `output`, `editor` or `statusline`. The plan and its rules are in the `mu-config` crate, which the server uses too, so the server and the client check a layout with the same code. The [layout model decision](/decisions/layout-model/) gives the reason.
+
+The model holds one checked layout for the field `layout`, and one for each entry of `[world-layouts]`. The layout on the screen is the layout of the world in focus. So a change of the focus can change the screen with no other code.
+
+`view` asks the solver of `mu-config` for the rectangle of each pane, and calls one draw function for each kind of block. A test fails if the catalog has a block with no draw function. The mouse hit test, the pictures of `mu layout` and arrange mode use the same solver.
+
+Each change of the layout is one operation of `mu-config` on the plan: place, hide, resize, or an edit of one line. A command, a drag of a border and arrange mode all call these operations. `update` shows the new plan at once and returns an effect that saves it. The page [Server and clients](/architecture/server-and-clients/) shows the save.
+
+In arrange mode, `update` sends each key and each mouse event to the mode, and no key reaches the editor or the keymap. The mode keeps the layout from before it started and a list of the layouts for the undo. Enter saves the layout on the screen, and Esc puts the first layout back.
+
 ## The editors and the history
 
-Each world has its own pose editor and its own input history. The editor of the world in focus is on the screen. When the focus moves, the text of each world stays in its editor. Before any world has the focus, the client uses one editor of no world. The first world that gets the focus takes its text.
+Each world has its own input history, and one editor state for each editor block of the layout. The editors of the world in focus are on the screen, and one of them has the input focus. When the focus moves, the text of each world stays in its editor. Before any world has the focus, the client uses one editor of no world. The first world that gets the focus takes its text.
 
 Each send and each command goes into the history of the world in focus. Up and Down walk through that history. A text that the server refused comes back into the editor of its world, and the texts after it go into the history.
 

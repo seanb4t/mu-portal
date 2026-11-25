@@ -17,7 +17,9 @@ use tracing::{Instrument as _, Span};
 use crate::convert;
 use mu_config::{DeviceName, Kind, NameError, Os};
 
-use crate::store::{ClientPart, Notice, Reloaded, Store};
+use crate::store::{ClientPart, NamedLayout, Notice, Reloaded, Store, WriteError};
+use mu_config::layout::{BlockId, Change, Layout, LineRef, Step, describe};
+use proto::__buffa::oneof::edit_layout_request::Change as EditChange;
 
 /// The API of one server instance.
 pub struct PortalApi {
@@ -157,8 +159,24 @@ pub fn client_config(
             .collect(),
         sources: config.sources.into_iter().collect(),
         notices: config.notices.iter().map(notice).collect(),
+        layout_name: config.layout_name,
+        layout: config.layout,
+        tab_label: config.tab_label,
+        statusline_left: config.statusline_left,
+        statusline_right: config.statusline_right,
+        world_layouts: config.world_layouts.into_iter().map(named_layout).collect(),
         ..Default::default()
     })
+}
+
+fn named_layout(layout: NamedLayout) -> proto::NamedLayout {
+    proto::NamedLayout {
+        key: layout.key.unwrap_or_default(),
+        name: layout.name,
+        lines: layout.lines,
+        built_in: layout.built_in,
+        ..Default::default()
+    }
 }
 
 fn notice(notice: &Notice) -> proto::Notice {
@@ -245,6 +263,48 @@ async fn traced<T>(
     let span = call_span(method);
     let result = call.instrument(span.clone()).await;
     ended(&span, result)
+}
+
+/// The status of a write that did not happen.
+fn write_status(error: &WriteError) -> ConnectError {
+    match error {
+        WriteError::Refused(reason) => ConnectError::invalid_argument(reason.clone()),
+        WriteError::Failed(reason) => ConnectError::internal(reason.clone()),
+    }
+}
+
+/// The text `text` of a request for an error message: its first 64 characters in quotes, with
+/// each control character escaped.
+fn shown(text: &str) -> String {
+    let start: String = text.chars().take(64).collect();
+    format!("{start:?}")
+}
+
+/// The change of an `EditLayout` request.
+fn change_of(change: Option<EditChange>) -> Result<Change, ConnectError> {
+    let refused = |error: &dyn std::fmt::Display| ConnectError::invalid_argument(error.to_string());
+    let named =
+        |text: &str, error: &dyn std::fmt::Display| refused(&format!("{}: {error}", shown(text)));
+    let step = |line: &str| Step::parse(line).map_err(|error| named(line, &error));
+    let id = |text: &str| BlockId::new(text).map_err(|error| named(text, &error));
+    let line_ref = |text: &str| LineRef::parse(text).map_err(|error| named(text, &error));
+    match change {
+        None => Err(ConnectError::invalid_argument("the request has no change")),
+        Some(EditChange::Place(line)) => Ok(Change::Place(step(&line)?)),
+        Some(EditChange::Hide(block)) => Ok(Change::Hide(id(&block)?)),
+        Some(EditChange::Size(size)) => {
+            Change::sized(id(&size.id)?, &size.size).map_err(|error| refused(&error))
+        }
+        Some(EditChange::Insert(insert)) => Ok(Change::Insert(
+            usize::try_from(insert.number).unwrap_or(usize::MAX),
+            step(&insert.line)?,
+        )),
+        Some(EditChange::Replace(replace)) => Ok(Change::Replace(
+            line_ref(&replace.line)?,
+            step(&replace.sentence)?,
+        )),
+        Some(EditChange::Delete(line)) => Ok(Change::Delete(line_ref(&line)?)),
+    }
 }
 
 /// The world of a request, recorded in the current span.
@@ -378,6 +438,137 @@ impl proto::PortalService for PortalApi {
             self.store.watch(),
             self.stopping.clone(),
         )))
+    }
+
+    async fn list_layouts(
+        &self,
+        _ctx: RequestContext,
+        _request: ServiceRequest<'_, proto::ListLayoutsRequest>,
+    ) -> ServiceResult<proto::ListLayoutsResponse> {
+        traced("ListLayouts", async {
+            let (layouts, notices) = self.store.client().layouts();
+            Response::ok(proto::ListLayoutsResponse {
+                layouts: layouts.into_iter().map(named_layout).collect(),
+                notices: notices.iter().map(notice).collect(),
+                ..Default::default()
+            })
+        })
+        .await
+    }
+
+    async fn describe_layout(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, proto::DescribeLayoutRequest>,
+    ) -> ServiceResult<proto::DescribeLayoutResponse> {
+        traced("DescribeLayout", async {
+            let part = self.store.client();
+            let (layouts, _) = part.layouts();
+            let named = layouts
+                .iter()
+                .find(|layout| layout.name == request.name)
+                .ok_or_else(|| match part.layout_notice(request.name) {
+                    // The file is there and bad, so the reply says what is wrong with it.
+                    Some(notice) => ConnectError::invalid_argument(notice.text),
+                    None => ConnectError::not_found(format!(
+                        "no good layout is named {}",
+                        shown(request.name)
+                    )),
+                })?;
+            let layout = Layout::parse(&named.lines)
+                .map_err(|error| ConnectError::internal(error.to_string()))?;
+            let cells = |count: u32, what: &str| {
+                u16::try_from(count).map_err(|_| {
+                    ConnectError::invalid_argument(format!(
+                        "the {what} {count} is over {}",
+                        u16::MAX
+                    ))
+                })
+            };
+            let (width, height) = (
+                cells(request.width, "width")?,
+                cells(request.height, "height")?,
+            );
+            let blocks = describe(&layout, width, height)
+                .into_iter()
+                .map(|block| proto::DescribedBlock {
+                    id: block.id.to_string(),
+                    name: block.name.to_owned(),
+                    line: u32::try_from(block.line).unwrap_or(u32::MAX),
+                    x: u32::from(block.area.x),
+                    y: u32::from(block.area.y),
+                    width: u32::from(block.area.width),
+                    height: u32::from(block.area.height),
+                    front: block.front,
+                    data_source: block.source,
+                    ..Default::default()
+                })
+                .collect();
+            Response::ok(proto::DescribeLayoutResponse {
+                blocks,
+                ..Default::default()
+            })
+        })
+        .await
+    }
+
+    async fn save_layout(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, proto::SaveLayoutRequest>,
+    ) -> ServiceResult<proto::SaveLayoutResponse> {
+        traced("SaveLayout", async {
+            let request = request.to_owned_message();
+            let device = (!request.device.is_empty()).then_some(request.device.as_str());
+            let key = (!request.key.is_empty()).then_some(request.key.as_str());
+            self.store
+                .save_layout(&request.name, request.lines, device, key)
+                .await
+                .map_err(|error| write_status(&error))?;
+            Response::ok(proto::SaveLayoutResponse::default())
+        })
+        .await
+    }
+
+    async fn edit_layout(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, proto::EditLayoutRequest>,
+    ) -> ServiceResult<proto::EditLayoutResponse> {
+        traced("EditLayout", async {
+            let request = request.to_owned_message();
+            let change = change_of(request.change)?;
+            let device = (!request.device.is_empty()).then_some(request.device.as_str());
+            let world = (!request.world.is_empty()).then_some(request.world.as_str());
+            let edited = self
+                .store
+                .edit_layout(&request.name, change, device, world)
+                .await
+                .map_err(|error| write_status(&error))?;
+            Response::ok(proto::EditLayoutResponse {
+                name: edited.name,
+                lines: edited.lines,
+                rewritten: edited.rewritten,
+                ..Default::default()
+            })
+        })
+        .await
+    }
+
+    async fn use_layout(
+        &self,
+        _ctx: RequestContext,
+        request: ServiceRequest<'_, proto::UseLayoutRequest>,
+    ) -> ServiceResult<proto::UseLayoutResponse> {
+        traced("UseLayout", async {
+            let key = (!request.key.is_empty()).then_some(request.key);
+            self.store
+                .use_layout(request.device, request.name, key)
+                .await
+                .map_err(|error| write_status(&error))?;
+            Response::ok(proto::UseLayoutResponse::default())
+        })
+        .await
     }
 
     async fn reload_config(

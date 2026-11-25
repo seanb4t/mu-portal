@@ -9,6 +9,12 @@ use crate::update::Action;
 pub enum ArgKind {
     /// The id of a world, such as `alpha/aria`.
     World,
+    /// Free text, such as a placement sentence.
+    Text,
+    /// The id of a block of the layout on the screen.
+    Block,
+    /// The name of a layout.
+    Layout,
 }
 
 impl ArgKind {
@@ -17,6 +23,9 @@ impl ArgKind {
     pub const fn word(self) -> &'static str {
         match self {
             Self::World => "world",
+            Self::Text => "text",
+            Self::Block => "block id",
+            Self::Layout => "layout name",
         }
     }
 }
@@ -104,6 +113,23 @@ macro_rules! focus_place {
             |_| Action::FocusIndex($n),
         )
     };
+}
+
+/// An entry that takes an argument of `kind`.
+const fn with_arg(
+    name: &'static str,
+    description: &'static str,
+    kind: ArgKind,
+    required: bool,
+    build: fn(Option<String>) -> Action,
+) -> Entry {
+    Entry {
+        name,
+        description,
+        arg: Some(Arg { kind, required }),
+        edits: false,
+        build,
+    }
 }
 
 /// An entry that takes a world, the world in focus if `required` is false and no world is given.
@@ -229,6 +255,12 @@ pub static ENTRIES: &[Entry] = &[
         false,
         |_| Action::FocusPrev,
     ),
+    plain(
+        "editor-next",
+        "give the input focus to the next editor",
+        false,
+        |_| Action::EditorNext,
+    ),
     on_world("focus", "give the focus to a world", true, |world| {
         Action::Focus(world.unwrap_or_default())
     }),
@@ -244,6 +276,93 @@ pub static ENTRIES: &[Entry] = &[
         false,
         Action::Disconnect,
     ),
+    with_arg(
+        "place",
+        "put a block on the screen with a sentence, such as: tabs at top",
+        ArgKind::Text,
+        true,
+        |text| Action::Place(text.unwrap_or_default()),
+    ),
+    with_arg(
+        "pane-hide",
+        "take a block off the screen",
+        ArgKind::Block,
+        true,
+        |id| Action::PaneHide(id.unwrap_or_default()),
+    ),
+    with_arg(
+        "pane-size",
+        "set the size of a block: its id, then 30%, 12, max 3 or fill",
+        ArgKind::Text,
+        true,
+        |text| Action::PaneSize(text.unwrap_or_default()),
+    ),
+    plain("pane-next", "show the next block of a stack", false, |_| {
+        Action::PaneNext
+    }),
+    with_arg(
+        "layout-use",
+        "set the layout of this device",
+        ArgKind::Layout,
+        true,
+        |name| Action::LayoutUse(name.unwrap_or_default()),
+    ),
+    with_arg(
+        "layout-save",
+        "save the layout on the screen under a name",
+        ArgKind::Text,
+        true,
+        |name| Action::LayoutSave(name.unwrap_or_default()),
+    ),
+    plain("layout-list", "show the name of each layout", false, |_| {
+        Action::LayoutList
+    }),
+    plain(
+        "layout-next",
+        "use the next layout in the order of the names",
+        false,
+        |_| Action::LayoutNext,
+    ),
+    plain(
+        "layout-plan",
+        "show the numbered lines of the layout on the screen",
+        false,
+        |_| Action::LayoutPlan,
+    ),
+    with_arg(
+        "layout-insert",
+        "put a line into the plan: its number, then a sentence",
+        ArgKind::Text,
+        true,
+        |text| Action::LayoutInsert(text.unwrap_or_default()),
+    ),
+    with_arg(
+        "layout-delete",
+        "remove a line of the plan, by its number or the id of its block",
+        ArgKind::Text,
+        true,
+        |line| Action::LayoutDelete(line.unwrap_or_default()),
+    ),
+    with_arg(
+        "layout-edit",
+        "replace a line of the plan: its number or id, then a sentence",
+        ArgKind::Text,
+        true,
+        |text| Action::LayoutEdit(text.unwrap_or_default()),
+    ),
+    with_arg(
+        "layout-here",
+        "set the layout of the world in focus, or remove it with no name",
+        ArgKind::Layout,
+        false,
+        Action::LayoutHere,
+    ),
+    plain(
+        "arrange",
+        "arrange the blocks of the screen with keys or the mouse",
+        false,
+        |_| Action::Arrange,
+    ),
     plain("help", "show one line for each entry", false, |_| {
         Action::Help
     }),
@@ -256,10 +375,19 @@ pub static ENTRIES: &[Entry] = &[
 ];
 
 /// The values that an argument of `kind` can take now. For [`ArgKind::World`] they are the
-/// worlds in the order of the top row.
+/// worlds in the order of the top row. For [`ArgKind::Block`] they are the ids of the plan, and
+/// for [`ArgKind::Layout`] the names of the last list of the layouts. Free text has none.
 #[must_use]
 pub fn candidates(model: &Model, kind: ArgKind) -> Vec<String> {
     match kind {
         ArgKind::World => model.world_ids().into_iter().map(str::to_owned).collect(),
+        ArgKind::Text => Vec::new(),
+        ArgKind::Block => model
+            .layout()
+            .steps()
+            .iter()
+            .map(|step| step.id.to_string())
+            .collect(),
+        ArgKind::Layout => model.layout_names().to_vec(),
     }
 }

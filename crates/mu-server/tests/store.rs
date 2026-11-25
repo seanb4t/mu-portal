@@ -403,21 +403,21 @@ fn world_dir() -> tempfile::TempDir {
 }
 
 /// The store of `root`, whose check of `server.toml` refuses a file that holds `bad`.
-fn open(root: &Path) -> Store {
+fn open(root: &Path) -> Arc<Store> {
     let check = Box::new(|entry: Option<&SnapEntry>| match entry {
         Some(SnapEntry::File(bytes)) if bytes.windows(3).any(|w| w == b"bad") => {
             Err("server.toml: telemetry: bad".to_owned())
         }
         _ => Ok(()),
     });
-    Store::open(
+    let opened = Store::open(
         Some(root),
         DirSnapshot::take(root).unwrap(),
         check,
         Box::new(|_| {}),
     )
-    .unwrap()
-    .store
+    .unwrap();
+    Arc::new(opened.store)
 }
 
 fn laptop(store: &Store) -> ClientConfig {
@@ -631,4 +631,433 @@ async fn a_second_reload_lists_the_world_change_again() {
     write(dir.path(), "characters/alpha/aria.toml", "port = 4202\n");
     store.reload().await;
     assert_eq!(store.reload().await.restart, ["characters/alpha/aria.toml"]);
+}
+
+// The writes of the store.
+
+use mu_server::write::{FieldEdit, edit_field};
+
+#[tokio::test]
+async fn a_write_that_makes_a_bad_layer_is_refused() {
+    let dir = world_dir();
+    write(
+        dir.path(),
+        "clients/devices/laptop.toml",
+        "echo = \"show\"\n",
+    );
+    let store = open(dir.path());
+    // The file changes after the server read it, and no reload ran. So the store still holds a
+    // good layer, and the text on the disk is a bad one.
+    write(
+        dir.path(),
+        "clients/devices/laptop.toml",
+        "[server]\nconnect_wait_seconds = 2\n",
+    );
+    let error = store
+        .use_layout("laptop", "status", None)
+        .await
+        .expect_err("the edited text is a bad layer")
+        .to_string();
+    assert!(error.contains("clients/devices/laptop.toml"), "{error}");
+    let text = fs::read_to_string(dir.path().join("clients/devices/laptop.toml")).unwrap();
+    assert_eq!(text, "[server]\nconnect_wait_seconds = 2\n");
+}
+
+#[tokio::test]
+async fn a_use_sets_the_layout_of_the_device() {
+    let dir = world_dir();
+    let store = open(dir.path());
+    store
+        .use_layout("laptop", "status", None)
+        .await
+        .expect("the use");
+    assert_eq!(laptop(&store).layout_name, "status");
+}
+
+/// One line of a device layer that the edit must keep.
+fn kept_line() -> impl Strategy<Value = String> {
+    prop_oneof![
+        "# [a-z ]{0,20}",
+        Just(String::new()),
+        Just("echo = \"show\"".to_owned()),
+        Just("echo = \"hide\" # quiet".to_owned()),
+    ]
+}
+
+proptest! {
+    #[test]
+    fn a_device_write_keeps_each_other_line(
+        top in prop::collection::vec(kept_line(), 0..6),
+        keys in prop::collection::vec("\"alt\\+[a-z]\" = \"focus-next\"", 0..3),
+        entries in prop::collection::vec("[b-z][a-z]{0,6} = \"focus\"", 0..3),
+        key in prop_oneof![Just("alpha/aria"), Just("alpha")],
+        set_layout in any::<bool>(),
+    ) {
+        let mut lines = top;
+        if !keys.is_empty() {
+            lines.push("[keys]".to_owned());
+            lines.extend(keys);
+        }
+        if !entries.is_empty() {
+            lines.push("[world-layouts]".to_owned());
+            lines.extend(entries);
+        }
+        let mut text = lines.join("\n");
+        text.push('\n');
+        prop_assume!(text.parse::<toml_edit::DocumentMut>().is_ok());
+        let path: &[&str] = if set_layout { &["layout"] } else { &["world-layouts", key] };
+        let set = edit_field(&text, path, &FieldEdit::Set("status".to_owned()));
+        prop_assert!(set.is_ok(), "{:?}", set);
+        let set = set.expect("checked");
+        // Each line of the old text is in the new text, in its order.
+        let mut rest = set.lines();
+        for line in text.lines() {
+            prop_assert!(rest.any(|each| each == line), "{:?} is gone from {:?}", line, set);
+        }
+        // The removal gives the old lines back. It also removes a table that it empties.
+        let removed = edit_field(&set, path, &FieldEdit::Remove).expect("the removal");
+        let wanted: Vec<&str> = text.lines().filter(|line| !line.is_empty()).collect();
+        let found: Vec<&str> = removed.lines().filter(|line| !line.is_empty()).collect();
+        prop_assert_eq!(found, wanted);
+    }
+}
+
+// A request is checked before the first write.
+
+const BAD_LAYER: &str = "echo = ";
+
+fn lines_of(lines: &[&str]) -> Vec<String> {
+    lines.iter().map(ToString::to_string).collect()
+}
+
+#[tokio::test]
+async fn a_refused_save_writes_no_layout_file() {
+    let dir = world_dir();
+    write(dir.path(), "clients/devices/laptop.toml", BAD_LAYER);
+    let store = open(dir.path());
+    let error = store
+        .save_layout("mine", lines_of(&["editor"]), Some("laptop"), None)
+        .await
+        .expect_err("the device layer is bad")
+        .to_string();
+    assert!(error.contains("clients/devices/laptop.toml"), "{error}");
+    assert!(!dir.path().join("clients/layouts/mine.toml").exists());
+}
+
+#[tokio::test]
+async fn a_refused_save_keeps_the_old_layout_file() {
+    let dir = world_dir();
+    write(dir.path(), "clients/devices/laptop.toml", BAD_LAYER);
+    write(
+        dir.path(),
+        "clients/layouts/mine.toml",
+        "place = [\"editor\"]\n",
+    );
+    let store = open(dir.path());
+    store
+        .save_layout(
+            "mine",
+            lines_of(&["output", "editor below main"]),
+            Some("laptop"),
+            None,
+        )
+        .await
+        .expect_err("the device layer is bad");
+    let text = fs::read_to_string(dir.path().join("clients/layouts/mine.toml")).unwrap();
+    assert_eq!(text, "place = [\"editor\"]\n");
+}
+
+#[tokio::test]
+async fn a_refused_edit_of_a_built_in_layout_writes_no_layout_file() {
+    use mu_config::layout::{BlockId, Change};
+    let dir = world_dir();
+    write(dir.path(), "clients/devices/laptop.toml", BAD_LAYER);
+    let store = open(dir.path());
+    let hide = Change::Hide(BlockId::new("tabs").expect("an id"));
+    store
+        .edit_layout("classic", hide, Some("laptop"), None)
+        .await
+        .expect_err("the device layer is bad");
+    assert!(
+        !dir.path()
+            .join("clients/layouts")
+            .join("laptop.toml")
+            .exists()
+    );
+}
+
+#[tokio::test]
+async fn a_device_file_that_the_server_cannot_read_writes_no_layout_file() {
+    let dir = world_dir();
+    write(
+        dir.path(),
+        "clients/devices/laptop.toml",
+        "echo = \"show\"\n",
+    );
+    let store = open(dir.path());
+    // The device file becomes a directory after the server read it. The store reads the layer
+    // before its first write, so the failure comes before the layout file.
+    fs::remove_file(dir.path().join("clients/devices/laptop.toml")).unwrap();
+    fs::create_dir(dir.path().join("clients/devices/laptop.toml")).unwrap();
+    store
+        .save_layout("mine", lines_of(&["editor"]), Some("laptop"), None)
+        .await
+        .expect_err("the device file is a directory");
+    assert!(!dir.path().join("clients/layouts/mine.toml").exists());
+}
+
+#[tokio::test]
+async fn a_save_stores_the_lines_as_mu_writes_them() {
+    let dir = world_dir();
+    let store = open(dir.path());
+    store
+        .save_layout(
+            "mine",
+            lines_of(&["  output  ", "editor   below   main"]),
+            None,
+            None,
+        )
+        .await
+        .expect("the save");
+    let text = fs::read_to_string(dir.path().join("clients/layouts/mine.toml")).unwrap();
+    assert!(text.contains("\"output\""), "{text}");
+    assert!(text.contains("\"editor below main\""), "{text}");
+}
+
+#[tokio::test]
+async fn a_line_over_256_characters_is_refused() {
+    let dir = world_dir();
+    let store = open(dir.path());
+    let long = format!("editor{}", " ".repeat(251));
+    assert_eq!(long.chars().count(), 257);
+    let error = store
+        .save_layout("mine", vec![long], None, None)
+        .await
+        .expect_err("a long line")
+        .to_string();
+    assert!(error.contains("256"), "{error}");
+    assert!(!dir.path().join("clients/layouts/mine.toml").exists());
+}
+
+#[tokio::test]
+async fn a_key_with_a_part_over_64_characters_is_refused() {
+    let dir = world_dir();
+    let store = open(dir.path());
+    let key = format!("{}/{}", "a".repeat(64), "b".repeat(65));
+    let error = store
+        .use_layout("laptop", "status", Some(&key))
+        .await
+        .expect_err("a long part")
+        .to_string();
+    assert!(error.contains("64"), "{error}");
+    assert!(!dir.path().join("clients/devices/laptop.toml").exists());
+}
+
+#[tokio::test]
+async fn a_removal_of_an_entry_that_is_not_there_is_refused() {
+    let dir = world_dir();
+    let store = open(dir.path());
+    let error = store
+        .use_layout("laptop", "", Some("alpha/ari"))
+        .await
+        .expect_err("no such entry")
+        .to_string();
+    assert!(error.contains("alpha/ari"), "{error}");
+    assert!(!dir.path().join("clients/devices/laptop.toml").exists());
+}
+
+#[tokio::test]
+async fn a_use_of_a_bad_layout_file_says_what_is_wrong() {
+    let dir = world_dir();
+    write(
+        dir.path(),
+        "clients/layouts/mine.toml",
+        "place = [\"output\"]\n",
+    );
+    let store = open(dir.path());
+    let error = store
+        .use_layout("laptop", "mine", None)
+        .await
+        .expect_err("a plan with no editor")
+        .to_string();
+    assert!(error.contains("clients/layouts/mine.toml"), "{error}");
+    assert!(error.contains("editor"), "{error}");
+}
+
+// A link and the permissions of a file.
+
+#[tokio::test]
+async fn a_write_to_a_linked_device_file_keeps_the_link() {
+    let dir = world_dir();
+    let outside = tempfile::tempdir().expect("a directory");
+    let real = outside.path().join("laptop.toml");
+    fs::write(&real, "# shared\necho = \"show\"\n").unwrap();
+    fs::create_dir_all(dir.path().join("clients/devices")).unwrap();
+    let link = dir.path().join("clients/devices/laptop.toml");
+    std::os::unix::fs::symlink(&real, &link).expect("a link");
+    let store = open(dir.path());
+    store
+        .use_layout("laptop", "status", None)
+        .await
+        .expect("the write");
+    assert!(link.is_symlink());
+    let text = fs::read_to_string(&real).unwrap();
+    assert!(text.contains("# shared"), "{text}");
+    assert!(text.contains("layout = \"status\""), "{text}");
+}
+
+#[tokio::test]
+async fn a_write_keeps_the_permissions_of_the_file() {
+    let dir = world_dir();
+    write(
+        dir.path(),
+        "clients/devices/laptop.toml",
+        "echo = \"show\"\n",
+    );
+    let file = dir.path().join("clients/devices/laptop.toml");
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o640)).unwrap();
+    let store = open(dir.path());
+    store
+        .use_layout("laptop", "status", None)
+        .await
+        .expect("the write");
+    assert_eq!(
+        fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+        0o640
+    );
+}
+
+#[test]
+fn an_error_of_a_text_that_is_no_toml_holds_no_part_of_the_text() {
+    let error = edit_field(
+        "echo = \"show\"\npassword hunter2\n",
+        &["layout"],
+        &FieldEdit::Set("status".to_owned()),
+    )
+    .expect_err("no TOML");
+    assert!(!error.contains("hunter2"), "{error}");
+    assert!(error.contains("line 2"), "{error}");
+}
+
+// The later checks of a call, a link to something that is no file, and a call that goes away.
+
+#[tokio::test]
+async fn a_save_that_makes_a_good_layer_bad_writes_no_layout_file() {
+    let dir = world_dir();
+    write(
+        dir.path(),
+        "clients/devices/laptop.toml",
+        "echo = \"show\"\n",
+    );
+    let store = open(dir.path());
+    // The layer on the disk changes after the server read it. The edit of this text gives a
+    // bad layer, which only the check after the edit finds.
+    write(
+        dir.path(),
+        "clients/devices/laptop.toml",
+        "[server]\nconnect_wait_seconds = 2\n",
+    );
+    store
+        .save_layout("mine", lines_of(&["editor"]), Some("laptop"), None)
+        .await
+        .expect_err("the edited text is a bad layer");
+    assert!(!dir.path().join("clients/layouts/mine.toml").exists());
+}
+
+#[tokio::test]
+async fn a_refused_call_makes_no_directory() {
+    let dir = world_dir();
+    let store = open(dir.path());
+    store
+        .use_layout("laptop", "", Some("alpha/ari"))
+        .await
+        .expect_err("no such entry");
+    assert!(!dir.path().join("clients").exists());
+}
+
+#[tokio::test]
+async fn a_removal_of_a_missing_entry_is_refused_for_each_form_of_the_file() {
+    // The file has no final newline, CRLF line ends, or an empty table.
+    for text in [
+        "layout = \"status\"",
+        "layout = \"status\"\r\necho = \"show\"\r\n",
+        "layout = \"status\"\n\n[world-layouts]\n",
+    ] {
+        let dir = world_dir();
+        write(dir.path(), "clients/devices/laptop.toml", text);
+        let store = open(dir.path());
+        store
+            .use_layout("laptop", "", Some("alpha/aria"))
+            .await
+            .expect_err("no such entry");
+        let after = fs::read_to_string(dir.path().join("clients/devices/laptop.toml")).unwrap();
+        assert_eq!(after, text);
+    }
+}
+
+#[tokio::test]
+async fn a_link_to_a_directory_is_not_written() {
+    let dir = world_dir();
+    let outside = tempfile::tempdir().expect("a directory");
+    fs::write(outside.path().join("keep.txt"), "keep").unwrap();
+    fs::create_dir_all(dir.path().join("clients/layouts")).unwrap();
+    let link = dir.path().join("clients/layouts/mine.toml");
+    std::os::unix::fs::symlink(outside.path(), &link).expect("a link");
+    let store = open(dir.path());
+    let error = store
+        .save_layout("mine", lines_of(&["editor"]), None, None)
+        .await
+        .expect_err("a link to a directory")
+        .to_string();
+    assert!(error.contains("clients/layouts/mine.toml"), "{error}");
+    assert!(error.contains("no regular file"), "{error}");
+    // The error holds no path outside the configuration directory.
+    assert!(
+        !error.contains(&outside.path().display().to_string()),
+        "{error}"
+    );
+    assert!(link.is_symlink());
+    assert_eq!(
+        fs::read_to_string(outside.path().join("keep.txt")).unwrap(),
+        "keep"
+    );
+}
+
+#[tokio::test]
+async fn a_link_to_nothing_is_not_written() {
+    let dir = world_dir();
+    fs::create_dir_all(dir.path().join("clients/layouts")).unwrap();
+    let link = dir.path().join("clients/layouts/mine.toml");
+    std::os::unix::fs::symlink(dir.path().join("gone.toml"), &link).expect("a link");
+    let store = open(dir.path());
+    let error = store
+        .save_layout("mine", lines_of(&["editor"]), None, None)
+        .await
+        .expect_err("a link to nothing")
+        .to_string();
+    assert!(error.contains("a link to nothing"), "{error}");
+    assert!(!dir.path().join("gone.toml").exists());
+}
+
+#[tokio::test]
+async fn a_write_whose_caller_goes_away_still_ends_with_a_reload() {
+    let dir = world_dir();
+    let store = open(dir.path());
+    let mut watch = store.watch();
+    let before = watch.borrow_and_update().store_hash().to_owned();
+    {
+        let save = store.save_layout("mine", lines_of(&["editor"]), None, None);
+        tokio::pin!(save);
+        // One poll starts the write. The caller then drops the call, as a call with a
+        // deadline that ends does.
+        tokio::select! {
+            biased;
+            _ = &mut save => {}
+            () = std::future::ready(()) => {}
+        }
+    }
+    // The store still writes the file and reads the directory again.
+    watch.changed().await.expect("the store lives");
+    assert_ne!(watch.borrow().store_hash(), before);
+    assert!(dir.path().join("clients/layouts/mine.toml").exists());
 }

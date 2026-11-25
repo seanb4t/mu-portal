@@ -352,3 +352,25 @@ impl TreeCopy {
 pub fn mode(path: &Path) -> u32 {
     fs::metadata(path).unwrap().permissions().mode() & 0o777
 }
+
+/// The content of a layout file with `lines`.
+pub fn layout_file<S: AsRef<str>>(lines: &[S]) -> String {
+    let quoted: Vec<String> = lines
+        .iter()
+        .map(|line| format!("{:?}", line.as_ref()))
+        .collect();
+    format!("place = [{}]\n", quoted.join(", "))
+}
+
+/// The lines of the layout file `name` under the configuration directory `dir`.
+pub fn place_of(dir: &Path, name: &str) -> Vec<String> {
+    let text = fs::read_to_string(dir.join(format!("clients/layouts/{name}.toml")))
+        .unwrap_or_else(|error| panic!("the layout file {name}: {error}"));
+    let file: toml::Table = text.parse().expect("the layout file is TOML");
+    file["place"]
+        .as_array()
+        .expect("place is a list")
+        .iter()
+        .map(|line| line.as_str().expect("a line is text").to_owned())
+        .collect()
+}

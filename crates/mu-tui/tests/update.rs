@@ -8,7 +8,7 @@ use std::time::Duration;
 use mu_tui::probe::{Outcome, PENDING_MAX};
 use mu_tui::store::CAPACITY;
 use mu_tui::width::Profile;
-use mu_tui::{Effect, Model, Msg, Position, update, view};
+use mu_tui::{Effect, Model, Msg, Position, Timer, update, view};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::CellDiffOption;
@@ -549,7 +549,7 @@ fn store_hash(model: &mut Model, hash: &str) -> Vec<Effect> {
 /// Sends the store hash of `reply`, then `reply`.
 fn new_config(model: &mut Model, reply: mu_proto::GetClientConfigResponse) {
     store_hash(model, &reply.store_hash);
-    update(model, Msg::Config(Ok(reply)));
+    update(model, Msg::Config(Ok(Box::new(reply))));
 }
 
 fn revision(model: &Model) -> Option<&str> {
@@ -582,9 +582,15 @@ fn a_stale_reply_is_dropped() {
     let mut model = configured(reply("h1", "r1", &[]));
     store_hash(&mut model, "h2");
     store_hash(&mut model, "h3");
-    update(&mut model, Msg::Config(Ok(reply("h2", "r2", &[]))));
+    update(
+        &mut model,
+        Msg::Config(Ok(Box::new(reply("h2", "r2", &[])))),
+    );
     let stale = revision(&model).map(str::to_owned);
-    update(&mut model, Msg::Config(Ok(reply("h3", "r3", &[]))));
+    update(
+        &mut model,
+        Msg::Config(Ok(Box::new(reply("h3", "r3", &[])))),
+    );
     assert_eq!(
         (stale.as_deref(), revision(&model)),
         (Some("r1"), Some("r3"))
@@ -652,7 +658,7 @@ proptest::proptest! {
                     let before = revision(&model).map(str::to_owned);
                     update(
                         &mut model,
-                        Msg::Config(Ok(reply(&format!("h{n}"), &format!("r{n}"), &[]))),
+                        Msg::Config(Ok(Box::new(reply(&format!("h{n}"), &format!("r{n}"), &[])))),
                     );
                     if revision(&model).map(str::to_owned) != before {
                         let applied = model.config().map(|config| config.store_hash.clone());
@@ -673,8 +679,9 @@ fn a_failed_fetch_fetches_again() {
     assert_eq!(
         (failed, again, notices_of(&model, "unavailable")),
         (
-            vec![Effect::RetryConfig {
-                after: Duration::from_millis(100)
+            vec![Effect::Wait {
+                after: Duration::from_millis(100),
+                then: Timer::RetryConfig,
             }],
             vec![Effect::FetchConfig],
             1
@@ -694,7 +701,10 @@ fn each_failed_fetch_waits_longer_until_an_apply() {
         ));
         update(&mut model, Msg::RetryConfig);
     }
-    update(&mut model, Msg::Config(Ok(reply("h2", "r2", &[]))));
+    update(
+        &mut model,
+        Msg::Config(Ok(Box::new(reply("h2", "r2", &[])))),
+    );
     store_hash(&mut model, "h3");
     effects.extend(update(
         &mut model,
@@ -703,7 +713,7 @@ fn each_failed_fetch_waits_longer_until_an_apply() {
     let millis: Vec<Option<u128>> = effects
         .iter()
         .map(|effect| match effect {
-            Effect::RetryConfig { after } => Some(after.as_millis()),
+            Effect::Wait { after, .. } => Some(after.as_millis()),
             _ => None,
         })
         .collect();
@@ -726,7 +736,10 @@ fn a_failed_fetch_of_an_applied_hash_fetches_nothing() {
 fn a_late_failure_of_an_old_fetch_does_not_count() {
     let mut model = configured(reply("h1", "r1", &[]));
     store_hash(&mut model, "h2");
-    update(&mut model, Msg::Config(Ok(reply("h2", "r2", &[]))));
+    update(
+        &mut model,
+        Msg::Config(Ok(Box::new(reply("h2", "r2", &[])))),
+    );
     let late = update(&mut model, Msg::Config(Err("old".to_owned())));
     store_hash(&mut model, "h3");
     let failed = update(&mut model, Msg::Config(Err("unavailable".to_owned())));
@@ -739,8 +752,9 @@ fn a_late_failure_of_an_old_fetch_does_not_count() {
         ),
         (
             vec![],
-            vec![Effect::RetryConfig {
-                after: Duration::from_millis(100)
+            vec![Effect::Wait {
+                after: Duration::from_millis(100),
+                then: Timer::RetryConfig,
             }],
             0,
             1
@@ -760,10 +774,654 @@ fn a_hash_back_to_the_applied_one_resets_the_failures() {
     assert_eq!(
         (failed, notices_of(&model, "unavailable")),
         (
-            vec![Effect::RetryConfig {
-                after: Duration::from_millis(100)
+            vec![Effect::Wait {
+                after: Duration::from_millis(100),
+                then: Timer::RetryConfig,
             }],
             2
         )
     );
+}
+
+// The world state, the times and the tick of the clock.
+
+use mu_proto::{GetClientConfigResponse, NamedLayout};
+use proptest::prelude::*;
+
+const CLASSIC: &[&str] = &["output", "tabs above main", "editor below main"];
+const STATUS: &[&str] = &[
+    "output",
+    "tabs above main",
+    "editor below main",
+    "statusline below editor",
+];
+
+fn texts(lines: &[&str]) -> Vec<String> {
+    lines.iter().map(ToString::to_string).collect()
+}
+
+/// A configuration with the layout `lines`, the layout of each key of `worlds`, and the two
+/// lists of segments.
+fn layout_config(
+    lines: &[&str],
+    worlds: &[(&str, &[&str])],
+    left: &[&str],
+    right: &[&str],
+) -> GetClientConfigResponse {
+    GetClientConfigResponse {
+        store_hash: "h".to_owned(),
+        revision: format!("{lines:?}{worlds:?}{left:?}{right:?}"),
+        echo: "dim".to_owned(),
+        layout_name: "test".to_owned(),
+        layout: texts(lines),
+        tab_label: "{world}".to_owned(),
+        statusline_left: texts(left),
+        statusline_right: texts(right),
+        world_layouts: worlds
+            .iter()
+            .map(|(key, lines)| NamedLayout {
+                key: (*key).to_owned(),
+                name: "other".to_owned(),
+                lines: texts(lines),
+                ..Default::default()
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+
+/// Gives `config` to the model through `update`, and returns the effects of the reply.
+fn configure(model: &mut Model, config: GetClientConfigResponse) -> Vec<Effect> {
+    store_hash(model, &config.store_hash);
+    update(model, Msg::Config(Ok(Box::new(config))))
+}
+
+/// A model of two worlds with the layout `status` and these segments. The tick of the clock
+/// waits.
+fn status_model(left: &[&str], right: &[&str]) -> Model {
+    let mut model = model();
+    configure(&mut model, layout_config(STATUS, &[], left, right));
+    model
+}
+
+fn world_event(kind: EventKind, source: Source, time_ms: i64) -> Msg {
+    Msg::Client(ClientEvent::Event(Event {
+        world: "alpha/aria".to_owned(),
+        kind: kind.into(),
+        source: source.into(),
+        time_ms,
+        ..Default::default()
+    }))
+}
+
+fn tick() -> Effect {
+    Effect::Wait {
+        after: mu_tui::TICK,
+        then: Timer::Tick,
+    }
+}
+
+fn status_row(model: &Model) -> String {
+    mu_tui::statusline::row(model, 80)
+}
+
+#[test]
+fn a_connect_event_sets_the_connect_time() {
+    let mut model = status_model(&["connected"], &[]);
+    update(
+        &mut model,
+        world_event(
+            EventKind::EVENT_KIND_CONNECTED,
+            Source::SOURCE_SYSTEM,
+            10_000,
+        ),
+    );
+    update(&mut model, Msg::Tick(13_000));
+    assert_eq!(status_row(&model), "0:03");
+}
+
+#[test]
+fn a_disconnect_event_clears_the_connect_time() {
+    let mut model = status_model(&["connected"], &[]);
+    update(
+        &mut model,
+        world_event(
+            EventKind::EVENT_KIND_CONNECTED,
+            Source::SOURCE_SYSTEM,
+            10_000,
+        ),
+    );
+    update(
+        &mut model,
+        world_event(
+            EventKind::EVENT_KIND_DISCONNECTED,
+            Source::SOURCE_SYSTEM,
+            12_000,
+        ),
+    );
+    update(&mut model, Msg::Tick(13_000));
+    assert_eq!(status_row(&model), "");
+}
+
+#[test]
+fn a_send_from_any_client_sets_the_send_time() {
+    let mut model = status_model(&[], &["idle"]);
+    update(
+        &mut model,
+        world_event(EventKind::EVENT_KIND_INPUT, Source::SOURCE_PLAYER, 5_000),
+    );
+    update(&mut model, Msg::Tick(8_000));
+    assert!(
+        status_row(&model).ends_with("0:03"),
+        "{:?}",
+        status_row(&model)
+    );
+}
+
+#[test]
+fn a_connect_event_lists_again() {
+    let mut model = model();
+    let effects = update(
+        &mut model,
+        world_event(
+            EventKind::EVENT_KIND_CONNECTED,
+            Source::SOURCE_SYSTEM,
+            10_000,
+        ),
+    );
+    assert_eq!(effects, [Effect::ListWorlds]);
+}
+
+#[test]
+fn a_reset_clears_the_times() {
+    let mut model = status_model(&["connected"], &["idle"]);
+    update(
+        &mut model,
+        world_event(
+            EventKind::EVENT_KIND_CONNECTED,
+            Source::SOURCE_SYSTEM,
+            10_000,
+        ),
+    );
+    update(
+        &mut model,
+        world_event(EventKind::EVENT_KIND_INPUT, Source::SOURCE_PLAYER, 11_000),
+    );
+    update(
+        &mut model,
+        Msg::Client(ClientEvent::Reset {
+            instance_id: "i".to_owned(),
+        }),
+    );
+    update(&mut model, Msg::Tick(13_000));
+    assert_eq!(status_row(&model), "");
+}
+
+#[test]
+fn a_tick_moves_the_idle_time() {
+    let mut model = status_model(&[], &["idle"]);
+    update(
+        &mut model,
+        world_event(EventKind::EVENT_KIND_INPUT, Source::SOURCE_PLAYER, 20_000),
+    );
+    update(&mut model, Msg::Tick(23_000));
+    assert!(
+        status_row(&model).ends_with("0:03"),
+        "{:?}",
+        status_row(&model)
+    );
+    update(&mut model, Msg::Tick(24_000));
+    assert!(
+        status_row(&model).ends_with("0:04"),
+        "{:?}",
+        status_row(&model)
+    );
+}
+
+#[test]
+fn no_tick_without_a_time_segment() {
+    let mut model = model();
+    assert_eq!(
+        configure(
+            &mut model,
+            layout_config(CLASSIC, &[], &["world"], &["idle"])
+        ),
+        []
+    );
+    assert_eq!(update(&mut model, Msg::Tick(1_000)), []);
+    // The layout `status` with no time segment asks for no tick.
+    assert_eq!(
+        configure(
+            &mut model,
+            layout_config(STATUS, &[], &["world"], &["typed"])
+        ),
+        []
+    );
+}
+
+#[test]
+fn the_first_clock_read_starts_no_second_tick() {
+    let mut model = model();
+    assert_eq!(
+        configure(
+            &mut model,
+            layout_config(STATUS, &[], &["world"], &["idle"])
+        ),
+        [tick()]
+    );
+    // The wait of the tick is pending. The first read of the clock sets the time only.
+    assert_eq!(update(&mut model, Msg::Clock(5_000)), []);
+    assert_eq!(press(&mut model, KeyCode::Char('a'), Modifiers::NONE), []);
+    // The end of the one wait starts the next one.
+    assert_eq!(update(&mut model, Msg::Tick(6_000)), [tick()]);
+}
+
+#[test]
+fn one_tick_waits_at_a_time() {
+    let mut model = model();
+    assert_eq!(
+        configure(
+            &mut model,
+            layout_config(STATUS, &[], &["world"], &["idle"])
+        ),
+        [tick()]
+    );
+    assert_eq!(press(&mut model, KeyCode::Char('a'), Modifiers::NONE), []);
+    assert_eq!(update(&mut model, Msg::Tick(1_000)), [tick()]);
+}
+
+#[test]
+fn a_new_layout_with_a_time_segment_starts_the_tick() {
+    let mut model = model();
+    assert_eq!(
+        configure(
+            &mut model,
+            layout_config(CLASSIC, &[], &["world"], &["idle"])
+        ),
+        []
+    );
+    assert_eq!(
+        configure(
+            &mut model,
+            layout_config(STATUS, &[], &["world"], &["idle"])
+        ),
+        [tick()]
+    );
+}
+
+#[test]
+fn a_focus_change_to_a_status_layout_starts_the_tick() {
+    let mut model = model();
+    let config = layout_config(CLASSIC, &[("beta/bryn", STATUS)], &["world"], &["idle"]);
+    assert_eq!(configure(&mut model, config), []);
+    assert_eq!(
+        press(&mut model, KeyCode::Char('n'), Modifiers::CONTROL),
+        [tick()]
+    );
+}
+
+#[test]
+fn a_tick_takes_the_time_of_the_clock() {
+    let message = mu_tui::ended(Timer::Tick, || 42_000);
+    assert!(matches!(message, Msg::Tick(42_000)), "{message:?}");
+    let retry = mu_tui::ended(Timer::RetryConfig, || 42_000);
+    assert!(matches!(retry, Msg::RetryConfig), "{retry:?}");
+}
+
+/// One step of the property test of the input focus.
+#[derive(Clone, Debug)]
+enum FocusStep {
+    Layout(usize),
+    EditorNext,
+    WorldNext,
+    WorldPrev,
+}
+
+const EDITOR_LAYOUTS: &[&[&str]] = &[
+    &["output", "editor below main"],
+    &[
+        "output",
+        "editor below main",
+        "editor as scratch right of editor",
+    ],
+    &[
+        "output",
+        "editor as scratch below main",
+        "editor as notes right of scratch",
+        "editor right of notes",
+    ],
+];
+
+fn focus_step() -> impl Strategy<Value = FocusStep> {
+    prop_oneof![
+        (0..EDITOR_LAYOUTS.len()).prop_map(FocusStep::Layout),
+        Just(FocusStep::EditorNext),
+        Just(FocusStep::WorldNext),
+        Just(FocusStep::WorldPrev),
+    ]
+}
+
+proptest! {
+    #[test]
+    fn the_input_focus_is_an_editor_of_the_plan(
+        steps in prop::collection::vec(focus_step(), 0..40),
+        other in 0..EDITOR_LAYOUTS.len(),
+    ) {
+        let mut model = model();
+        for step in steps {
+            match step {
+                FocusStep::Layout(index) => {
+                    // The world `beta/bryn` has a layout of its own.
+                    let config = layout_config(
+                        EDITOR_LAYOUTS[index],
+                        &[("beta/bryn", EDITOR_LAYOUTS[other])],
+                        &["world"],
+                        &[],
+                    );
+                    configure(&mut model, config);
+                }
+                FocusStep::EditorNext => {
+                    press(&mut model, KeyCode::Char('e'), Modifiers::ALT);
+                }
+                FocusStep::WorldNext => {
+                    press(&mut model, KeyCode::Char('n'), Modifiers::CONTROL);
+                }
+                FocusStep::WorldPrev => {
+                    press(&mut model, KeyCode::Char('p'), Modifiers::CONTROL);
+                }
+            }
+            let input = model.input_id();
+            prop_assert!(
+                model
+                    .layout()
+                    .holds(mu_config::layout::BlockKind::Editor, &input),
+                "{} is no editor of {:?}",
+                input,
+                model.layout().lines()
+            );
+        }
+    }
+}
+
+// The commands of the layout and the save.
+
+use mu_config::Choice;
+
+/// The choice of the entry of the world `alpha/aria`.
+fn aria_entry() -> Choice {
+    Choice::Entry("alpha/aria".parse().expect("a world key"))
+}
+
+/// Types `text` and presses Enter, and returns the effects of the Enter.
+fn run_command(model: &mut Model, text: &str) -> Vec<Effect> {
+    type_text(model, text);
+    press(model, KeyCode::Enter, Modifiers::NONE)
+}
+
+fn laptop() -> Model {
+    model().with_device("laptop")
+}
+
+#[test]
+fn a_block_argument_lists_the_ids_of_the_plan() {
+    let mut model = laptop();
+    configure(
+        &mut model,
+        layout_config(EDITOR_LAYOUTS[1], &[], &["world"], &[]),
+    );
+    assert_eq!(
+        mu_tui::candidates(&model, mu_tui::ArgKind::Block),
+        ["main", "editor", "scratch"]
+    );
+}
+
+#[test]
+fn a_layout_argument_lists_the_layouts() {
+    let mut model = laptop();
+    assert_eq!(
+        mu_tui::candidates(&model, mu_tui::ArgKind::Layout),
+        ["classic", "focus", "sidebar", "status"]
+    );
+    update(
+        &mut model,
+        Msg::Layouts {
+            next: false,
+            names: Ok(vec!["classic".to_owned(), "mine".to_owned()]),
+        },
+    );
+    assert_eq!(
+        mu_tui::candidates(&model, mu_tui::ArgKind::Layout),
+        ["classic", "mine"]
+    );
+}
+
+#[test]
+fn a_save_from_a_built_in_layout_takes_the_device_name() {
+    let mut model = laptop();
+    let effects = run_command(&mut model, "/pane hide tabs");
+    assert_eq!(
+        effects,
+        [Effect::SaveLayout {
+            name: "laptop".to_owned(),
+            lines: vec!["output".to_owned(), "editor below main".to_owned()],
+            device: "laptop".to_owned(),
+            then: Some(Choice::Default),
+        }]
+    );
+    assert_eq!(model.layout_name(), "laptop");
+}
+
+#[test]
+fn a_save_from_the_built_in_layout_of_a_world_sets_its_entry() {
+    let mut model = laptop();
+    let config = layout_config(CLASSIC, &[("alpha/aria", CLASSIC)], &["world"], &[]);
+    let mut config = config;
+    "classic".clone_into(&mut config.world_layouts[0].name);
+    configure(&mut model, config);
+    let effects = run_command(&mut model, "/pane hide tabs");
+    assert_eq!(
+        effects,
+        [Effect::SaveLayout {
+            name: "laptop.alpha.aria".to_owned(),
+            lines: vec!["output".to_owned(), "editor below main".to_owned()],
+            device: "laptop".to_owned(),
+            then: Some(aria_entry()),
+        }]
+    );
+    // The other world keeps the layout of the field `layout`.
+    press(&mut model, KeyCode::Char('n'), Modifiers::CONTROL);
+    assert_eq!(model.layout().lines().len(), 3);
+}
+
+#[test]
+fn a_save_to_a_player_layout_keeps_its_name() {
+    let mut model = laptop();
+    let mut config = layout_config(&["output", "editor below main"], &[], &["world"], &[]);
+    "mine".clone_into(&mut config.layout_name);
+    configure(&mut model, config);
+    let effects = run_command(&mut model, "/place tabs at top");
+    assert_eq!(
+        effects,
+        [Effect::SaveLayout {
+            name: "mine".to_owned(),
+            lines: vec![
+                "output".to_owned(),
+                "editor below main".to_owned(),
+                "tabs at top".to_owned()
+            ],
+            device: "laptop".to_owned(),
+            then: None,
+        }]
+    );
+}
+
+#[test]
+fn a_failed_save_puts_the_layout_back() {
+    let mut model = laptop();
+    let mut config = layout_config(CLASSIC, &[], &["world"], &[]);
+    "classic".clone_into(&mut config.layout_name);
+    configure(&mut model, config);
+    run_command(&mut model, "/pane hide tabs");
+    assert_eq!(model.layout_name(), "laptop");
+    let effects = update(
+        &mut model,
+        Msg::LayoutSaved(Err("clients/devices/laptop.toml: bad".to_owned())),
+    );
+    // The screen shows what the server holds, and the client asks for it again.
+    assert_eq!(effects, [Effect::FetchConfig]);
+    assert_eq!(model.layout().lines(), CLASSIC);
+    assert_eq!(model.layout_name(), "classic");
+    assert_eq!(notices_of(&model, "clients/devices/laptop.toml"), 1);
+}
+
+#[test]
+fn a_change_after_a_failed_save_sets_the_choice_again() {
+    let mut model = laptop();
+    let mut config = layout_config(CLASSIC, &[], &["world"], &[]);
+    "classic".clone_into(&mut config.layout_name);
+    configure(&mut model, config);
+    run_command(&mut model, "/pane hide tabs");
+    update(&mut model, Msg::LayoutSaved(Err("down".to_owned())));
+    // The layout is the built-in one again, so the next save sets the choice of the device.
+    let effects = run_command(&mut model, "/pane hide tabs");
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [Effect::SaveLayout { name, then: Some(Choice::Default), .. }] if name == "laptop"
+        ),
+        "{effects:?}"
+    );
+}
+
+#[test]
+fn a_failed_save_with_no_configuration_gives_the_default_layout() {
+    let mut model = laptop();
+    run_command(&mut model, "/pane hide tabs");
+    let effects = update(&mut model, Msg::LayoutSaved(Err("down".to_owned())));
+    assert_eq!(effects, [Effect::FetchConfig]);
+    assert_eq!(model.layout_name(), "classic");
+    assert_eq!(model.layout().lines(), CLASSIC);
+}
+
+#[test]
+fn a_device_with_no_good_layout_name_does_not_save() {
+    let mut model = model().with_device("focus");
+    let effects = run_command(&mut model, "/pane hide tabs");
+    assert_eq!(effects, []);
+    assert_eq!(model.layout().lines(), ["output", "editor below main"]);
+    assert_eq!(notices_of(&model, "/layout save"), 1);
+}
+
+#[test]
+fn layout_list_asks_the_server() {
+    let mut model = laptop();
+    assert_eq!(
+        run_command(&mut model, "/layout list"),
+        [Effect::ListLayouts { next: false }]
+    );
+}
+
+#[test]
+fn a_list_for_show_makes_no_use_call() {
+    let mut model = laptop();
+    let effects = update(
+        &mut model,
+        Msg::Layouts {
+            next: false,
+            names: Ok(vec!["classic".to_owned(), "focus".to_owned()]),
+        },
+    );
+    assert_eq!(effects, []);
+}
+
+#[test]
+fn the_next_layout_wraps() {
+    let mut model = laptop();
+    let names = vec!["classic".to_owned(), "focus".to_owned()];
+    let next = |model: &mut Model| {
+        update(
+            model,
+            Msg::Layouts {
+                next: true,
+                names: Ok(names.clone()),
+            },
+        )
+    };
+    let use_of = |name: &str| Effect::UseLayout {
+        device: "laptop".to_owned(),
+        name: Some(name.to_owned()),
+        choice: Choice::Default,
+    };
+    assert_eq!(next(&mut model), [use_of("focus")]);
+    let mut config = layout_config(&["output", "editor below main"], &[], &["world"], &[]);
+    "focus".clone_into(&mut config.layout_name);
+    configure(&mut model, config);
+    assert_eq!(next(&mut model), [use_of("classic")]);
+}
+
+#[test]
+fn layout_here_sets_the_entry_of_the_world_in_focus() {
+    let mut model = laptop();
+    assert_eq!(
+        run_command(&mut model, "/layout here focus"),
+        [Effect::UseLayout {
+            device: "laptop".to_owned(),
+            name: Some("focus".to_owned()),
+            choice: aria_entry(),
+        }]
+    );
+    assert_eq!(
+        run_command(&mut model, "/layout here"),
+        [Effect::UseLayout {
+            device: "laptop".to_owned(),
+            name: None,
+            choice: aria_entry(),
+        }]
+    );
+}
+
+#[test]
+fn a_list_that_says_disconnected_clears_the_connect_time() {
+    let mut model = status_model(&["state", "connected"], &[]);
+    update(
+        &mut model,
+        world_event(
+            EventKind::EVENT_KIND_CONNECTED,
+            Source::SOURCE_SYSTEM,
+            40_000,
+        ),
+    );
+    update(&mut model, Msg::Tick(100_000));
+    assert_eq!(status_row(&model), "connected | 1:00");
+    // The list says that the world is not connected, and no disconnect event came.
+    let world = |id: &str| mu_proto::World {
+        id: id.to_owned(),
+        state: mu_proto::WorldState::WORLD_STATE_DISCONNECTED.into(),
+        ..Default::default()
+    };
+    update(
+        &mut model,
+        Msg::Listed(Ok(vec![world("alpha/aria"), world("beta/bryn")])),
+    );
+    assert_eq!(status_row(&model), "disconnected");
+}
+
+#[test]
+fn a_failed_save_puts_back_the_last_good_layout_of_the_server() {
+    let mut model = laptop();
+    let mut good = layout_config(CLASSIC, &[], &["world"], &[]);
+    "classic".clone_into(&mut good.layout_name);
+    configure(&mut model, good);
+    // The next reply holds a layout that this client cannot read, so the layout stays.
+    let mut bad = layout_config(&["bogus"], &[], &["world"], &[]);
+    "h2".clone_into(&mut bad.store_hash);
+    store_hash(&mut model, "h2");
+    update(&mut model, Msg::Config(Ok(Box::new(bad))));
+    assert_eq!(model.layout().lines(), CLASSIC);
+    run_command(&mut model, "/pane hide tabs");
+    update(&mut model, Msg::LayoutSaved(Err("down".to_owned())));
+    assert_eq!(model.layout().lines(), CLASSIC);
+    assert_eq!(model.layout_name(), "classic");
+    // The notice of the bad layout shows one time, not again at the restore.
+    assert_eq!(notices_of(&model, "the bad layout"), 1);
 }

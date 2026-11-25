@@ -22,7 +22,7 @@ If the directory does not exist, there are no configured worlds.
 
 If `mu client` starts a server, that server finds the directory by the same rule, from the environment of the client.
 
-The directory can also hold `server.toml`, the configuration of the server, and the directory `clients/`, the configuration of the clients. Neither makes a world. The guide [The server file and telemetry](/guides/telemetry/) describes `server.toml`. The guide [The client configuration](/guides/client/) describes the layers in `clients/`.
+The directory can also hold `server.toml`, the configuration of the server, and the directory `clients/`, the configuration of the clients. Neither makes a world. The guide [The server file and telemetry](/guides/telemetry/) describes `server.toml`. The guide [The client configuration](/guides/client/) describes the layers in `clients/`. Those layers hold the fields `layout`, `[tabs]`, `[statusline]` and `[world-layouts]`, and the guide [The layout of the client](/guides/layouts/) describes the layout files in `clients/layouts/`.
 
 ## The layout
 
@@ -35,7 +35,7 @@ The directory holds four kinds of files:
 | `games/<game>.toml` | One game: the host, the port and the type |
 | `characters/<game>/<character>.toml` | One world: a character on the game |
 
-Each character file makes one world. Its id is `<game>/<character>`. A name holds only `a` to `z`, `0` to `9` and `-`, and starts with a letter. Any other file that ends in `.toml` is an error. The exceptions are `server.toml` at the top of the directory and the files in `clients/`. If the file system ignores case, the same name in another case is that file too. A file `client.toml` at the top of the directory is an error. The error tells you to move its content to `clients/global.toml`, as the guide [The client configuration](/guides/client/#move-from-clienttoml) says.
+Each character file makes one world. Its id is `<game>/<character>`. A name holds 1 to 64 characters of `a` to `z`, `0` to `9` and `-`, and starts with a letter. Any other file that ends in `.toml` is an error. The exceptions are `server.toml` at the top of the directory and the files in `clients/`. If the file system ignores case, the same name in another case is that file too. A file `client.toml` at the top of the directory is an error. The error tells you to move its content to `clients/global.toml`, as the guide [The client configuration](/guides/client/#move-from-clienttoml) says.
 
 This example configures the world `alpha/aria`:
 

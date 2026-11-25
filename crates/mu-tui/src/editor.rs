@@ -1,5 +1,5 @@
-//! The editor: a text of several lines that the player writes, wraps, pastes and sends. The pose
-//! editor is one instance of it.
+//! The editor: a text of several lines that the player writes, wraps, pastes and sends. A layout
+//! holds one or more of them.
 
 use std::sync::Arc;
 
@@ -10,15 +10,6 @@ use ratatui::widgets::{StatefulWidget, Widget};
 use ratatui_textarea::{CursorMove, TextArea, WrapMode};
 
 use crate::pane::Caps;
-
-/// The id of an editor.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct EditorId(u32);
-
-impl EditorId {
-    /// The editor of the text that Enter sends to the world in focus.
-    pub const POSE: Self = Self(0);
-}
 
 /// The state of one editor.
 #[derive(Debug)]

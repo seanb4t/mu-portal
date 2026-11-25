@@ -17,6 +17,7 @@ figment2 = { workspace = true }
 futures = { workspace = true }
 governor = { workspace = true }
 miniz_oxide = { workspace = true }
+mu-config = { path = "../mu-config" }
 secrecy = { workspace = true }
 serde = { workspace = true }
 serde_path_to_error = { workspace = true }

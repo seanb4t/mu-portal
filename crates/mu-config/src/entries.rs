@@ -16,6 +16,13 @@ const fn plain(name: &'static str) -> EntryName {
     }
 }
 
+const fn needs(name: &'static str) -> EntryName {
+    EntryName {
+        name,
+        needs_arg: true,
+    }
+}
+
 /// Every entry of the terminal client, in the order of its registry.
 pub const ENTRY_NAMES: &[EntryName] = &[
     plain("send"),
@@ -45,12 +52,27 @@ pub const ENTRY_NAMES: &[EntryName] = &[
     plain("focus-9"),
     plain("focus-next"),
     plain("focus-prev"),
+    plain("editor-next"),
     EntryName {
         name: "focus",
         needs_arg: true,
     },
     plain("connect"),
     plain("disconnect"),
+    needs("place"),
+    needs("pane-hide"),
+    needs("pane-size"),
+    plain("pane-next"),
+    needs("layout-use"),
+    needs("layout-save"),
+    plain("layout-list"),
+    plain("layout-next"),
+    plain("layout-plan"),
+    needs("layout-insert"),
+    needs("layout-delete"),
+    needs("layout-edit"),
+    plain("layout-here"),
+    plain("arrange"),
     plain("help"),
     plain("quit"),
 ];

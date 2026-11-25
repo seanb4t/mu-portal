@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc de287c2f58dbaa14d72d4356e50f68590c59c5e65b2fa2fa06387f17f5caf6de # shrinks to moves = [Move { kind: Output, form: 2, side: Above, edge: Top, anchors: [0], size: Some(Percent(10)) }, Move { kind: Output, form: 0, side: Above, edge: Top, anchors: [0], size: None }, Move { kind: Editor, form: 4, side: Left, edge: Top, anchors: [40], size: None }]
+cc 6d2fb9823d18272377739ef6b2ad315fe8f52dcd227d0c4ca777514bb328f63f # shrinks to moves = [Move { kind: Editor, form: 2, side: Left, edge: Top, anchors: [0], size: Some(Max(1)) }], width = 0, height = 0, rows = 0
+cc 8b2d68cb85ab48f4448daa04a90a0a835dbb4fc610579ccd96bc2876af7e573a # shrinks to total = 4, cells = 3, columns = false

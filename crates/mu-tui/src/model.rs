@@ -2,17 +2,20 @@
 //! changes it for each message. [`view`](crate::view) records what each pane drew, and returns
 //! a scrolled pane to the bottom when the newest row shows.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Arc;
 
+use mu_config::layout::{
+    BUILT_IN, Block, BlockId, BlockKind, DEFAULT_LAYOUT, Layout, NOTICES_STREAM,
+};
+use mu_config::{Choice, Label, Segment, WorldId, layout_for};
 use mu_proto::World as ProtoWorld;
 use ratatui::style::Style;
 
 use crate::config::Echo;
-use crate::editor::{EditorId, EditorState};
+use crate::editor::EditorState;
 use crate::history::History;
 use crate::keymap::Keymap;
-use crate::layout::Node;
 use crate::pane::{Caps, PaneState};
 
 /// The id of an output pane. Each world has one pane, and one more pane holds the lines of no
@@ -40,11 +43,61 @@ pub(crate) struct World {
     pub(crate) listed: bool,
     /// The texts that the player sent to this world, and the walk of Up and Down through them.
     pub(crate) history: History,
+    /// Whether the world is connected, from the last list of the worlds and the events since.
+    pub(crate) state: WorldStatus,
+    /// The time of the event of the last connect, in milliseconds since the Unix epoch, while
+    /// the world is connected.
+    pub(crate) connected_ms: Option<i64>,
+    /// The time of the last send to the world from any client.
+    pub(crate) sent_ms: Option<i64>,
 }
 
-/// The order of the worlds: by the game part, then by the character part.
-fn order(id: &str) -> (&str, &str) {
-    id.split_once('/').unwrap_or((id, ""))
+/// Whether a world is connected.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum WorldStatus {
+    /// No list of the worlds and no event gave the state yet.
+    #[default]
+    Unknown,
+    /// The server opens the connection.
+    Connecting,
+    /// The world is connected.
+    Connected,
+    /// The world is not connected.
+    Disconnected,
+    /// The server waits for its next attempt.
+    Reconnecting,
+}
+
+impl WorldStatus {
+    /// The state as the statusline shows it, or none for a state that is not known.
+    pub(crate) const fn name(self) -> Option<&'static str> {
+        match self {
+            Self::Unknown => None,
+            Self::Connecting => Some("connecting"),
+            Self::Connected => Some("connected"),
+            Self::Disconnected => Some("disconnected"),
+            Self::Reconnecting => Some("reconnecting"),
+        }
+    }
+}
+
+/// Whether the wait of a tick of the clock runs, so a second one does not start.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum TickWait {
+    /// No tick waits.
+    #[default]
+    Idle,
+    /// A tick waits, and its [`Msg::Tick`](crate::update::Msg::Tick) did not come yet.
+    Waiting,
+}
+
+/// The order of the worlds: the order of [`WorldId`], by the game part and then by the
+/// character part. A text that is no world id comes first, in the order of its text.
+fn order(id: &str) -> (Option<WorldId>, &str) {
+    match id.parse::<WorldId>() {
+        Ok(world) => (Some(world), ""),
+        Err(_) => (None, id),
+    }
 }
 
 /// What set the arm of a quit, which decides what cancels it.
@@ -67,22 +120,39 @@ pub struct Model {
     /// What the terminal can draw, which every pane shares.
     pub(crate) caps: Arc<Caps>,
     next_pane: u32,
-    /// The editors that are not the pose editor.
-    pub(crate) editors: HashMap<EditorId, EditorState>,
-    /// The pose editor of each world, by the id of the world.
-    pub(crate) pose_editors: HashMap<String, EditorState>,
-    /// The pose editor while no world has the focus.
-    pub(crate) loose: EditorState,
+    /// The state of each editor, by the id of its world and the id of its block. The key with
+    /// no world is the editor while no world has the focus.
+    pub(crate) editors: HashMap<(Option<String>, BlockId), EditorState>,
+    /// The editor with the input focus. [`Model::input_id`] gives the editor of the layout on
+    /// the screen that it stands for.
+    pub(crate) input: BlockId,
+    /// The pane of each `output` that is not the main output of its plan, by the id of its
+    /// world and the id of its block.
+    pub(crate) extra_panes: HashMap<(Option<String>, BlockId), PaneId>,
+    /// The block in front of each stack, by the id of the first block of its pane.
+    pub(crate) fronts: HashMap<BlockId, BlockId>,
     /// The sends of each world that the server did not answer yet, in the order of the keys.
     /// The first one is with the server. The client sends the next one after that reply. So
     /// the lines of a world reach the game in order. A world with no such send has no entry.
     pub(crate) sends: HashMap<String, VecDeque<String>>,
     pub(crate) lost: bool,
     pub(crate) keymap: Keymap,
-    pub(crate) layout: Node,
+    /// The layout of the field `layout`, and its name.
+    pub(crate) layout: Layout,
+    pub(crate) layout_name: String,
+    /// The layout and its name for each entry of `[world-layouts]`, by the key of the entry.
+    pub(crate) world_layouts: BTreeMap<String, (String, Layout)>,
+    /// The layouts that the last configuration gave, which a save that failed puts back.
+    pub(crate) served: Option<Served>,
+    /// The label of a world tab.
+    pub(crate) label: Label,
+    /// The segments of the statusline from the left edge, and to the right edge.
+    pub(crate) segments: (Vec<Segment>, Vec<Segment>),
     pub(crate) late: Late,
     /// The notices of the client, which a reset of the panes keeps.
     pub(crate) notices: Vec<String>,
+    /// The notices and the hints that no pane showed, because the layout held no `output`.
+    pub(crate) unshown: Vec<String>,
     /// True if a late answer gave mode 2027 as set before the probe.
     pub(crate) keeps_grapheme_mode: bool,
     /// Set by a Quit while a send has no reply yet, the send with the server included. A second
@@ -102,9 +172,56 @@ pub struct Model {
     /// The count of the fetches of the configuration that failed since the last apply.
     pub(crate) config_failures: usize,
     pub(crate) config_retry: ConfigRetry,
+    /// The time of the last tick of the clock, in milliseconds since the Unix epoch.
+    pub(crate) now_ms: i64,
+    pub(crate) tick: TickWait,
+    /// The columns and the rows of the last frame.
+    pub(crate) screen: (u16, u16),
+    /// The name of this device, which a save of the layout needs.
+    pub(crate) device: String,
+    /// The names of the layouts of the last list of the layouts.
+    pub(crate) layout_names: Vec<String>,
+    /// The drag of a border, from its press to its release.
+    pub(crate) drag: Option<Drag>,
+    /// The pane that took the last press of the mouse, for its drag and its release.
+    pub(crate) pressed_pane: Option<PaneId>,
+    /// The state of arrange mode, while the mode is on.
+    pub(crate) arrange: Option<crate::arrange::Arrange>,
 }
 
-/// Whether an [`Effect::RetryConfig`](crate::update::Effect::RetryConfig) waits, so a second
+/// The layouts of one configuration of the server.
+#[derive(Clone, Debug)]
+pub(crate) struct Served {
+    /// The name of the layout of the field `layout`.
+    pub(crate) name: String,
+    /// The layout of the field `layout`.
+    pub(crate) layout: Layout,
+    /// The layout of each entry of `[world-layouts]`, by its key.
+    pub(crate) worlds: BTreeMap<String, (String, Layout)>,
+}
+
+/// The most lines that wait for a pane of the notices. A new line past it drops the oldest.
+const UNSHOWN_MAX: usize = 200;
+
+/// The drag of a border between two panes.
+#[derive(Clone, Debug)]
+pub(crate) struct Drag {
+    /// The layout at the press. Each report of the mouse resizes this layout, so the result
+    /// does not drift.
+    pub(crate) from: Layout,
+    /// The border. A press on a title row with no border above it has none, and can only be a
+    /// click.
+    pub(crate) border: Option<mu_config::layout::Border>,
+    /// The column and the row of the press.
+    pub(crate) pressed: (u16, u16),
+    /// Whether the mouse moved the border since the press.
+    pub(crate) moved: bool,
+    /// The reason that the layout rules refused the last report of the drag.
+    pub(crate) refused: Option<String>,
+}
+
+/// Whether an [`Effect::Wait`](crate::update::Effect::Wait) for
+/// [`Timer::RetryConfig`](crate::update::Timer::RetryConfig) waits, so a second
 /// one does not start.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum ConfigRetry {
@@ -159,16 +276,26 @@ impl Model {
             focus: None,
             panes: HashMap::from([(PaneId::NOTICES, PaneState::default())]),
             editors: HashMap::new(),
-            pose_editors: HashMap::new(),
-            loose: EditorState::with_caps(Arc::clone(&caps)),
+            input: BlockId::of(BlockKind::Editor),
+            extra_panes: HashMap::new(),
+            fronts: HashMap::new(),
             sends: HashMap::new(),
             caps,
             next_pane: 1,
             lost: false,
             keymap: Keymap::default(),
-            layout: Node::default(),
+            layout: default_layout(),
+            layout_name: DEFAULT_LAYOUT.to_owned(),
+            world_layouts: BTreeMap::new(),
+            served: None,
+            label: Label::default(),
+            segments: (
+                Segment::LEFT_DEFAULT.to_vec(),
+                Segment::RIGHT_DEFAULT.to_vec(),
+            ),
             late: Late::None,
             notices: Vec::new(),
+            unshown: Vec::new(),
             keeps_grapheme_mode: false,
             quit_arm: None,
             listing: Listing::Idle,
@@ -179,7 +306,17 @@ impl Model {
             latest_hash: None,
             config_failures: 0,
             config_retry: ConfigRetry::Idle,
+            now_ms: 0,
+            tick: TickWait::Idle,
+            screen: (0, 0),
+            device: String::new(),
+            layout_names: BUILT_IN.iter().map(|each| each.name.to_owned()).collect(),
+            drag: None,
+            pressed_pane: None,
+            arrange: None,
         };
+        let input = model.input.clone();
+        model.editor_of(None, &input);
         for id in worlds {
             model.world(&id);
         }
@@ -218,6 +355,20 @@ impl Model {
     #[must_use]
     pub fn notices(&self) -> &[String] {
         &self.notices
+    }
+
+    /// The model with `device` as the name of this device.
+    #[must_use]
+    pub fn with_device(mut self, device: &str) -> Self {
+        device.clone_into(&mut self.device);
+        self
+    }
+
+    /// The names of the layouts of the last list of the layouts. Before the first list, they
+    /// are the names of the built-in layouts.
+    #[must_use]
+    pub fn layout_names(&self) -> &[String] {
+        &self.layout_names
     }
 
     /// The model with `echo` as the style of the echo line of a send.
@@ -277,47 +428,129 @@ impl Model {
         self.worlds.iter().map(|world| world.id.as_str()).collect()
     }
 
-    /// The text of the pose editor, with an LF between each two lines.
+    /// The layout of `world`: the layout of its entry of `[world-layouts]`, then of the entry
+    /// of its game, then of the field `layout`.
+    pub(crate) fn layout_of(&self, world: Option<&str>) -> &Layout {
+        let world = world.and_then(|id| id.parse::<WorldId>().ok());
+        match layout_for(world.as_ref(), &self.world_layouts) {
+            Choice::Entry(key) => self
+                .world_layouts
+                .get(key.as_str())
+                .map_or(&self.layout, |(_, layout)| layout),
+            Choice::Default => &self.layout,
+        }
+    }
+
+    /// The entry or the field that gives the layout on the screen.
+    #[must_use]
+    pub fn choice(&self) -> Choice {
+        let world = self.focused().and_then(|id| id.parse::<WorldId>().ok());
+        layout_for(world.as_ref(), &self.world_layouts)
+    }
+
+    /// Whether the layout on the screen shows a time, so that the screen changes with the
+    /// clock.
+    pub(crate) fn shows_a_time(&self) -> bool {
+        self.layout().ids_of(BlockKind::Statusline).next().is_some()
+            && self
+                .segments
+                .0
+                .iter()
+                .chain(&self.segments.1)
+                .any(|segment| segment.is_time())
+    }
+
+    /// The layout on the screen: the layout of the world in focus.
+    #[must_use]
+    pub fn layout(&self) -> &Layout {
+        self.layout_of(self.focused())
+    }
+
+    /// The name of the layout on the screen.
+    #[must_use]
+    pub fn layout_name(&self) -> &str {
+        match self.choice() {
+            Choice::Entry(key) => self
+                .world_layouts
+                .get(key.as_str())
+                .map_or(self.layout_name.as_str(), |(name, _)| name),
+            Choice::Default => &self.layout_name,
+        }
+    }
+
+    /// The editor of the layout of `world` that has the input focus: the stored one if that
+    /// layout holds it, and the first editor of the plan if not.
+    pub(crate) fn input_id_of(&self, world: Option<&str>) -> BlockId {
+        let layout = self.layout_of(world);
+        if layout.holds(BlockKind::Editor, &self.input) {
+            return self.input.clone();
+        }
+        layout
+            .ids_of(BlockKind::Editor)
+            .next()
+            .cloned()
+            .unwrap_or_else(|| self.input.clone())
+    }
+
+    /// The id of the editor with the input focus.
+    #[must_use]
+    pub fn input_id(&self) -> BlockId {
+        self.input_id_of(self.focused())
+    }
+
+    /// The text of the editor with the input focus, with an LF between each two lines.
     #[must_use]
     pub fn input(&self) -> String {
-        self.editor(EditorId::POSE)
+        self.editor(&self.input_id())
             .map_or_else(String::new, EditorState::text)
     }
 
-    /// The state of the editor `id`. [`EditorId::POSE`] is the pose editor of the world in
-    /// focus, or the loose editor when no world has the focus.
+    /// The state of the editor `id` of the world in focus, or of no world when no world has
+    /// the focus.
     #[must_use]
-    pub fn editor(&self, id: EditorId) -> Option<&EditorState> {
-        if id != EditorId::POSE {
-            return self.editors.get(&id);
-        }
-        match self.focused_world() {
-            Some(world) => self.pose_editors.get(&world.id),
-            None => Some(&self.loose),
-        }
+    pub fn editor(&self, id: &BlockId) -> Option<&EditorState> {
+        self.editors
+            .get(&(self.focused().map(str::to_owned), id.clone()))
     }
 
-    /// The pose editor of the world in focus, or the loose editor when no world has the focus.
-    pub(crate) fn pose(&mut self) -> &mut EditorState {
-        match self.focused().map(str::to_owned) {
-            Some(world) => self.pose_of(&world),
-            None => &mut self.loose,
-        }
-    }
-
-    /// The pose editor of `world`, made if the world has none yet.
-    pub(crate) fn pose_of(&mut self, world: &str) -> &mut EditorState {
+    /// The editor `id` of `world`, made if it does not exist yet.
+    pub(crate) fn editor_of(&mut self, world: Option<&str>, id: &BlockId) -> &mut EditorState {
         let caps = &self.caps;
-        self.pose_editors
-            .entry(world.to_owned())
+        self.editors
+            .entry((world.map(str::to_owned), id.clone()))
             .or_insert_with(|| EditorState::with_caps(Arc::clone(caps)))
     }
 
-    /// The text of the pose editor of `world`, or `None` for a world that the model does not
-    /// hold.
+    /// The editor with the input focus: of the world in focus, or of no world when no world
+    /// has the focus.
+    pub(crate) fn pose(&mut self) -> &mut EditorState {
+        let world = self.focused().map(str::to_owned);
+        let id = self.input_id();
+        self.editor_of(world.as_deref(), &id)
+    }
+
+    /// The editor of `world` that has the input focus in the layout of that world, made if the
+    /// world has none yet.
+    pub(crate) fn pose_of(&mut self, world: &str) -> &mut EditorState {
+        let id = self.input_id_of(Some(world));
+        self.editor_of(Some(world), &id)
+    }
+
+    /// The text of the editor of `world` that has the input focus in the layout of that world,
+    /// or `None` for a world that the model does not hold.
     #[must_use]
     pub fn input_of(&self, world: &str) -> Option<String> {
-        self.pose_editors.get(world).map(EditorState::text)
+        self.find(world)?;
+        let key = (Some(world.to_owned()), self.input_id_of(Some(world)));
+        self.editors.get(&key).map(EditorState::text)
+    }
+
+    /// The text of the editor `id` of `world`, or `None` for an editor with no state yet.
+    #[must_use]
+    pub fn text_of(&self, world: Option<&str>, id: &BlockId) -> Option<String> {
+        self.editors
+            .get(&(world.map(str::to_owned), id.clone()))
+            .map(EditorState::text)
     }
 
     /// The input history of `world`, the oldest entry first. `None` for a world that the model
@@ -345,26 +578,117 @@ impl Model {
         if self.first_list {
             return;
         }
+        // A drag and arrange mode belong to the layout of the world in focus. So a move of the
+        // focus ends them, and puts their first layout back under that world.
+        let ended = if self.focus == Some(index) {
+            crate::config::Ended::Nothing
+        } else {
+            self.take_edits(true)
+        };
         let had_focus = self.focus.is_some();
         self.focus = Some(index);
         let world = &mut self.worlds[index];
         world.unseen = false;
         if !had_focus {
-            let (id, pane) = (world.id.clone(), world.pane);
-            let text = self.loose.text();
-            self.loose.set_text("");
-            if !text.is_empty() {
-                self.pose_of(&id).set_text(&text);
+            let id = world.id.clone();
+            // Each text of no world moves into the editor with the same id of this world.
+            let loose: Vec<BlockId> = self
+                .editors
+                .keys()
+                .filter(|(world, _)| world.is_none())
+                .map(|(_, editor)| editor.clone())
+                .collect();
+            for editor in loose {
+                let state = self.editor_of(None, &editor);
+                let text = state.text();
+                state.set_text("");
+                if !text.is_empty() {
+                    self.editor_of(Some(&id), &editor).set_text(&text);
+                }
             }
-            self.replay_notices(pane);
+            self.replay_notices();
+        }
+        self.show_unshown();
+        // The player now reads the notices of this world, so the line goes there.
+        self.say_ended("the focus moved", ended);
+    }
+
+    /// Adds the kept notices at the bottom of the pane that shows the notices of the world in
+    /// focus.
+    pub(crate) fn replay_notices(&mut self) {
+        // A kept notice that waited shows only one time, in the list of the kept notices.
+        let hints: Vec<String> = std::mem::take(&mut self.unshown)
+            .into_iter()
+            .filter(|line| !self.notices.contains(line))
+            .collect();
+        let lines: Vec<String> = self.notices.iter().cloned().chain(hints).collect();
+        match self.pane_for(NOTICES_STREAM) {
+            Some(pane) => {
+                for line in &lines {
+                    self.push(pane, line);
+                }
+            }
+            // No pane shows the notices now, so each line waits for one.
+            None => self.unshown = lines,
         }
     }
 
-    /// Adds the kept notices at the bottom of `pane`.
-    pub(crate) fn replay_notices(&mut self, pane: PaneId) {
-        for line in self.notices.clone() {
-            self.push(pane, &line);
+    /// The block of `blocks`, the blocks of one pane, that shows: the one in front of the stack.
+    pub(crate) fn front_of<'a>(&self, blocks: &'a [Block]) -> Option<&'a Block> {
+        let first = blocks.first()?;
+        let wanted = self.fronts.get(&first.id);
+        blocks
+            .iter()
+            .find(|block| Some(&block.id) == wanted)
+            .or(Some(first))
+    }
+
+    /// The pane of the world `world`, or the pane of notices for no world.
+    fn world_pane(&self, world: Option<&str>) -> PaneId {
+        world
+            .and_then(|id| self.find(id))
+            .map_or(PaneId::NOTICES, |index| self.worlds[index].pane)
+    }
+
+    /// The pane of the `output` `id` of `world`: the pane of the world for the main `output`
+    /// of its plan, and a pane of its own for each other one. None for a block that has no
+    /// pane yet. This is the one rule of which pane an `output` shows.
+    pub(crate) fn pane_of(&self, world: Option<&str>, id: &BlockId) -> Option<PaneId> {
+        let first = self.layout_of(world).main_output()?;
+        if first == id {
+            return Some(self.world_pane(world));
         }
+        self.extra_panes
+            .get(&(world.map(str::to_owned), id.clone()))
+            .copied()
+    }
+
+    /// The pane of the `output` `id` of the world in focus.
+    #[must_use]
+    pub fn pane_of_block(&self, id: &BlockId) -> Option<PaneId> {
+        self.pane_of(self.focused(), id)
+    }
+
+    /// The pane that takes a line of the stream `stream` for `world`, made if it does not
+    /// exist yet. None if the layout of the world holds no `output`.
+    pub(crate) fn pane_in(&mut self, world: Option<&str>, stream: &str) -> Option<PaneId> {
+        let target = self.layout_of(world).route(stream)?.clone();
+        if let Some(pane) = self.pane_of(world, &target) {
+            return Some(pane);
+        }
+        let pane = PaneId(self.next_pane);
+        self.next_pane += 1;
+        self.panes
+            .insert(pane, PaneState::with_caps(Arc::clone(&self.caps)));
+        self.extra_panes
+            .insert((world.map(str::to_owned), target), pane);
+        Some(pane)
+    }
+
+    /// The pane that takes a line of the stream `stream` for the world in focus.
+    pub(crate) fn pane_for(&mut self, stream: &str) -> Option<PaneId> {
+        let world = self.focused().map(str::to_owned);
+        self.pane_in(world.as_deref(), stream)
     }
 
     /// Takes the line break of each world of a list of the worlds. A listed world that the
@@ -378,12 +702,22 @@ impl Model {
                 .line_break
                 .filter(|text| !text.is_empty() && !text.chars().any(char::is_control));
             world.listed = true;
+            world.state = match listed.state.as_known() {
+                Some(mu_proto::WorldState::WORLD_STATE_CONNECTING) => WorldStatus::Connecting,
+                Some(mu_proto::WorldState::WORLD_STATE_CONNECTED) => WorldStatus::Connected,
+                Some(mu_proto::WorldState::WORLD_STATE_DISCONNECTED) => WorldStatus::Disconnected,
+                Some(mu_proto::WorldState::WORLD_STATE_RECONNECTING) => WorldStatus::Reconnecting,
+                Some(mu_proto::WorldState::WORLD_STATE_UNSPECIFIED) | None => WorldStatus::Unknown,
+            };
+            // The time of the connect is a fact of a connected world only.
+            if world.state != WorldStatus::Connected {
+                world.connected_ms = None;
+            }
         }
     }
 
     /// The index of `id`, or `None` if the model does not hold that world.
     pub(crate) fn find(&self, id: &str) -> Option<usize> {
-        // The order key of `a` and `a/` is the same, so the id itself decides.
         self.search(id)
             .ok()
             .filter(|&index| self.worlds[index].id == id)
@@ -416,6 +750,9 @@ impl Model {
                         line_break: None,
                         listed: false,
                         history: History::default(),
+                        state: WorldStatus::Unknown,
+                        connected_ms: None,
+                        sent_ms: None,
                     },
                 );
                 self.pose_of(id);
@@ -435,12 +772,7 @@ impl Model {
         for pane in self.panes.values_mut() {
             pane.set_caps(Arc::clone(&self.caps));
         }
-        for editor in self
-            .editors
-            .values_mut()
-            .chain(self.pose_editors.values_mut())
-            .chain([&mut self.loose])
-        {
+        for editor in self.editors.values_mut() {
             editor.set_caps(Arc::clone(&self.caps));
         }
     }
@@ -458,19 +790,48 @@ impl Model {
             .map_or(PaneId::NOTICES, |world| world.pane)
     }
 
-    /// Adds the system line `-- <text>` at the bottom of the pane in focus. After a Reset
-    /// clears the panes of the worlds, the line comes back in the pane of the world in focus.
+    /// Adds the system line `-- <text>` at the bottom of the pane that shows the notices of the
+    /// world in focus. After a Reset clears the panes of the worlds, the line comes back in the
+    /// pane that shows the notices then.
     pub(crate) fn notice(&mut self, text: &str) {
         let line = format!("-- {text}");
-        self.push(self.focused_pane(), &line);
+        self.show_notice(&line);
         self.notices.push(line);
     }
 
-    /// Adds the line `-- <text>` at the bottom of the pane in focus, for a key that did nothing.
+    /// Adds the line `-- <text>` at the bottom of the pane that shows the notices of the world
+    /// in focus, for a key that did nothing.
     /// Unlike [`Self::notice`], the line does not come back after a Reset, because it is about
     /// one moment.
     pub(crate) fn hint(&mut self, text: &str) {
-        self.push(self.focused_pane(), &format!("-- {text}"));
+        self.show_notice(&format!("-- {text}"));
+    }
+
+    /// Adds `line` at the bottom of the pane that shows the notices of the world in focus. A
+    /// layout with no `output` has no such pane, so the line waits for one.
+    fn show_notice(&mut self, line: &str) {
+        // The lines that waited show first, so the lines keep their order.
+        self.show_unshown();
+        if let Some(pane) = self.pane_for(NOTICES_STREAM) {
+            self.push(pane, line);
+        } else {
+            if self.unshown.len() == UNSHOWN_MAX {
+                self.unshown.remove(0);
+            }
+            self.unshown.push(line.to_owned());
+        }
+    }
+
+    /// Adds each line that waited for a pane of the notices, if the layout has one now.
+    pub(crate) fn show_unshown(&mut self) {
+        if self.unshown.is_empty() {
+            return;
+        }
+        if let Some(pane) = self.pane_for(NOTICES_STREAM) {
+            for line in std::mem::take(&mut self.unshown) {
+                self.push(pane, &line);
+            }
+        }
     }
 
     /// Adds `line` at the bottom of `pane`.
@@ -486,4 +847,15 @@ impl Model {
     pub(crate) fn set_input(&mut self, text: &str) {
         self.pose().set_text(text);
     }
+}
+
+/// The layout of a client whose configuration names none.
+pub(crate) fn default_layout() -> Layout {
+    let lines = BUILT_IN
+        .iter()
+        .find(|each| each.name == DEFAULT_LAYOUT)
+        .map_or(&["editor"][..], |each| each.lines);
+    Layout::parse(lines)
+        .or_else(|_| Layout::parse(&["editor"]))
+        .unwrap_or_else(|error| unreachable!("the plan of one editor is good: {error}"))
 }

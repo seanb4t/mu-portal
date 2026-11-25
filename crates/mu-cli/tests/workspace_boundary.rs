@@ -18,7 +18,7 @@ mod support;
 /// Each member and the members that it can depend on.
 const ALLOWED_EDGES: &[(&str, &[&str])] = &[
     ("mu-proto", &[]),
-    ("mu-core", &[]),
+    ("mu-core", &["mu-config"]),
     ("mu-config", &[]),
     ("mu-fake-server", &["mu-core"]),
     ("mu-server", &["mu-config", "mu-core", "mu-proto"]),
@@ -68,7 +68,7 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "walkdir",
         ],
     ),
-    ("mu-config", &["proptest", "serde", "toml"]),
+    ("mu-config", &["proptest", "serde", "toml", "winnow"]),
     ("mu-fake-server", &["futures", "tokio"]),
     (
         "mu-server",
@@ -82,6 +82,7 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "tempfile",
             "thiserror",
             "tokio",
+            "toml_edit",
             "tracing",
             "uuid",
         ],
@@ -148,6 +149,7 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "thiserror",
             "tokio",
             "toml",
+            "toml_edit",
             "tonic",
             "tracing",
             "tracing-opentelemetry",

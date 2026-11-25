@@ -2,17 +2,16 @@
 //! a running server. It never starts a server.
 
 use std::fmt::Write as _;
-use std::fs;
 use std::process::ExitCode;
 
 use clap::{Args, Subcommand};
-use mu_client::PortalClient;
-use mu_config::{FIELD_PATHS, Kind, Os, REPORT, STORE, filter};
+use mu_config::{
+    FIELD_PATHS, KEYS_TABLE, Kind, Os, REPORT, STORE, WORLD_LAYOUTS_TABLE, filter, keyed_path,
+};
 use mu_proto as proto;
 
-use crate::bootstrap::{BootstrapArgs, Server};
-use crate::client::answered;
-use crate::socket::{checked_dir, current_uid, socket_dir};
+use crate::bootstrap::BootstrapArgs;
+use crate::remote::call;
 
 /// Arguments of `mu config`.
 #[derive(Clone, Debug, Args)]
@@ -59,22 +58,6 @@ pub fn run(args: &ConfigVerbArgs) -> ExitCode {
         ConfigCommand::Reload { bootstrap } => reload(bootstrap),
     };
     result.unwrap_or_else(|error| fail(&error))
-}
-
-/// Runs `call` with the client of `server` on a new runtime.
-fn call<T, F: Future<Output = Result<T, mu_client::ClientError>>>(
-    server: &Server,
-    call: impl FnOnce(PortalClient) -> F,
-) -> Result<T, String> {
-    let dir = socket_dir(&server.socket);
-    if fs::symlink_metadata(dir).is_ok() {
-        checked_dir(dir, current_uid()).map_err(|error| error.to_string())?;
-    }
-    let runtime = tokio::runtime::Runtime::new().map_err(|error| error.to_string())?;
-    runtime.block_on(async {
-        let client = PortalClient::unix(&server.socket);
-        answered(&server.url, server.wait, call(client)).await
-    })
 }
 
 fn show(bootstrap: &BootstrapArgs, kind: &str, os: Option<&str>) -> Result<ExitCode, String> {
@@ -129,10 +112,22 @@ pub fn restart_lines(restart: &[String]) -> String {
 /// that the reply does not carry.
 #[must_use]
 pub fn field_value(reply: &proto::GetClientConfigResponse, path: &str) -> Option<toml::Value> {
+    let list = |names: &[String]| {
+        toml::Value::Array(names.iter().cloned().map(toml::Value::String).collect())
+    };
     match path {
         "echo" => Some(toml::Value::String(reply.echo.clone())),
+        "layout" => Some(toml::Value::String(reply.layout_name.clone())),
+        "tabs.label" => Some(toml::Value::String(reply.tab_label.clone())),
+        "statusline.left" => Some(list(&reply.statusline_left)),
+        "statusline.right" => Some(list(&reply.statusline_right)),
         _ => None,
     }
+}
+
+/// The key `key` as a part of a dotted TOML key: bare if TOML allows it, and quoted if not.
+fn key_part(key: &str) -> String {
+    toml_edit::Key::new(key).display_repr().into_owned()
 }
 
 /// The configuration as TOML: the revision on the first line, then each field and each binding
@@ -153,6 +148,21 @@ pub fn render(reply: &proto::GetClientConfigResponse) -> String {
             let _ = writeln!(text, "{path} = {value} # {}", source(path));
         }
     }
+    // A dotted key is TOML only before the first table header, so these lines come before
+    // `[keys]`.
+    for entry in &reply.world_layouts {
+        let name = toml::Value::String(entry.name.clone());
+        let _ = writeln!(
+            text,
+            "{WORLD_LAYOUTS_TABLE}.{} = {name} # {}",
+            key_part(&entry.key),
+            source(&keyed_path(WORLD_LAYOUTS_TABLE, &entry.key))
+        );
+    }
+    let _ = writeln!(text, "# the lines of the layout {}:", reply.layout_name);
+    for line in mu_config::layout::numbered(&reply.layout) {
+        let _ = writeln!(text, "#   {line}");
+    }
     if !reply.bindings.is_empty() {
         text.push_str("\n[keys]\n");
     }
@@ -162,8 +172,47 @@ pub fn render(reply: &proto::GetClientConfigResponse) -> String {
         let _ = writeln!(
             text,
             "{key} = {entry} # {}",
-            source(&format!("keys.{}", binding.key))
+            source(&keyed_path(KEYS_TABLE, &binding.key))
         );
     }
     filter(&text, &REPORT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn world_layouts_print_before_the_keys_header() {
+        let reply = proto::GetClientConfigResponse {
+            world_layouts: vec![
+                proto::NamedLayout {
+                    key: "alpha/aria".to_owned(),
+                    name: "focus".to_owned(),
+                    ..Default::default()
+                },
+                proto::NamedLayout {
+                    key: "alpha".to_owned(),
+                    name: "status".to_owned(),
+                    ..Default::default()
+                },
+            ],
+            bindings: vec![proto::Binding {
+                key: "alt+n".to_owned(),
+                entry: "focus-next".to_owned(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let text = render(&reply);
+        let world = text
+            .find("world-layouts.\"alpha/aria\" = \"focus\" # default")
+            .expect("the world entry");
+        let game = text
+            .find("world-layouts.alpha = \"status\" # default")
+            .expect("the game entry");
+        let keys = text.find("[keys]").expect("the header");
+        assert!(world < keys && game < keys, "{text}");
+        assert!(text.parse::<toml::Table>().is_ok(), "{text}");
+    }
 }
