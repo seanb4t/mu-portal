@@ -46,6 +46,20 @@
       "packageNameTemplate": "https://github.com/seanb4t/ratatui-textarea",
       "currentValueTemplate": "mu",
       "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "The commit of the ratatui fork in [patch.crates-io], which follows the branch mu: release 0.30.2 with termina 0.4. The cargo manager reads no [patch] table",
+      "managerFilePatterns": [
+        "/^Cargo\\.toml$/"
+      ],
+      "matchStrings": [
+        "git = \"https://github\\.com/seanb4t/ratatui\", rev = \"(?<currentDigest>[0-9a-f]{40})\""
+      ],
+      "depNameTemplate": "seanb4t/ratatui",
+      "packageNameTemplate": "https://github.com/seanb4t/ratatui",
+      "currentValueTemplate": "mu",
+      "datasourceTemplate": "git-refs"
     }
   ],
   "packageRules": [

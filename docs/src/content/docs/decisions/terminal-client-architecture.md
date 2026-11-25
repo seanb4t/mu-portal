@@ -22,6 +22,14 @@ The [terminal client architecture page](/architecture/terminal-client/) shows th
 
 The backend is Termina, through the `termina` feature of ratatui. The client does not ask the terminal for its name with XTVERSION, because Termina drops the reply.
 
+### The ratatui fork
+
+The released `ratatui-termina` needs an older minor version of termina. Upstream moved to the newer one (ratatui/ratatui#2769), but no release holds that change yet. Until a release does, the client builds ratatui from the fork `seanb4t/ratatui`. The branch `mu` of the fork is the latest ratatui release with that one change.
+
+- The entry `[patch.crates-io]` of the root `Cargo.toml` names one commit of the branch for each crate of the ratatui repository. All of them come from the fork, so that the build holds one `ratatui-core`. If a crate comes from crates.io, the test `ratatui_crates_come_from_the_fork` fails.
+- A Renovate regex manager follows the branch. After a Renovate update of the commit, run `cargo update -p ratatui` on its branch.
+- When a ratatui release needs the newer termina, remove the fork. Remove its entries from `[patch.crates-io]`, from `allow-git` of `deny.toml` and from `renovate.json`, and remove that test.
+
 ## Reason
 
 A comparison checked three things in each backend, in Rex. The spike in `spikes/terminal-backend` ran the checks. To see the version of each backend that it used, run `cargo tree --manifest-path spikes/Cargo.toml -p terminal-backend --depth 1`.
@@ -40,7 +48,7 @@ One `update` at the top keeps the keymap in one place, and later the Lua scripts
 
 - The comparison ran in Rex on macOS only. It tests how each library parses bytes, and that does not depend on the terminal.
 - The paste of check 2 was the bracketed paste bytes that `rex send` wrote. The paste action of the Rex app did not reach the pane.
-- `ratatui-termina` needs an older minor version of termina than the newest one. No check covered the newest termina. To see the version that the client uses, run `cargo tree -p mu-tui -i termina`.
+- The comparison ran on an older minor version of termina than the client uses. No check covered the newer termina. To see the version that the client uses, run `cargo tree -p mu-tui -i termina`.
 - The client on Termina ran in Rex only. There, the owner checked the copy by drag, the live resize and the kitty image by hand. No other terminal ran the client.
 
 ## Source
