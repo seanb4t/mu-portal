@@ -3,7 +3,7 @@
 //! one client, and reads the directory again at a reload.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt;
+use std::fmt::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -190,7 +190,12 @@ pub fn framed<'a>(entries: impl IntoIterator<Item = (&'a str, Content<'a>)>) -> 
 
 /// The first 16 hex digits of the SHA-256 hash of `input`.
 fn digest(input: &[u8]) -> String {
-    format!("{:.16x}", Sha256::digest(input))
+    Sha256::digest(input)[..8]
+        .iter()
+        .fold(String::with_capacity(16), |mut hex, byte| {
+            let _ = write!(hex, "{byte:02x}");
+            hex
+        })
 }
 
 /// The layer that applies to every client.
