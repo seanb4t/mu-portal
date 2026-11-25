@@ -1,7 +1,7 @@
 //! The tree of a layout, and how a plan builds it.
 
 use super::block::{BlockKind, SizeRule};
-use super::step::{BlockId, Dir, Place, Side, Size, Step};
+use super::step::{BlockId, Dir, EDITOR_MAX, PERCENT_MAX, PERCENT_MIN, Place, Side, Size, Step};
 use super::{LEVELS_MAX, LayoutError};
 
 /// One block in a pane.
@@ -121,6 +121,40 @@ impl Node {
     }
 }
 
+/// The tree with no block `id`. An empty pane and a split of one part go away, and a split never
+/// holds a split of its own direction. The result is `None` if `id` was the only block.
+pub(super) fn without(node: Node, id: &BlockId) -> Option<Node> {
+    match node {
+        Node::Pane(mut blocks) => {
+            blocks.retain(|block| &block.id != id);
+            (!blocks.is_empty()).then_some(Node::Pane(blocks))
+        }
+        Node::Split { dir, parts } => {
+            let mut kept: Vec<Part> = Vec::new();
+            for part in parts {
+                match without(part.node, id) {
+                    None => {}
+                    Some(Node::Split {
+                        dir: inner_dir,
+                        parts: inner,
+                    }) if inner_dir == dir => kept.extend(inner),
+                    Some(node) => kept.push(Part {
+                        size: part.size,
+                        node,
+                    }),
+                }
+            }
+            if kept.len() < 2 {
+                return kept.pop().map(|part| part.node);
+            }
+            if kept.iter().all(|part| part.size.is_some()) {
+                kept[0].size = None;
+            }
+            Some(Node::Split { dir, parts: kept })
+        }
+    }
+}
+
 /// The part and the block that one step makes.
 fn made(step: &Step, line: usize) -> Result<(Block, Option<PartSize>), LayoutError> {
     let bad = |reason: &str| {
@@ -136,6 +170,17 @@ fn made(step: &Step, line: usize) -> Result<(Block, Option<PartSize>), LayoutErr
         id: step.id.clone(),
         max: None,
     };
+    let in_range = match step.size {
+        None => true,
+        Some(Size::Percent(percent)) => (PERCENT_MIN..=PERCENT_MAX).contains(&percent),
+        Some(Size::Cells(cells)) => cells >= 1,
+        Some(Size::Max(rows)) => (1..=EDITOR_MAX).contains(&rows),
+    };
+    if !in_range {
+        return bad(
+            "bad size: a percent is from 10% to 90%, a count is from 1, and `max` is from 1 to 100",
+        );
+    }
     let rule = step.kind.row().size;
     let size = match (step.size, rule) {
         (None, _) => None,

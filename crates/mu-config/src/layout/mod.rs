@@ -1,6 +1,8 @@
 //! The layout of the screen: a plan of lines, and the tree that the plan builds.
 
 mod block;
+mod builtin;
+mod change;
 mod parse;
 mod step;
 mod tree;
@@ -9,6 +11,8 @@ mod write;
 use std::fmt;
 
 pub use block::{BLOCKS, BlockKind, BlockRow, SizeRule};
+pub use builtin::{BUILT_IN, BuiltIn, DEFAULT_LAYOUT};
+pub use change::{Changed, LineRef, PANE_COLUMNS_MIN, PANE_ROWS_MIN, RESIZE_STEP};
 pub use parse::LineError;
 pub use step::{
     BlockId, Dir, EDITOR_MAX, EDITOR_MAX_DEFAULT, Edge, ID_MAX, PERCENT_MAX, PERCENT_MIN, Place,
