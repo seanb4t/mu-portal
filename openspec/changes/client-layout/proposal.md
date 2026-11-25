@@ -39,6 +39,9 @@ The change has five layers. Each layer works and has its tests before the next o
 | Blocks | `tabs`, `output`, `editor`, `statusline`. A layout holds one to four editors, up to eight outputs, and each other block at most once. |
 | Several outputs | Each output after the first needs an id: `output as channels right of output`. An output shows the lines of the stream with its id. The first output also shows every stream that has no output of its own. |
 | Notices | The notices of the client are the stream `notices`. With an `output as notices`, they show there. Without one, they show in the first output, as today. |
+| A line stays where it arrived | Each line goes into one output when it arrives. An output that you add later starts with the new lines only. |
+| Notices and worlds | A notice shows under the world in focus only, as today. |
+| Editors side by side | They take the rows of the tallest one. |
 | Several editors | Each editor after the first needs an id: `editor as scratch right of editor`. Each keeps one text for each world. Enter sends the editor that you type in to the world in focus. They share the history of the world. |
 | Input focus | Alt+E goes to the next editor, and a click in an editor picks it. The terminal cursor shows which one. |
 | Sentence forms | `<block>` on the first line. Then `<block> above <anchor>`, `below`, `left of`, `right of`, `with`, and `<block> at top`, `at bottom`, `at left`, `at right`. |
@@ -48,6 +51,7 @@ The change has five layers. Each layer works and has its tests before the next o
 | The plan | `/layout plan` lists the numbered lines. `/layout insert`, `/layout edit` and `/layout delete` change one line, by its number or its id. |
 | Your lines | A change by a command, the mouse or arrange mode changes only the line of its block where it can. If it cannot, mu writes the plan again, keeps the ids, and says so. |
 | `with` | Puts two blocks in one pane as a stack. A title row shows a tab for each, and one shows at a time. Only outputs stack. |
+| Sizes too large for the screen | The solver cuts them to the room that is left. The plan stays good. |
 | Sizes | After a comma: a percent from `10%` to `90%`, or a count of cells. With no size, the block shares the rest. The first line takes no size, so the side of an anchor always shares the rest. |
 | Fixed blocks | `tabs` and `statusline` take 1 row and refuse a size. |
 | Editor size | It grows with its text. `max N` after a comma sets the most rows, from 1 to 100, default 8. |
@@ -67,10 +71,11 @@ The change has five layers. Each layer works and has its tests before the next o
 | Save | Each finished change saves: a command, a drag at its release, and Enter in arrange mode. |
 | Where a save goes | To the layout on the screen, if it is a player layout. Each world that uses that layout gets the change. |
 | A save from a built-in layout | To a new layout. Its name is the device name, or `<device>.<game>.<character>` if a world entry chose the built-in layout. The device layer then names it. |
-| A saved name over 64 characters | No save. A notice names `/layout save`. |
+| A saved name that is not good | No save, and a notice names `/layout save`. Such a name has more than 64 characters, or is a built-in name, `.` or `..`. |
 | A failed save | The screen keeps the change, and a notice gives the reason. |
 | Two clients that save at once | The last save wins. |
 | Arrange mode key | `alt+l`, and the command `/arrange`. |
+| A letter bound to `undo` | In arrange mode, a letter always picks a block. |
 | Arrange mode keys | A letter picks a block. A second letter and an arrow place it on that side of the second block. `=` stacks it. `<` and `>` resize. `-` hides. `+` adds a block that is not on the screen. The undo key undoes. Enter saves. Esc cancels. |
 | Arrange mode mouse | Drag a block onto another. A release near an edge places it on that side. A release in the middle stacks it. |
 | Typing in arrange mode | Off. The editor keeps its text. |
@@ -98,6 +103,7 @@ The change has five layers. Each layer works and has its tests before the next o
 
 ## Differences from convention
 
+- A step back to an older binary needs two manual steps, which the guide states. That binary refuses the new fields.
 - tmux, Zellij and kitty keep a layout as a tree or a code that the tool writes. This change keeps sentences that a person can read, and the client writes the same form.
 - The sentences are a small language. The exploration of #61 ruled out a new language for configuration. Each sentence is one TOML text in a list, and the same words are the commands of the client, so no second file format comes in.
 - A terminal multiplexer saves a layout only on request. This change saves each finished change, as BeipMU does.
@@ -105,7 +111,7 @@ The change has five layers. Each layer works and has its tests before the next o
 
 ## Impact
 
-- Code: `crates/mu-config` gets the catalog, the layout model, the operations, the sentences, the label and the segments. `crates/mu-server` reads `clients/layouts/`, serves the three calls and writes files. `crates/mu-proto` gets the calls and the new fields. `crates/mu-tui` draws layouts, and gets the commands, the mouse actions, arrange mode, the statusline and the tick. `crates/mu-cli` gets the verb `layout` and prints the new fields in `mu config show`.
-- New dependencies: `toml_edit` in `mu-server`, to set one field of a device layer and keep the rest of the file. `winnow` in `mu-config`, to parse the sentences. The lock file already holds `winnow`.
+- Code: `crates/mu-config` gets the type `WorldId` from `mu-core`, which now depends on `mu-config`. It also gets the catalog, the layout model, the operations, the sentences, the label and the segments. `crates/mu-server` reads `clients/layouts/`, serves the three calls and writes files. `crates/mu-proto` gets the calls and the new fields. `crates/mu-tui` draws layouts, and gets the commands, the mouse actions, arrange mode, the statusline and the tick. `crates/mu-cli` gets the verb `layout` and prints the new fields in `mu config show`.
+- New dependencies: `toml_edit` in `mu-server`, to set one field of a device layer and keep the rest of the file. `winnow` in `mu-config`, to parse the sentences. The lock file already holds `winnow`. `insta` in `mu-config`, for the pictures in its tests. `tempfile` of `mu-server` becomes a dependency of the build.
 - Documentation: a new guide page for layouts, the guides `client.md` and `configuration.md`, the page `architecture/terminal-client.mdx`, and a decision page for the layout model.
 - Diagrams: the LikeC4 model gets the write path from the client to the configuration store, and one dynamic view of a save.

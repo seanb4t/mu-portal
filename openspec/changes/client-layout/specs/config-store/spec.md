@@ -49,13 +49,19 @@ The field `layout` of a client layer SHALL name a built-in layout or a layout fi
 - **THEN** the two first lines differ
 
 ### Requirement: ListLayouts gives every layout
-The call `ListLayouts` SHALL return each built-in layout and each good layout file: its name, its lines, and whether it is built in. The order SHALL be by name.
+The call `ListLayouts` SHALL return each built-in layout and each good layout file: its name, its lines, and whether it is built in. The order SHALL be by name. The reply SHALL also hold the notice of each bad layout file.
 
 #### Scenario: The list with one player layout
 - **GIVEN** `clients/layouts/mine.toml` is a good layout file, and a server serves that directory
 - **WHEN** the user runs `mu layout list`
 - **THEN** stdout names `classic`, `focus`, `mine`, `sidebar` and `status` in that order
 - **AND** each built-in name has the mark `built-in`
+
+#### Scenario: The list with a bad layout file
+- **GIVEN** `clients/layouts/mine.toml` holds `place` with the one line `output`, and a server serves that directory
+- **WHEN** the user runs `mu layout list`
+- **THEN** stdout does not name `mine`
+- **AND** stderr holds one line that contains `clients/layouts/mine.toml` and `editor`
 
 ### Requirement: SaveLayout writes a layout file
 The call `SaveLayout` SHALL take a name, the lines of a layout, and an optional device name. The server SHALL check the name and the lines with the rules of a layout file. If the check passes, it SHALL write `clients/layouts/<name>.toml` as a whole, so that a reader never sees a part of it. It SHALL then read the directory again, as a reload does. A failed check SHALL be an error that names the reason, and SHALL write nothing.
@@ -81,6 +87,15 @@ The call `SaveLayout` SHALL take a name, the lines of a layout, and an optional 
 - **GIVEN** a server serves `<dir>`
 - **WHEN** a client calls `SaveLayout` with the name `../x` and the line `editor`
 - **THEN** the call fails, and no file is written outside `<dir>/clients/layouts`
+
+### Requirement: A write makes the directories that it needs
+Before a write, the server SHALL make `clients`, `clients/layouts` and `clients/devices` if they are missing. If one of these paths exists and is not a directory, the call SHALL fail with an error that names the path, and SHALL write nothing.
+
+#### Scenario: A clients path that is a file
+- **GIVEN** a server serves `<dir>`, which holds no `clients` directory, and the user then makes the empty file `<dir>/clients`
+- **WHEN** a client calls `SaveLayout` with the name `mine` and the lines `output` and `editor below output`
+- **THEN** the call fails, and its error contains `clients`
+- **AND** `<dir>/clients` is still an empty file
 
 ### Requirement: UseLayout sets the layout of a device
 The call `UseLayout` SHALL take a device name and the name of a layout. `SaveLayout` with a device name SHALL do the same after its write. The server SHALL set the field `layout` in `clients/devices/<device>.toml`, and SHALL keep each other line of the file, its comments included. With no such file, it SHALL make one. It SHALL then read the directory again.

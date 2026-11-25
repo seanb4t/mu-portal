@@ -85,13 +85,15 @@ Screen changes say what the screen must become:
 | `place(step)` | For a new block, adds the line at the end. For a block on the screen, moves it. |
 | `hide(id)` | Takes the block off the screen. |
 | `resize(id, size)` | Sets the size on the line of the block. |
-| `resize_border(id, cells, total)` | Finds the placed block beside the border, and sets its size to a whole percent within the smallest sizes. |
+| `resize_border(id, cells, total)` | Finds the placed block beside the border, and sets its size to a whole percent. It keeps the percent from 10 to 90, and each pane at its smallest size or more. |
 
 A screen change keeps the lines of the player where it can. It tries these in order, and takes the first plan that builds to the wanted screen:
 
 1. Change only the line of the block, in its place.
 2. Move the changed line to the end of the plan.
 3. Write the whole plan again from the wanted tree, with the writer of D4.
+
+The keys `<` and `>` of arrange mode call `resize` with a percent that the same function keeps from 10 to 90. So no change of the screen gives a size that the reader refuses.
 
 The wanted tree comes from the same change on the tree, so step 3 always has a target. The function returns the plan and a flag that says whether step 3 ran. The client shows a notice for that flag, and `EditLayout` returns it. Every caller above this layer uses only these functions: the commands, the mouse, arrange mode and the server.
 
@@ -107,7 +109,7 @@ side    = "above" | "below" | "left of" | "right of"
 edge    = "top" | "bottom" | "left" | "right"
 size    = percent | cells | "max" cells
 block   = a name of the catalog
-id      = a letter, then letters, digits and "-"
+id      = a letter, then letters, digits and "-", 32 characters at most
 ```
 
 The parser gives one step for a line, and knows no layout. `build` applies the step, and finds an id twice, an anchor that is not placed, or anchors that are not neighbors. So an error of the grammar names the line, the word and its column, and an error of the layout names the line and the id. Words are in lowercase, and any run of spaces separates two words. An id cannot be a word of the grammar. Task 1.6 reads the `winnow` documentation for the error type that carries the position.
@@ -119,15 +121,19 @@ The writer goes from a tree to a plan. It runs only in step 3 of D3. It writes t
 3. Then do the same inside each part that is a split, around the block that stands for it.
 4. Write each id that is not the block name with `as`.
 
-The property test `any_layout_reads_back` generates any valid tree with ids, and makes sure that the written plan builds to the same tree with the same ids. The property test `a_screen_change_gives_the_wanted_screen` generates any plan and any screen change, and makes sure that the returned plan builds to the wanted tree. Task 1.1 builds the reader, `build`, the writer and the first test before any other work, because every later layer depends on them.
+The property test `a_line_reads_back` generates any step: each side, each edge, `with`, several anchors, `as`, each size and `max`. It makes sure that the written line parses to the same step. The property test `any_layout_reads_back` generates any valid tree with ids, and makes sure that the written plan builds to the same tree with the same ids. The property test `a_screen_change_gives_the_wanted_screen` generates any plan and any screen change, and makes sure that the returned plan builds to the wanted tree. Task 1.1 builds the reader, `build`, the writer and the first test before any other work, because every later layer depends on them.
 
 ### D5. Layer 2: layouts on the server
 
 - `ClientLayer` gets `layout: Option<String>`. `FIELD_PATHS` gets `layout`, and the default is `classic`. It merges as `echo` does.
+- `ClientLayer` gets the table `[tabs]` with the one field `label`, and `FIELD_PATHS` gets `tabs.label`. It gets the table `[statusline]` with `left` and `right`, and `FIELD_PATHS` gets `statusline.left` and `statusline.right`. Each of the three paths merges as one value, so a later list replaces an earlier list. Both tables refuse an unknown field.
+- `state()` of the store checks a layer today with `check_keys`. It also calls the check of `Label` on `tabs.label`, and the check of the segments on each list. A failed check makes the layer bad, and the notice names the file and the field path, as a bad binding does today.
+- The type `WorldId` moves from `mu-core` to `mu-config`, with its part rule, `game()`, `character()` and its tests. `mu-core` gets the edge to `mu-config` in `workspace_boundary.rs` and exports the same type again, so its callers do not change. The rule of a world id then has one home. `mu-tui` uses the type for the order of the worlds and for the label, in place of its own split of the text.
+- `mu-config` gets `WorldKey`, a world id or the name of a game. Its one parser accepts one part, or two parts with one `/`, each by the part rule.
 - `mu-config` holds the built-in layouts as lists of sentences, and a test makes sure that each one passes the check.
 - The store reads each `clients/layouts/<name>.toml`. `layer_rule` gets this place, with the name rule of a device. The file type is one struct with the field `place` and unknown fields refused. The store runs the reader of D4 and keeps a good layout or a notice.
 - `resolve` looks up the merged name. If no good layout has that name, the reply holds `classic` and a notice.
-- `ClientLayer` gets `world_layouts: Option<BTreeMap<String, String>>` for the table `[world-layouts]`. It merges by key, as `[keys]` does. A key is a world id or a game name, and `mu-config` checks it with the rule of the world id. `resolve` drops an entry with no good layout and adds a notice.
+- `ClientLayer` gets `world_layouts: Option<BTreeMap<String, String>>` for the table `[world-layouts]`. It merges by key, as `[keys]` does. A key parses as a `WorldKey`, and a key that does not parse makes its layer bad. `resolve` drops an entry with no good layout and adds a notice.
 - `mu-config` gets `layout_for(world, entries, default)`: the entry of the world id, then the entry of the game, then the default. It also returns which of the three it took, the choice in use. The client and `EditLayout` both call it.
 - The revision of a client adds the content of each layout file that its layers name, in `layout` and in `[world-layouts]`. So a change to that file gives a new revision, and `apply_config` sees it.
 - `GetClientConfigResponse` gets `repeated WorldLayout world_layouts`, each with a key, a name and its sentences. It also gets `layout_name`, `repeated string layout` with the sentences, `tab_label`, `statusline_left` and `statusline_right`. The sentences on the wire need no TOML parser, and the client reads them with `mu-config`.
@@ -137,31 +143,33 @@ The property test `any_layout_reads_back` generates any valid tree with ids, and
 `layout.rs` of `mu-tui` no longer has its own tree. `Model` holds the checked layout of `mu-config`, and `view.rs` solves it into rectangles:
 
 - A split divides its cells by plain arithmetic in `mu-config` (see D8). A count takes its cells. A percent takes that part of the split, rounded down. The parts with no size share the rest, and the first ones take the cells left over. The editor keeps its rule of today.
-- Between two parts of a split into columns, the solver takes one column for the divider `│`.
+- A percent is a part of the whole split, with its dividers. Between two parts of a split into columns, the solver takes one column for the divider `│`, from the part that shares the rest. A rectangle of `Placed` does not hold the divider. So 30% of 80 columns gives a pane of 24 columns, a divider in column 56, and 55 columns for the other part.
+- The solver takes the sized parts of a split in the order of the plan. It cuts each one to the cells that are left after the smallest size of the part that shares the rest. So two parts of 60%, or a count larger than the screen, give a smaller pane and never a negative rest. The reader does not refuse such a plan.
+- An editor wants rows: the wrapped rows of its text at its own width, up to its `max`. A split into columns whose parts are all editors wants the most rows of its parts. Any other part wants no rows and shares the rest.
 - The solver then raises each text pane to its smallest size if the screen has room.
 - A pane with a title row draws it on its first row: the name of each block of the stack, with the one in front in square brackets.
 
-The solver is a pure function of `mu-config`, `solve(layout, area, editor rows) -> Vec<Placed>`. Each `Placed` names a block, its rectangle, and its divider or title row. The draw, the mouse hit test, arrange mode and the pictures of `mu layout` all use this one function.
+The solver is a pure function of `mu-config`, `solve(layout, area, rows_of) -> Vec<Placed>`. The caller passes `rows_of`, a function from the id of an editor and a width to its wrapped rows, because `mu-config` does not hold the text. Each `Placed` names a block, its rectangle, and its divider or title row. The draw, the mouse hit test, arrange mode and the pictures of `mu layout` all use this one function.
 
 `mu-config` also gets `preview(layout, width, height) -> Vec<String>`, a picture with box characters and the name of each block. `mu layout list` prints it, and the tests of layers 1 and 2 use it as their expected output with `insta`.
 
 `apply_config` reads the sentences and checks them. A good layout replaces the old one. A bad one keeps the old one and gives a notice. `Model` keeps the default layout and the layout of each entry. `Model::layout()` returns the one that `layout_for` gives for the world in focus, so a change of the focus needs no other code to change the screen. The pane states and the editor states stay in the model, so a new layout keeps the scroll positions and the text.
 
-Task 1.2 works the columns of each spec scenario by the rounding rule above, and makes sure that they match.
+Task 1.2 works the columns of each spec scenario by the rounding rule above, and makes sure that they match. The property test `solve_stays_inside_the_area` takes any valid plan and any area from 0 by 0 to 300 by 100. It makes sure that `solve` returns, that each rectangle is inside the area, and that no two rectangles overlap.
 
 ### D7. Layer 2: the streams, the tab label and the statusline
 
-- The streams of D11 replace the map of panes by `PaneId`. `Model::notice` pushes to the stream `notices`.
+- The pane states of D11 replace the map of panes by `PaneId`. `Model::notice` and `Model::hint` push a line of the stream `notices` for the world in focus.
 - `Model` keeps the checked `Label`. `top_row` renders it for each world with its number, and passes the result through `clean`.
 - `World` gets `state`, `connected_ms` and `sent_ms`. `learn` sets `state` from each list. An `EVENT_KIND_CONNECTED` event sets `connected_ms`, and an `EVENT_KIND_DISCONNECTED` event clears it. An event with the source `SOURCE_PLAYER` sets `sent_ms`. After a connect or a disconnect event, the client lists the worlds again. A `Reset` clears the three fields.
-- `Msg::Tick(i64)` sets `Model::now_ms`. If the layout holds `statusline`, and its segments hold `connected` or `idle`, `update` returns `Effect::Tick` of one second. A flag stops a second tick. The run loop sends one tick before the first draw. The tests send `Msg::Tick` with a chosen time.
+- `Msg::Tick(i64)` sets `Model::now_ms`. If the layout holds `statusline`, and its segments hold `connected` or `idle`, `update` returns a wait of one second. `Effect::RetryConfig` becomes `Effect::Wait { after, then }`, which carries the wait and the message to give back. The retry and the tick both use it, each with its own state of idle or waiting, so the run loop has one arm for a wait. The run loop sends one tick before the first draw. The tests send `Msg::Tick` with a chosen time.
 - The statusline draw joins each side with ` | `, drops a segment with no value, and cuts the left side with the functions of `width.rs`.
 
 Task 1.3 makes sure that `mu client` subscribes from 0, so the events give the connect time.
 
 ### D7a. Layer 2: several editors
 
-`Model::pose_editors` maps a world id to one editor state today, and `Model::loose` is the editor of no world. Both become maps with the id of the editor block as a second key. `Model` gets `input: BlockId`, the editor with the input focus. `Model::pose()` returns the state for the world in focus and that id, so each existing entry that edits or sends works on the editor with the input focus with no other change.
+`Model::pose_editors` maps a world id to one editor state today, and `Model::loose` is the editor of no world. Both become maps with the id of the editor block as a second key. `Model` gets `input: BlockId`, the editor with the input focus. `BlockId` of `mu-config` replaces `EditorId` of `mu-tui`. `EditorId`, `EditorId::POSE` and `Model::editors` go away with `Node`, `Leaf` and `Size`, and `Model::editor` takes a block id. `Model::pose()` returns the state for the world in focus and that id, so each existing entry that edits or sends works on the editor with the input focus with no other change.
 
 - `apply_config` and each change of the layout set `input` to the first editor of the plan if the old one is gone.
 - The entry `editor-next` moves `input` in the order of the plan. A press of the left button inside the rectangle of an editor sets it.
@@ -176,14 +184,17 @@ The grow rule and `max` hold for each editor alone. The limit of four keeps the 
 The service gets `ListLayouts`, `DescribeLayout`, `SaveLayout`, `EditLayout` and `UseLayout`. The store gets one write path:
 
 1. Check the request with `mu-config`: the name, the sentences, the device name, and the key of a world entry. For `UseLayout`, the layout must exist, and the device file must not be a bad layer.
-2. Write the file. A layout file is written whole to a temporary file in `clients/layouts/`, and then renamed over the target with `tempfile`. A device file is read, changed with `toml_edit`, and written the same way. The change sets the field `layout`, or sets or removes one entry of `[world-layouts]`. Each other line stays.
-3. Run the reload of `ReloadConfig`. The watch then sends the new hash, and each client fetches its configuration.
+2. Make `clients/`, `clients/layouts/` and `clients/devices/` if they are missing. If one of these paths is not a directory, the call fails with an error that names the path, and writes nothing.
+3. Write the file. A layout file is written whole to a temporary file in `clients/layouts/`, and then renamed over the target with `tempfile`. A device file is read, changed with `toml_edit`, and written the same way. The change sets the field `layout`, or sets or removes one entry of `[world-layouts]`. Each other line stays.
+4. Read the directory again. The watch then sends the new hash, and each client fetches its configuration.
 
-The writes run one at a time behind the lock that the reload uses. `SaveLayout` with a device does both writes and then one reload. If the second write fails, the first one stays, and the error names the file. The call takes no revision, so the last save wins. #173 adds that check for every write.
+`Store::reload` takes the lock `reload` today, takes a snapshot of the directory, and calls `reload_from`. That lock is not reentrant. So the write path takes the lock once, runs steps 2 and 3, and then takes the snapshot and calls `reload_from` itself. It does not call `Store::reload`. The writes and the reloads then run one at a time. `SaveLayout` with a device does both writes and then one reload. If the second write fails, the first one stays, and the error names the file. The call takes no revision, so the last save wins. #173 adds that check for every write.
 
 The server writes only under `clients/layouts/` and `clients/devices/`. A name follows the device name rule, which allows no `/`. That rule allows `.`, so the check also refuses the names `.` and `..`. The scenario "A save with a bad name" covers it.
 
 `EditLayout` takes the name of a layout, one change of D3, and an optional device. The server reads the plan, applies the one function of D3, and saves the result through the same write path. The reply holds the new plan and the flag of D3. On a built-in layout it needs the device, and it saves by the save rule of D9. With a world id, that rule runs for that world, as it does in a client with that world in focus. So an agent changes one pane with one call, and the client and the server run the same code of `mu-config`.
+
+`ListLayoutsResponse` holds the good layouts, and the notice of each bad layout file with the name of the file. `mu layout list` prints those notices to stderr. `mu layout show <name>` prints the notice of that name to stderr and exits with status 1.
 
 `DescribeLayout` takes a name, a width and a height. It returns one entry for each block: its id, its name, the number of its line, its rectangle, whether it is in front of its stack, and its data source. The data source is a fixed text from the catalog, such as `the journal of the world in focus` for `output`. The rectangles come from the solver of D6, which moves from `mu-tui` to `mu-config` as plain arithmetic, because `mu-server` cannot depend on `mu-tui`. `mu-tui` keeps the ratatui draw and calls that solver. This replaces the use of ratatui `Layout` in D6, and task 1.2 changes to a check of the rounding rule that the solver states.
 
@@ -194,10 +205,11 @@ Task 1.4 reads the documentation of `toml_edit` and of `tempfile::NamedTempFile:
 - The registry gets the entries `place`, `pane-hide`, `pane-size`, `pane-next`, `layout-use`, `layout-save`, `layout-list`, `layout-next` and `arrange`. `ArgKind` gets a kind for free text, and `/pane hide` and `/layout use` parse as a command of two words. `ENTRY_NAMES` in `mu-config` gets the same rows.
 - The registry also gets `layout-plan`, `layout-insert`, `layout-delete` and `layout-edit`, over the line edits of D3.
 - Each command calls a function of D3 on `Model::layout`, and then returns `Effect::SaveLayout`. `run.rs` makes the call and returns `Msg::LayoutSaved` with the result. A failure becomes a notice.
-- The save rule of the spec is one function of `mu-config`, `save_target(choice in use, layout name, device name)`. It gives the name to save under and the entry or field to set, or the error of a name over 64 characters. The client and `EditLayout` both call it.
+- The save rule of the spec is one function of `mu-config`, `save_target(choice in use, layout name, device name)`. It gives the name to save under and the entry or field to set. It runs the check of a layout name on that name, and returns the error of the check for a name over 64 characters, the name of a built-in layout, `.` or `..`. The notice of that error names `/layout save`. The client and `EditLayout` both call it.
 - The registry gets `layout-here`. Its effect is a `UseLayout` call with the world in focus as the key, and an empty name removes the entry. `/layout save` and `layout-next` pass the choice in use to the same call.
+- `layout-use` sets the field `layout`. It then calls `layout_for` for the world in focus. If the choice in use is an entry of a world or of a game, it adds the notice that names `/layout here`.
 - A press of the left button runs a hit test on the result of `solve`. A hit on a divider or on a title row starts a drag state in the model. Each drag report calls `resize_border` on a copy of the plan from the press, so the result does not drift. The release keeps the result and returns `Effect::SaveLayout`. A press and a release on one name with no move is a click, and calls `front`.
-- A press that hits no divider and no title row goes to the pane under the mouse, as today. The selection code takes the rectangle of that pane from `solve`.
+- A press that hits no divider and no title row goes to the `output` pane under the mouse, and so do its drag and its release. Today they go to the pane of the world in focus, because the screen has one pane. The hit test of `solve` picks the pane, and the selection code takes its rectangle from `solve`.
 
 The mouse modes stay as they are: press, release and drag reports in the SGR format. A drag needs no report of a move with no button. Task 1.5 reads the termina documentation of these modes and of the mouse event type. It makes sure that D9 states which events a drag gives.
 
@@ -205,7 +217,7 @@ The mouse modes stay as they are: press, release and drag reports in the SGR for
 
 `Model` gets `arrange: Option<Arrange>`. It holds the layout from before the mode, the stack of layouts for undo, the picked block, and the drag state. While it is set:
 
-- `on_key` sends each key to the mode and not to the keymap. The key of the entry `undo` is read from the keymap.
+- `on_key` sends each key to the mode and not to the keymap. The key of the entry `undo` is read from the keymap. The mode tests a plain letter first, so a letter always picks a block, and an `undo` binding to a plain letter does nothing in the mode.
 - Each change is one screen change of D3 on the plan of the model. So the screen shows it at the next draw.
 - `view` draws the letter of each `Placed` on top of its first cell, and the keys of the mode on the last row. The solver gets one row less.
 - A drag from one block to another uses the rectangles of `solve`. The release point picks a side or the middle by thirds, and the mode marks that part while the button is down.
@@ -215,11 +227,15 @@ The mode adds no operation. It is a second caller of layer 1, so the tests of th
 
 ### D11. Streams, and what #102 adds
 
-An `output` is a view of one stream, and a stream is a list of lines with a name. The model keeps one pane state for each pair of a world and a stream, and one for the stream `notices`. So no block kind exists for a spawn or for the notices, and no pane state draws twice, because the ids of a plan are unique.
+A stream is a name on a line. An `output` is a pane with one line store, one scroll position and one selection, as a pane is today. The model keeps one pane state for each pair of a world and the id of an `output`, and one set for no world. So no block kind exists for a spawn or for the notices, and no pane state draws twice, because the ids of a plan are unique.
+
+One function of `mu-config`, `route(plan, stream)`, gives the id of the `output` for a stream: the `output` with that id, or the first `output` of the plan. Each line goes into one pane state when it arrives, by `route` on the layout of its world. So the first `output` holds the lines of several streams in one store, in the order of arrival, and needs no merge at the draw.
+
+A line does not move after it arrived. An `output` that the player adds later starts with the new lines only. A hidden `output` keeps its pane state until the client stops, and its stream goes to the first `output` from then on. #102 brings scrollback for each stream from the server, which can fill a new pane.
 
 - The lines of a world go to the stream that a rule names, or to the stream of the world. This change has no rule, so each line of a world is in the stream of the world.
-- `Model::notice` pushes to the stream `notices`.
-- The view asks, for each stream, which `output` shows it: the one with that id, or the first `output` of the plan. The first `output` merges its streams in the order of arrival, which is the screen of today.
+- `Model::notice` and `Model::hint` push to the pane that `route` gives for `notices` and the world in focus. With one `output`, that is the pane of the world in focus, which is the screen of today. A notice does not show under another world, as today.
+- `Model::notices` stays the one kept list of the notices, because it must last through a reset of the panes. `replay_notices` stays, and writes that list into the pane that `route` gives for `notices`. The panes are views, and the list is the only store that a reset keeps.
 - An `output` whose stream has no line shows only its title row.
 
 #102 adds the rules of the world configuration that send a line to a named stream, the same for each client, and scrollback for each stream. It needs no change to the layout model. The spawns of two worlds can differ, because the rules are in the world configuration. An `output as channels` shows the stream `channels` of the world in focus, and is empty for a world with no such stream.
@@ -238,10 +254,15 @@ An `output` is a view of one stream, and a stream is a list of lines with a name
 | `classic` is the screen of today | The existing scenarios of `terminal-client`, and a snapshot of `preview`. |
 | The server writes only under `clients/layouts/` and `clients/devices/` | The scenario "A save with a bad name", and review. |
 | A device file keeps its other lines | The scenarios "A device file with a comment" and "A use for one world". |
+| One written line parses to the same step | The property test `a_line_reads_back`. |
+| The solver never fails and never overlaps two panes | The property test `solve_stays_inside_the_area`, and the unit tests `two_percents_past_the_split` and `a_count_past_the_screen`. |
+| A size from a drag or a key is a size that the reader accepts | `resize` and `resize_border` keep 10 to 90 percent. The unit tests `a_border_stops_at_ten_percent` and `a_larger_block_stops_at_ninety_percent`. |
+| One rule of a world id | `WorldId` in `mu-config`, which `mu-core` exports again. The existing tests of the id move with it. |
+| One home of each line | `route` in `mu-config`, with the unit tests of its two cases. |
 | One lookup of the layout of a world | `layout_for` in `mu-config`, with the unit tests of its three steps. The client and the server call it. |
 | A save from a built-in layout sets only the choice in use | `save_target` in `mu-config`, and the scenario "A save from the built-in layout of one world". |
 | No test waits for the clock or needs a real mouse | Review, and `review-lint` flags a sleep in a test. |
-| The crate rules | `crates/mu-cli/tests/workspace_boundary.rs`, with `toml_edit` and `tempfile` added to the row of `mu-server`, and `winnow` to the row of `mu-config`. |
+| The crate rules | `crates/mu-cli/tests/workspace_boundary.rs`, with `toml_edit` added to the row of `mu-server`, `winnow` and `insta` to the row of `mu-config`, and the edge from `mu-core` to `mu-config`. The row of `mu-server` already holds `tempfile`, which moves from `[dev-dependencies]` to `[dependencies]`. |
 | An agent and a person change a layout the same way | `EditLayout` and the client commands call the same operations. The scenario "An edit gives the same file as the command" compares the two. |
 
 ## Risks / Trade-offs
@@ -261,7 +282,14 @@ An `output` is a view of one stream, and a stream is a list of lines with a name
 
 ## Migration Plan
 
-None. A configuration directory with no new field gives the screen of today. The project has no release, so the new calls and fields need no compatibility step.
+None for the way forward. A configuration directory with no new field gives the screen of today. The project has no release, so the new calls and fields need no compatibility step.
+
+A step back to a binary from before this change needs one manual step, because that binary refuses the new fields and makes the layer bad:
+
+1. Remove `layout`, `[world-layouts]`, `[tabs]` and `[statusline]` from each file under `clients/`.
+2. Move the directory `clients/layouts/` out of the configuration directory.
+
+The guide page of task 3.10 states these two steps.
 
 ## Open Questions
 

@@ -163,7 +163,7 @@ The letter of a block SHALL pick it. Then the letter of a second block and an ar
 - **AND** the last row contains `editor`
 
 ### Requirement: Arrange mode adds, hides and resizes
-With no block picked, `+` SHALL list the blocks that are not on the screen, each with a letter, and that letter SHALL pick the block. With a block picked, `>` SHALL make it 5 percent of its split larger, and `<` SHALL make it 5 percent smaller. `-` SHALL hide it. The key of the entry `undo` SHALL undo the last change of this mode.
+With no block picked, `+` SHALL list the blocks that are not on the screen, each with a letter, and that letter SHALL pick the block. With a block picked, `>` SHALL make it 5 percent of its split larger, and `<` SHALL make it 5 percent smaller. `-` SHALL hide it. The key of the entry `undo` SHALL undo the last change of this mode. A plain letter SHALL always pick a block, even if `[keys]` binds it to `undo`.
 
 #### Scenario: Add the statusline
 - **GIVEN** the layout `classic` is in use, and arrange mode is on
@@ -174,6 +174,11 @@ With no block picked, `+` SHALL list the blocks that are not on the screen, each
 - **GIVEN** the layout `classic` is in use, arrange mode is on, and the user hid the tabs with `a` and `-`
 - **WHEN** the user presses Ctrl+Z
 - **THEN** the tabs show again
+
+#### Scenario: A letter bound to undo still picks
+- **GIVEN** `clients/global.toml` holds `[keys]` with `a = "undo"`, the layout `classic` is in use, the world in focus is `alpha/aria`, and arrange mode is on
+- **WHEN** the user presses `a`, `b` and the Down key
+- **THEN** the row above the editor shows `[alpha/aria]`
 
 ### Requirement: Arrange mode moves a block with a drag
 In arrange mode, a drag that starts on a block and ends on another block SHALL move the first block. A release in the outer third of the second block on one side SHALL place it on that side. A release in the middle SHALL stack it. During the drag, the client SHALL mark the part of the second block where the first block lands.
@@ -241,7 +246,7 @@ If the server refuses a save or does not answer, the client SHALL keep the chang
 - **AND** no file `clients/layouts/focus.toml` exists
 
 ### Requirement: The name of a layout saved from a built-in layout
-If the field `layout` is the choice in use, the new layout SHALL have the name of the device. If an entry of `[world-layouts]` is the choice in use, the name SHALL have three parts: the device name, then `.`, then the key of the entry. Each `/` of the key SHALL become `.`. If that name has more than 64 characters, the client SHALL NOT save. It SHALL show a notice that names `/layout save`.
+If the field `layout` is the choice in use, the new layout SHALL have the name of the device. If an entry of `[world-layouts]` is the choice in use, the name SHALL have three parts: the device name, then `.`, then the key of the entry. Each `/` of the key SHALL become `.`. If that name is not a good name of a layout file, the client SHALL NOT save. Such a name has more than 64 characters, is the name of a built-in layout, or is `.` or `..`. It SHALL show a notice that names `/layout save`.
 
 #### Scenario: A save from the built-in layout of one world
 - **GIVEN** `clients/global.toml` holds `[world-layouts]` with `"alpha/aria" = "classic"`, and a server has the fake worlds `alpha/aria` and `beta/bryn`
@@ -257,6 +262,12 @@ If the field `layout` is the choice in use, the new layout SHALL have the name o
 
 #### Scenario: A name that is too long
 - **GIVEN** `clients/global.toml` holds `[world-layouts]` with `"alpha/aria" = "classic"`, and the device name of the client has 60 characters
+- **WHEN** the user runs the command `/pane hide tabs`
+- **THEN** the screen shows no tabs, and a line that starts with `-- ` and contains `/layout save`
+- **AND** the directory `clients/layouts` holds no file
+
+#### Scenario: A device with a built-in name
+- **GIVEN** the device name of the client is `focus`, and the client shows the layout `classic`
 - **WHEN** the user runs the command `/pane hide tabs`
 - **THEN** the screen shows no tabs, and a line that starts with `-- ` and contains `/layout save`
 - **AND** the directory `clients/layouts` holds no file

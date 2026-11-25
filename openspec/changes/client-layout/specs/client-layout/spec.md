@@ -46,13 +46,27 @@ Each line of text SHALL have the name of a stream. The lines of a world that no 
 - **WHEN** the client draws the screen
 - **THEN** the pane of `channels` shows its title row and no other line
 
+### Requirement: A line stays in the output where it arrived
+The client SHALL put each line into one `output` when the line arrives. That SHALL be the `output` that shows the stream of the line at that time, for the world of the line. A later change of the layout SHALL NOT move the line. A notice SHALL be a line of the stream `notices` for the world in focus.
+
+#### Scenario: An output that comes later starts with new lines
+- **GIVEN** the layout `classic` is in use, the world in focus is the fake world `alpha/aria`, and the user ran the command `/focus nowhere/nobody`
+- **WHEN** the user runs the command `/place output as notices right of output`
+- **THEN** the pane of `notices` shows its title row and no other line
+- **AND** the pane of `output` shows a line that starts with `-- ` and contains `nowhere/nobody`
+
+#### Scenario: A notice shows under the world in focus only
+- **GIVEN** the layout `classic` is in use, a server has the fake worlds `alpha/aria` and `beta/bryn`, and `alpha/aria` has the focus
+- **WHEN** the user runs the command `/focus nowhere/nobody`, and then the entry `focus-next`
+- **THEN** the pane of `output` shows `Welcome, bryn.` and no line that contains `nowhere/nobody`
+
 ### Requirement: A layout can hold several editors
 Each `editor` after the first SHALL set its own id with `as`. Each editor SHALL keep its own text for each world, and one more text while no world has the focus. A key that sends SHALL send the text of the editor with the input focus to the world in focus, and SHALL clear only that editor. The editors of a world SHALL share the input history of that world.
 
 #### Scenario: Two editors keep two texts
 - **GIVEN** the layout in use holds the lines `output`, `editor below output` and `editor as scratch right of editor`
 - **AND** the world in focus is the fake world `alpha/aria`
-- **WHEN** the user types `one`, gives the input focus to `scratch`, and types `two`
+- **WHEN** the user types `one`, presses Alt+E, and types `two`
 - **THEN** the left editor holds `one`, and the right editor holds `two`
 
 #### Scenario: Enter sends the editor with the input focus
@@ -137,7 +151,8 @@ A line SHALL take two or more anchors joined with `and`, such as `output as noti
 - **GIVEN** the layout in use holds the lines `output`, `tabs above output`, `editor below output`, `statusline below editor` and `output as notices right of output and editor, 33%`
 - **WHEN** the user starts `mu client` in a terminal of 80 columns and 24 rows
 - **THEN** rows 1 and 24 take the whole width
-- **AND** the notices take the right part of rows 2 to 23, and the editor is in the left part of row 23
+- **AND** the pane of `notices` takes columns 55 to 80 of rows 2 to 23, and a divider shows in column 54
+- **AND** the editor takes columns 1 to 53 of row 23
 
 #### Scenario: Anchors that are not neighbors
 - **GIVEN** `clients/layouts/mine.toml` holds the lines `output`, `tabs above output`, `editor below output` and `output as notices right of tabs and editor`
@@ -150,7 +165,7 @@ Each block of a layout SHALL have an id that is unique in the layout. The defaul
 #### Scenario: An id in a later line
 - **GIVEN** the layout in use holds the lines `output`, `editor below output`, `output as side right of output` and `tabs above side`
 - **WHEN** the client draws the screen
-- **THEN** the tabs are above the notices only
+- **THEN** row 1 shows no tab in the columns of the pane of `output`, and a tab in the columns of the pane of `side`
 
 #### Scenario: An id twice
 - **GIVEN** `clients/layouts/mine.toml` holds the lines `editor`, `output as main above editor` and `output as main at right`
@@ -221,6 +236,19 @@ The block `editor` SHALL take one row for each wrapped row of its text. That cou
 - **GIVEN** the layout `classic` is in use, and the world in focus is the fake world `alpha/aria`
 - **WHEN** the user types twelve lines with Alt+Enter between them, in a terminal of 80 columns and 24 rows
 - **THEN** the editor takes the bottom 8 rows
+
+### Requirement: Editors side by side take the same rows
+A part of the screen that holds only editors side by side SHALL take the rows of its tallest editor. Each editor SHALL count its rows at its own width, and up to its own `max`.
+
+#### Scenario: Two editors side by side
+- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `editor as scratch right of editor`, and the world in focus is the fake world `alpha/aria`
+- **WHEN** the user types three lines with Alt+Enter between them, in a terminal of 80 columns and 24 rows
+- **THEN** the pane of `editor` and the pane of `scratch` each take rows 22 to 24
+
+#### Scenario: The shorter max does not stop the taller editor
+- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `editor as scratch right of editor, max 2`, and the world in focus is the fake world `alpha/aria`
+- **WHEN** the user types three lines with Alt+Enter between them, in a terminal of 80 columns and 24 rows
+- **THEN** the pane of `editor` and the pane of `scratch` each take rows 22 to 24
 
 ### Requirement: A bad sentence makes its layout bad
 A layout SHALL be bad in each of these cases, and its notice SHALL name the line number and the word:
