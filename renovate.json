@@ -66,6 +66,13 @@
         "ratatui-termina",
         "ratatui-textarea"
       ]
+    },
+    {
+      "description": "ratatui-termina 0.1 needs termina 0.3, and cargo-deny refuses two termina versions. Lift this when a ratatui-termina release moves to termina 0.4",
+      "matchPackageNames": [
+        "termina"
+      ],
+      "allowedVersions": "<0.4"
     }
   ]
 }
