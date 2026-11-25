@@ -4,7 +4,8 @@
 
 ## Links
 
-- Issue:
+- Closes #
+<!-- Name the issue of the change. A pull request with no issue, such as a dependency update or an archive, says so here. -->
 - OpenSpec change:
 
 ## Checks
