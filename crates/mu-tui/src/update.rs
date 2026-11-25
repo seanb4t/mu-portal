@@ -21,7 +21,9 @@ use crate::config::Echo;
 use crate::convert::convert;
 use crate::history::HISTORY_LIMIT;
 use crate::keymap::Wheel;
-use crate::model::{ConfigRetry, Late, Listing, Model, PaneId, QuitArm, TickWait, WorldStatus};
+use crate::model::{
+    ConfigRetry, Drag, Late, Listing, Model, PaneId, QuitArm, TickWait, WorldStatus,
+};
 use crate::pane::{Caps, PaneState};
 use crate::probe::{self, Outcome};
 use crate::registry::{ArgKind, EntryId, candidates};
@@ -55,6 +57,17 @@ pub enum Msg {
     /// The client configuration after an [`Effect::FetchConfig`], or the reason that the call
     /// failed.
     Config(Result<Box<mu_proto::GetClientConfigResponse>, String>),
+    /// The result of an [`Effect::SaveLayout`] or an [`Effect::UseLayout`]: the reason, if it
+    /// failed.
+    LayoutSaved(Result<(), String>),
+    /// The names of the layouts after an [`Effect::ListLayouts`], or the reason that the call
+    /// failed.
+    Layouts {
+        /// Whether the client then uses the next layout.
+        next: bool,
+        /// The names, in their order.
+        names: Result<Vec<String>, String>,
+    },
     /// The wait of an [`Effect::Wait`] for [`Timer::RetryConfig`] ended.
     RetryConfig,
     /// The wait of an [`Effect::Wait`] for [`Timer::Tick`] ended, at this time of the clock in
@@ -82,6 +95,34 @@ pub enum Action {
     FocusPrev,
     /// Give the input focus to the next editor of the plan, after the last one the first.
     EditorNext,
+    /// Put the block of this sentence on the screen.
+    Place(String),
+    /// Take the block with this id off the screen.
+    PaneHide(String),
+    /// Set the size of a block: its id, then the size.
+    PaneSize(String),
+    /// Show the next block of a stack.
+    PaneNext,
+    /// Set the layout of this device to the layout of this name.
+    LayoutUse(String),
+    /// Save the layout on the screen under this name.
+    LayoutSave(String),
+    /// Show the name of each layout.
+    LayoutList,
+    /// Use the next layout in the order of the names.
+    LayoutNext,
+    /// Show the numbered lines of the layout on the screen.
+    LayoutPlan,
+    /// Put a line into the plan: its number, then a sentence.
+    LayoutInsert(String),
+    /// Remove this line of the plan.
+    LayoutDelete(String),
+    /// Replace a line of the plan: the line, then a sentence.
+    LayoutEdit(String),
+    /// Set the layout of the world in focus to the layout of this name, or remove it for none.
+    LayoutHere(Option<String>),
+    /// Start arrange mode.
+    Arrange,
     /// Send the text of the pose editor to the world in focus as one command, and return its
     /// pane to the bottom.
     Submit,
@@ -164,6 +205,33 @@ pub enum Effect {
         /// What the wait is for.
         then: Timer,
     },
+    /// Ask the server to write the layout file `name` with `lines`, and give the result back as
+    /// a [`Msg::LayoutSaved`].
+    SaveLayout {
+        /// The name of the layout file.
+        name: String,
+        /// The lines of the plan.
+        lines: Vec<String>,
+        /// The name of this device.
+        device: String,
+        /// What the device layer then names the layout with.
+        then: Then,
+    },
+    /// Ask the server to set a layout choice of the device layer, and give the result back as a
+    /// [`Msg::LayoutSaved`].
+    UseLayout {
+        /// The name of this device.
+        device: String,
+        /// The name of the layout. Empty with a key removes the entry.
+        name: String,
+        /// The key of an entry of `[world-layouts]`, or none for the field `layout`.
+        key: Option<String>,
+    },
+    /// Ask the server for the names of the layouts, and give them back as a [`Msg::Layouts`].
+    ListLayouts {
+        /// Whether the client then uses the next layout. If not, it shows the names.
+        next: bool,
+    },
     /// Write `text` to the clipboard of the terminal.
     ClipboardWrite(String),
     /// Send the PNG `png` to the terminal as `image`, with a virtual placement of its size,
@@ -174,6 +242,17 @@ pub enum Effect {
         /// The bytes of a PNG file.
         png: Vec<u8>,
     },
+}
+
+/// What a save of a layout does after it writes the layout file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Then {
+    /// Nothing: the layers that name the layout stay as they are.
+    Nothing,
+    /// The field `layout` of the device layer names the layout.
+    SetField,
+    /// The entry of this key of `[world-layouts]` of the device layer names the layout.
+    SetEntry(String),
 }
 
 /// What an [`Effect::Wait`] is for.
@@ -233,6 +312,13 @@ fn step(model: &mut Model, msg: Msg) -> Vec<Effect> {
             model.tick = TickWait::Idle;
             Vec::new()
         }
+        Msg::LayoutSaved(result) => {
+            if let Err(reason) = result {
+                model.notice(&format!("the server did not save the layout: {reason}"));
+            }
+            Vec::new()
+        }
+        Msg::Layouts { next, names } => on_layouts(model, next, names),
         Msg::Terminal(TermEvent::Key(key)) => on_key(model, key),
         Msg::Terminal(TermEvent::Mouse(mouse)) => on_mouse(model, mouse),
         Msg::Terminal(TermEvent::Paste(text)) => {
@@ -453,41 +539,172 @@ fn on_mouse(model: &mut Model, mouse: MouseEvent) -> Vec<Effect> {
         MouseEventKind::ScrollUp => wheel(model, Wheel::Up),
         MouseEventKind::ScrollDown => wheel(model, Wheel::Down),
         MouseEventKind::Down(MouseButton::Left) => {
-            // A press in an editor gives it the input focus.
-            let (width, height) = model.screen;
-            let pressed = crate::view::solved(model, width, height)
-                .pane_at(mouse.column, mouse.row)
-                .and_then(|pane| pane.blocks.first().cloned());
-            if let Some(block) = pressed
-                && block.kind == BlockKind::Editor
-            {
-                model.input = block.id;
-                return Vec::new();
+            press_left(model, mouse.column, mouse.row);
+            Vec::new()
+        }
+        MouseEventKind::Drag(MouseButton::Left) => {
+            drag_left(model, mouse.column, mouse.row);
+            Vec::new()
+        }
+        MouseEventKind::Up(MouseButton::Left) => release_left(model),
+        _ => Vec::new(),
+    }
+}
+
+/// The names of the layouts from the server. The client shows them, or uses the next one.
+fn on_layouts(model: &mut Model, next: bool, names: Result<Vec<String>, String>) -> Vec<Effect> {
+    match names {
+        Err(reason) => {
+            model.notice(&format!("could not list the layouts: {reason}"));
+            Vec::new()
+        }
+        Ok(names) => {
+            model.layout_names.clone_from(&names);
+            if next {
+                model.layout_after(&names)
+            } else {
+                model.hint(&format!("layouts: {}", names.join(", ")));
+                Vec::new()
             }
-            if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
-                match state.position(mouse.column, mouse.row) {
+        }
+    }
+}
+
+/// A press of the left button. On a divider or on the title row of a pane below another, it
+/// starts the drag of that border. On another title row, it starts a click. In an editor, it
+/// gives the input focus. In a pane of output, it starts a selection.
+fn press_left(model: &mut Model, column: u16, row: u16) {
+    model.drag = None;
+    model.pressed_pane = None;
+    let (width, height) = model.screen;
+    let solved = crate::view::solved(model, width, height);
+    let pane = solved.pane_at(column, row).cloned();
+    let on_title = pane
+        .as_ref()
+        .is_some_and(|pane| pane.title && pane.area.y == row);
+    let border = solved
+        .borders
+        .iter()
+        .find(|border| {
+            border.line.holds(column, row)
+                && (border.dir == mu_config::layout::Dir::Columns || on_title)
+        })
+        .cloned();
+    if border.is_some() || on_title {
+        model.drag = Some(Drag {
+            from: model.layout().clone(),
+            border,
+            pressed: (column, row),
+            moved: false,
+        });
+        return;
+    }
+    let Some(pane) = pane else {
+        return;
+    };
+    let Some(block) = crate::view::front(model, &pane).cloned() else {
+        return;
+    };
+    match block.kind {
+        BlockKind::Editor => model.input = block.id,
+        BlockKind::Output => {
+            let Some(id) = model.pane_of_block(&block.id) else {
+                return;
+            };
+            model.pressed_pane = Some(id);
+            if let Some(state) = model.panes.get_mut(&id) {
+                match state.position(column, row) {
                     Some(position) => state.press(position),
                     None => state.clear_selection(),
                 }
             }
-            Vec::new()
         }
-        MouseEventKind::Drag(MouseButton::Left) => {
-            if let Some(state) = model.panes.get_mut(&model.focused_pane())
-                && let Some(position) = state.position(mouse.column, mouse.row)
-            {
-                state.drag(position);
+        BlockKind::Tabs | BlockKind::Statusline => {}
+    }
+}
+
+/// A move of the mouse with the left button down: the border follows it, or the selection of
+/// the pane of the press grows.
+fn drag_left(model: &mut Model, column: u16, row: u16) {
+    if let Some(drag) = model.drag.clone() {
+        let Some(border) = &drag.border else {
+            return;
+        };
+        let (at, from) = match border.dir {
+            mu_config::layout::Dir::Columns => (column, drag.pressed.0),
+            mu_config::layout::Dir::Rows => (row, drag.pressed.1),
+        };
+        if at == from && !drag.moved {
+            return;
+        }
+        // Each report resizes the layout of the press, so the result does not drift.
+        if let Ok(changed) =
+            drag.from
+                .resize_border(&border.owner, border.cells_at(at), border.total)
+        {
+            model.show_layout(changed.layout);
+        }
+        if let Some(drag) = &mut model.drag {
+            drag.moved = true;
+        }
+        return;
+    }
+    if let Some(state) = model
+        .pressed_pane
+        .and_then(|pane| model.panes.get_mut(&pane))
+        && let Some(position) = state.position(column, row)
+    {
+        state.drag(position);
+    }
+}
+
+/// The release of the left button: a moved border saves the layout, a press on a title with no
+/// move is a click on its name, and a selection goes to the clipboard.
+fn release_left(model: &mut Model) -> Vec<Effect> {
+    if let Some(drag) = model.drag.take() {
+        if drag.moved {
+            return model.save_shown();
+        }
+        click_title(model, drag.pressed.0, drag.pressed.1);
+        return Vec::new();
+    }
+    model
+        .pressed_pane
+        .take()
+        .and_then(|pane| model.panes.get_mut(&pane))
+        .and_then(PaneState::release)
+        .map(Effect::ClipboardWrite)
+        .into_iter()
+        .collect()
+}
+
+/// A click on the title row at this cell: the block of the name under it shows.
+fn click_title(model: &mut Model, column: u16, row: u16) {
+    let (width, height) = model.screen;
+    let solved = crate::view::solved(model, width, height);
+    let Some(pane) = solved
+        .pane_at(column, row)
+        .filter(|pane| pane.title && pane.area.y == row)
+    else {
+        return;
+    };
+    let shown = crate::view::front(model, pane).map(|block| block.id.clone());
+    let mut start = pane.area.x;
+    for block in &pane.blocks {
+        // The name in front has a bracket on each side.
+        let brackets = if Some(&block.id) == shown.as_ref() {
+            2
+        } else {
+            0
+        };
+        let width = u16::try_from(block.id.as_str().len()).unwrap_or(u16::MAX) + brackets;
+        if (start..start.saturating_add(width)).contains(&column) {
+            if let Some(first) = pane.blocks.first() {
+                model.fronts.insert(first.id.clone(), block.id.clone());
             }
-            Vec::new()
+            return;
         }
-        MouseEventKind::Up(MouseButton::Left) => model
-            .panes
-            .get_mut(&model.focused_pane())
-            .and_then(PaneState::release)
-            .map(Effect::ClipboardWrite)
-            .into_iter()
-            .collect(),
-        _ => Vec::new(),
+        start = start.saturating_add(width).saturating_add(1);
     }
 }
 
@@ -583,10 +800,19 @@ fn run_command(model: &mut Model, text: &str, parse: Parse<'_>) -> Vec<Effect> {
 ///
 /// The text of a hint that says why the command is bad.
 fn check_command(model: &Model, parse: Parse<'_>) -> Result<(EntryId, Option<String>), String> {
-    let name = parse.name;
-    let Some(id) = EntryId::named(name) else {
-        return Err(format!("unknown command /{name}"));
+    // A command of two words, such as `/pane hide`, is the entry `pane-hide`.
+    let two_words = parse.arg.and_then(|arg| {
+        let (word, rest) = arg.split_once(' ').unwrap_or((arg, ""));
+        let name = format!("{}-{word}", parse.name);
+        let rest = rest.trim_start_matches(' ');
+        EntryId::named(&name).map(|id| (id, name, (!rest.is_empty()).then_some(rest)))
+    });
+    let (id, name, given) = match (EntryId::named(parse.name), two_words) {
+        (Some(id), _) => (id, parse.name.to_owned(), parse.arg),
+        (None, Some(found)) => found,
+        (None, None) => return Err(format!("unknown command /{}", parse.name)),
     };
+    let name = name.as_str();
     let entry = id.entry();
     if entry.edits {
         return Err(format!(
@@ -594,9 +820,10 @@ fn check_command(model: &Model, parse: Parse<'_>) -> Result<(EntryId, Option<Str
         ));
     }
     let shown = format!("/{name}");
-    let arg = match (entry.arg, arity(id, parse.arg.map(str::to_owned), &shown)?) {
+    let arg = match (entry.arg, arity(id, given.map(str::to_owned), &shown)?) {
         (Some(arg), given) => match arg.kind {
             ArgKind::World => Some(world_arg(model, given, &shown)?),
+            ArgKind::Text | ArgKind::Block | ArgKind::Layout => given,
         },
         (None, given) => given,
     };
@@ -613,6 +840,46 @@ fn arity(entry: EntryId, given: Option<String>, shown: &str) -> Result<Option<St
         (None, Some(_)) => Err(format!("{shown} takes no argument")),
         (Some(arg), None) if arg.required => Err(format!("{shown} needs a {}", arg.kind.word())),
         (_, given) => Ok(given),
+    }
+}
+
+/// Gives the input focus to the next editor of the plan, after the last one the first.
+fn editor_next(model: &mut Model) {
+    let now = model.input_id();
+    let editors: Vec<&BlockId> = model.layout().ids_of(BlockKind::Editor).collect();
+    let place = editors.iter().position(|id| **id == now).unwrap_or(0);
+    if let Some(next) = editors.get((place + 1) % editors.len().max(1)) {
+        model.input = (*next).clone();
+    }
+}
+
+/// The actions that change or show the layout.
+fn act_layout(model: &mut Model, action: &Action) -> Vec<Effect> {
+    match action {
+        Action::Place(sentence) => model.place(sentence),
+        Action::PaneHide(id) => model.pane_hide(id),
+        Action::PaneSize(text) => model.pane_size(text),
+        Action::PaneNext => {
+            model.pane_next();
+            Vec::new()
+        }
+        Action::LayoutUse(name) => model.layout_use(name),
+        Action::LayoutSave(name) => model.layout_save(name),
+        Action::LayoutList => vec![Effect::ListLayouts { next: false }],
+        Action::LayoutNext => vec![Effect::ListLayouts { next: true }],
+        Action::LayoutPlan => {
+            model.layout_plan();
+            Vec::new()
+        }
+        Action::LayoutInsert(text) => model.layout_insert(text),
+        Action::LayoutDelete(line) => model.layout_delete(line),
+        Action::LayoutEdit(text) => model.layout_edit(text),
+        Action::LayoutHere(name) => model.layout_here(name.as_deref()),
+        Action::Arrange => {
+            model.hint("arrange mode is not here yet");
+            Vec::new()
+        }
+        _ => Vec::new(),
     }
 }
 
@@ -639,12 +906,7 @@ fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
             Vec::new()
         }
         Action::EditorNext => {
-            let now = model.input_id();
-            let editors: Vec<&BlockId> = model.layout().ids_of(BlockKind::Editor).collect();
-            let place = editors.iter().position(|id| **id == now).unwrap_or(0);
-            if let Some(next) = editors.get((place + 1) % editors.len().max(1)) {
-                model.input = (*next).clone();
-            }
+            editor_next(model);
             Vec::new()
         }
         Action::Submit | Action::SubmitLines => {
@@ -717,6 +979,8 @@ fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
             history_next(model);
             Vec::new()
         }
+        // Each other action changes or shows the layout.
+        _ => act_layout(model, action),
     }
 }
 

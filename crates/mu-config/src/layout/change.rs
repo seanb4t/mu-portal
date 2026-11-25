@@ -47,6 +47,8 @@ pub enum Change {
     Hide(BlockId),
     /// Set the size on the line of this block.
     Size(BlockId, Size),
+    /// Remove the size from the line of this block, so that it shares the rest of its split.
+    Fill(BlockId),
     /// Put this step at the line of this number.
     Insert(usize, Step),
     /// Replace this line with this step.
@@ -95,6 +97,7 @@ impl Layout {
             Change::Place(step) => self.place(step),
             Change::Hide(id) => self.hide(&id),
             Change::Size(id, size) => self.resize(&id, size),
+            Change::Fill(id) => self.fill(&id),
             Change::Insert(number, step) => self.insert(number, step).map(edited),
             Change::Replace(line, step) => self.replace(&line, step).map(edited),
             Change::Delete(line) => self.delete(&line).map(edited),
@@ -302,6 +305,21 @@ impl Layout {
         }
         let mut steps = self.steps.clone();
         steps[index].size = Some(size);
+        Ok(Changed {
+            layout: Self::from_steps(steps)?,
+            rewritten: false,
+        })
+    }
+
+    /// Removes the size from the line of the block `id`.
+    ///
+    /// # Errors
+    ///
+    /// A [`LayoutError`] for an id that the layout does not have.
+    pub fn fill(&self, id: &BlockId) -> Result<Changed, LayoutError> {
+        let index = self.index_of(id)?;
+        let mut steps = self.steps.clone();
+        steps[index].size = None;
         Ok(Changed {
             layout: Self::from_steps(steps)?,
             rewritten: false,

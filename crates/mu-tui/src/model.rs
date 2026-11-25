@@ -167,6 +167,29 @@ pub struct Model {
     pub(crate) tick: TickWait,
     /// The columns and the rows of the last frame.
     pub(crate) screen: (u16, u16),
+    /// The name of this device, which a save of the layout needs.
+    pub(crate) device: String,
+    /// The names of the layouts of the last list of the layouts.
+    pub(crate) layout_names: Vec<String>,
+    /// The drag of a border, from its press to its release.
+    pub(crate) drag: Option<Drag>,
+    /// The pane that took the last press of the mouse, for its drag and its release.
+    pub(crate) pressed_pane: Option<PaneId>,
+}
+
+/// The drag of a border between two panes.
+#[derive(Clone, Debug)]
+pub(crate) struct Drag {
+    /// The layout at the press. Each report of the mouse resizes this layout, so the result
+    /// does not drift.
+    pub(crate) from: Layout,
+    /// The border. A press on a title row with no border above it has none, and can only be a
+    /// click.
+    pub(crate) border: Option<mu_config::layout::Border>,
+    /// The column and the row of the press.
+    pub(crate) pressed: (u16, u16),
+    /// Whether the mouse moved the border since the press.
+    pub(crate) moved: bool,
 }
 
 /// Whether an [`Effect::RetryConfig`](crate::update::Effect::RetryConfig) waits, so a second
@@ -255,6 +278,10 @@ impl Model {
             now_ms: 0,
             tick: TickWait::Idle,
             screen: (0, 0),
+            device: String::new(),
+            layout_names: BUILT_IN.iter().map(|each| each.name.to_owned()).collect(),
+            drag: None,
+            pressed_pane: None,
         };
         let input = model.input.clone();
         model.editor_of(None, &input);
@@ -296,6 +323,20 @@ impl Model {
     #[must_use]
     pub fn notices(&self) -> &[String] {
         &self.notices
+    }
+
+    /// The model with `device` as the name of this device.
+    #[must_use]
+    pub fn with_device(mut self, device: &str) -> Self {
+        device.clone_into(&mut self.device);
+        self
+    }
+
+    /// The names of the layouts of the last list of the layouts. Before the first list, they
+    /// are the names of the built-in layouts.
+    #[must_use]
+    pub fn layout_names(&self) -> &[String] {
+        &self.layout_names
     }
 
     /// The model with `echo` as the style of the echo line of a send.

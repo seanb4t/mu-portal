@@ -1668,7 +1668,8 @@ fn a_world_with_a_trailing_space() {
 fn help_lists_the_entries() {
     let mut app = two_worlds();
     assert_eq!(enter(&mut app, "/help"), []);
-    let rows = screen(&mut app);
+    // The screen is high enough for one row for each entry.
+    let rows = text_rows(&draw_sized(&mut app, 80));
     let notice = |name: &str| {
         rows.iter()
             .any(|row| row.starts_with("-- ") && row.contains(name))

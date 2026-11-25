@@ -15,7 +15,7 @@ use crate::kitty;
 use crate::model::Model;
 use crate::probe;
 use crate::screen::{self, Restore, Screen};
-use crate::update::{Effect, Msg, Reply, Timer, update};
+use crate::update::{Effect, Msg, Reply, Then, Timer, update};
 use crate::view::view;
 
 /// Runs the client with the client configuration `config` of `device` on the alternate screen
@@ -32,7 +32,7 @@ pub async fn run(
     device: String,
     config: mu_proto::GetClientConfigResponse,
 ) -> io::Result<()> {
-    let mut model = Model::starting();
+    let mut model = Model::starting().with_device(&device);
     model.apply_config(config);
     // The probe sets mode 2027, so a panic before its replies turns the mode off.
     let restore = Arc::new(Restore::default());
@@ -139,6 +139,9 @@ async fn event_loop(
                 Effect::FetchConfig => {
                     spawn_reply(&replies, config_of(client.clone(), device.to_owned()));
                 }
+                effect @ (Effect::SaveLayout { .. }
+                | Effect::UseLayout { .. }
+                | Effect::ListLayouts { .. }) => layout_call(&replies, client, effect),
                 Effect::Wait { after, then } => {
                     spawn_reply(&replies, async move {
                         tokio::time::sleep(after).await;
@@ -148,6 +151,74 @@ async fn event_loop(
             }
         }
     }
+}
+
+/// Starts the call of an effect of the layouts, and gives its result back as a message.
+fn layout_call(replies: &mpsc::UnboundedSender<Msg>, client: &PortalClient, effect: Effect) {
+    let client = client.clone();
+    match effect {
+        Effect::SaveLayout {
+            name,
+            lines,
+            device,
+            then,
+        } => spawn_reply(replies, save_layout(client, name, lines, device, then)),
+        Effect::UseLayout { device, name, key } => spawn_reply(replies, async move {
+            let call = async {
+                client
+                    .use_layout(&device, &name, key.as_deref())
+                    .await
+                    .map_err(|error| error.to_string())
+            };
+            Msg::LayoutSaved(within(call, CALL_LIMIT, "").await)
+        }),
+        Effect::ListLayouts { next } => spawn_reply(replies, async move {
+            let call = async {
+                client
+                    .list_layouts()
+                    .await
+                    .map(|reply| reply.layouts.into_iter().map(|each| each.name).collect())
+                    .map_err(|error| error.to_string())
+            };
+            Msg::Layouts {
+                next,
+                names: within(call, CALL_LIMIT, "").await,
+            }
+        }),
+        _ => {}
+    }
+}
+
+/// The save of the layout `name` with `lines`. The device layer of `device` then names the
+/// layout as `then` says.
+async fn save_layout(
+    client: PortalClient,
+    name: String,
+    lines: Vec<String>,
+    device: String,
+    then: Then,
+) -> Msg {
+    let call = async {
+        let failed = |error: mu_client::ClientError| error.to_string();
+        match then {
+            Then::Nothing => client.save_layout(&name, lines, None).await.map_err(failed),
+            Then::SetField => client
+                .save_layout(&name, lines, Some(&device))
+                .await
+                .map_err(failed),
+            Then::SetEntry(key) => {
+                client
+                    .save_layout(&name, lines, None)
+                    .await
+                    .map_err(failed)?;
+                client
+                    .use_layout(&device, &name, Some(&key))
+                    .await
+                    .map_err(|error| format!("the layout {name} is saved, but not chosen: {error}"))
+            }
+        }
+    };
+    Msg::LayoutSaved(within(call, CALL_LIMIT, "").await)
 }
 
 /// The time of the system clock, in milliseconds since the Unix epoch.

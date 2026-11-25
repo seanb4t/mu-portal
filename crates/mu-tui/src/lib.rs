@@ -13,6 +13,7 @@ mod editor;
 pub mod history;
 mod keymap;
 pub mod kitty;
+mod layouts;
 mod model;
 mod pane;
 pub mod probe;
