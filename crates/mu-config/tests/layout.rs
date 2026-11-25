@@ -872,3 +872,130 @@ proptest! {
         }
     }
 }
+
+// The solver.
+
+use mu_config::layout::{Area, preview, solve};
+
+fn solved(lines: &[&str], width: u16, height: u16) -> mu_config::layout::Solved {
+    solve(&layout(lines), Area::new(width, height), &|_, _| 1)
+}
+
+/// The rectangle of the pane of `id` as `(first column, last column, first row, last row)`,
+/// each from 1.
+fn rect(solved: &mu_config::layout::Solved, id: &str) -> (u16, u16, u16, u16) {
+    let area = solved
+        .pane_of(&id_of(id))
+        .unwrap_or_else(|| panic!("no pane of {id}"))
+        .area;
+    (
+        area.x + 1,
+        area.x + area.width,
+        area.y + 1,
+        area.y + area.height,
+    )
+}
+
+#[test]
+fn the_sidebar_divider_is_in_column_56() {
+    let solved = solved(SIDEBAR, 80, 24);
+    assert_eq!(rect(&solved, "notices"), (57, 80, 2, 22));
+    assert_eq!(rect(&solved, "output"), (1, 55, 2, 22));
+    assert_eq!(
+        solved.dividers,
+        [Area {
+            x: 55,
+            y: 1,
+            width: 1,
+            height: 21
+        }]
+    );
+    assert_eq!(rect(&solved, "tabs"), (1, 80, 1, 1));
+    assert_eq!(rect(&solved, "statusline"), (1, 80, 24, 24));
+}
+
+#[test]
+fn two_percents_past_the_split() {
+    let solved = solved(
+        &[
+            "editor",
+            "output as a right of editor, 60%",
+            "output as b right of editor, 60%",
+        ],
+        100,
+        10,
+    );
+    let (editor, a, b) = (
+        rect(&solved, "editor"),
+        rect(&solved, "a"),
+        rect(&solved, "b"),
+    );
+    assert!(editor.1 >= editor.0, "{editor:?}");
+    assert_eq!(a.1, 100);
+    assert!(b.0 > editor.1 && a.0 > b.1, "{editor:?} {b:?} {a:?}");
+}
+
+#[test]
+fn a_count_past_the_screen() {
+    let solved = solved(&["editor", "output above editor, 500"], 80, 24);
+    assert_eq!(rect(&solved, "output"), (1, 80, 1, 23));
+    assert_eq!(rect(&solved, "editor"), (1, 80, 24, 24));
+}
+
+#[test]
+fn two_large_counts_in_one_split() {
+    let solved = solved(
+        &[
+            "editor",
+            "output as a above editor, 65535",
+            "output as b above editor, 65535",
+        ],
+        80,
+        24,
+    );
+    assert_eq!(rect(&solved, "editor"), (1, 80, 24, 24));
+}
+
+proptest! {
+    #[test]
+    fn solve_stays_inside_the_area(
+        moves in prop::collection::vec(a_move(), 0..24),
+        width in 0_u16..=300,
+        height in 0_u16..=100,
+        rows in 0_u16..=u16::MAX,
+    ) {
+        let layout = grown(&moves);
+        let area = Area::new(width, height);
+        let solved = solve(&layout, area, &|_, _| rows);
+        let cells = solved
+            .panes
+            .iter()
+            .map(|pane| pane.area)
+            .chain(solved.dividers.iter().copied());
+        let mut taken = vec![false; usize::from(width) * usize::from(height)];
+        for each in cells {
+            prop_assert!(
+                u32::from(each.x) + u32::from(each.width) <= u32::from(width)
+                    && u32::from(each.y) + u32::from(each.height) <= u32::from(height),
+                "{:?} in {:?}: {:?}", each, area, layout.lines()
+            );
+            for row in each.y..each.y + each.height {
+                for column in each.x..each.x + each.width {
+                    let index = usize::from(row) * usize::from(width) + usize::from(column);
+                    prop_assert!(!taken[index], "{:?} twice: {:?}", each, layout.lines());
+                    taken[index] = true;
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn the_picture_of_the_sidebar() {
+    let picture = preview(&layout(SIDEBAR), 40, 12).join("\n");
+    println!("{picture}");
+    assert!(
+        picture.contains("notices") && picture.contains('┬'),
+        "{picture}"
+    );
+}

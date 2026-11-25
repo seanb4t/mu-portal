@@ -25,13 +25,26 @@ pub enum PartSize {
 }
 
 /// One part of a split.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct Part {
     /// The size of the part. A part with none shares the rest of the split.
     pub size: Option<PartSize>,
+    /// The block whose line made the part, and so carries its size. The part of an anchor has
+    /// none.
+    pub owner: Option<BlockId>,
     /// What the part holds.
     pub node: Node,
 }
+
+/// Two parts are the same part of the screen if they have the same size and hold the same
+/// node. The owner says which line carries the size, and is no part of the screen.
+impl PartialEq for Part {
+    fn eq(&self, other: &Self) -> bool {
+        self.size == other.size && self.node == other.node
+    }
+}
+
+impl Eq for Part {}
 
 /// A node of the tree.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -107,6 +120,7 @@ impl Node {
         let target = self.at_mut(path);
         let old = Part {
             size: None,
+            owner: None,
             node: std::mem::replace(target, Self::Pane(Vec::new())),
         };
         let parts = if side.before() {
@@ -140,6 +154,7 @@ pub(super) fn without(node: Node, id: &BlockId) -> Option<Node> {
                     }) if inner_dir == dir => kept.extend(inner),
                     Some(node) => kept.push(Part {
                         size: part.size,
+                        owner: part.owner,
                         node,
                     }),
                 }
@@ -234,6 +249,7 @@ pub(super) fn apply(root: &mut Option<Node>, step: &Step, line: usize) -> Result
     }
     let new = Part {
         size: part_size,
+        owner: Some(block.id.clone()),
         node: Node::pane(block.clone()),
     };
     match &step.place {
@@ -344,6 +360,7 @@ fn beside(
     let wrapped: Vec<Part> = parts.drain(low..=high).collect();
     let old = Part {
         size: None,
+        owner: None,
         node: Node::Split {
             dir: *dir,
             parts: wrapped,
@@ -358,6 +375,7 @@ fn beside(
         low,
         Part {
             size: None,
+            owner: None,
             node: Node::Split {
                 dir: side.dir(),
                 parts: inner,
