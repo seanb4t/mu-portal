@@ -68,7 +68,7 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "walkdir",
         ],
     ),
-    ("mu-config", &["proptest", "serde", "toml"]),
+    ("mu-config", &["proptest", "serde", "toml", "winnow"]),
     ("mu-fake-server", &["futures", "tokio"]),
     (
         "mu-server",

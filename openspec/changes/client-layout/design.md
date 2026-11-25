@@ -56,9 +56,11 @@ Each line parses to one step:
 The tree has two node kinds. A `Split` has a direction and two or more parts. A `Pane` has one or more blocks, and more than one is a stack. `build(plan)` applies the steps in order:
 
 - A step beside one anchor looks at the split of the pane of the anchor. If that split has the direction of the side, the block becomes a new part next to the anchor. If not, the pane of the anchor becomes a split of that direction that holds both.
-- A step beside several anchors first makes sure that their parts are neighbors in one split. It wraps those parts in one new part, and then places the block beside that part.
-- A step at an edge makes the root a split that holds the block and the old root.
+- A step beside several anchors finds the lowest split that holds them all. The parts of that split that hold an anchor must be neighbors. If the split has the direction of the side, the block becomes a new part before the first of those parts or after the last. If the anchors take every part of the split, the block goes beside the whole split. In each other case, the step wraps those parts in one new part, and places the block beside that part. One of the wrapped parts must have no size, or the step is an error.
+- A step at an edge makes the root a split that holds the block and the old root. If the root is already a split of that direction, the block becomes its first or its last part.
 - A step with an anchor adds the block to the pane of the anchor.
+
+So a split never holds a split of its own direction, and each split has a part with no size. The writer of D4 depends on both facts.
 
 The levels of a tree count its splits from the root down. The root split is level 1, and a split inside a part of it is level 2. A tree with no split has no level. A tree of 8 levels is good, and a tree of 9 levels is not.
 
@@ -121,11 +123,15 @@ id      = a letter, then letters, digits and "-", 32 characters at most
 
 The reader counts the lines before it parses any line, so a plan of more than 32 lines gives the error of the count and no other. The block counts of the catalog allow at most 14 lines today, and the limit of 32 leaves room for a new block. A count of cells is a `u16`. The parser refuses a larger number as a bad size, and the error names the word.
 
+`Parser::parse` of `winnow` returns `ParseError`. Its `offset()` is the byte where the reader stopped, which gives the word and the column. Its `inner()` is a `ContextError`, whose `cause()` holds the reason of a word that parses and is still wrong, such as an unknown block. With no cause, the reason is `unknown form`.
+
+The `max` of an editor is a fact of the block, and is not the size of a part. So the first line can hold `max`, as in `editor, max 3`, and no other size.
+
 The parser gives one step for a line, and knows no layout. `build` applies the step, and finds an id twice, an anchor that is not placed, or anchors that are not neighbors. So an error of the grammar names the line, the word and its column, and an error of the layout names the line and the id. Words are in lowercase, and any run of spaces separates two words. An id cannot be a word of the grammar. Task 1.6 reads the `winnow` documentation for the error type that carries the position.
 
 The writer goes from a tree to a plan. It runs only in step 3 of D3. It writes the outer parts first and the inner parts after:
 
-1. For a split, the anchor is the part whose blocks took no size. The block that stands for a part is the anchor of that part, down to a pane.
+1. For a split, the anchor is the first part with no size whose block can stand for the split. The block that stands for a part is the anchor of that part, down to a pane. The line of that block carries the size of the part. So a part with a size takes a block with a free size, and never an editor, `tabs` or `statusline`.
 2. Write the anchor. Then write each other part of the split as `left of`, `right of`, `above` or `below` the anchor, in an order that keeps the places.
 3. Then do the same inside each part that is a split, around the block that stands for it.
 4. Write each id that is not the block name with `as`.
@@ -176,7 +182,7 @@ Task 1.2 works the columns of each spec scenario by the rounding rule above, and
 - `Msg::Tick(i64)` sets `Model::now_ms`. If the layout holds `statusline`, and its segments hold `connected` or `idle`, `update` returns a wait of one second. `Effect::RetryConfig` becomes `Effect::Wait { after, then }`, which carries the wait and the message to give back. The retry and the tick both use it, each with its own state of idle or waiting, so the run loop has one arm for a wait. For a tick, `then` names the message, and the run loop reads the clock when the wait ends and gives back `Msg::Tick` with that time. Each call of `update` ends with one check: if the layout in use has a time segment and no wait for a tick is pending, it returns the wait. So a reload, `/layout use` or a change of the world in focus starts the tick. The run loop sends one tick before the first draw. The tests send `Msg::Tick` with a chosen time.
 - The statusline draw joins each side with ` | `, drops a segment with no value, and cuts the left side with the functions of `width.rs`.
 
-Task 1.3 makes sure that `mu client` subscribes from 0, so the events give the connect time.
+Task 1.3 found that the event stream of `mu-client` starts with `last` at 0 and asks for `from_seq` 1. The protocol treats 0 and 1 as the same first number. So `mu client` reads from the first event, and the events give the connect time.
 
 ### D7a. Layer 2: several editors
 
@@ -209,7 +215,7 @@ The server writes only under `clients/layouts/` and `clients/devices/`. A name f
 
 `DescribeLayout` takes a name, a width and a height. It returns one entry for each block: its id, its name, the number of its line, its rectangle, whether it is in front of its stack, and its data source. The data source is a fixed text from the catalog, such as `the journal of the world in focus` for `output`. The rectangles come from the solver of D6, which moves from `mu-tui` to `mu-config` as plain arithmetic, because `mu-server` cannot depend on `mu-tui`. `mu-tui` keeps the ratatui draw and calls that solver. This replaces the use of ratatui `Layout` in D6, and task 1.2 changes to a check of the rounding rule that the solver states.
 
-Task 1.4 reads the documentation of `toml_edit` and of `tempfile::NamedTempFile::persist`. It makes sure that D8 names the calls, and states what `persist` does when the target exists.
+Task 1.4 read both. The edit parses the file as `toml_edit::DocumentMut`, sets or removes the item at the path, and writes `to_string()`, which keeps each other line and comment. The write uses `tempfile::NamedTempFile::new_in` in the target directory and then `persist`. If a file exists at the target path, `persist` replaces it atomically. It does not sync the file or the directory to the disk, and it cannot cross file systems, which is why the temporary file is in the target directory.
 
 ### D9. Layer 4: commands and the mouse
 
@@ -224,7 +230,7 @@ Task 1.4 reads the documentation of `toml_edit` and of `tempfile::NamedTempFile:
 - A press of the left button runs a hit test on the result of `solve`. A hit on a divider or on a title row starts a drag state in the model. Each drag report calls `resize_border` on a copy of the plan from the press, so the result does not drift. The release keeps the result and returns `Effect::SaveLayout`. A press and a release on one name with no move is a click, and calls `front`.
 - A press that hits no divider and no title row goes to the `output` pane under the mouse, and so do its drag and its release. Today they go to the pane of the world in focus, because the screen has one pane. The hit test of `solve` picks the pane, and the selection code takes its rectangle from `solve`.
 
-The mouse modes stay as they are: press, release and drag reports in the SGR format. A drag needs no report of a move with no button. Task 1.5 reads the termina documentation of these modes and of the mouse event type. It makes sure that D9 states which events a drag gives.
+The mouse modes stay as they are: press, release and drag reports in the SGR format. A drag needs no report of a move with no button. Task 1.5 read them. The modes of `screen.rs` are `MouseTracking`, `ButtonEventMouse` and `SGRMouse`. With them, termina gives `MouseEventKind::Down(button)` for a press, `Drag(button)` for each move with the button down, and `Up(button)` for a release. It gives no `Moved` event, because no mode asks for a move with no button.
 
 ### D10. Layer 5: arrange mode
 

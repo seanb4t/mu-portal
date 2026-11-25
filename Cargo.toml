@@ -81,6 +81,7 @@ uuid = { version = "1.29.2", features = ["v4"] }
 vt100 = "0.18.1"
 vte = "0.15.0"
 walkdir = "2.5.0"
+winnow = { version = "1.0.5", default-features = false, features = ["ascii", "std"] }
 
 # The fork of ratatui-textarea, at its branch `mu`: a cursor that moves by grapheme, a width
 # function, and the count of the wrapped rows. The patch applies only while the fork has the

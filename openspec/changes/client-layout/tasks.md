@@ -6,12 +6,12 @@ Each of the groups 2 to 6 is one layer. Finish a layer, with its tests and its d
 
 ## 1. Facts to check first
 
-- [ ] 1.1 Load the `rust-best-practices` skill. In `mu-config`, build the steps, the tree, `build`, the reader with ids and several anchors, and the writer (design.md D2 and D4), and the property tests `any_layout_reads_back` and `a_line_reads_back`. Make sure that both pass, the first for any valid tree of at most 8 levels. If a shape does not read back, stop and record the shape in design.md D4.
-- [ ] 1.2 Work the divider column of each spec scenario by the rounding rule of design.md D6, and the rows of the scenario "A drag down" by the rule of `resize_border` in design.md D3. Make sure that each scenario and the rule give the same column, or correct the scenario.
-- [ ] 1.3 Read `crates/mu-tui/src/run.rs` and `crates/mu-client/src/lib.rs`, and find the sequence number of the first stream of `mu client`. Make sure that design.md D7 states that it is 0, or names the change that makes it 0.
-- [ ] 1.4 Read the current documentation of `toml_edit` and of `tempfile::NamedTempFile::persist`. Make sure that design.md D8 names the calls, and states what `persist` does if the target exists.
-- [ ] 1.6 Read the current documentation of `winnow` for its error type and for the position of an error. Add `winnow` to `[workspace.dependencies]` and to the row of `mu-config` in `workspace_boundary.rs`. Make sure that design.md D4 names the error type, and that `cargo nextest run -p mu-cli --test workspace_boundary --locked` passes.
-- [ ] 1.5 Read the current termina documentation of the mouse modes in `screen.rs` and of its mouse event type. Make sure that design.md D9 states which events a press, a drag and a release give.
+- [x] 1.1 Load the `rust-best-practices` skill. In `mu-config`, build the steps, the tree, `build`, the reader with ids and several anchors, and the writer (design.md D2 and D4), and the property tests `any_layout_reads_back` and `a_line_reads_back`. Make sure that both pass, the first for any valid tree of at most 8 levels. If a shape does not read back, stop and record the shape in design.md D4.
+- [x] 1.2 Work the divider column of each spec scenario by the rounding rule of design.md D6, and the rows of the scenario "A drag down" by the rule of `resize_border` in design.md D3. Make sure that each scenario and the rule give the same column, or correct the scenario.
+- [x] 1.3 Read `crates/mu-tui/src/run.rs` and `crates/mu-client/src/lib.rs`, and find the sequence number of the first stream of `mu client`. Make sure that design.md D7 states that it is 0, or names the change that makes it 0.
+- [x] 1.4 Read the current documentation of `toml_edit` and of `tempfile::NamedTempFile::persist`. Make sure that design.md D8 names the calls, and states what `persist` does if the target exists.
+- [x] 1.6 Read the current documentation of `winnow` for its error type and for the position of an error. Add `winnow` to `[workspace.dependencies]` and to the row of `mu-config` in `workspace_boundary.rs`. Make sure that design.md D4 names the error type, and that `cargo nextest run -p mu-cli --test workspace_boundary --locked` passes.
+- [x] 1.5 Read the current termina documentation of the mouse modes in `screen.rs` and of its mouse event type. Make sure that design.md D9 states which events a press, a drag and a release give.
 
 ## 2. Layer 1: blocks and the layout model
 

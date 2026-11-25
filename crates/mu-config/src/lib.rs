@@ -6,6 +6,7 @@ mod entries;
 mod filter;
 mod key;
 mod layer;
+pub mod layout;
 mod names;
 
 pub use entries::{ENTRY_NAMES, EntryName};

@@ -1881,6 +1881,7 @@ dependencies = [
  "proptest",
  "serde",
  "toml",
+ "winnow",
 ]
 
 [[package]]
