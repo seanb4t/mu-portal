@@ -2,7 +2,7 @@
 name: Bug report
 about: Report behavior that is wrong
 title: "Bug: "
-labels: []
+labels: [bug]
 ---
 
 ## What happened

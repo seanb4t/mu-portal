@@ -2,7 +2,7 @@
 name: Idea
 about: Propose a feature or a change
 title: "Idea: "
-labels: []
+labels: [kind:idea]
 ---
 
 ## The idea
