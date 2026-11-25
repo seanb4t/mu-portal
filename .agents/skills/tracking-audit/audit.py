@@ -28,6 +28,9 @@ NO_ISSUE_PR = re.compile(r"^(chore|fix)\((openspec|deps)\)")
 RENOVATE = {"app/renovate", "app/fzymgc-renovate", "renovate", "renovate[bot]"}
 ISSUE_REF = re.compile(r"#(\d+)")
 CLOSES_NONE = re.compile(r"^[\s>*-]*Closes:\s*none\b", re.IGNORECASE | re.MULTILINE)
+PART_OF = re.compile(
+    r"^[\s>*-]*(?:Part of|Refs)\s+#(\d+)", re.IGNORECASE | re.MULTILINE
+)
 
 
 def gh(*args: str) -> object:
@@ -114,7 +117,14 @@ def audit(root: Path) -> list[str]:
     for pr in prs:
         if pr["author"]["login"] in RENOVATE or NO_ISSUE_PR.match(pr["title"]):
             continue
-        if not pr["closingIssuesReferences"] and not CLOSES_NONE.search(pr["body"]):
+        if pr["closingIssuesReferences"]:
+            continue
+        links = [int(n) for n in PART_OF.findall(pr["body"])]
+        unknown = [n for n in links if n not in by_number]
+        if unknown:
+            refs = " ".join(f"#{n}" for n in unknown)
+            gaps.append(f"pr-links-no-issue #{pr['number']} names {refs}")
+        elif not links and not CLOSES_NONE.search(pr["body"]):
             gaps.append(f"pr-closes-no-issue #{pr['number']} {pr['title']}")
 
     in_progress = sum(1 for st in status.values() if st == "In progress")

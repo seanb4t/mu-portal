@@ -37,7 +37,7 @@ The workflows of the Project set most of the status. You set the rest by hand.
 | You choose the next item | Next, by hand |
 | The work starts | In progress, by hand |
 
-A pull request names its issue with `Closes #<number>` in its body. The merge then closes the issue, and the Project moves it to Done. A pull request with no issue, such as a dependency update or an archive, writes `Closes: none` and the reason in the body. The audit accepts that line.
+A pull request names its issue with `Closes #<number>` in its body. The merge then closes the issue, and the Project moves it to Done. A pull request that belongs to an issue but does not finish it writes `Part of #<number>`. Examples are an archive and a follow-up to merged work. Only a trivial fix, such as a typo or a format change, writes `Closes: none` and the reason. Dependency updates from Renovate need no line, because the Dependency Dashboard tracks them.
 
 ### Labels and milestones
 
