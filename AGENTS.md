@@ -11,7 +11,7 @@ mu-portal is one Rust binary, `mu`, with a server and terminal clients for MUSH 
 ## Tracking duties
 
 - Each issue that you open gets a kind or type label. If it serves a phase, it also gets the milestone of that phase.
-- Each pull request names its issue with `Closes #<number>`. A pull request with no issue says so.
+- Each pull request names its issue with `Closes #<number>`. An archive or a follow-up to merged work writes `Part of #<number>` instead. Only a trivial fix, such as a typo, writes `Closes: none` and the reason.
 - After you archive a change, run the project skill `tracking-audit` and repair each gap with the owner's consent.
 
 ## Project skills
