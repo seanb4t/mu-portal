@@ -164,8 +164,9 @@ Each block of a layout SHALL have an id that is unique in the layout. The defaul
 
 #### Scenario: An id in a later line
 - **GIVEN** the layout in use holds the lines `output`, `editor below output`, `output as side right of output` and `tabs above side`
-- **WHEN** the client draws the screen
-- **THEN** row 1 shows no tab in the columns of the pane of `output`, and a tab in the columns of the pane of `side`
+- **AND** a server has the fake world `alpha/aria`
+- **WHEN** the user starts `mu client` in a terminal of 80 columns and 24 rows
+- **THEN** row 1 shows `[alpha/aria]` from column 42, and shows `[output]` from column 1
 
 #### Scenario: An id twice
 - **GIVEN** `clients/layouts/mine.toml` holds the lines `editor`, `output as main above editor` and `output as main at right`

@@ -93,7 +93,7 @@ A screen change keeps the lines of the player where it can. It tries these in or
 2. Move the changed line to the end of the plan.
 3. Write the whole plan again from the wanted tree, with the writer of D4.
 
-The keys `<` and `>` of arrange mode call `resize` with a percent that the same function keeps from 10 to 90. So no change of the screen gives a size that the reader refuses.
+`resize` refuses a percent outside 10 to 90, as the reader does. So `/pane size` and `EditLayout` give an error for such a size. Only `resize_border` and the keys `<` and `>` of arrange mode keep the percent in that range. The keys work out the new percent, keep it from 10 to 90, and then call `resize`.
 
 The wanted tree comes from the same change on the tree, so step 3 always has a target. The function returns the plan and a flag that says whether step 3 ran. The client shows a notice for that flag, and `EditLayout` returns it. Every caller above this layer uses only these functions: the commands, the mouse, arrange mode and the server.
 
@@ -128,7 +128,7 @@ The property test `a_line_reads_back` generates any step: each side, each edge, 
 - `ClientLayer` gets `layout: Option<String>`. `FIELD_PATHS` gets `layout`, and the default is `classic`. It merges as `echo` does.
 - `ClientLayer` gets the table `[tabs]` with the one field `label`, and `FIELD_PATHS` gets `tabs.label`. It gets the table `[statusline]` with `left` and `right`, and `FIELD_PATHS` gets `statusline.left` and `statusline.right`. Each of the three paths merges as one value, so a later list replaces an earlier list. Both tables refuse an unknown field.
 - `state()` of the store checks a layer today with `check_keys`. It also calls the check of `Label` on `tabs.label`, and the check of the segments on each list. A failed check makes the layer bad, and the notice names the file and the field path, as a bad binding does today.
-- The type `WorldId` moves from `mu-core` to `mu-config`, with its part rule, `game()`, `character()` and its tests. `mu-core` gets the edge to `mu-config` in `workspace_boundary.rs` and exports the same type again, so its callers do not change. The rule of a world id then has one home. `mu-tui` uses the type for the order of the worlds and for the label, in place of its own split of the text.
+- The type `WorldId` moves from `mu-core` to `mu-config`, with its part rule, `game()`, `character()`, its error type and its tests. The error type derives `thiserror::Error`, so `mu-config` takes `thiserror` from `[workspace.dependencies]`. `mu-core` gets the edge to `mu-config` in `workspace_boundary.rs` and exports the same type again, so its callers do not change. The rule of a world id then has one home. `mu-tui` uses the type for the order of the worlds and for the label, in place of its own split of the text.
 - `mu-config` gets `WorldKey`, a world id or the name of a game. Its one parser accepts one part, or two parts with one `/`, each by the part rule.
 - `mu-config` holds the built-in layouts as lists of sentences, and a test makes sure that each one passes the check.
 - The store reads each `clients/layouts/<name>.toml`. `layer_rule` gets this place, with the name rule of a device. The file type is one struct with the field `place` and unknown fields refused. The store runs the reader of D4 and keeps a good layout or a notice.
@@ -190,7 +190,7 @@ The service gets `ListLayouts`, `DescribeLayout`, `SaveLayout`, `EditLayout` and
 
 `Store::reload` takes the lock `reload` today, takes a snapshot of the directory, and calls `reload_from`. That lock is not reentrant. So the write path takes the lock once, runs steps 2 and 3, and then takes the snapshot and calls `reload_from` itself. It does not call `Store::reload`. The writes and the reloads then run one at a time. `SaveLayout` with a device does both writes and then one reload. If the second write fails, the first one stays, and the error names the file. The call takes no revision, so the last save wins. #173 adds that check for every write.
 
-The server writes only under `clients/layouts/` and `clients/devices/`. A name follows the device name rule, which allows no `/`. That rule allows `.`, so the check also refuses the names `.` and `..`. The scenario "A save with a bad name" covers it.
+The server writes only under `clients/layouts/` and `clients/devices/`. A name follows the device name rule, which allows no `/`. That rule allows `.`, so the check also refuses the names `.` and `..`. The scenarios "A save with a bad name" and "A save with the name of two dots" cover the two checks.
 
 `EditLayout` takes the name of a layout, one change of D3, and an optional device. The server reads the plan, applies the one function of D3, and saves the result through the same write path. The reply holds the new plan and the flag of D3. On a built-in layout it needs the device, and it saves by the save rule of D9. With a world id, that rule runs for that world, as it does in a client with that world in focus. So an agent changes one pane with one call, and the client and the server run the same code of `mu-config`.
 
@@ -256,13 +256,13 @@ A line does not move after it arrived. An `output` that the player adds later st
 | A device file keeps its other lines | The scenarios "A device file with a comment" and "A use for one world". |
 | One written line parses to the same step | The property test `a_line_reads_back`. |
 | The solver never fails and never overlaps two panes | The property test `solve_stays_inside_the_area`, and the unit tests `two_percents_past_the_split` and `a_count_past_the_screen`. |
-| A size from a drag or a key is a size that the reader accepts | `resize` and `resize_border` keep 10 to 90 percent. The unit tests `a_border_stops_at_ten_percent` and `a_larger_block_stops_at_ninety_percent`. |
+| A size from a drag or a key is a size that the reader accepts | `resize_border` and the keys `<` and `>` keep 10 to 90 percent, and `resize` refuses any other percent. The unit tests `a_border_stops_at_ten_percent`, `a_larger_block_stops_at_ninety_percent` and `a_resize_out_of_range_is_refused`. |
 | One rule of a world id | `WorldId` in `mu-config`, which `mu-core` exports again. The existing tests of the id move with it. |
 | One home of each line | `route` in `mu-config`, with the unit tests of its two cases. |
 | One lookup of the layout of a world | `layout_for` in `mu-config`, with the unit tests of its three steps. The client and the server call it. |
 | A save from a built-in layout sets only the choice in use | `save_target` in `mu-config`, and the scenario "A save from the built-in layout of one world". |
 | No test waits for the clock or needs a real mouse | Review, and `review-lint` flags a sleep in a test. |
-| The crate rules | `crates/mu-cli/tests/workspace_boundary.rs`, with `toml_edit` added to the row of `mu-server`, `winnow` and `insta` to the row of `mu-config`, and the edge from `mu-core` to `mu-config`. The row of `mu-server` already holds `tempfile`, which moves from `[dev-dependencies]` to `[dependencies]`. |
+| The crate rules | `crates/mu-cli/tests/workspace_boundary.rs`, with `toml_edit` added to the row of `mu-server`, `winnow`, `insta` and `thiserror` to the row of `mu-config`, and the edge from `mu-core` to `mu-config`. The row of `mu-server` already holds `tempfile`, which moves from `[dev-dependencies]` to `[dependencies]`. |
 | An agent and a person change a layout the same way | `EditLayout` and the client commands call the same operations. The scenario "An edit gives the same file as the command" compares the two. |
 
 ## Risks / Trade-offs

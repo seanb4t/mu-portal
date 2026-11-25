@@ -88,6 +88,12 @@ The call `SaveLayout` SHALL take a name, the lines of a layout, and an optional 
 - **WHEN** a client calls `SaveLayout` with the name `../x` and the line `editor`
 - **THEN** the call fails, and no file is written outside `<dir>/clients/layouts`
 
+#### Scenario: A save with the name of two dots
+- **GIVEN** a server serves `<dir>`
+- **WHEN** a client calls `SaveLayout` with the name `..` and the lines `output` and `editor below output`
+- **THEN** the call fails, and its error contains `..`
+- **AND** `<dir>/clients` holds no file
+
 ### Requirement: A write makes the directories that it needs
 Before a write, the server SHALL make `clients`, `clients/layouts` and `clients/devices` if they are missing. If one of these paths exists and is not a directory, the call SHALL fail with an error that names the path, and SHALL write nothing.
 
