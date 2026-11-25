@@ -48,7 +48,7 @@ Each issue has one kind label or one type label.
 
 The milestone of an issue is the phase that it serves. An issue with no milestone is not planned for a phase yet. A change that closes gets the milestone of its phase.
 
-Each phase has one plan issue with the label `kind:plan`. It lists the changes of the phase in order. When a change is archived, its row in the plan shows Done.
+Each phase has one plan issue with the label `kind:plan`. It lists the changes of the phase in order. When you archive a change, mark its row in the plan Done.
 
 ### Follow-up issues
 
