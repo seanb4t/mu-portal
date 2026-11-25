@@ -56,6 +56,8 @@ The change has five layers. Each layer works and has its tests before the next o
 | Fixed blocks | `tabs` and `statusline` take 1 row and refuse a size. |
 | Editor size | It grows with its text. `max N` after a comma sets the most rows, from 1 to 100, default 8. |
 | Smallest text pane | 2 rows and 10 columns. A resize stops there. |
+| A resize in a very small split | If no size from 10% to 90% keeps both panes at their smallest size, the resize changes nothing. |
+| Plan with no output | Good. The lines of the world then show in no pane, and the notices stay in the list of notices. |
 | Limits | 32 lines in a layout. 8 levels of splits. A layout name follows the rule of a device name. |
 | Built-in layouts | `classic` is the screen of today. `status` adds the statusline at the bottom. `sidebar` is `status` with `output as notices` right of `output` at 30%. `focus` is `output` and `editor` only. |
 | Default layout | `classic`. |

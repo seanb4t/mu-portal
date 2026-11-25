@@ -110,6 +110,12 @@ Typed text and each entry that edits or sends SHALL go to the editor with the in
 - **WHEN** the user presses Alt+E and types `x`
 - **THEN** the editor holds `x`
 
+#### Scenario: The input focus after a change of the world
+- **GIVEN** `clients/global.toml` holds `[world-layouts]` with `"alpha/aria" = "mine"`, and `clients/layouts/mine.toml` holds the lines `output`, `editor below output` and `editor as scratch right of editor`
+- **AND** a server has the fake worlds `alpha/aria` and `beta/bryn`, and the user pressed Alt+E, so `scratch` has the input focus
+- **WHEN** the user runs the entry `focus-next`, and types `x`
+- **THEN** the editor of `beta/bryn` holds `x`
+
 ### Requirement: A layout is a plan of numbered lines
 A layout SHALL be a plan: a list of 1 to 32 lines in order. mu SHALL show each line with its number, from 1, and each error about a line SHALL name its number. The first line SHALL be one block, which takes the whole screen. Each later line SHALL place one new block next to an anchor, a block of an earlier line: `<block> above <anchor>`, `below`, `left of` or `right of`. The new block SHALL take a part of the pane of the anchor, on that side.
 
@@ -136,13 +142,15 @@ A line SHALL split only the pane that its anchor has after the lines before it. 
 
 #### Scenario: The editor after the notices
 - **GIVEN** the layout in use holds the lines `output`, `output as notices right of output` and `editor below output`
-- **WHEN** the client draws the screen
-- **THEN** the editor is below the output only, and the notices take the whole height
+- **WHEN** the user starts `mu client` in a terminal of 80 columns and 24 rows
+- **THEN** the pane of `notices` takes columns 42 to 80 of rows 1 to 24
+- **AND** the editor takes columns 1 to 40 of row 24
 
 #### Scenario: The editor before the notices
 - **GIVEN** the layout in use holds the lines `output`, `editor below output` and `output as notices right of output`
-- **WHEN** the client draws the screen
-- **THEN** the editor takes the whole width, and the notices are beside the output only
+- **WHEN** the user starts `mu client` in a terminal of 80 columns and 24 rows
+- **THEN** the editor takes columns 1 to 80 of row 24
+- **AND** the pane of `notices` takes columns 42 to 80 of rows 1 to 23
 
 ### Requirement: A line can name several anchors
 A line SHALL take two or more anchors joined with `and`, such as `output as notices right of output and editor`. The anchors SHALL be neighbors in one split. The new block SHALL stand beside all of them, and the blocks outside the anchors SHALL keep their places.
