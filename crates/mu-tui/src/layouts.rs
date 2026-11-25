@@ -91,6 +91,8 @@ impl Model {
     /// layout rules refuse changes nothing and gives a notice.
     pub(crate) fn change_layout(&mut self, change: Change) -> Vec<Effect> {
         match self.layout().apply(change) {
+            // A change that gives the same plan changes nothing, so it saves nothing.
+            Ok(changed) if &changed.layout == self.layout() => Vec::new(),
             Ok(changed) => {
                 // The notice goes to an output of the new layout, so it shows after the change.
                 self.show_layout(changed.layout);
@@ -166,8 +168,8 @@ impl Model {
 
     /// The hints of `/layout plan`: each line with its number.
     pub(crate) fn layout_plan(&mut self) {
-        for (index, line) in self.layout().lines().iter().enumerate() {
-            self.hint(&format!("{}. {line}", index + 1));
+        for line in self.layout().numbered() {
+            self.hint(&line);
         }
     }
 

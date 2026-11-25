@@ -6,7 +6,7 @@
 A layout file SHALL be `clients/layouts/<name>.toml`, where the name follows the rule of a device name. It SHALL hold only the field `place`, a list of placement sentences. The server SHALL check each layout file at start and at reload. A bad layout file SHALL be skipped, with one notice that names the file and the reason. A file with the name of a built-in layout SHALL be bad.
 
 #### Scenario: A layout file in use
-- **GIVEN** `clients/layouts/mine.toml` holds `place` with the lines `output` and `editor below output`
+- **GIVEN** `clients/layouts/mine.toml` holds `place` with the lines `output` and `editor below main`
 - **AND** `clients/global.toml` holds `layout = "mine"`, and a server serves that directory on `<dir>/s.sock`
 - **WHEN** the user runs `mu config show --server unix://<dir>/s.sock --device laptop`
 - **THEN** stdout holds `layout = "mine"` with the source `clients/global.toml`
@@ -68,7 +68,7 @@ The call `SaveLayout` SHALL take a name, the lines of a layout, and an optional 
 
 #### Scenario: A save writes the file
 - **GIVEN** a server serves `<dir>`, which holds no `clients` directory
-- **WHEN** a client calls `SaveLayout` with the name `mine` and the lines `output` and `editor below output`
+- **WHEN** a client calls `SaveLayout` with the name `mine` and the lines `output` and `editor below main`
 - **THEN** `<dir>/clients/layouts/mine.toml` holds those two lines in `place`
 - **AND** `mu layout list` names `mine`
 
@@ -90,7 +90,7 @@ The call `SaveLayout` SHALL take a name, the lines of a layout, and an optional 
 
 #### Scenario: A save with the name of two dots
 - **GIVEN** a server serves `<dir>`
-- **WHEN** a client calls `SaveLayout` with the name `..` and the lines `output` and `editor below output`
+- **WHEN** a client calls `SaveLayout` with the name `..` and the lines `output` and `editor below main`
 - **THEN** the call fails, and its error contains `..`
 - **AND** `<dir>/clients` holds no file
 
@@ -98,19 +98,33 @@ The call `SaveLayout` SHALL take a name, the lines of a layout, and an optional 
 Before a write, the server SHALL make `clients`, `clients/layouts` and `clients/devices` if they are missing. A link to a directory SHALL count as a directory, and the write SHALL go through the link. If one of these paths exists and is not a directory, the call SHALL fail with an error that names the path, and SHALL write nothing.
 
 #### Scenario: A save through a linked directory
-- **GIVEN** `<dir>/clients` is a symbolic link to a directory that holds `layouts/mine.toml` with the lines `output` and `editor below output`
-- **WHEN** a client calls `EditLayout` on `mine` with the place `tabs above output`
-- **THEN** the call succeeds, and the file `layouts/mine.toml` of the linked directory holds the lines `output`, `editor below output` and `tabs above output`
+- **GIVEN** `<dir>/clients` is a symbolic link to a directory that holds `layouts/mine.toml` with the lines `output` and `editor below main`
+- **WHEN** a client calls `EditLayout` on `mine` with the place `tabs above main`
+- **THEN** the call succeeds, and the file `layouts/mine.toml` of the linked directory holds the lines `output`, `editor below main` and `tabs above main`
 - **AND** `<dir>/clients` is still a symbolic link
 
 #### Scenario: A clients path that is a file
 - **GIVEN** a server serves `<dir>`, which holds no `clients` directory, and the user then makes the empty file `<dir>/clients`
-- **WHEN** a client calls `SaveLayout` with the name `mine` and the lines `output` and `editor below output`
+- **WHEN** a client calls `SaveLayout` with the name `mine` and the lines `output` and `editor below main`
 - **THEN** the call fails, and its error contains `clients`
 - **AND** `<dir>/clients` is still an empty file
 
+### Requirement: SaveLayout with a key sets the entry of a world
+The call `SaveLayout` SHALL also take an optional key, which is a world id or the name of a game. With a device name and a key, the server SHALL set the entry of that key in `[world-layouts]` of the device layer, in the same write as the layout file, and SHALL NOT set the field `layout`. A key with no device name SHALL be an error, and SHALL write nothing.
+
+#### Scenario: A save with a key
+- **GIVEN** a server serves an empty configuration directory `<dir>`
+- **WHEN** a client calls `SaveLayout` with the name `mine`, the lines `output` and `editor below main`, the device `laptop` and the key `alpha/aria`
+- **THEN** `<dir>/clients/layouts/mine.toml` holds the two lines
+- **AND** `<dir>/clients/devices/laptop.toml` holds the entry `"alpha/aria" = "mine"` in `[world-layouts]`, and no field `layout`
+
+#### Scenario: A save with a key and no device
+- **GIVEN** a server serves an empty configuration directory `<dir>`
+- **WHEN** a client calls `SaveLayout` with the name `mine`, the line `editor`, no device and the key `alpha/aria`
+- **THEN** the call fails, its error contains `device`, and `<dir>/clients/layouts/mine.toml` does not exist
+
 ### Requirement: UseLayout sets the layout of a device
-The call `UseLayout` SHALL take a device name and the name of a layout. `SaveLayout` with a device name SHALL do the same after its write. The server SHALL set the field `layout` in `clients/devices/<device>.toml`, and SHALL keep each other line of the file, its comments included. With no such file, it SHALL make one. It SHALL then read the directory again.
+The call `UseLayout` SHALL take a device name and the name of a layout. `SaveLayout` with a device name SHALL do the same in the same write as the layout file. The server SHALL set the field `layout` in `clients/devices/<device>.toml`, and SHALL keep each other line of the file, its comments included. With no such file, it SHALL make one. It SHALL then read the directory again.
 
 #### Scenario: A device file with a comment
 - **GIVEN** `<dir>/clients/devices/laptop.toml` holds the comment `# my laptop` and `echo = "show"`, and a server serves `<dir>`
@@ -152,7 +166,7 @@ After a `SaveLayout` or a `UseLayout`, the watch of the configuration SHALL send
 - **GIVEN** a server serves `<dir>`
 - **WHEN** the user runs `mu layout show classic`
 - **THEN** stdout holds the three lines of `classic`
-- **AND** stdout holds a picture with the words `tabs`, `output` and `editor` from top to bottom
+- **AND** stdout holds a picture with the words `tabs`, `main` and `editor` from top to bottom
 
 ### Requirement: mu layout reaches only a private socket
 `mu layout use <name>` SHALL call `UseLayout` with the device name of the requirement "The device name". Each `mu layout` command SHALL follow the requirement "mu config reaches only a private socket". No `mu layout` command SHALL start a server.
@@ -171,22 +185,22 @@ After a `SaveLayout` or a `UseLayout`, the watch of the configuration SHALL send
 The call `EditLayout` SHALL take the name of a layout, one change, and an optional device name. A change SHALL be one of these: place a block, hide a block, set the size of a block, insert a line, replace a line, or delete a line. The server SHALL apply the change with the rules of the client commands of the same names, and save the result as `SaveLayout` does. The reply SHALL hold the new plan, and SHALL say whether mu wrote the whole plan again.
 
 #### Scenario: An edit places a block
-- **GIVEN** `clients/layouts/mine.toml` holds the lines `output` and `editor below output`, and a server serves that directory
-- **WHEN** the user runs `mu layout place mine "output as notices right of output, 30%"`
-- **THEN** `mu layout show mine` holds three lines, and the last is `3. output as notices right of output, 30%`
+- **GIVEN** `clients/layouts/mine.toml` holds the lines `output` and `editor below main`, and a server serves that directory
+- **WHEN** the user runs `mu layout place mine "output as notices right of main, 30%"`
+- **THEN** `mu layout show mine` holds three lines, and the last is `3. output as notices right of main, 30%`
 
 #### Scenario: An edit gives the same file as the command
-- **GIVEN** two servers, each with the layout file `mine` of the lines `output`, `tabs above output` and `editor below output`
+- **GIVEN** two servers, each with the layout file `mine` of the lines `output`, `tabs above main` and `editor below main`
 - **WHEN** a client of the first server runs the command `/pane hide tabs`, and the user runs `mu layout hide mine tabs` on the second server
 - **THEN** the two files `clients/layouts/mine.toml` hold the same lines
 
 #### Scenario: An insert from the command line
-- **GIVEN** `clients/layouts/mine.toml` holds the lines `output` and `editor below output`, and a server serves that directory
-- **WHEN** the user runs `mu layout insert mine 2 "output as notices right of output"`
-- **THEN** `mu layout show mine` holds `2. output as notices right of output` and `3. editor below output`
+- **GIVEN** `clients/layouts/mine.toml` holds the lines `output` and `editor below main`, and a server serves that directory
+- **WHEN** the user runs `mu layout insert mine 2 "output as notices right of main"`
+- **THEN** `mu layout show mine` holds `2. output as notices right of main` and `3. editor below main`
 
 #### Scenario: A delete by id
-- **GIVEN** `clients/layouts/mine.toml` holds the lines `output`, `editor below output` and `output as side right of output`
+- **GIVEN** `clients/layouts/mine.toml` holds the lines `output`, `editor below main` and `output as side right of main`
 - **WHEN** the user runs `mu layout delete mine side`
 - **THEN** `mu layout show mine` holds two lines
 
@@ -196,11 +210,11 @@ For a built-in layout, `EditLayout` SHALL need the device name, and SHALL save u
 #### Scenario: An edit of a built-in layout
 - **GIVEN** a server serves `<dir>`, which holds no `clients` directory
 - **WHEN** the user runs `mu layout hide classic tabs --device laptop`
-- **THEN** `<dir>/clients/layouts/laptop.toml` holds the lines `output` and `editor below output`
+- **THEN** `<dir>/clients/layouts/laptop.toml` holds the lines `output` and `editor below main`
 - **AND** `mu config show --device laptop` holds `layout = "laptop"`
 
 #### Scenario: A bad edit
-- **GIVEN** `clients/layouts/mine.toml` holds the lines `output` and `editor below output`, and a server serves that directory
+- **GIVEN** `clients/layouts/mine.toml` holds the lines `output` and `editor below main`, and a server serves that directory
 - **WHEN** the user runs `mu layout hide mine editor`
 - **THEN** the exit status is 1, and stderr contains `editor`
 - **AND** the file still holds two lines

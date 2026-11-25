@@ -608,11 +608,11 @@ impl Model {
             .map_or(PaneId::NOTICES, |index| self.worlds[index].pane)
     }
 
-    /// The pane of the `output` `id` of `world`: the pane of the world for the first `output`
+    /// The pane of the `output` `id` of `world`: the pane of the world for the main `output`
     /// of its plan, and a pane of its own for each other one. None for a block that has no
     /// pane yet. This is the one rule of which pane an `output` shows.
     pub(crate) fn pane_of(&self, world: Option<&str>, id: &BlockId) -> Option<PaneId> {
-        let first = self.layout_of(world).ids_of(BlockKind::Output).next()?;
+        let first = self.layout_of(world).main_output()?;
         if first == id {
             return Some(self.world_pane(world));
         }

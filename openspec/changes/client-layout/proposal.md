@@ -10,7 +10,7 @@ Tracked by #172. It takes the layout part of the write API from #173.
 
 The change has five layers. Each layer works and has its tests before the next one starts.
 
-- **Layer 1: blocks and the layout model.** A block is one part of the screen: `tabs`, `output`, `editor` or `statusline`. A layout can hold several outputs and several editors, each with its own id. One catalog names each block and its rules. A layout places blocks in panes, splits the screen into panes, and can stack several blocks in one pane. A small set of operations changes a layout: place, hide, resize and stack. A layout reads and writes as placement sentences, one line for each block, such as `output as notices right of output, 30%`.
+- **Layer 1: blocks and the layout model.** A block is one part of the screen: `tabs`, `output`, `editor` or `statusline`. A layout can hold several outputs and several editors, each with its own id. One catalog names each block and its rules. A layout places blocks in panes, splits the screen into panes, and can stack several blocks in one pane. A small set of operations changes a layout: place, hide, resize and stack. A layout reads and writes as placement sentences, one line for each block, such as `output as notices right of main, 30%`.
 - **Layer 2: named layouts.** mu ships the layouts `classic`, `status`, `sidebar` and `focus`. A player layout is a file `clients/layouts/<name>.toml` on the server. The field `layout` of a client layer names the layout in use, and the table `[world-layouts]` names another one for a world or a game. The client draws the layout of the world in focus, with a divider between panes side by side and a title row where a pane needs one. `mu layout list` prints each layout as a picture.
 - **Layer 3: the layout API.** The new calls `ListLayouts`, `DescribeLayout`, `SaveLayout`, `EditLayout` and `UseLayout` let a client or an agent read a layout, change one block of it, write it and choose it for a device. The server checks, writes and reloads. Each attached client gets the result.
 - **Layer 4: commands and the mouse.** `/place`, `/pane hide`, `/pane size` and `/layout use` change the screen at once and save. A drag of a divider or of a title row resizes a pane and saves at the release.
@@ -37,7 +37,8 @@ The change has five layers. Each layer works and has its tests before the next o
 | Choice | Value |
 |---|---|
 | Blocks | `tabs`, `output`, `editor`, `statusline`. A layout holds one to four editors, up to eight outputs, and each other block at most once. |
-| Several outputs | Each output after the first needs an id: `output as channels right of output`. An output shows the lines of the stream with its id. The first output also shows every stream that has no output of its own. |
+| The id `main` | The plain line `output` makes the block with the id `main`, so other lines say `tabs above main`. That block is the main output: it shows the lines of the world, and each stream with no block of its own. With no block `main`, the first `output` of the plan is the main output. |
+| Several outputs | Each output after the first needs an id: `output as channels right of main`. An output shows the lines of the stream with its id. The first output also shows every stream that has no output of its own. |
 | Notices | The notices of the client are the stream `notices`. With an `output as notices`, they show there. Without one, they show in the first output, as today. |
 | A line stays where it arrived | Each line goes into one output when it arrives. An output that you add later starts with the new lines only. |
 | Notices and worlds | A notice shows under the world in focus only, as today. |
@@ -45,9 +46,9 @@ The change has five layers. Each layer works and has its tests before the next o
 | Several editors | Each editor after the first needs an id: `editor as scratch right of editor`. Each keeps one text for each world. Enter sends the editor that you type in to the world in focus. They share the history of the world. |
 | Input focus | Alt+E goes to the next editor, and a click in an editor picks it. The terminal cursor shows which one. |
 | Sentence forms | `<block>` on the first line. Then `<block> above <anchor>`, `below`, `left of`, `right of`, `with`, and `<block> at top`, `at bottom`, `at left`, `at right`. |
-| Several anchors | `output as notices right of output and editor` puts a block beside two or more neighbors. |
+| Several anchors | `output as notices right of main and editor` puts a block beside two or more neighbors. |
 | Order | The order of the lines decides the shape. Each listing and each error shows the number of the line. The file holds a list with no numbers. |
-| Ids | Each block has an id, its name by default. `output as side right of output` sets another. Anchors, commands and calls use the id, and it never changes. |
+| Ids | Each block has an id, its name by default. `output as side right of main` sets another. Anchors, commands and calls use the id, and it never changes. |
 | The plan | `/layout plan` lists the numbered lines. `/layout insert`, `/layout edit` and `/layout delete` change one line, by its number or its id. |
 | Your lines | A change by a command, the mouse or arrange mode changes only the line of its block where it can. If it cannot, mu writes the plan again, keeps the ids, and says so. |
 | `with` | Puts two blocks in one pane as a stack. A title row shows a tab for each, and one shows at a time. Only outputs stack. |
@@ -59,7 +60,7 @@ The change has five layers. Each layer works and has its tests before the next o
 | A resize in a very small split | If no size from 10% to 90% keeps both panes at their smallest size, the resize changes nothing. |
 | Plan with no output | Good. The lines of the world then show in no pane, and the notices stay in the list of notices. |
 | Limits | 32 lines in a layout. 8 levels of splits. A layout name follows the rule of a device name. |
-| Built-in layouts | `classic` is the screen of today. `status` adds the statusline at the bottom. `sidebar` is `status` with `output as notices` right of `output` at 30%. `focus` is `output` and `editor` only. |
+| Built-in layouts | `classic` is the screen of today. `status` adds the statusline at the bottom. `sidebar` is `status` with `output as notices` right of `main` at 30%. `focus` is `output` and `editor` only. |
 | Default layout | `classic`. |
 | A layout for one world | `[world-layouts]` maps a world id or a game to a layout. The client looks for the world, then its game, then `layout`. The screen changes when the focus changes. |
 | `/layout here` | `/layout here <name>` sets the layout of the world in focus, on this device. With no name, it removes that choice. |

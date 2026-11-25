@@ -149,7 +149,7 @@ proptest! {
     }
 }
 
-/// The tree as text, such as `rows[tabs, cols[output, notices:30%], editor]`.
+/// The tree as text, such as `rows[tabs, cols[main, notices:30%], editor]`.
 fn shape(node: &Node) -> String {
     match node {
         Node::Pane(blocks) => blocks
@@ -200,17 +200,17 @@ fn ids(layout: &Layout) -> BTreeSet<String> {
 
 const SIDEBAR: &[&str] = &[
     "output",
-    "tabs above output",
-    "editor below output",
+    "tabs above main",
+    "editor below main",
     "statusline below editor",
-    "output as notices right of output, 30%",
+    "output as notices right of main, 30%",
 ];
 
 // The catalog.
 
 #[test]
 fn the_editor_is_required() {
-    let text = error(&["output", "tabs above output"]);
+    let text = error(&["output", "tabs above main"]);
     assert!(text.contains("editor"), "{text}");
 }
 
@@ -293,8 +293,8 @@ fn a_block_twice() {
 
 #[test]
 fn a_block_that_is_not_placed_yet() {
-    let text = error(&["editor", "tabs above output", "output above editor"]);
-    assert!(text.contains("line 2") && text.contains("output"), "{text}");
+    let text = error(&["editor", "tabs above main", "output above editor"]);
+    assert!(text.contains("line 2") && text.contains("main"), "{text}");
 }
 
 #[test]
@@ -331,8 +331,8 @@ fn an_id_of_33_characters() {
 fn anchors_that_are_not_neighbors() {
     let text = error(&[
         "output",
-        "tabs above output",
-        "editor below output",
+        "tabs above main",
+        "editor below main",
         "output as notices right of tabs and editor",
     ]);
     assert!(
@@ -343,7 +343,7 @@ fn anchors_that_are_not_neighbors() {
 
 #[test]
 fn a_size_on_the_first_line() {
-    let text = error(&["output, 50%", "editor below output"]);
+    let text = error(&["output, 50%", "editor below main"]);
     assert!(text.contains("line 1") && text.contains("50%"), "{text}");
 }
 
@@ -352,10 +352,10 @@ fn the_editor_after_the_notices() {
     assert_eq!(
         shape_of(&[
             "output",
-            "output as notices right of output",
-            "editor below output"
+            "output as notices right of main",
+            "editor below main"
         ]),
-        "cols[rows[output, editor], notices]"
+        "cols[rows[main, editor], notices]"
     );
 }
 
@@ -364,10 +364,10 @@ fn the_editor_before_the_notices() {
     assert_eq!(
         shape_of(&[
             "output",
-            "editor below output",
-            "output as notices right of output"
+            "editor below main",
+            "output as notices right of main"
         ]),
-        "rows[cols[output, notices], editor]"
+        "rows[cols[main, notices], editor]"
     );
 }
 
@@ -376,11 +376,11 @@ fn an_id_in_a_later_line() {
     assert_eq!(
         shape_of(&[
             "output",
-            "editor below output",
-            "output as side right of output",
+            "editor below main",
+            "output as side right of main",
             "tabs above side"
         ]),
-        "rows[cols[output, rows[tabs, side]], editor]"
+        "rows[cols[main, rows[tabs, side]], editor]"
     );
 }
 
@@ -389,12 +389,12 @@ fn a_block_beside_two_rows() {
     assert_eq!(
         shape_of(&[
             "output",
-            "tabs above output",
-            "editor below output",
+            "tabs above main",
+            "editor below main",
             "statusline below editor",
-            "output as notices right of output and editor, 33%",
+            "output as notices right of main and editor, 33%",
         ]),
-        "rows[tabs, cols[rows[output, editor], notices:33%], statusline]"
+        "rows[tabs, cols[rows[main, editor], notices:33%], statusline]"
     );
 }
 
@@ -417,7 +417,7 @@ fn a_percent_out_of_range() {
 fn a_percent_of_90() {
     assert_eq!(
         shape_of(&["editor", "output above editor, 90%"]),
-        "rows[output:90%, editor]"
+        "rows[main:90%, editor]"
     );
 }
 
@@ -436,6 +436,14 @@ fn a_count_of_65535() {
 fn a_count_of_65536() {
     let text = error(&["editor", "output above editor, 65536"]);
     assert!(text.contains("line 2") && text.contains("65536"), "{text}");
+}
+
+#[test]
+fn thirty_two_lines_are_not_too_many() {
+    // The 32 lines are bad for another reason: the second line holds `editor` again.
+    let lines = vec!["editor"; 32];
+    let text = Layout::parse(&lines).expect_err("an id twice").to_string();
+    assert!(text.contains("line 2"), "{text}");
 }
 
 #[test]
@@ -484,7 +492,7 @@ fn a_tree_too_deep() {
 
 #[test]
 fn the_editor_does_not_stack() {
-    let text = error(&["output", "editor with output"]);
+    let text = error(&["output", "editor with main"]);
     assert!(text.contains("line 2") && text.contains("editor"), "{text}");
 }
 
@@ -497,7 +505,7 @@ fn a_size_on_the_tabs() {
 #[test]
 fn a_bad_editor_size() {
     for size in ["max 0", "max 101", "30%", "4"] {
-        let line = format!("editor below output, {size}");
+        let line = format!("editor below main, {size}");
         let text = error(&["output", line.as_str()]);
         assert!(text.contains("line 2"), "{size}: {text}");
     }
@@ -506,12 +514,12 @@ fn a_bad_editor_size() {
 #[test]
 fn an_editor_max_of_1_and_100() {
     assert_eq!(
-        shape_of(&["output", "editor below output, max 1"]),
-        "rows[output, editor:max1]"
+        shape_of(&["output", "editor below main, max 1"]),
+        "rows[main, editor:max1]"
     );
     assert_eq!(
-        shape_of(&["output", "editor below output, max 100"]),
-        "rows[output, editor:max100]"
+        shape_of(&["output", "editor below main, max 100"]),
+        "rows[main, editor:max100]"
     );
 }
 
@@ -540,25 +548,25 @@ fn a_written_plan_keeps_each_id() {
 
 #[test]
 fn an_insert_in_the_middle() {
-    let plan = layout(&["output", "editor below output"]);
+    let plan = layout(&["output", "editor below main"]);
     let next = plan
-        .insert(2, step_of("output as notices right of output"))
+        .insert(2, step_of("output as notices right of main"))
         .expect("good");
     assert_eq!(
         next.lines(),
         [
             "output",
-            "output as notices right of output",
-            "editor below output"
+            "output as notices right of main",
+            "editor below main"
         ]
     );
 }
 
 #[test]
 fn an_insert_at_zero() {
-    let plan = layout(&["output", "editor below output"]);
+    let plan = layout(&["output", "editor below main"]);
     let text = plan
-        .insert(0, step_of("tabs above output"))
+        .insert(0, step_of("tabs above main"))
         .expect_err("0")
         .to_string();
     assert!(text.contains('0') && text.contains("1 to 3"), "{text}");
@@ -566,16 +574,16 @@ fn an_insert_at_zero() {
 
 #[test]
 fn an_insert_at_the_end() {
-    let plan = layout(&["output", "editor below output"]);
-    let next = plan.insert(3, step_of("tabs above output")).expect("good");
+    let plan = layout(&["output", "editor below main"]);
+    let next = plan.insert(3, step_of("tabs above main")).expect("good");
     assert_eq!(next.lines().len(), 3);
 }
 
 #[test]
 fn an_insert_past_the_end() {
-    let plan = layout(&["output", "editor below output"]);
+    let plan = layout(&["output", "editor below main"]);
     let text = plan
-        .insert(4, step_of("tabs above output"))
+        .insert(4, step_of("tabs above main"))
         .expect_err("4")
         .to_string();
     assert!(text.contains('4'), "{text}");
@@ -587,13 +595,13 @@ fn a_line_by_its_number_or_its_id() {
     let by_number = plan
         .replace(
             &LineRef::Number(5),
-            step_of("output as notices right of output, 40%"),
+            step_of("output as notices right of main, 40%"),
         )
         .expect("good");
     let by_id = plan
         .replace(
             &LineRef::Id(id_of("notices")),
-            step_of("output as notices right of output, 40%"),
+            step_of("output as notices right of main, 40%"),
         )
         .expect("good");
     assert_eq!(by_number, by_id);
@@ -664,7 +672,7 @@ fn a_resize_changes_one_line() {
         .expect("good");
     assert!(!changed.rewritten);
     let mut wanted: Vec<String> = SIDEBAR.iter().map(ToString::to_string).collect();
-    wanted[4] = "output as notices right of output, 40%".to_owned();
+    wanted[4] = "output as notices right of main, 40%".to_owned();
     assert_eq!(changed.layout.lines(), wanted);
 }
 
@@ -710,7 +718,7 @@ fn a_resize_at_each_end_of_the_range_is_good() {
 fn a_size_of_the_first_block_is_refused() {
     assert!(
         layout(SIDEBAR)
-            .resize(&id_of("output"), Size::Percent(60))
+            .resize(&id_of("main"), Size::Percent(60))
             .is_err()
     );
 }
@@ -718,7 +726,7 @@ fn a_size_of_the_first_block_is_refused() {
 #[test]
 fn a_size_of_the_first_block_names_the_sized_blocks() {
     let text = layout(SIDEBAR)
-        .resize(&id_of("output"), Size::Percent(60))
+        .resize(&id_of("main"), Size::Percent(60))
         .expect_err("the first block")
         .to_string();
     assert!(text.contains("notices") && !text.contains("tabs"), "{text}");
@@ -734,9 +742,9 @@ fn a_move_to_a_later_anchor_goes_to_the_end() {
         changed.layout.lines(),
         [
             "output",
-            "editor below output",
+            "editor below main",
             "statusline below editor",
-            "output as notices right of output, 30%",
+            "output as notices right of main, 30%",
             "tabs below notices",
         ]
     );
@@ -746,15 +754,15 @@ fn a_move_to_a_later_anchor_goes_to_the_end() {
 fn a_hide_of_an_anchor_writes_the_plan_again() {
     let plan = layout(&[
         "output",
-        "editor below output",
-        "output as notices right of output, 30%",
+        "editor below main",
+        "output as notices right of main, 30%",
         "output as side below notices",
     ]);
     let changed = plan.hide(&id_of("notices")).expect("good");
     assert!(changed.rewritten);
     assert_eq!(
         ids(&changed.layout),
-        BTreeSet::from(["output".to_owned(), "editor".to_owned(), "side".to_owned()])
+        BTreeSet::from(["main".to_owned(), "editor".to_owned(), "side".to_owned()])
     );
 }
 
@@ -765,7 +773,7 @@ fn a_border_gives_a_whole_percent() {
         .expect("good");
     assert_eq!(
         changed.layout.lines()[4],
-        "output as notices right of output, 50%"
+        "output as notices right of main, 50%"
     );
 }
 
@@ -773,13 +781,13 @@ fn a_border_gives_a_whole_percent() {
 fn a_border_takes_the_smallest_percent_that_reaches_the_drag() {
     let plan = layout(&[
         "output",
-        "editor below output",
-        "output as notices below output, 50%",
+        "editor below main",
+        "output as notices below main, 50%",
     ]);
     let changed = plan.resize_border(&id_of("notices"), 8, 24).expect("good");
     assert_eq!(
         changed.layout.lines()[2],
-        "output as notices below output, 34%"
+        "output as notices below main, 34%"
     );
 }
 
@@ -790,7 +798,7 @@ fn a_border_stops_at_the_smallest_pane() {
         .expect("good");
     assert_eq!(
         changed.layout.lines()[4],
-        "output as notices right of output, 13%"
+        "output as notices right of main, 13%"
     );
 }
 
@@ -801,7 +809,7 @@ fn a_border_stops_at_ten_percent() {
         .expect("good");
     assert_eq!(
         changed.layout.lines()[4],
-        "output as notices right of output, 10%"
+        "output as notices right of main, 10%"
     );
 }
 
@@ -816,8 +824,8 @@ fn a_border_in_a_split_of_20_columns() {
 fn a_border_in_a_split_of_3_rows() {
     let plan = layout(&[
         "output",
-        "editor below output",
-        "output as notices below output, 50%",
+        "editor below main",
+        "output as notices below main, 50%",
     ]);
     let changed = plan.resize_border(&id_of("notices"), 1, 3).expect("good");
     assert_eq!(changed.layout, plan);
@@ -929,7 +937,7 @@ fn rect(solved: &mu_config::layout::Solved, id: &str) -> (u16, u16, u16, u16) {
 fn the_sidebar_divider_is_in_column_56() {
     let solved = solved(SIDEBAR, 80, 24);
     assert_eq!(rect(&solved, "notices"), (57, 80, 2, 22));
-    assert_eq!(rect(&solved, "output"), (1, 55, 2, 22));
+    assert_eq!(rect(&solved, "main"), (1, 55, 2, 22));
     assert_eq!(
         solved.dividers,
         [Area {
@@ -967,7 +975,7 @@ fn two_percents_past_the_split() {
 #[test]
 fn a_count_past_the_screen() {
     let solved = solved(&["editor", "output above editor, 500"], 80, 24);
-    assert_eq!(rect(&solved, "output"), (1, 80, 1, 23));
+    assert_eq!(rect(&solved, "main"), (1, 80, 1, 23));
     assert_eq!(rect(&solved, "editor"), (1, 80, 24, 24));
 }
 
@@ -1038,7 +1046,7 @@ fn a_stream_goes_to_the_output_with_its_id() {
 
 #[test]
 fn a_stream_with_no_output_goes_to_the_first() {
-    assert_eq!(layout(SIDEBAR).route("channels"), Some(&id_of("output")));
+    assert_eq!(layout(SIDEBAR).route("channels"), Some(&id_of("main")));
 }
 
 #[test]
@@ -1169,12 +1177,12 @@ fn a_border_in_a_split_of_21_columns() {
     let low = plan.resize_border(&id_of("notices"), 2, 21).expect("good");
     assert_eq!(
         low.layout.lines()[4],
-        "output as notices right of output, 48%"
+        "output as notices right of main, 48%"
     );
     let high = plan.resize_border(&id_of("notices"), 20, 21).expect("good");
     assert_eq!(
         high.layout.lines()[4],
-        "output as notices right of output, 52%"
+        "output as notices right of main, 52%"
     );
 }
 
@@ -1184,12 +1192,12 @@ fn a_larger_block_in_80_columns_stops_at_87_percent() {
     let changed = plan.resize_by(&id_of("notices"), 20, 24, 80).expect("good");
     assert_eq!(
         changed.layout.lines()[4],
-        "output as notices right of output, 87%"
+        "output as notices right of main, 87%"
     );
     // 87 percent of 80 columns is 69 columns, which leaves 10 columns and the divider.
     let solved = solve(&changed.layout, Area::new(80, 24), &|_, _| 1);
     assert_eq!(
-        solved.pane_of(&id_of("output")).expect("a pane").area.width,
+        solved.pane_of(&id_of("main")).expect("a pane").area.width,
         10
     );
 }
@@ -1235,8 +1243,8 @@ fn two_panes(dir: Dir) -> Layout {
     };
     layout(&[
         "output",
-        &format!("editor {editor} output"),
-        &format!("output as notices {notices} output, 50%"),
+        &format!("editor {editor} main"),
+        &format!("output as notices {notices} main, 50%"),
     ])
 }
 
@@ -1261,7 +1269,7 @@ fn a_good_percent(plan: &Layout, percent: u8, area: Area, dir: Dir, total: u16) 
     };
     let nominal = u32::from(total) * u32::from(percent) / 100;
     cells("notices").is_some_and(|got| u32::from(got) == nominal && got >= least)
-        && cells("output").is_some_and(|got| got >= least)
+        && cells("main").is_some_and(|got| got >= least)
 }
 
 proptest! {
@@ -1302,4 +1310,57 @@ proptest! {
             prop_assert!(good.iter().all(|each| u32::from(*each).abs_diff(asked) >= nearest));
         }
     }
+}
+
+// The main output.
+
+#[test]
+fn the_main_output_is_the_one_with_the_id_main() {
+    // The block `notices` is the first `output` line, and `main` is not.
+    let plan = layout(&[
+        "editor",
+        "output as notices above editor",
+        "output left of notices",
+    ]);
+    assert_eq!(plan.main_output(), Some(&id_of("main")));
+    assert_eq!(plan.route("alpha/aria"), Some(&id_of("main")));
+    assert_eq!(plan.route("notices"), Some(&id_of("notices")));
+}
+
+#[test]
+fn with_no_block_main_the_first_output_is_the_main_one() {
+    let plan = layout(&[
+        "editor",
+        "output as notices above editor",
+        "output as side left of notices",
+    ]);
+    assert_eq!(plan.main_output(), Some(&id_of("notices")));
+    assert_eq!(plan.route("side"), Some(&id_of("side")));
+    assert_eq!(plan.route("alpha/aria"), Some(&id_of("notices")));
+}
+
+#[test]
+fn a_plan_with_no_output_has_no_main_output() {
+    let plan = layout(&["editor"]);
+    assert_eq!(plan.main_output(), None);
+    assert_eq!(plan.route("notices"), None);
+}
+
+#[test]
+fn an_output_line_with_no_as_has_the_id_main() {
+    let plan = layout(&["output", "editor below main"]);
+    assert_eq!(
+        plan.ids_of(BlockKind::Output).collect::<Vec<_>>(),
+        [&id_of("main")]
+    );
+    // The writer gives the line back with no `as`.
+    assert_eq!(plan.lines()[0], "output");
+    assert_eq!(step_of("output as main").to_string(), "output");
+    assert_eq!(step_of("output as output").to_string(), "output as output");
+}
+
+#[test]
+fn the_numbered_lines_of_a_plan() {
+    let plan = layout(&["output", "editor below main"]);
+    assert_eq!(plan.numbered(), ["1. output", "2. editor below main"]);
 }

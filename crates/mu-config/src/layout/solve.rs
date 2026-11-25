@@ -534,7 +534,7 @@ pub struct Described {
 #[must_use]
 pub fn describe(layout: &Layout, width: u16, height: u16) -> Vec<Described> {
     let solved = solve(layout, Area::new(width, height), &|_, _| 1);
-    let first_output = layout.ids_of(BlockKind::Output).next();
+    let first_output = layout.main_output();
     layout
         .steps()
         .iter()

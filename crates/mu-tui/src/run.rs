@@ -198,25 +198,17 @@ async fn save_layout(
     device: String,
     then: Then,
 ) -> Msg {
+    // The server writes the layout file and the choice of the device in one write.
+    let (device, key) = match &then {
+        Then::Nothing => (None, None),
+        Then::SetField => (Some(device.as_str()), None),
+        Then::SetEntry(key) => (Some(device.as_str()), Some(key.as_str())),
+    };
     let call = async {
-        let failed = |error: mu_client::ClientError| error.to_string();
-        match then {
-            Then::Nothing => client.save_layout(&name, lines, None).await.map_err(failed),
-            Then::SetField => client
-                .save_layout(&name, lines, Some(&device))
-                .await
-                .map_err(failed),
-            Then::SetEntry(key) => {
-                client
-                    .save_layout(&name, lines, None)
-                    .await
-                    .map_err(failed)?;
-                client
-                    .use_layout(&device, &name, Some(&key))
-                    .await
-                    .map_err(|error| format!("the layout {name} is saved, but not chosen: {error}"))
-            }
-        }
+        client
+            .save_layout(&name, lines, device, key)
+            .await
+            .map_err(|error| error.to_string())
     };
     Msg::LayoutSaved(within(call, CALL_LIMIT, "").await)
 }

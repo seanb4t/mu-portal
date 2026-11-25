@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 use support::process::{ServerBuilder, ServerProcess, server_url};
-use support::{BASE_GAME, ConfigDir, mu_async, stderr, stdout};
+use support::{BASE_GAME, ConfigDir, layout_file, mu_async, stderr, stdout};
 
 mod support;
 
@@ -995,12 +995,6 @@ fn mu_config_show_has_a_value_for_each_field_path() {
 
 // The layout files, the layout field and the new fields of a layer (client-layout).
 
-/// The content of a layout file with `lines`.
-fn layout_file(lines: &[&str]) -> String {
-    let quoted: Vec<String> = lines.iter().map(|line| format!("{line:?}")).collect();
-    format!("place = [{}]\n", quoted.join(", "))
-}
-
 /// Whether stdout of `output` holds each of `lines`.
 fn has_lines(output: &Output, lines: &[&str]) -> bool {
     lines.iter().all(|line| has_line(output, line))
@@ -1011,7 +1005,7 @@ async fn a_layout_file_in_use() {
     let dir = ConfigDir::empty()
         .file(
             "clients/layouts/mine.toml",
-            &layout_file(&["output", "editor below output"]),
+            &layout_file(&["output", "editor below main"]),
         )
         .file("clients/global.toml", "layout = \"mine\"\n");
     let output = show_dir(&dir).await;
@@ -1067,8 +1061,8 @@ async fn a_layout_that_does_not_exist() {
             &output,
             &[
                 "#   1. output",
-                "#   2. tabs above output",
-                "#   3. editor below output"
+                "#   2. tabs above main",
+                "#   3. editor below main"
             ]
         ),
         "{}",
@@ -1081,14 +1075,14 @@ async fn a_change_to_a_layout_file_changes_the_revision() {
     let dir = ConfigDir::empty()
         .file(
             "clients/layouts/mine.toml",
-            &layout_file(&["output", "editor below output"]),
+            &layout_file(&["output", "editor below main"]),
         )
         .file("clients/global.toml", "layout = \"mine\"\n");
     let server = start(dir.path()).await;
     let before = show(&server, "laptop").await;
     let dir = dir.file(
         "clients/layouts/mine.toml",
-        &layout_file(&["output", "editor below output", "tabs above output"]),
+        &layout_file(&["output", "editor below main", "tabs above main"]),
     );
     reload(&server).await;
     let after = show(&server, "laptop").await;
@@ -1292,14 +1286,14 @@ async fn a_change_to_the_layout_file_of_an_entry_changes_the_revision() {
     let dir = ConfigDir::empty()
         .file(
             "clients/layouts/mine.toml",
-            &layout_file(&["output", "editor below output"]),
+            &layout_file(&["output", "editor below main"]),
         )
         .file("clients/global.toml", "[world-layouts]\nalpha = \"mine\"\n");
     let server = start(dir.path()).await;
     let before = show(&server, "laptop").await;
     let dir = dir.file(
         "clients/layouts/mine.toml",
-        &layout_file(&["output", "editor below output", "tabs above output"]),
+        &layout_file(&["output", "editor below main", "tabs above main"]),
     );
     reload(&server).await;
     let after = show(&server, "laptop").await;

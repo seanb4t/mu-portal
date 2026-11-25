@@ -13,9 +13,9 @@ A layout is a plan: an ordered list of lines. Each line places one block.
 
 ```text
 1. output
-2. tabs above output
-3. editor below output
-4. output as notices right of output, 30%
+2. tabs above main
+3. editor below main
+4. output as notices right of main, 30%
 ```
 
 The first line is one block that takes the whole screen. Each later line places a new block next to an anchor, which is a block of an earlier line. The forms are `above`, `below`, `left of`, `right of`, `at` an edge of the screen, and `with` for a stack.
@@ -27,7 +27,7 @@ mu builds a tree from the plan. The tree has two kinds of node:
 
 The plan is the layout. The server stores the plan, the API carries it, and the client holds it. The tree is a result of the plan, and mu builds it again after each change.
 
-Each block has an id. The id is the name of the block, or the word after `as`. Commands, anchors and API calls name a block by its id. An id is written in the line, so no change to another line changes it.
+Each block has an id. The id is the name of the block, or the word after `as`. The one exception is `output`, whose id is `main`: that block shows the lines of the world and each stream with no block of its own, and a block named `output` beside a block named `notices` did not say that. Commands, anchors and API calls name a block by its id. An id is written in the line, so no change to another line changes it.
 
 A size belongs to one line. Only a placed block takes a size, and the side of its anchor shares the rest. So a resize is an edit of one line.
 

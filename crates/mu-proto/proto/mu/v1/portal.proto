@@ -265,6 +265,9 @@ message SaveLayoutRequest {
   repeated string lines = 2;
   // The device whose layer then names the layout. Empty for no device.
   string device = 3;
+  // A world id or the name of a game. With a device, the entry of this key of `[world-layouts]`
+  // then names the layout. Empty for the field `layout`.
+  string key = 4;
 }
 
 message SaveLayoutResponse {}

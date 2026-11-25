@@ -28,28 +28,28 @@ pub const DEFAULT_LAYOUT: &str = "classic";
 pub const BUILT_IN: &[BuiltIn] = &[
     BuiltIn {
         name: "classic",
-        lines: &["output", "tabs above output", "editor below output"],
+        lines: &["output", "tabs above main", "editor below main"],
     },
     BuiltIn {
         name: "focus",
-        lines: &["output", "editor below output"],
+        lines: &["output", "editor below main"],
     },
     BuiltIn {
         name: "sidebar",
         lines: &[
             "output",
-            "tabs above output",
-            "editor below output",
+            "tabs above main",
+            "editor below main",
             "statusline below editor",
-            "output as notices right of output, 30%",
+            "output as notices right of main, 30%",
         ],
     },
     BuiltIn {
         name: "status",
         lines: &[
             "output",
-            "tabs above output",
-            "editor below output",
+            "tabs above main",
+            "editor below main",
             "statusline below editor",
         ],
     },

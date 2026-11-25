@@ -10,7 +10,7 @@ Defines the layout of the terminal client: its blocks, panes, splits and stacks,
 The blocks SHALL be `tabs`, `output`, `editor` and `statusline`. `tabs` shows the row of world tabs. `output` shows lines of text. `editor` takes typed text. A layout SHALL hold `editor` one to four times, `output` at most eight times, and each other block at most once. A block that the layout does not hold SHALL NOT show, and the keys and commands SHALL work the same without it.
 
 #### Scenario: No tabs
-- **GIVEN** the layout in use holds the lines `output` and `editor below output`
+- **GIVEN** the layout in use holds the lines `output` and `editor below main`
 - **AND** a server has the fake worlds `alpha/aria` and `beta/bryn`
 - **WHEN** the user starts `mu client`, presses Ctrl+N, types `hi` and presses Enter
 - **THEN** the screen shows no row with `alpha/aria`
@@ -27,61 +27,85 @@ The blocks SHALL be `tabs`, `output`, `editor` and `statusline`. `tabs` shows th
 - **THEN** stderr holds one line that contains `clients/layouts/mine.toml` and `output`
 
 ### Requirement: An output shows the lines of its id
-Each line of text SHALL have the name of a stream. The lines of a world that no rule sends elsewhere are in the stream of that world, and the notices of the client are in the stream `notices`. An `output` SHALL show the stream with its id, for the world in focus. The first `output` of the plan SHALL also show the stream of the world, and each stream that no `output` has as its id. Each `output` after the first SHALL set its own id with `as`.
+Each line of text SHALL have the name of a stream. The lines of a world that no rule sends elsewhere are in the stream of that world, and the notices of the client are in the stream `notices`. An `output` SHALL show the stream with its id, for the world in focus. The main output SHALL also show the stream of the world, and each stream that no `output` has as its id.
 
 #### Scenario: One output shows the notices too
 - **GIVEN** the layout `classic` is in use, and the world in focus is the fake world `alpha/aria`
 - **WHEN** the user runs the command `/focus nowhere/nobody`
-- **THEN** the pane of `output` shows `Welcome, aria.` and a line that starts with `-- `
+- **THEN** the pane of `main` shows `Welcome, aria.` and a line that starts with `-- `
 
 #### Scenario: An output for the notices
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `output as notices right of output`
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `output as notices right of main`
 - **AND** the world in focus is the fake world `alpha/aria`
 - **WHEN** the user runs the command `/focus nowhere/nobody`
 - **THEN** the pane of `notices` shows a line that starts with `-- `
-- **AND** the pane of `output` shows `Welcome, aria.` and no line that starts with `-- `
+- **AND** the pane of `main` shows `Welcome, aria.` and no line that starts with `-- `
 
 #### Scenario: An output with no stream yet
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `output as channels right of output`
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `output as channels right of main`
 - **WHEN** the client draws the screen
 - **THEN** the pane of `channels` shows its title row and no other line
 
+### Requirement: One output is the main output
+One `output` of the plan SHALL be the main output: the one with the id `main`, or the first `output` of the plan if none has that id. A line `output` with no `as` SHALL make the block `main`, so each other `output` SHALL set its own id with `as`. The lines of a world SHALL stay together, and the main output SHALL show them, also after a change of the layout gives another main output. The client SHALL keep the lines of a world while the plan has no `output`.
+
+#### Scenario: A hide of the main output
+- **GIVEN** the layout `sidebar` is in use, and the world in focus is the fake world `alpha/aria`
+- **WHEN** the user runs the command `/pane hide main`, and the world then sends the line `A later line.`
+- **THEN** the pane of `notices` shows `Welcome, aria.` and `A later line.`
+
+#### Scenario: A new main output takes the lines of the world back
+- **GIVEN** the layout `sidebar` is in use, and the world in focus is the fake world `alpha/aria`
+- **WHEN** the user runs the commands `/pane hide main` and `/place output left of notices`, and the world then sends the line `A later line.`
+- **THEN** the pane of `main` shows `Welcome, aria.` and `A later line.`
+- **AND** the pane of `notices` shows neither of them
+
+#### Scenario: A line of a world with no output
+- **GIVEN** the layout `classic` is in use, and the world in focus is the fake world `alpha/aria`
+- **WHEN** the user runs the command `/pane hide main`, the world sends the line `While no output.`, and the user runs the command `/place output above editor`
+- **THEN** the pane of `main` shows `Welcome, aria.` and `While no output.`
+
+#### Scenario: The main output is not the first output line
+- **GIVEN** a layout holds the lines `editor`, `output as notices above editor` and `output left of notices`
+- **WHEN** mu routes the stream of a world, and the stream `notices`
+- **THEN** the stream of the world goes to `main`, and the stream `notices` goes to `notices`
+
 ### Requirement: A line stays in the output where it arrived
-The client SHALL put each line into one `output` when the line arrives. That SHALL be the `output` that shows the stream of the line at that time, for the world of the line. A later change of the layout SHALL NOT move the line. A notice SHALL be a line of the stream `notices` for the world in focus. The notice of a line that the server refused SHALL be a line of the stream `notices` for the world of that line.
+The client SHALL put each line into one `output` when the line arrives. That SHALL be the `output` that shows the stream of the line at that time, for the world of the line. A later change of the layout SHALL NOT move the line to the lines of another stream. A notice SHALL be a line of the stream `notices` for the world in focus. The notice of a line that the server refused SHALL be a line of the stream `notices` for the world of that line.
 
 #### Scenario: A refused line goes to the notices
-- **GIVEN** the layout in use holds the lines `output`, `tabs above output`, `editor below output`, `statusline below editor` and `output as notices right of output, 30%`, and `alpha/aria` has the focus
+- **GIVEN** the layout in use holds the lines `output`, `tabs above main`, `editor below main`, `statusline below editor` and `output as notices right of main, 30%`, and `alpha/aria` has the focus
 - **WHEN** the user sends the line `hi`, and the server refuses it with the reason `down`
 - **THEN** the last line of the pane of `notices` is `-- down`
-- **AND** the pane of `output` shows no line that starts with `-- `
+- **AND** the pane of `main` shows no line that starts with `-- `
 
 #### Scenario: A refused line of a world that lost the focus
-- **GIVEN** the layout in use holds the lines `output`, `tabs above output`, `editor below output`, `statusline below editor` and `output as notices right of output, 30%`, and `alpha/aria` has the focus
+- **GIVEN** the layout in use holds the lines `output`, `tabs above main`, `editor below main`, `statusline below editor` and `output as notices right of main, 30%`, and `alpha/aria` has the focus
 - **WHEN** the user sends the line `hi`, runs the command `/focus beta/bryn`, and the server then refuses the line with the reason `down`
 - **THEN** no pane shows a line that starts with `-- `
 - **AND** after the command `/focus alpha/aria`, the last line of the pane of `notices` is `-- down`
 
 #### Scenario: A line with no world goes to the notices
-- **GIVEN** the layout in use holds the lines `output`, `tabs above output`, `editor below output`, `statusline below editor` and `output as notices right of output, 30%`, and the server has no world
+- **GIVEN** the layout in use holds the lines `output`, `tabs above main`, `editor below main`, `statusline below editor` and `output as notices right of main, 30%`, and the server has no world
 - **WHEN** the user types `hi` and presses Enter
-- **THEN** the pane of `notices` shows a line that starts with `-- `, and the pane of `output` shows none
+- **THEN** the pane of `notices` shows a line that starts with `-- `, and the pane of `main` shows none
 
 #### Scenario: An output that comes later starts with new lines
 - **GIVEN** the layout `classic` is in use, the world in focus is the fake world `alpha/aria`, and the user ran the command `/focus nowhere/nobody`
-- **WHEN** the user runs the command `/place output as notices right of output`
+- **WHEN** the user runs the command `/place output as notices right of main`
 - **THEN** the pane of `notices` shows its title row and no other line
-- **AND** the pane of `output` shows a line that starts with `-- ` and contains `nowhere/nobody`
+- **AND** the pane of `main` shows a line that starts with `-- ` and contains `nowhere/nobody`
 
 #### Scenario: A notice shows under the world in focus only
 - **GIVEN** the layout `classic` is in use, a server has the fake worlds `alpha/aria` and `beta/bryn`, and `alpha/aria` has the focus
 - **WHEN** the user runs the command `/focus nowhere/nobody`, and then the entry `focus-next`
-- **THEN** the pane of `output` shows `Welcome, bryn.` and no line that contains `nowhere/nobody`
+- **THEN** the pane of `main` shows `Welcome, bryn.` and no line that contains `nowhere/nobody`
 
 ### Requirement: A layout can hold several editors
 Each `editor` after the first SHALL set its own id with `as`. Each editor SHALL keep its own text for each world, and one more text while no world has the focus. A key that sends SHALL send the text of the editor with the input focus to the world in focus, and SHALL clear only that editor. The editors of a world SHALL share the input history of that world.
 
 #### Scenario: Two editors keep two texts
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `editor as scratch right of editor`
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `editor as scratch right of editor`
 - **AND** the world in focus is the fake world `alpha/aria`
 - **WHEN** the user types `one`, presses Alt+E, and types `two`
 - **THEN** the left editor holds `one`, and the right editor holds `two`
@@ -113,7 +137,7 @@ Each `editor` after the first SHALL set its own id with `as`. Each editor SHALL 
 Typed text and each entry that edits or sends SHALL go to the editor with the input focus. At the start, and after a new layout, the first editor of the plan SHALL have it. The entry `editor-next`, with the default key Alt+E, SHALL give it to the next editor of the plan, and after the last the first. A click in an editor SHALL give it to that editor. The terminal cursor SHALL be in the editor with the input focus.
 
 #### Scenario: The key moves the input focus
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `editor as scratch right of editor`
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `editor as scratch right of editor`
 - **WHEN** the user presses Alt+E and types `x`
 - **THEN** the editor `scratch` holds `x`, and the terminal cursor is in it
 
@@ -128,7 +152,7 @@ Typed text and each entry that edits or sends SHALL go to the editor with the in
 - **THEN** the editor holds `x`
 
 #### Scenario: The input focus after a change of the world
-- **GIVEN** `clients/global.toml` holds `[world-layouts]` with `"alpha/aria" = "mine"`, and `clients/layouts/mine.toml` holds the lines `output`, `editor below output` and `editor as scratch right of editor`
+- **GIVEN** `clients/global.toml` holds `[world-layouts]` with `"alpha/aria" = "mine"`, and `clients/layouts/mine.toml` holds the lines `output`, `editor below main` and `editor as scratch right of editor`
 - **AND** a server has the fake worlds `alpha/aria` and `beta/bryn`, and the user pressed Alt+E, so `scratch` has the input focus
 - **WHEN** the user runs the entry `focus-next`, and types `x`
 - **THEN** the editor of `beta/bryn` holds `x`
@@ -137,13 +161,13 @@ Typed text and each entry that edits or sends SHALL go to the editor with the in
 A layout SHALL be a plan: a list of 1 to 32 lines in order. mu SHALL show each line with its number, from 1, and each error about a line SHALL name its number. The first line SHALL be one block, which takes the whole screen. Each later line SHALL place one new block next to an anchor, a block of an earlier line: `<block> above <anchor>`, `below`, `left of` or `right of`. The new block SHALL take a part of the pane of the anchor, on that side.
 
 #### Scenario: The output above the tabs
-- **GIVEN** the layout in use holds the lines `output`, `tabs below output` and `editor below tabs`
+- **GIVEN** the layout in use holds the lines `output`, `tabs below main` and `editor below tabs`
 - **AND** a server has the fake world `alpha/aria`
 - **WHEN** the user starts `mu client` in a terminal of 80 columns and 24 rows
 - **THEN** row 23 shows `[alpha/aria]`, and `Welcome, aria.` shows above it
 
 #### Scenario: A block beside another
-- **GIVEN** the layout in use holds the lines `output`, `tabs above output`, `editor below output` and `output as notices right of output`
+- **GIVEN** the layout in use holds the lines `output`, `tabs above main`, `editor below main` and `output as notices right of main`
 - **AND** a server has the fake world `alpha/aria`
 - **WHEN** the user starts `mu client` in a terminal of 80 columns and 24 rows
 - **THEN** row 1 shows `[alpha/aria]` over the whole width
@@ -152,46 +176,46 @@ A layout SHALL be a plan: a list of 1 to 32 lines in order. mu SHALL show each l
 #### Scenario: The numbers of the lines
 - **GIVEN** a server serves `<dir>`
 - **WHEN** the user runs `mu layout show classic`
-- **THEN** stdout holds `1. output`, `2. tabs above output` and `3. editor below output`
+- **THEN** stdout holds `1. output`, `2. tabs above main` and `3. editor below main`
 
 ### Requirement: The order of the lines decides the shape
 A line SHALL split only the pane that its anchor has after the lines before it. So the same lines in another order can give another screen.
 
 #### Scenario: The editor after the notices
-- **GIVEN** the layout in use holds the lines `output`, `output as notices right of output` and `editor below output`
+- **GIVEN** the layout in use holds the lines `output`, `output as notices right of main` and `editor below main`
 - **WHEN** the user starts `mu client` in a terminal of 80 columns and 24 rows
 - **THEN** the pane of `notices` takes columns 42 to 80 of rows 1 to 24
 - **AND** the editor takes columns 1 to 40 of row 24
 
 #### Scenario: The editor before the notices
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `output as notices right of output`
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `output as notices right of main`
 - **WHEN** the user starts `mu client` in a terminal of 80 columns and 24 rows
 - **THEN** the editor takes columns 1 to 80 of row 24
 - **AND** the pane of `notices` takes columns 42 to 80 of rows 1 to 23
 
 ### Requirement: A line can name several anchors
-A line SHALL take two or more anchors joined with `and`, such as `output as notices right of output and editor`. The anchors SHALL be neighbors in one split. The new block SHALL stand beside all of them, and the blocks outside the anchors SHALL keep their places.
+A line SHALL take two or more anchors joined with `and`, such as `output as notices right of main and editor`. The anchors SHALL be neighbors in one split. The new block SHALL stand beside all of them, and the blocks outside the anchors SHALL keep their places.
 
 #### Scenario: A block beside two rows
-- **GIVEN** the layout in use holds the lines `output`, `tabs above output`, `editor below output`, `statusline below editor` and `output as notices right of output and editor, 33%`
+- **GIVEN** the layout in use holds the lines `output`, `tabs above main`, `editor below main`, `statusline below editor` and `output as notices right of main and editor, 33%`
 - **WHEN** the user starts `mu client` in a terminal of 80 columns and 24 rows
 - **THEN** rows 1 and 24 take the whole width
 - **AND** the pane of `notices` takes columns 55 to 80 of rows 2 to 23, and a divider shows in column 54
 - **AND** the editor takes columns 1 to 53 of row 23
 
 #### Scenario: Anchors that are not neighbors
-- **GIVEN** `clients/layouts/mine.toml` holds the lines `output`, `tabs above output`, `editor below output` and `output as notices right of tabs and editor`
+- **GIVEN** `clients/layouts/mine.toml` holds the lines `output`, `tabs above main`, `editor below main` and `output as notices right of tabs and editor`
 - **WHEN** the user runs `mu layout show mine`
 - **THEN** stderr holds one line that contains `line 4`, `tabs` and `editor`
 
 ### Requirement: Each block has a stable id
-Each block of a layout SHALL have an id that is unique in the layout. The default id SHALL be the name of the block. A line SHALL set another id with `as`, such as `output as side right of output`. An id SHALL be 1 to 32 characters from `a` to `z`, `0` to `9` and `-`. It SHALL start with a letter, and SHALL NOT be a word of the sentences. An anchor, a command and a call SHALL name a block by its id. No change to another line SHALL change an id.
+Each block of a layout SHALL have an id that is unique in the layout. The default id SHALL be the name of the block, but the default id of `output` SHALL be `main`. A line SHALL set another id with `as`, such as `output as side right of main`. An id SHALL be 1 to 32 characters from `a` to `z`, `0` to `9` and `-`. It SHALL start with a letter, and SHALL NOT be a word of the sentences. An anchor, a command and a call SHALL name a block by its id. No change to another line SHALL change an id.
 
 #### Scenario: An id in a later line
-- **GIVEN** the layout in use holds the lines `output`, `editor below output`, `output as side right of output` and `tabs above side`
+- **GIVEN** the layout in use holds the lines `output`, `editor below main`, `output as side right of main` and `tabs above side`
 - **AND** a server has the fake world `alpha/aria`
 - **WHEN** the user starts `mu client` in a terminal of 80 columns and 24 rows
-- **THEN** row 1 shows `[alpha/aria]` from column 42, and shows `[output]` from column 1
+- **THEN** row 1 shows `[alpha/aria]` from column 42, and shows `[main]` from column 1
 
 #### Scenario: An id twice
 - **GIVEN** `clients/layouts/mine.toml` holds the lines `editor`, `output as main above editor` and `output as main at right`
@@ -207,7 +231,7 @@ Each block of a layout SHALL have an id that is unique in the layout. The defaul
 The forms `<block> at top`, `<block> at bottom`, `<block> at left` and `<block> at right` SHALL place the new block along that whole edge of the screen. The blocks of the earlier lines SHALL take the rest.
 
 #### Scenario: The statusline at the bottom
-- **GIVEN** the layout in use holds the lines `output`, `editor below output`, `output as notices right of output` and `statusline at bottom`
+- **GIVEN** the layout in use holds the lines `output`, `editor below main`, `output as notices right of main` and `statusline at bottom`
 - **WHEN** the user starts `mu client` in a terminal of 80 columns and 24 rows
 - **THEN** row 24 is the statusline over the whole width
 
@@ -215,14 +239,14 @@ The forms `<block> at top`, `<block> at bottom`, `<block> at left` and `<block> 
 The form `<block> with <block>` SHALL put the new block in the pane of the earlier block. The pane SHALL show one block of the stack at a time, and a title row with the name of each. The name of the block that shows SHALL be in square brackets. Only `output` blocks SHALL stack.
 
 #### Scenario: Notices behind the output
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `output as notices with output`
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `output as notices with main`
 - **AND** a server has the fake world `alpha/aria`
 - **WHEN** the user starts `mu client`
-- **THEN** row 1 shows `[output] notices`
+- **THEN** row 1 shows `[main] notices`
 - **AND** the screen shows `Welcome, aria.`
 
 #### Scenario: The editor does not stack
-- **GIVEN** `clients/layouts/mine.toml` holds the lines `output` and `editor with output`
+- **GIVEN** `clients/layouts/mine.toml` holds the lines `output` and `editor with main`
 - **WHEN** the user runs `mu layout show mine`
 - **THEN** stderr holds one line that contains `clients/layouts/mine.toml`, `line 2` and `editor`
 
@@ -230,13 +254,13 @@ The form `<block> with <block>` SHALL put the new block in the pane of the earli
 A line that places a block SHALL take a size after a comma: a percent from `10%` to `90%` of the split, or a whole count of cells from 1. A placed block with no size SHALL share the rest of its split in equal parts with its anchor side and the other such blocks. The first line SHALL take no size. `tabs` and `statusline` SHALL take 1 row, and SHALL refuse a size.
 
 #### Scenario: A percent
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `output as notices right of output, 25%`
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `output as notices right of main, 25%`
 - **AND** a server has the fake world `alpha/aria`
 - **WHEN** the user starts `mu client` in a terminal of 80 columns and 24 rows
 - **THEN** the divider is in column 60
 
 #### Scenario: A count of cells
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `output as notices below output, 5`
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `output as notices below main, 5`
 - **WHEN** the user starts `mu client` in a terminal of 80 columns and 24 rows
 - **THEN** the pane of `notices` takes 5 rows, its title row included
 
@@ -246,7 +270,7 @@ A line that places a block SHALL take a size after a comma: a percent from `10%`
 - **THEN** stderr holds one line that contains `clients/layouts/mine.toml`, `line 2` and `tabs`
 
 #### Scenario: A size on the first line
-- **GIVEN** `clients/layouts/mine.toml` holds the lines `output, 50%` and `editor below output`
+- **GIVEN** `clients/layouts/mine.toml` holds the lines `output, 50%` and `editor below main`
 - **WHEN** the user runs `mu layout show mine`
 - **THEN** stderr holds one line that contains `line 1`
 
@@ -254,7 +278,7 @@ A line that places a block SHALL take a size after a comma: a percent from `10%`
 The block `editor` SHALL take one row for each wrapped row of its text. That count SHALL be at least 1, at most its `max`, and at most half the rows of its split. A sentence SHALL set the most rows with `max N` after a comma, from 1 to 100. The default SHALL be 8. The editor SHALL refuse any other size. Beside another block in one row, the editor SHALL share the width as a block with no size.
 
 #### Scenario: The editor stops at its max
-- **GIVEN** the layout in use holds the lines `output` and `editor below output, max 3`, and the world in focus is the fake world `alpha/aria`
+- **GIVEN** the layout in use holds the lines `output` and `editor below main, max 3`, and the world in focus is the fake world `alpha/aria`
 - **WHEN** the user types five lines with Ctrl+J between them, in a terminal of 80 columns and 24 rows
 - **THEN** the editor takes the bottom 3 rows
 
@@ -267,12 +291,12 @@ The block `editor` SHALL take one row for each wrapped row of its text. That cou
 A part of the screen that holds only editors side by side SHALL take the rows of its tallest editor. Each editor SHALL count its rows at its own width, and up to its own `max`.
 
 #### Scenario: Two editors side by side
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `editor as scratch right of editor`, and the world in focus is the fake world `alpha/aria`
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `editor as scratch right of editor`, and the world in focus is the fake world `alpha/aria`
 - **WHEN** the user types three lines with Ctrl+J between them, in a terminal of 80 columns and 24 rows
 - **THEN** the pane of `editor` and the pane of `scratch` each take rows 22 to 24
 
 #### Scenario: The shorter max does not stop the taller editor
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `editor as scratch right of editor, max 2`, and the world in focus is the fake world `alpha/aria`
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `editor as scratch right of editor, max 2`, and the world in focus is the fake world `alpha/aria`
 - **WHEN** the user types three lines with Ctrl+J between them, in a terminal of 80 columns and 24 rows
 - **THEN** the pane of `editor` and the pane of `scratch` each take rows 22 to 24
 
@@ -296,12 +320,12 @@ A layout SHALL be bad in each of these cases, and its notice SHALL name the line
 - **THEN** stderr holds one line that contains `line 3` and `output`
 
 #### Scenario: A block that is not placed yet
-- **GIVEN** `clients/layouts/mine.toml` holds the lines `editor` and `tabs above output`
+- **GIVEN** `clients/layouts/mine.toml` holds the lines `editor` and `tabs above main`
 - **WHEN** the user runs `mu layout show mine`
 - **THEN** stderr holds one line that contains `line 2` and `output`
 
 #### Scenario: No editor
-- **GIVEN** `clients/layouts/mine.toml` holds the lines `output` and `tabs above output`
+- **GIVEN** `clients/layouts/mine.toml` holds the lines `output` and `tabs above main`
 - **WHEN** the user runs `mu layout show mine`
 - **THEN** stderr holds one line that contains `clients/layouts/mine.toml` and `editor`
 
@@ -326,10 +350,10 @@ When mu writes a plan again from a screen, the new plan SHALL give the same scre
 ### Requirement: The built-in layouts
 mu SHALL have these built-in layouts, and the default layout SHALL be `classic`:
 
-- `classic`: `output`, `tabs above output`, `editor below output`
+- `classic`: `output`, `tabs above main`, `editor below main`
 - `status`: the lines of `classic`, then `statusline below editor`
-- `sidebar`: the lines of `status`, then `output as notices right of output, 30%`
-- `focus`: `output`, `editor below output`
+- `sidebar`: the lines of `status`, then `output as notices right of main, 30%`
+- `focus`: `output`, `editor below main`
 
 #### Scenario: The default layout
 - **GIVEN** the configuration directory of the server holds no `clients` directory
@@ -347,12 +371,12 @@ Between two panes side by side, the client SHALL draw a divider of one column. A
 #### Scenario: Two text panes
 - **GIVEN** the layout `sidebar` is in use
 - **WHEN** the client draws the screen
-- **THEN** the first row of the left pane shows `[output]`, and the first row of the right pane shows `[notices]`
+- **THEN** the first row of the left pane shows `[main]`, and the first row of the right pane shows `[notices]`
 
 #### Scenario: One text pane has no title row
 - **GIVEN** the layout `classic` is in use, and a server has the fake world `alpha/aria`
 - **WHEN** the client draws the screen
-- **THEN** no row shows `[output]`
+- **THEN** no row shows `[main]`
 
 
 
@@ -360,7 +384,7 @@ Between two panes side by side, the client SHALL draw a divider of one column. A
 A pane of `output` SHALL keep at least 2 rows and 10 columns while the terminal has room for each pane at that size. The client SHALL NOT stop in a terminal with less room.
 
 #### Scenario: A percent in a narrow terminal
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `output as notices right of output, 10%`
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `output as notices right of main, 10%`
 - **WHEN** the user starts `mu client` in a terminal of 40 columns
 - **THEN** the pane of `notices` is 10 columns wide
 

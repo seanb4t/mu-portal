@@ -788,11 +788,11 @@ fn a_hash_back_to_the_applied_one_resets_the_failures() {
 use mu_proto::{GetClientConfigResponse, NamedLayout};
 use proptest::prelude::*;
 
-const CLASSIC: &[&str] = &["output", "tabs above output", "editor below output"];
+const CLASSIC: &[&str] = &["output", "tabs above main", "editor below main"];
 const STATUS: &[&str] = &[
     "output",
-    "tabs above output",
-    "editor below output",
+    "tabs above main",
+    "editor below main",
     "statusline below editor",
 ];
 
@@ -1078,15 +1078,15 @@ enum FocusStep {
 }
 
 const EDITOR_LAYOUTS: &[&[&str]] = &[
-    &["output", "editor below output"],
+    &["output", "editor below main"],
     &[
         "output",
-        "editor below output",
+        "editor below main",
         "editor as scratch right of editor",
     ],
     &[
         "output",
-        "editor as scratch below output",
+        "editor as scratch below main",
         "editor as notes right of scratch",
         "editor right of notes",
     ],
@@ -1166,7 +1166,7 @@ fn a_block_argument_lists_the_ids_of_the_plan() {
     );
     assert_eq!(
         mu_tui::candidates(&model, mu_tui::ArgKind::Block),
-        ["output", "editor", "scratch"]
+        ["main", "editor", "scratch"]
     );
 }
 
@@ -1198,7 +1198,7 @@ fn a_save_from_a_built_in_layout_takes_the_device_name() {
         effects,
         [Effect::SaveLayout {
             name: "laptop".to_owned(),
-            lines: vec!["output".to_owned(), "editor below output".to_owned()],
+            lines: vec!["output".to_owned(), "editor below main".to_owned()],
             device: "laptop".to_owned(),
             then: Then::SetField,
         }]
@@ -1218,7 +1218,7 @@ fn a_save_from_the_built_in_layout_of_a_world_sets_its_entry() {
         effects,
         [Effect::SaveLayout {
             name: "laptop.alpha.aria".to_owned(),
-            lines: vec!["output".to_owned(), "editor below output".to_owned()],
+            lines: vec!["output".to_owned(), "editor below main".to_owned()],
             device: "laptop".to_owned(),
             then: Then::SetEntry("alpha/aria".to_owned()),
         }]
@@ -1231,7 +1231,7 @@ fn a_save_from_the_built_in_layout_of_a_world_sets_its_entry() {
 #[test]
 fn a_save_to_a_player_layout_keeps_its_name() {
     let mut model = laptop();
-    let mut config = layout_config(&["output", "editor below output"], &[], &["world"], &[]);
+    let mut config = layout_config(&["output", "editor below main"], &[], &["world"], &[]);
     "mine".clone_into(&mut config.layout_name);
     configure(&mut model, config);
     let effects = run_command(&mut model, "/place tabs at top");
@@ -1241,7 +1241,7 @@ fn a_save_to_a_player_layout_keeps_its_name() {
             name: "mine".to_owned(),
             lines: vec![
                 "output".to_owned(),
-                "editor below output".to_owned(),
+                "editor below main".to_owned(),
                 "tabs at top".to_owned()
             ],
             device: "laptop".to_owned(),
@@ -1259,7 +1259,7 @@ fn a_failed_save_keeps_the_screen() {
         Msg::LayoutSaved(Err("clients/devices/laptop.toml: bad".to_owned())),
     );
     assert_eq!(effects, []);
-    assert_eq!(model.layout().lines(), ["output", "editor below output"]);
+    assert_eq!(model.layout().lines(), ["output", "editor below main"]);
     assert_eq!(notices_of(&model, "clients/devices/laptop.toml"), 1);
 }
 
@@ -1268,7 +1268,7 @@ fn a_device_with_no_good_layout_name_does_not_save() {
     let mut model = model().with_device("focus");
     let effects = run_command(&mut model, "/pane hide tabs");
     assert_eq!(effects, []);
-    assert_eq!(model.layout().lines(), ["output", "editor below output"]);
+    assert_eq!(model.layout().lines(), ["output", "editor below main"]);
     assert_eq!(notices_of(&model, "/layout save"), 1);
 }
 
@@ -1313,7 +1313,7 @@ fn the_next_layout_wraps() {
         key: None,
     };
     assert_eq!(next(&mut model), [use_of("focus")]);
-    let mut config = layout_config(&["output", "editor below output"], &[], &["world"], &[]);
+    let mut config = layout_config(&["output", "editor below main"], &[], &["world"], &[]);
     "focus".clone_into(&mut config.layout_name);
     configure(&mut model, config);
     assert_eq!(next(&mut model), [use_of("classic")]);

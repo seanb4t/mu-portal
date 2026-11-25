@@ -35,6 +35,8 @@ pub struct BlockRow {
     pub kind: BlockKind,
     /// The name of the block in a sentence.
     pub name: &'static str,
+    /// The id of a block whose line has no `as`.
+    pub id: &'static str,
     /// The fewest times a layout holds the block.
     pub min: usize,
     /// The most times a layout holds the block.
@@ -45,11 +47,16 @@ pub struct BlockRow {
     pub stacks: bool,
 }
 
+/// The id of an `output` whose line has no `as`. The block with this id is the main output: it
+/// shows the lines of the world, and each stream that no other `output` shows.
+pub const MAIN: &str = "main";
+
 /// Every block, in the order of the catalog.
 pub const BLOCKS: &[BlockRow] = &[
     BlockRow {
         kind: BlockKind::Tabs,
         name: "tabs",
+        id: "tabs",
         min: 0,
         max: 1,
         size: SizeRule::OneRow,
@@ -58,6 +65,7 @@ pub const BLOCKS: &[BlockRow] = &[
     BlockRow {
         kind: BlockKind::Output,
         name: "output",
+        id: MAIN,
         min: 0,
         max: 8,
         size: SizeRule::Free,
@@ -66,6 +74,7 @@ pub const BLOCKS: &[BlockRow] = &[
     BlockRow {
         kind: BlockKind::Editor,
         name: "editor",
+        id: "editor",
         min: 1,
         max: 4,
         size: SizeRule::Editor,
@@ -74,6 +83,7 @@ pub const BLOCKS: &[BlockRow] = &[
     BlockRow {
         kind: BlockKind::Statusline,
         name: "statusline",
+        id: "statusline",
         min: 0,
         max: 1,
         size: SizeRule::OneRow,
@@ -98,6 +108,12 @@ impl BlockKind {
     #[must_use]
     pub fn name(self) -> &'static str {
         self.row().name
+    }
+
+    /// The id of a block of this kind whose line has no `as`.
+    #[must_use]
+    pub fn default_id(self) -> &'static str {
+        self.row().id
     }
 
     /// The block named `name`.

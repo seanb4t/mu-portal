@@ -114,18 +114,18 @@ fn area_of(app: &Model, id: &str) -> (u16, u16, u16, u16) {
     (area.x, area.y, area.width, area.height)
 }
 
-const CLASSIC: &[&str] = &["output", "tabs above output", "editor below output"];
+const CLASSIC: &[&str] = &["output", "tabs above main", "editor below main"];
 const SIDEBAR: &[&str] = &[
     "output",
-    "tabs above output",
-    "editor below output",
+    "tabs above main",
+    "editor below main",
     "statusline below editor",
-    "output as notices right of output, 30%",
+    "output as notices right of main, 30%",
 ];
 const NOTICES_BELOW: &[&str] = &[
     "output",
-    "editor below output",
-    "output as notices below output",
+    "editor below main",
+    "output as notices below main",
 ];
 
 #[test]
@@ -170,7 +170,7 @@ fn the_tabs_go_below_the_output() {
     key(&mut app, KeyCode::Down, Modifiers::NONE);
     assert_eq!(
         app.layout().lines(),
-        ["output", "editor below output", "tabs below output"]
+        ["output", "editor below main", "tabs below main"]
     );
     let rows = rows(&mut app);
     // The row above the editor is the tabs, with the letter of the block on its first cell.
@@ -220,12 +220,12 @@ fn a_larger_and_a_smaller_block() {
     keys(&mut app, "c>");
     assert_eq!(
         app.layout().lines()[4],
-        "output as notices right of output, 35%"
+        "output as notices right of main, 35%"
     );
     keys(&mut app, "<<");
     assert_eq!(
         app.layout().lines()[4],
-        "output as notices right of output, 25%"
+        "output as notices right of main, 25%"
     );
 }
 
@@ -233,8 +233,8 @@ fn a_larger_and_a_smaller_block() {
 fn a_larger_block_stops_at_ninety_percent() {
     let mut app = laptop_with(&[
         "output",
-        "editor below output",
-        "output as notices right of output, 80%",
+        "editor below main",
+        "output as notices right of main, 80%",
     ]);
     // A screen of 300 columns has room for the smallest pane beside 90 percent.
     draw_sized(&mut app, 300);
@@ -244,13 +244,13 @@ fn a_larger_block_stops_at_ninety_percent() {
     keys(&mut app, "b>");
     assert_eq!(
         app.layout().lines()[2],
-        "output as notices right of output, 85%"
+        "output as notices right of main, 85%"
     );
     // Three more steps ask for 100 percent.
     keys(&mut app, ">>>");
     assert_eq!(
         app.layout().lines()[2],
-        "output as notices right of output, 90%"
+        "output as notices right of main, 90%"
     );
 }
 
@@ -258,8 +258,8 @@ fn a_larger_block_stops_at_ninety_percent() {
 fn a_larger_block_in_a_small_split_keeps_its_size() {
     let mut app = laptop_with(&[
         "output",
-        "editor below output",
-        "output as notices right of output, 30%",
+        "editor below main",
+        "output as notices right of main, 30%",
     ]);
     draw_sized(&mut app, 20);
     assert_eq!(key(&mut app, KeyCode::Char('l'), Modifiers::ALT), []);
@@ -267,14 +267,14 @@ fn a_larger_block_in_a_small_split_keeps_its_size() {
     keys(&mut app, "b>");
     assert_eq!(
         app.layout().lines()[2],
-        "output as notices right of output, 30%"
+        "output as notices right of main, 30%"
     );
     // The same keys on a wider screen change the block, so the pick is on it.
     draw_sized(&mut app, 80);
     keys(&mut app, ">");
     assert_eq!(
         app.layout().lines()[2],
-        "output as notices right of output, 35%"
+        "output as notices right of main, 35%"
     );
 }
 
@@ -289,7 +289,7 @@ fn a_letter_bound_to_undo_still_picks() {
     arrange(&mut app);
     keys(&mut app, "ab");
     key(&mut app, KeyCode::Down, Modifiers::NONE);
-    assert_eq!(app.layout().lines()[2], "tabs below output");
+    assert_eq!(app.layout().lines()[2], "tabs below main");
     let rows = rows(&mut app);
     assert!(rows[21].contains("alpha/aria]"), "{rows:?}");
 }
@@ -328,7 +328,7 @@ fn enter_saves() {
         effects,
         [Effect::SaveLayout {
             name: "laptop".to_owned(),
-            lines: vec!["output".to_owned(), "editor below output".to_owned()],
+            lines: vec!["output".to_owned(), "editor below main".to_owned()],
             device: "laptop".to_owned(),
             then: Then::SetField,
         }]
@@ -362,10 +362,10 @@ fn drag_block(app: &mut Model, from: &str, to: (u16, u16)) {
 fn a_drag_to_the_right_edge() {
     let mut app = laptop_with(NOTICES_BELOW);
     arrange(&mut app);
-    let (x, y, width, height) = area_of(&app, "output");
+    let (x, y, width, height) = area_of(&app, "main");
     drag_block(&mut app, "notices", (x + width - 1, y + height / 2));
-    assert_eq!(app.layout().lines()[2], "output as notices right of output");
-    let (notices, output) = (area_of(&app, "notices"), area_of(&app, "output"));
+    assert_eq!(app.layout().lines()[2], "output as notices right of main");
+    let (notices, output) = (area_of(&app, "notices"), area_of(&app, "main"));
     assert!(
         notices.0 > output.0 + output.2 - 1,
         "{notices:?} {output:?}"
@@ -376,16 +376,16 @@ fn a_drag_to_the_right_edge() {
 fn a_drag_to_the_middle_stacks() {
     let mut app = laptop_with(NOTICES_BELOW);
     arrange(&mut app);
-    let (x, y, width, height) = area_of(&app, "output");
+    let (x, y, width, height) = area_of(&app, "main");
     drag_block(&mut app, "notices", (x + width / 2, y + height / 2));
-    assert_eq!(app.layout().lines()[2], "output as notices with output");
+    assert_eq!(app.layout().lines()[2], "output as notices with main");
 }
 
 #[test]
 fn the_drop_part_is_marked() {
     let mut app = laptop_with(NOTICES_BELOW);
     arrange(&mut app);
-    let (x, y, width, height) = area_of(&app, "output");
+    let (x, y, width, height) = area_of(&app, "main");
     let (from_x, from_y, from_width, from_height) = area_of(&app, "notices");
     mouse(
         &mut app,

@@ -40,10 +40,10 @@ impl BlockId {
         Ok(Self(id.to_owned()))
     }
 
-    /// The id of a block of `kind` whose line has no `as`: the name of the block.
+    /// The id of a block of `kind` whose line has no `as`.
     #[must_use]
     pub fn of(kind: BlockKind) -> Self {
-        Self(kind.name().to_owned())
+        Self(kind.default_id().to_owned())
     }
 
     /// The id.
@@ -222,7 +222,7 @@ pub struct Step {
 impl fmt::Display for Step {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.kind.name())?;
-        if self.id.as_str() != self.kind.name() {
+        if self.id.as_str() != self.kind.default_id() {
             write!(f, " as {}", self.id)?;
         }
         match &self.place {

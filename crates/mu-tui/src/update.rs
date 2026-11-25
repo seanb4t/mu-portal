@@ -676,6 +676,10 @@ fn drag_left(model: &mut Model, column: u16, row: u16) {
 fn release_left(model: &mut Model) -> Vec<Effect> {
     if let Some(drag) = model.drag.take() {
         if drag.moved {
+            // A drag that ends on the plan of its start changed nothing, so it saves nothing.
+            if model.layout() == &drag.from {
+                return Vec::new();
+            }
             return model.save_shown();
         }
         click_title(model, drag.pressed.0, drag.pressed.1);

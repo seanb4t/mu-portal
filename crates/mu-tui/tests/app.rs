@@ -2486,20 +2486,20 @@ fn block_rows(app: &mut Model, id: &str) -> Vec<String> {
 
 const TWO_EDITORS: &[&str] = &[
     "output",
-    "editor below output",
+    "editor below main",
     "editor as scratch right of editor",
 ];
 
 const SIDE_NOTICES: &[&str] = &[
     "output",
-    "editor below output",
-    "output as notices right of output",
+    "editor below main",
+    "output as notices right of main",
 ];
 
 const STATUS: &[&str] = &[
     "output",
-    "tabs above output",
-    "editor below output",
+    "tabs above main",
+    "editor below main",
     "statusline below editor",
 ];
 
@@ -2524,9 +2524,9 @@ fn the_picture_of_each_built_in_layout() {
 fn a_percent_and_a_count_of_cells() {
     let layout = Layout::parse(&[
         "output",
-        "editor below output",
-        "output as notices right of output, 25%",
-        "output as log below output, 5",
+        "editor below main",
+        "output as notices right of main, 25%",
+        "output as log below main, 5",
     ])
     .expect("valid");
     insta::assert_snapshot!(preview(&layout, 40, 16).join("\n"));
@@ -2535,14 +2535,14 @@ fn a_percent_and_a_count_of_cells() {
 #[test]
 fn one_text_pane_has_no_title_row() {
     let mut app = two_worlds();
-    assert_eq!(block_rows(&mut app, "output"), ["Welcome, aria."]);
+    assert_eq!(block_rows(&mut app, "main"), ["Welcome, aria."]);
 }
 
 #[test]
 fn two_text_panes_have_title_rows() {
     let mut app = two_worlds();
     with_layout(&mut app, SIDE_NOTICES);
-    assert_eq!(block_rows(&mut app, "output")[0], "[output]");
+    assert_eq!(block_rows(&mut app, "main")[0], "[main]");
     assert_eq!(block_rows(&mut app, "notices"), ["[notices]"]);
 }
 
@@ -2553,8 +2553,8 @@ fn a_percent_in_a_narrow_terminal() {
         &mut app,
         &[
             "output",
-            "editor below output",
-            "output as notices right of output, 10%",
+            "editor below main",
+            "output as notices right of main, 10%",
         ],
     );
     let solved = mu_tui::solved(&app, 40, 24);
@@ -2575,10 +2575,10 @@ fn a_block_beside_two_rows_gets_its_columns() {
         &mut app,
         &[
             "output",
-            "tabs above output",
-            "editor below output",
+            "tabs above main",
+            "editor below main",
             "statusline below editor",
-            "output as notices right of output and editor, 33%",
+            "output as notices right of main and editor, 33%",
         ],
     );
     assert_eq!(rect_of(&app, "notices"), (55, 80, 2, 23));
@@ -2594,8 +2594,8 @@ fn the_editor_after_the_notices_gets_its_rows() {
         &mut app,
         &[
             "output",
-            "output as notices right of output",
-            "editor below output",
+            "output as notices right of main",
+            "editor below main",
         ],
     );
     assert_eq!(rect_of(&app, "notices"), (42, 80, 1, 24));
@@ -2620,7 +2620,7 @@ fn notice_lines(rows: &[String]) -> Vec<&String> {
 fn one_output_shows_the_notices_too() {
     let mut app = two_worlds();
     enter(&mut app, "/focus nowhere/nobody");
-    let rows = block_rows(&mut app, "output");
+    let rows = block_rows(&mut app, "main");
     assert!(rows.contains(&"Welcome, aria.".to_owned()), "{rows:?}");
     assert_eq!(notice_lines(&rows).len(), 1, "{rows:?}");
 }
@@ -2632,7 +2632,7 @@ fn an_output_for_the_notices() {
     enter(&mut app, "/focus nowhere/nobody");
     let side = block_rows(&mut app, "notices");
     assert_eq!(notice_lines(&side).len(), 1, "{side:?}");
-    let main = block_rows(&mut app, "output");
+    let main = block_rows(&mut app, "main");
     assert!(main.contains(&"Welcome, aria.".to_owned()), "{main:?}");
     assert!(notice_lines(&main).is_empty(), "{main:?}");
 }
@@ -2644,8 +2644,8 @@ fn an_output_with_no_stream_yet() {
         &mut app,
         &[
             "output",
-            "editor below output",
-            "output as channels right of output",
+            "editor below main",
+            "output as channels right of main",
         ],
     );
     assert_eq!(block_rows(&mut app, "channels"), ["[channels]"]);
@@ -2656,7 +2656,7 @@ fn the_first_output_merges_in_the_order_of_arrival() {
     let mut app = two_worlds();
     enter(&mut app, "/focus nowhere/nobody");
     on_event(&mut app, game("alpha/aria", "A bell rings."));
-    let rows = block_rows(&mut app, "output");
+    let rows = block_rows(&mut app, "main");
     assert_eq!(rows.len(), 3, "{rows:?}");
     assert_eq!(rows[0], "Welcome, aria.");
     assert!(rows[1].starts_with("-- "), "{rows:?}");
@@ -2669,9 +2669,9 @@ fn an_output_that_comes_later_starts_with_new_lines() {
     // The bad command stays in the editor, so Ctrl+U removes it before the next command.
     enter(&mut app, "/focus nowhere/nobody");
     press(&mut app, ctrl('u'));
-    enter(&mut app, "/place output as notices right of output");
+    enter(&mut app, "/place output as notices right of main");
     assert_eq!(block_rows(&mut app, "notices"), ["[notices]"]);
-    let main = block_rows(&mut app, "output");
+    let main = block_rows(&mut app, "main");
     assert!(
         main.iter()
             .any(|row| row.starts_with("-- ") && row.contains("nowhere/nobody")),
@@ -2684,7 +2684,7 @@ fn a_notice_shows_under_the_world_in_focus_only() {
     let mut app = two_worlds();
     enter(&mut app, "/focus nowhere/nobody");
     assert_eq!(press(&mut app, ctrl('n')), []);
-    let rows = block_rows(&mut app, "output");
+    let rows = block_rows(&mut app, "main");
     assert!(rows.contains(&"Welcome, bryn.".to_owned()), "{rows:?}");
     assert!(
         rows.iter().all(|row| !row.contains("nowhere/nobody")),
@@ -2824,7 +2824,7 @@ fn a_hidden_editor_keeps_its_text() {
     let mut app = two_editors();
     press(&mut app, alt(KeyCode::Char('e')));
     type_text(&mut app, "two");
-    with_layout(&mut app, &["output", "editor below output"]);
+    with_layout(&mut app, &["output", "editor below main"]);
     assert_eq!(app.input_id(), block("editor"));
     with_layout(&mut app, TWO_EDITORS);
     assert_eq!(text_of(&app, "alpha/aria", "scratch"), "two");
@@ -2855,7 +2855,7 @@ fn the_shorter_max_does_not_stop_the_taller_editor() {
         &mut app,
         &[
             "output",
-            "editor below output",
+            "editor below main",
             "editor as scratch right of editor, max 2",
         ],
     );
@@ -2999,10 +2999,10 @@ fn the_default_max() {
 
 const SIDEBAR_LINES: &[&str] = &[
     "output",
-    "tabs above output",
-    "editor below output",
+    "tabs above main",
+    "editor below main",
     "statusline below editor",
-    "output as notices right of output, 30%",
+    "output as notices right of main, 30%",
 ];
 
 /// Two worlds on the device `laptop`.
@@ -3075,7 +3075,7 @@ fn notice_with(app: &mut Model, texts: &[&str]) -> bool {
 #[test]
 fn add_the_notices() {
     let mut app = laptop();
-    let effects = enter(&mut app, "/place output as notices right of output, 30%");
+    let effects = enter(&mut app, "/place output as notices right of main, 30%");
     assert_eq!(divider_column(&mut app), Some(56));
     assert_eq!(block_rows(&mut app, "notices"), ["[notices]"]);
     assert_eq!(saved(&effects, "laptop").len(), 4);
@@ -3084,7 +3084,7 @@ fn add_the_notices() {
 #[test]
 fn move_the_tabs() {
     let mut app = laptop();
-    enter(&mut app, "/place tabs below output");
+    enter(&mut app, "/place tabs below main");
     let rows = screen(&mut app);
     assert!(rows[22].starts_with("[alpha/aria]"), "{rows:?}");
 }
@@ -3093,7 +3093,7 @@ fn move_the_tabs() {
 fn a_bad_sentence() {
     let mut app = laptop();
     let before = app.layout().lines();
-    assert_eq!(enter(&mut app, "/place spawns right of output"), []);
+    assert_eq!(enter(&mut app, "/place spawns right of main"), []);
     assert!(notice_with(&mut app, &["spawns"]));
     assert_eq!(app.layout().lines(), before);
 }
@@ -3122,7 +3122,7 @@ fn hide_a_second_editor() {
     type_text(&mut app, "x");
     assert_eq!(app.input_id(), block("editor"));
     assert_eq!(text_of(&app, "alpha/aria", "editor"), "x");
-    assert_eq!(app.layout().lines(), ["output", "editor below output"]);
+    assert_eq!(app.layout().lines(), ["output", "editor below main"]);
 }
 
 #[test]
@@ -3136,13 +3136,13 @@ fn resize_the_notices() {
 fn a_size_of_fill_removes_the_size() {
     let mut app = laptop_with(SIDEBAR_LINES);
     enter(&mut app, "/pane size notices fill");
-    assert_eq!(app.layout().lines()[4], "output as notices right of output");
+    assert_eq!(app.layout().lines()[4], "output as notices right of main");
 }
 
 #[test]
 fn a_size_of_the_first_block() {
     let mut app = laptop_with(SIDEBAR_LINES);
-    assert_eq!(enter(&mut app, "/pane size output 60%"), []);
+    assert_eq!(enter(&mut app, "/pane size main 60%"), []);
     assert_eq!(app.layout().lines(), SIDEBAR_LINES);
     assert!(notice_with(&mut app, &["notices"]));
 }
@@ -3152,7 +3152,7 @@ fn a_resize_changes_one_line() {
     let mut app = laptop_with(SIDEBAR_LINES);
     enter(&mut app, "/pane size notices 40%");
     let lines = app.layout().lines();
-    assert_eq!(lines[4], "output as notices right of output, 40%");
+    assert_eq!(lines[4], "output as notices right of main, 40%");
     assert_eq!(lines[..4], SIDEBAR_LINES[..4]);
 }
 
@@ -3160,7 +3160,7 @@ fn a_resize_changes_one_line() {
 fn a_hide_of_an_anchor_shows_a_notice() {
     let mut app = laptop_with(&[
         "output",
-        "output as notices right of output",
+        "output as notices right of main",
         "tabs above notices",
         "editor at bottom",
     ]);
@@ -3178,12 +3178,8 @@ fn a_hide_of_an_anchor_shows_a_notice() {
 
 #[test]
 fn the_next_block_of_a_stack() {
-    let mut app = laptop_with(&[
-        "output",
-        "editor below output",
-        "output as notices with output",
-    ]);
-    assert_eq!(screen(&mut app)[0], "[output] notices");
+    let mut app = laptop_with(&["output", "editor below main", "output as notices with main"]);
+    assert_eq!(screen(&mut app)[0], "[main] notices");
     let next = mu_tui::EntryId::named("pane-next").expect("the entry");
     update(
         &mut app,
@@ -3192,7 +3188,7 @@ fn the_next_block_of_a_stack() {
             arg: None,
         },
     );
-    assert_eq!(screen(&mut app)[0], "output [notices]");
+    assert_eq!(screen(&mut app)[0], "main [notices]");
     update(
         &mut app,
         Msg::Run {
@@ -3200,7 +3196,7 @@ fn the_next_block_of_a_stack() {
             arg: None,
         },
     );
-    assert_eq!(screen(&mut app)[0], "[output] notices");
+    assert_eq!(screen(&mut app)[0], "[main] notices");
 }
 
 #[test]
@@ -3210,8 +3206,8 @@ fn list_the_plan() {
     let rows = screen(&mut app);
     for line in [
         "-- 1. output",
-        "-- 2. tabs above output",
-        "-- 3. editor below output",
+        "-- 2. tabs above main",
+        "-- 3. editor below main",
     ] {
         assert!(rows.iter().any(|row| row == line), "{rows:?}");
     }
@@ -3219,12 +3215,9 @@ fn list_the_plan() {
 
 #[test]
 fn insert_in_the_middle() {
-    let mut app = laptop_with(&["output", "editor below output", "statusline below editor"]);
-    enter(
-        &mut app,
-        "/layout insert 3 output as notices right of output",
-    );
-    assert_eq!(app.layout().lines()[2], "output as notices right of output");
+    let mut app = laptop_with(&["output", "editor below main", "statusline below editor"]);
+    enter(&mut app, "/layout insert 3 output as notices right of main");
+    assert_eq!(app.layout().lines()[2], "output as notices right of main");
     assert_eq!(app.layout().lines()[3], "statusline below editor");
     // The notices are beside the output only, and the editor takes the whole width.
     assert_eq!(rect_of(&app, "editor"), (1, 80, 23, 23));
@@ -3236,12 +3229,12 @@ fn edit_a_line_by_its_id() {
     let mut app = laptop_with(SIDEBAR_LINES);
     enter(
         &mut app,
-        "/layout edit notices output as notices left of output, 20%",
+        "/layout edit notices output as notices left of main, 20%",
     );
     let lines = app.layout().lines();
-    assert_eq!(lines[4], "output as notices left of output, 20%");
+    assert_eq!(lines[4], "output as notices left of main, 20%");
     assert_eq!(lines[..4], SIDEBAR_LINES[..4]);
-    assert!(rect_of(&app, "notices").1 < rect_of(&app, "output").0);
+    assert!(rect_of(&app, "notices").1 < rect_of(&app, "main").0);
 }
 
 #[test]
@@ -3249,7 +3242,7 @@ fn delete_a_line_that_others_need() {
     let mut app = laptop();
     assert_eq!(enter(&mut app, "/layout delete 1"), []);
     assert_eq!(app.layout().lines().len(), 3);
-    assert!(notice_with(&mut app, &["line 2", "output"]));
+    assert!(notice_with(&mut app, &["line 2", "main"]));
 }
 
 // The mouse.
@@ -3262,7 +3255,7 @@ fn a_drag_to_the_left() {
     assert_eq!(divider_column(&mut app), Some(40));
     assert_eq!(
         saved(&effects, "mine")[4],
-        "output as notices right of output, 50%"
+        "output as notices right of main, 50%"
     );
 }
 
@@ -3276,8 +3269,8 @@ fn a_drag_past_the_smallest_pane() {
 
 const NOTICES_BELOW: &[&str] = &[
     "output",
-    "editor below output",
-    "output as notices below output, 50%",
+    "editor below main",
+    "output as notices below main, 50%",
 ];
 
 fn rows_of(app: &Model, id: &str) -> u16 {
@@ -3298,25 +3291,21 @@ fn a_drag_down() {
 fn a_drag_down_past_the_smallest_pane() {
     let mut app = laptop_with(NOTICES_BELOW);
     let title = rect_of(&app, "notices").2 - 1;
-    let all = rows_of(&app, "notices") + rows_of(&app, "output");
+    let all = rows_of(&app, "notices") + rows_of(&app, "main");
     drag_from_to(&mut app, (20, title), (20, 22));
     assert_eq!(rows_of(&app, "notices"), 2);
-    assert_eq!(rows_of(&app, "output"), all - 2);
+    assert_eq!(rows_of(&app, "main"), all - 2);
 }
 
 #[test]
 fn a_click_on_a_title() {
-    let mut app = laptop_with(&[
-        "output",
-        "editor below output",
-        "output as notices with output",
-    ]);
-    assert_eq!(screen(&mut app)[0], "[output] notices");
+    let mut app = laptop_with(&["output", "editor below main", "output as notices with main"]);
+    assert_eq!(screen(&mut app)[0], "[main] notices");
     // The name `notices` starts at column 10 of the title row.
     mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 10, 0);
     let effects = mouse(&mut app, MouseEventKind::Up(MouseButton::Left), 10, 0);
     assert_eq!(effects, []);
-    assert_eq!(screen(&mut app)[0], "output [notices]");
+    assert_eq!(screen(&mut app)[0], "main [notices]");
 }
 
 #[test]
@@ -3360,7 +3349,7 @@ fn a_drag_does_not_drift() {
     assert_eq!(divider_column(&mut app), Some(40));
     assert_eq!(
         app.layout().lines()[4],
-        "output as notices right of output, 50%"
+        "output as notices right of main, 50%"
     );
 }
 
@@ -3383,7 +3372,7 @@ fn a_refused_line_goes_to_the_notices_block() {
         },
     );
     assert_eq!(block_rows(&mut app, "notices").last().unwrap(), "-- down");
-    assert!(!has_a_notice_row(&mut app, "output"));
+    assert!(!has_a_notice_row(&mut app, "main"));
 }
 
 #[test]
@@ -3402,10 +3391,10 @@ fn a_refused_line_of_another_world_waits_in_its_notices() {
     );
     // The world in focus shows nothing of it.
     assert!(!has_a_notice_row(&mut app, "notices"));
-    assert!(!has_a_notice_row(&mut app, "output"));
+    assert!(!has_a_notice_row(&mut app, "main"));
     enter(&mut app, "/focus alpha/aria");
     assert_eq!(block_rows(&mut app, "notices").last().unwrap(), "-- down");
-    assert!(!has_a_notice_row(&mut app, "output"));
+    assert!(!has_a_notice_row(&mut app, "main"));
 }
 
 #[test]
@@ -3416,5 +3405,81 @@ fn enter_with_no_world_goes_to_the_notices_block() {
     type_text(&mut app, "hi");
     assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
     assert!(has_a_notice_row(&mut app, "notices"));
-    assert!(!has_a_notice_row(&mut app, "output"));
+    assert!(!has_a_notice_row(&mut app, "main"));
+}
+
+// The main output, and a save that changes nothing.
+
+#[test]
+fn a_hide_of_main_hands_the_game_lines_to_the_next_output() {
+    let mut app = laptop_with(SIDEBAR_LINES);
+    enter(&mut app, "/pane hide main");
+    on_event(&mut app, game("alpha/aria", "A later line."));
+    let rows = block_rows(&mut app, "notices");
+    assert!(rows.contains(&"Welcome, aria.".to_owned()), "{rows:?}");
+    assert!(rows.contains(&"A later line.".to_owned()), "{rows:?}");
+}
+
+#[test]
+fn a_new_main_takes_the_game_lines_back() {
+    let mut app = laptop_with(SIDEBAR_LINES);
+    enter(&mut app, "/pane hide main");
+    enter(&mut app, "/place output left of notices");
+    on_event(&mut app, game("alpha/aria", "A later line."));
+    let main = block_rows(&mut app, "main");
+    assert_eq!(main[..2], ["[main]", "Welcome, aria."]);
+    assert_eq!(main.last().unwrap(), "A later line.");
+    let notices = block_rows(&mut app, "notices");
+    assert!(
+        !notices.contains(&"Welcome, aria.".to_owned()),
+        "{notices:?}"
+    );
+    assert!(
+        !notices.contains(&"A later line.".to_owned()),
+        "{notices:?}"
+    );
+}
+
+#[test]
+fn a_game_line_with_no_output_is_kept() {
+    let mut app = laptop();
+    enter(&mut app, "/pane hide main");
+    assert_eq!(
+        app.layout()
+            .ids_of(mu_config::layout::BlockKind::Output)
+            .count(),
+        0
+    );
+    on_event(&mut app, game("alpha/aria", "While no output."));
+    enter(&mut app, "/place output above editor");
+    let rows = block_rows(&mut app, "main");
+    assert!(rows.contains(&"Welcome, aria.".to_owned()), "{rows:?}");
+    assert!(rows.contains(&"While no output.".to_owned()), "{rows:?}");
+}
+
+#[test]
+fn a_command_that_changes_nothing_saves_nothing() {
+    let mut app = laptop();
+    assert_eq!(enter(&mut app, "/place tabs above main"), []);
+    assert_eq!(app.layout_name(), "classic");
+    assert_eq!(app.input(), "");
+}
+
+#[test]
+fn a_drag_back_to_its_start_saves_nothing() {
+    let mut app = laptop_with(SIDEBAR_LINES);
+    let name = app.layout_name().to_owned();
+    draw(&mut app);
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 55, 5);
+    mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), 45, 5);
+    draw(&mut app);
+    assert_ne!(app.layout().lines(), SIDEBAR_LINES);
+    mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), 55, 5);
+    draw(&mut app);
+    assert_eq!(
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), 55, 5),
+        []
+    );
+    assert_eq!(app.layout().lines(), SIDEBAR_LINES);
+    assert_eq!(app.layout_name(), name);
 }

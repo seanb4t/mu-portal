@@ -3,7 +3,7 @@ source: crates/mu-tui/tests/app.rs
 expression: "preview(&layout, 40, 16).join(\"\\n\")"
 ---
 ┌───────────────────────────┬──────────┐
-│ output                    │ notices  │
+│ main                      │ notices  │
 │                           │          │
 │                           │          │
 │                           │          │

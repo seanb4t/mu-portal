@@ -11,17 +11,17 @@ The command `/place <sentence>` SHALL take one placement sentence that is not a 
 
 #### Scenario: Add the notices
 - **GIVEN** the layout `classic` is in use
-- **WHEN** the user runs the command `/place output as notices right of output, 30%`
+- **WHEN** the user runs the command `/place output as notices right of main, 30%`
 - **THEN** the screen shows a divider, and the right pane shows `[notices]`
 
 #### Scenario: Move the tabs
 - **GIVEN** the layout `classic` is in use, and the world in focus is the fake world `alpha/aria`
-- **WHEN** the user runs the command `/place tabs below output`
+- **WHEN** the user runs the command `/place tabs below main`
 - **THEN** the row above the editor shows `[alpha/aria]`
 
 #### Scenario: A bad sentence
 - **GIVEN** the layout `classic` is in use
-- **WHEN** the user runs the command `/place spawns right of output`
+- **WHEN** the user runs the command `/place spawns right of main`
 - **THEN** the screen shows a line that starts with `-- ` and contains `spawns`
 - **AND** the layout does not change
 
@@ -40,7 +40,7 @@ The command `/place <sentence>` SHALL take one placement sentence that is not a 
 - **AND** the editor still shows
 
 #### Scenario: Hide a second editor
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `editor as scratch right of editor`, and `scratch` has the input focus
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `editor as scratch right of editor`, and `scratch` has the input focus
 - **WHEN** the user runs the command `/pane hide scratch` and types `x`
 - **THEN** one editor shows, and it holds `x`
 
@@ -51,7 +51,7 @@ The command `/place <sentence>` SHALL take one placement sentence that is not a 
 
 #### Scenario: A size of the first block
 - **GIVEN** the layout `sidebar` is in use
-- **WHEN** the user runs the command `/pane size output 60%`
+- **WHEN** the user runs the command `/pane size main 60%`
 - **THEN** the layout does not change
 - **AND** the screen shows a line that starts with `-- ` and contains `notices`
 
@@ -61,17 +61,17 @@ The command `/place <sentence>` SHALL take one placement sentence that is not a 
 #### Scenario: List the plan
 - **GIVEN** the layout `classic` is in use
 - **WHEN** the user runs the command `/layout plan`
-- **THEN** the screen shows `1. output`, `2. tabs above output` and `3. editor below output`
+- **THEN** the screen shows `1. output`, `2. tabs above main` and `3. editor below main`
 
 #### Scenario: Insert in the middle
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `statusline below editor`
-- **WHEN** the user runs the command `/layout insert 3 output as notices right of output`
-- **THEN** the plan holds `output as notices right of output` as line 3, and `statusline below editor` as line 4
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `statusline below editor`
+- **WHEN** the user runs the command `/layout insert 3 output as notices right of main`
+- **THEN** the plan holds `output as notices right of main` as line 3, and `statusline below editor` as line 4
 - **AND** the notices are beside the output only, and the editor takes the whole width
 
 #### Scenario: Edit a line by its id
 - **GIVEN** the layout `sidebar` is in use
-- **WHEN** the user runs the command `/layout edit notices output as notices left of output, 20%`
+- **WHEN** the user runs the command `/layout edit notices output as notices left of main, 20%`
 - **THEN** the notices are left of the output
 - **AND** each other line of the plan is as before
 
@@ -87,10 +87,10 @@ A change from `/place`, `/pane`, the mouse or arrange mode asks for one screen. 
 #### Scenario: A resize changes one line
 - **GIVEN** the layout `sidebar` is in use
 - **WHEN** the user runs the command `/pane size notices 40%`
-- **THEN** line 5 of the plan is `output as notices right of output, 40%`, and lines 1 to 4 are as before
+- **THEN** line 5 of the plan is `output as notices right of main, 40%`, and lines 1 to 4 are as before
 
 #### Scenario: A hide of an anchor writes the plan again
-- **GIVEN** the layout in use holds the lines `output`, `output as notices right of output`, `tabs above notices` and `editor at bottom`
+- **GIVEN** the layout in use holds the lines `output`, `output as notices right of main`, `tabs above notices` and `editor at bottom`
 - **WHEN** the user runs the command `/pane hide notices`
 - **THEN** the screen shows the tabs, the output and the editor, and no notices
 - **AND** the screen shows a line that starts with `-- ` and contains `plan`
@@ -99,9 +99,9 @@ A change from `/place`, `/pane`, the mouse or arrange mode asks for one screen. 
 The entry `pane-next` SHALL show the next block of the stack of `output`, and after the last block the first. A click on a name in a title row SHALL show that block.
 
 #### Scenario: A click on a title
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `output as notices with output`
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `output as notices with main`
 - **WHEN** the user clicks `notices` in the title row
-- **THEN** the title row shows `output [notices]`
+- **THEN** the title row shows `main [notices]`
 
 ### Requirement: A drag of a divider resizes two panes
 A press of the left button on a divider, then a drag left or right, SHALL move the divider with the mouse. The two panes SHALL change at each report of the mouse. Neither pane SHALL get smaller than 10 columns. At the release, the size of the placed block beside the divider SHALL be a whole percent of its split. A drag that starts on a divider SHALL select no text.
@@ -110,7 +110,7 @@ A press of the left button on a divider, then a drag left or right, SHALL move t
 - **GIVEN** the layout `sidebar` is in use, in a terminal of 80 columns and 24 rows
 - **WHEN** the user presses the left button on the divider, drags to column 40 and releases
 - **THEN** the divider is in column 40
-- **AND** `mu layout show` of the layout in use holds `output as notices right of output, 50%`
+- **AND** `mu layout show` of the layout in use holds `output as notices right of main, 50%`
 
 #### Scenario: A drag past the smallest pane
 - **GIVEN** the layout `sidebar` is in use, in a terminal of 80 columns
@@ -121,7 +121,7 @@ A press of the left button on a divider, then a drag left or right, SHALL move t
 A pane with a title row can be below another pane of the same split. Then a drag of its title row up or down SHALL move the border between the two. Neither pane SHALL get smaller than 2 rows. A press and a release on one name with no move between SHALL be a click.
 
 #### Scenario: A drag down
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `output as notices below output, 50%`, in a terminal of 80 columns and 24 rows
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `output as notices below main, 50%`, in a terminal of 80 columns and 24 rows
 - **WHEN** the user drags the title row of `notices` down by 4 rows and releases
 - **THEN** the pane of `notices` is 4 rows smaller
 
@@ -130,7 +130,7 @@ Outside arrange mode, a drag that starts inside a pane of `output`, below its ti
 
 #### Scenario: A selection beside a divider
 - **GIVEN** the layout `sidebar` is in use, and the fake world `alpha/aria` sent `Welcome, aria.`
-- **WHEN** the user drags over `Welcome` in the pane of `output` and releases
+- **WHEN** the user drags over `Welcome` in the pane of `main` and releases
 - **THEN** the clipboard write holds `Welcome`
 - **AND** the divider did not move
 
@@ -184,9 +184,9 @@ With no block picked, `+` SHALL list the blocks that are not on the screen, each
 In arrange mode, a drag that starts on a block and ends on another block SHALL move the first block. A release in the outer third of the second block on one side SHALL place it on that side. A release in the middle SHALL stack it. During the drag, the client SHALL mark the part of the second block where the first block lands.
 
 #### Scenario: A drag to the right edge
-- **GIVEN** the layout in use holds the lines `output`, `editor below output` and `output as notices below output`, and arrange mode is on
-- **WHEN** the user drags from the pane of `notices` to the right edge of the pane of `output` and releases
-- **THEN** the pane of `notices` is right of the pane of `output`
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `output as notices below main`, and arrange mode is on
+- **WHEN** the user drags from the pane of `notices` to the right edge of the pane of `main` and releases
+- **THEN** the pane of `notices` is right of the pane of `main`
 
 ### Requirement: Enter saves and Esc restores
 In arrange mode, Enter SHALL leave the mode and save the layout. If the mode changed nothing, Enter SHALL leave the mode and save nothing. Esc with no block picked SHALL leave the mode and restore the layout from before the mode. Esc with a block picked SHALL only drop the pick.
@@ -202,16 +202,26 @@ In arrange mode, Enter SHALL leave the mode and save the layout. If the mode cha
 - **THEN** the tabs show again, and the server got no save
 
 ### Requirement: Each finished change saves the layout
-The client SHALL save the layout after each of these: a command that changed it, the release of a drag that resized a pane, and Enter in arrange mode. If the layout on the screen is a player layout, the save SHALL replace it. If it is built in, the save SHALL write a new layout, and SHALL set the choice in use to that layout in the device layer.
+The client SHALL save the layout after each of these: a command that changed it, the release of a drag that resized a pane, and Enter in arrange mode. A command or a drag that leaves the plan as it was SHALL save nothing. If the layout on the screen is a player layout, the save SHALL replace it. If it is built in, the save SHALL write a new layout, and SHALL set the choice in use to that layout in the device layer.
+
+#### Scenario: A command that changes nothing
+- **GIVEN** the layout `classic` is in use on the device `laptop`
+- **WHEN** the user runs the command `/place tabs above main`
+- **THEN** the client asks the server for no save, and the layout in use is still `classic`
+
+#### Scenario: A drag back to its start
+- **GIVEN** the layout in use holds the lines of `sidebar` as the player layout `mine`
+- **WHEN** the user drags the divider 10 columns to the left and back to its start, and releases
+- **THEN** the client asks the server for no save, and the plan holds the lines of `sidebar`
 
 #### Scenario: A save from a built-in layout
 - **GIVEN** `clients/` holds no layout, and `mu client --device laptop` shows the layout `classic`
 - **WHEN** the user runs the command `/pane hide tabs`
-- **THEN** `clients/layouts/laptop.toml` holds the lines `output` and `editor below output`
+- **THEN** `clients/layouts/laptop.toml` holds the lines `output` and `editor below main`
 - **AND** `mu config show --device laptop` holds `layout = "laptop"` with the source `clients/devices/laptop.toml`
 
 #### Scenario: A save to a player layout
-- **GIVEN** `clients/global.toml` holds `layout = "mine"`, and `clients/layouts/mine.toml` holds the lines `output` and `editor below output`
+- **GIVEN** `clients/global.toml` holds `layout = "mine"`, and `clients/layouts/mine.toml` holds the lines `output` and `editor below main`
 - **WHEN** the user of `mu client --device laptop` runs the command `/place tabs at top`
 - **THEN** `clients/layouts/mine.toml` holds three lines, and the last is `tabs at top`
 - **AND** no file `clients/devices/laptop.toml` exists
@@ -256,7 +266,7 @@ If the field `layout` is the choice in use, the new layout SHALL have the name o
 #### Scenario: A save from the built-in layout of one world
 - **GIVEN** `clients/global.toml` holds `[world-layouts]` with `"alpha/aria" = "classic"`, and a server has the fake worlds `alpha/aria` and `beta/bryn`
 - **WHEN** the user of `mu client --device laptop` runs the command `/pane hide tabs`
-- **THEN** `clients/layouts/laptop.alpha.aria.toml` holds the lines `output` and `editor below output`
+- **THEN** `clients/layouts/laptop.alpha.aria.toml` holds the lines `output` and `editor below main`
 - **AND** `mu config show --device laptop` holds `world-layouts."alpha/aria" = "laptop.alpha.aria"` with the source `clients/devices/laptop.toml`
 - **AND** it holds `layout = "classic"` with the source `default`
 

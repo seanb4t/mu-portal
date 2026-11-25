@@ -236,11 +236,13 @@ impl PortalClient {
         name: &str,
         lines: Vec<String>,
         device: Option<&str>,
+        key: Option<&str>,
     ) -> Result<(), ClientError> {
         let request = proto::SaveLayoutRequest {
             name: name.to_owned(),
             lines,
             device: device.unwrap_or_default().to_owned(),
+            key: key.unwrap_or_default().to_owned(),
             ..Default::default()
         };
         self.inner.save_layout(request).await?;

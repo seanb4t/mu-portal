@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 use std::process::ExitCode;
 
 use clap::{Args, Subcommand};
-use mu_config::layout::{Layout, REWRITTEN, preview};
+use mu_config::layout::{Layout, REWRITTEN, numbered, preview};
 use mu_config::{STORE, filter};
 use mu_proto as proto;
 use proto::__buffa::oneof::edit_layout_request::Change as EditChange;
@@ -253,8 +253,13 @@ fn layouts(bootstrap: &BootstrapArgs) -> Result<proto::ListLayoutsResponse, Stri
 #[must_use]
 pub fn described(layout: &proto::NamedLayout) -> String {
     let mut text = String::new();
-    for (index, line) in layout.lines.iter().enumerate() {
-        let _ = writeln!(text, "{}. {}", index + 1, filter(line, &STORE));
+    let lines: Vec<_> = layout
+        .lines
+        .iter()
+        .map(|line| filter(line, &STORE))
+        .collect();
+    for line in numbered(&lines) {
+        let _ = writeln!(text, "{line}");
     }
     if let Ok(checked) = Layout::parse(&layout.lines) {
         for row in preview(&checked, PICTURE.0, PICTURE.1) {

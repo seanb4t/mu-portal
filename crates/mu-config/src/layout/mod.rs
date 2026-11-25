@@ -11,7 +11,7 @@ mod write;
 
 use std::fmt;
 
-pub use block::{BLOCKS, BlockKind, BlockRow, SizeRule};
+pub use block::{BLOCKS, BlockKind, BlockRow, MAIN, SizeRule};
 pub use builtin::{BUILT_IN, BuiltIn, DEFAULT_LAYOUT, LayoutFile};
 pub use change::{
     Change, Changed, FILL, LineRef, PANE_COLUMNS_MIN, PANE_ROWS_MIN, RESIZE_STEP, REWRITTEN,
@@ -27,6 +27,16 @@ pub use tree::{Block, Node, Part, PartSize};
 
 /// The name of the stream of the notices of the client.
 pub const NOTICES_STREAM: &str = "notices";
+
+/// The lines `lines` of a plan with their numbers from 1, as each listing of a plan shows them.
+#[must_use]
+pub fn numbered<S: AsRef<str>>(lines: &[S]) -> Vec<String> {
+    lines
+        .iter()
+        .enumerate()
+        .map(|(index, line)| format!("{}. {}", index + 1, line.as_ref()))
+        .collect()
+}
 
 /// The most lines of a plan.
 pub const LINES_MAX: usize = 32;
@@ -179,12 +189,30 @@ impl Layout {
         self.ids_of(kind).any(|each| each == id)
     }
 
-    /// The `output` that shows the stream `stream`: the one with that id, or the first one of
-    /// the plan. None for a plan with no `output`.
+    /// The lines of the plan with their numbers, as each listing of a plan shows them.
+    #[must_use]
+    pub fn numbered(&self) -> Vec<String> {
+        numbered(&self.lines())
+    }
+
+    /// The main `output`: the one with the id [`MAIN`], or the first `output` of the plan if
+    /// none has that id. It shows the lines of the world, and each stream that no other
+    /// `output` shows. None for a plan with no `output`.
+    #[must_use]
+    pub fn main_output(&self) -> Option<&BlockId> {
+        self.route(MAIN)
+    }
+
+    /// The `output` that shows the stream `stream`: the one with that id, or the main one.
+    /// None for a plan with no `output`.
     #[must_use]
     pub fn route(&self, stream: &str) -> Option<&BlockId> {
-        self.ids_of(BlockKind::Output)
-            .find(|id| id.as_str() == stream)
+        let found = |wanted: &str| {
+            self.ids_of(BlockKind::Output)
+                .find(|id| id.as_str() == wanted)
+        };
+        found(stream)
+            .or_else(|| found(MAIN))
             .or_else(|| self.ids_of(BlockKind::Output).next())
     }
 

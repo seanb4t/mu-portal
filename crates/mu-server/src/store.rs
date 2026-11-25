@@ -245,6 +245,18 @@ fn layout_file(path: &str) -> Option<&str> {
     name_in(path, LAYOUTS_DIR)
 }
 
+/// The choice that `key` names: the entry of a world id or of a game, or the field `layout`
+/// for no key.
+fn choice_of(key: Option<&str>) -> Result<Choice, WriteError> {
+    match key {
+        Some(key) => key
+            .parse::<WorldKey>()
+            .map(Choice::Entry)
+            .map_err(|error| refused(&error)),
+        None => Ok(Choice::Default),
+    }
+}
+
 /// The name of the file at `path`, if it is a TOML file right under the directory `dir`.
 fn name_in<'a>(path: &'a str, dir: &str) -> Option<&'a str> {
     path.strip_prefix(dir)?
@@ -867,6 +879,7 @@ impl Store {
         name: &str,
         lines: Vec<String>,
         device: Option<&str>,
+        key: Option<&str>,
     ) -> Result<(), WriteError> {
         let name = LayoutName::new(name).map_err(|error| refused(&error))?;
         Layout::parse(&lines).map_err(|error| refused(&format!("{name}: {error}")))?;
@@ -874,12 +887,16 @@ impl Store {
             .map(DeviceName::new)
             .transpose()
             .map_err(|error| refused(&error))?;
+        let choice = choice_of(key)?;
+        if device.is_none() && choice != Choice::Default {
+            return Err(WriteError::Refused(
+                "a key needs a device: the entry of a key is in the layer of a device".to_owned(),
+            ));
+        }
         self.write(move |root, part| {
             put_layout(root, &name, &lines)?;
             match device {
-                Some(device) => {
-                    put_choice(root, part, &device, &Choice::Default, Some(name.as_str()))
-                }
+                Some(device) => put_choice(root, part, &device, &choice, Some(name.as_str())),
                 None => Ok(()),
             }
         })
@@ -900,10 +917,7 @@ impl Store {
         key: Option<&str>,
     ) -> Result<(), WriteError> {
         let device = DeviceName::new(device).map_err(|error| refused(&error))?;
-        let choice = match key {
-            Some(key) => Choice::Entry(key.parse::<WorldKey>().map_err(|error| refused(&error))?),
-            None => Choice::Default,
-        };
+        let choice = choice_of(key)?;
         let name = (!name.is_empty()).then(|| name.to_owned());
         if name.is_none() && choice == Choice::Default {
             return Err(WriteError::Refused(

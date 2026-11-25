@@ -495,8 +495,9 @@ impl proto::PortalService for PortalApi {
         traced("SaveLayout", async {
             let request = request.to_owned_message();
             let device = (!request.device.is_empty()).then_some(request.device.as_str());
+            let key = (!request.key.is_empty()).then_some(request.key.as_str());
             self.store
-                .save_layout(&request.name, request.lines, device)
+                .save_layout(&request.name, request.lines, device, key)
                 .await
                 .map_err(|error| write_status(&error))?;
             Response::ok(proto::SaveLayoutResponse::default())

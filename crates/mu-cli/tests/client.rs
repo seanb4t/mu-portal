@@ -10,7 +10,7 @@ use support::process::{
     Answers, BOUND, PtyClient, PtyOn, Reaper, Relay, SERVING, ServerBuilder, ServerProcess,
     Session, TWO_WORLDS, greeting, mu_on_pty, private_tempdir, server_url,
 };
-use support::{ConfigDir, mode, mu_async, stderr};
+use support::{ConfigDir, layout_file, mode, mu_async, place_of, stderr};
 
 mod support;
 
@@ -1522,12 +1522,6 @@ async fn a_clients_directory_that_turns_unlistable() {
 
 // The layout of the screen (client-layout).
 
-/// The content of a layout file with `lines`.
-fn layout_file(lines: &[&str]) -> String {
-    let quoted: Vec<String> = lines.iter().map(|line| format!("{line:?}")).collect();
-    format!("place = [{}]\n", quoted.join(", "))
-}
-
 /// A configuration directory whose `clients/global.toml` names the layout `mine` of `lines`, and
 /// then holds `rest`.
 fn layout_dir(lines: &[&str], rest: &str) -> ConfigDir {
@@ -1592,7 +1586,7 @@ fn column_of(client: &PtyClient, number: usize, needle: &str) -> Option<usize> {
 #[tokio::test]
 async fn no_tabs() {
     let (mut session, mut client, _config) =
-        with_layout(TWO_WORLDS, &["output", "editor below output"]).await;
+        with_layout(TWO_WORLDS, &["output", "editor below main"]).await;
     client.send(b"\x0e");
     client
         .wait_rows("the greeting of beta/bryn", |rows| {
@@ -1656,7 +1650,7 @@ async fn the_editor_alone() {
 async fn the_output_above_the_tabs() {
     let (_session, client, _config) = with_layout(
         &["alpha/aria"],
-        &["output", "tabs below output", "editor below tabs"],
+        &["output", "tabs below main", "editor below tabs"],
     )
     .await;
     wait_row(&client, 23, "the tabs", |row| {
@@ -1679,9 +1673,9 @@ async fn a_block_beside_another() {
         &["alpha/aria"],
         &[
             "output",
-            "tabs above output",
-            "editor below output",
-            "output as notices right of output",
+            "tabs above main",
+            "editor below main",
+            "output as notices right of main",
         ],
     )
     .await;
@@ -1707,8 +1701,8 @@ async fn the_statusline_at_the_bottom() {
         &["alpha/aria"],
         &[
             "output",
-            "editor below output",
-            "output as notices right of output",
+            "editor below main",
+            "output as notices right of main",
             "statusline at bottom",
         ],
     )
@@ -1724,15 +1718,11 @@ async fn the_statusline_at_the_bottom() {
 async fn notices_behind_the_output() {
     let (_session, client, _config) = with_layout(
         &["alpha/aria"],
-        &[
-            "output",
-            "editor below output",
-            "output as notices with output",
-        ],
+        &["output", "editor below main", "output as notices with main"],
     )
     .await;
     wait_row(&client, 1, "the title row", |row| {
-        row.trim() == "[output] notices"
+        row.trim() == "[main] notices"
     })
     .await;
     assert!(
@@ -1751,14 +1741,14 @@ async fn an_id_in_a_later_line() {
         &["alpha/aria"],
         &[
             "output",
-            "editor below output",
-            "output as side right of output",
+            "editor below main",
+            "output as side right of main",
             "tabs above side",
         ],
     )
     .await;
     wait_row(&client, 1, "the tabs beside the title", |row| {
-        row.starts_with("[output]")
+        row.starts_with("[main]")
     })
     .await;
     assert_eq!(column_of(&client, 1, "[alpha/aria]"), Some(42));
@@ -1770,8 +1760,8 @@ async fn a_percent() {
         &["alpha/aria"],
         &[
             "output",
-            "editor below output",
-            "output as notices right of output, 25%",
+            "editor below main",
+            "output as notices right of main, 25%",
         ],
     )
     .await;
@@ -1784,8 +1774,8 @@ async fn a_count_of_cells() {
         &["alpha/aria"],
         &[
             "output",
-            "editor below output",
-            "output as notices below output, 5",
+            "editor below main",
+            "output as notices below main, 5",
         ],
     )
     .await;
@@ -1794,7 +1784,7 @@ async fn a_count_of_cells() {
         row.trim() == "[notices]"
     })
     .await;
-    assert_eq!(client.rows()[0].trim(), "[output]");
+    assert_eq!(client.rows()[0].trim(), "[main]");
 }
 
 /// Types `count` lines with Ctrl+J between them.
@@ -1810,7 +1800,7 @@ fn type_lines(client: &mut PtyClient, count: usize) {
 #[tokio::test]
 async fn the_editor_stops_at_its_max() {
     let (_session, mut client, _config) =
-        with_layout(&["alpha/aria"], &["output", "editor below output, max 3"]).await;
+        with_layout(&["alpha/aria"], &["output", "editor below main, max 3"]).await;
     type_lines(&mut client, 5);
     wait_row(&client, 24, "the last line", |row| row.trim() == "line5").await;
     let rows = client.rows();
@@ -2059,7 +2049,7 @@ async fn the_input_focus_after_a_change_of_the_world() {
             "clients/layouts/mine.toml",
             &layout_file(&[
                 "output",
-                "editor below output",
+                "editor below main",
                 "editor as scratch right of editor",
             ]),
         )
@@ -2136,18 +2126,6 @@ fn has_config_line(shown: &str, line: &str) -> bool {
 }
 
 /// The lines of the layout file `name` under `dir`.
-fn place_of(dir: &std::path::Path, name: &str) -> Vec<String> {
-    let text = std::fs::read_to_string(dir.join(format!("clients/layouts/{name}.toml")))
-        .unwrap_or_else(|error| panic!("the layout file {name}: {error}"));
-    let file: toml::Table = text.parse().expect("the layout file is TOML");
-    file["place"]
-        .as_array()
-        .expect("place is a list")
-        .iter()
-        .map(|line| line.as_str().expect("a line is text").to_owned())
-        .collect()
-}
-
 #[tokio::test]
 async fn a_save_from_a_built_in_layout() {
     let (session, mut client, config) = with_layer(&["alpha/aria"], "").await;
@@ -2162,13 +2140,13 @@ async fn a_save_from_a_built_in_layout() {
     assert!(shown.contains("#   1. output"), "{shown}");
     assert_eq!(
         place_of(config.path(), "laptop"),
-        ["output", "editor below output"]
+        ["output", "editor below main"]
     );
 }
 
 #[tokio::test]
 async fn a_save_to_a_player_layout() {
-    let config = layout_dir(&["output", "editor below output"], "");
+    let config = layout_dir(&["output", "editor below main"], "");
     let (session, mut client) = attached_showing(&["alpha/aria"], &config).await;
     after_save(
         &session,
@@ -2180,14 +2158,14 @@ async fn a_save_to_a_player_layout() {
     .await;
     assert_eq!(
         place_of(config.path(), "mine"),
-        ["output", "editor below output", "tabs at top"]
+        ["output", "editor below main", "tabs at top"]
     );
     assert!(!config.path().join("clients/devices/laptop.toml").exists());
 }
 
 #[tokio::test]
 async fn a_second_client_gets_the_change() {
-    let config = layout_dir(&["output", "tabs above output", "editor below output"], "");
+    let config = layout_dir(&["output", "tabs above main", "editor below main"], "");
     let (session, mut first) = attached_showing(TWO_WORLDS, &config).await;
     let second = PtyClient::start_args(
         session.server.socket(),
@@ -2247,7 +2225,7 @@ async fn a_save_from_the_built_in_layout_of_one_world() {
     );
     assert_eq!(
         place_of(config.path(), "laptop.alpha.aria"),
-        ["output", "editor below output"]
+        ["output", "editor below main"]
     );
 }
 
@@ -2363,7 +2341,7 @@ async fn save_under_a_name() {
     .await;
     assert_eq!(
         place_of(config.path(), "evening"),
-        ["output", "tabs above output", "editor below output"]
+        ["output", "tabs above main", "editor below main"]
     );
 }
 
@@ -2523,6 +2501,6 @@ async fn arrange_mode_saves_through_the_server() {
     .await;
     assert_eq!(
         place_of(config.path(), "laptop"),
-        ["output", "editor below output", "tabs below output"]
+        ["output", "editor below main", "tabs below main"]
     );
 }

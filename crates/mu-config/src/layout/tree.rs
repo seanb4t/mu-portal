@@ -247,7 +247,7 @@ pub(super) fn apply(root: &mut Option<Node>, step: &Step, line: usize) -> Result
         return Err(LayoutError::at(
             line,
             step.id.as_str(),
-            "an earlier line places a block with this id",
+            "an earlier line places a block with this id, so give this block its own id with `as`",
         ));
     }
     let new = Part {

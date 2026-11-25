@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::Output;
 
 use support::process::{ServerBuilder, ServerProcess, server_url};
-use support::{ConfigDir, mu_async, stderr, stdout};
+use support::{ConfigDir, layout_file, mu_async, place_of, stderr, stdout};
 
 mod support;
 
@@ -22,15 +22,6 @@ async fn layout(server: &ServerProcess, args: &[&str]) -> Output {
     all.extend(args);
     all.extend(["--server", &url]);
     mu_async(&all, &[]).await
-}
-
-/// The content of a layout file with `lines`.
-fn layout_file<S: AsRef<str>>(lines: &[S]) -> String {
-    let quoted: Vec<String> = lines
-        .iter()
-        .map(|line| format!("{:?}", line.as_ref()))
-        .collect();
-    format!("place = [{}]\n", quoted.join(", "))
 }
 
 /// A configuration directory with the layout file `mine` of `lines`.
@@ -60,7 +51,7 @@ const FILE: &str = "clients/layouts/mine.toml";
 
 #[tokio::test]
 async fn the_list_with_one_player_layout() {
-    let dir = mine(&["output", "editor below output"]);
+    let dir = mine(&["output", "editor below main"]);
     let server = start(dir.path()).await;
     let output = layout(&server, &["list"]).await;
     let text = stdout(&output);
@@ -112,7 +103,7 @@ async fn the_picture_of_classic() {
             .unwrap_or_else(|| panic!("no row of the picture holds {word}: {text}"))
     };
     assert!(
-        place("tabs") < place("output") && place("output") < place("editor"),
+        place("tabs") < place("main") && place("main") < place("editor"),
         "{text}"
     );
 }
@@ -123,11 +114,7 @@ async fn the_numbers_of_the_lines() {
     let server = start(dir.path()).await;
     let output = layout(&server, &["show", "classic"]).await;
     let text = stdout(&output);
-    for line in [
-        "1. output",
-        "2. tabs above output",
-        "3. editor below output",
-    ] {
+    for line in ["1. output", "2. tabs above main", "3. editor below main"] {
         assert!(text.lines().any(|each| each == line), "{text}");
     }
 }
@@ -189,19 +176,19 @@ async fn an_unknown_block() {
 async fn a_block_twice() {
     bad_layout(
         &["editor", "output above editor", "output at top"],
-        &["line 3", "output"],
+        &["line 3", "main", "`as`"],
     )
     .await;
 }
 
 #[tokio::test]
 async fn a_block_that_is_not_placed_yet() {
-    bad_layout(&["editor", "tabs above output"], &["line 2", "output"]).await;
+    bad_layout(&["editor", "tabs above main"], &["line 2", "main"]).await;
 }
 
 #[tokio::test]
 async fn no_editor() {
-    bad_layout(&["output", "tabs above output"], &[FILE, "editor"]).await;
+    bad_layout(&["output", "tabs above main"], &[FILE, "editor"]).await;
 }
 
 #[tokio::test]
@@ -219,8 +206,8 @@ async fn anchors_that_are_not_neighbors() {
     bad_layout(
         &[
             "output",
-            "tabs above output",
-            "editor below output",
+            "tabs above main",
+            "editor below main",
             "output as notices right of tabs and editor",
         ],
         &["line 4", "tabs", "editor"],
@@ -252,11 +239,7 @@ async fn an_id_that_is_a_word_of_the_sentences() {
 
 #[tokio::test]
 async fn the_editor_does_not_stack() {
-    bad_layout(
-        &["output", "editor with output"],
-        &[FILE, "line 2", "editor"],
-    )
-    .await;
+    bad_layout(&["output", "editor with main"], &[FILE, "line 2", "editor"]).await;
 }
 
 #[tokio::test]
@@ -270,7 +253,7 @@ async fn a_size_on_the_tabs() {
 
 #[tokio::test]
 async fn a_size_on_the_first_line() {
-    bad_layout(&["output, 50%", "editor below output"], &["line 1"]).await;
+    bad_layout(&["output, 50%", "editor below main"], &["line 1"]).await;
 }
 
 #[tokio::test]
@@ -297,19 +280,6 @@ async fn five_editors() {
 use mu_proto::__buffa::oneof::edit_layout_request::Change as EditChange;
 use support::process::{Answers, PtyClient, Session};
 
-/// The lines of the layout file `name` under `dir`.
-fn place_of(dir: &Path, name: &str) -> Vec<String> {
-    let text = fs::read_to_string(dir.join(format!("clients/layouts/{name}.toml")))
-        .unwrap_or_else(|error| panic!("the layout file {name}: {error}"));
-    let file: toml::Table = text.parse().expect("the layout file is TOML");
-    file["place"]
-        .as_array()
-        .expect("place is a list")
-        .iter()
-        .map(|line| line.as_str().expect("a line is text").to_owned())
-        .collect()
-}
-
 fn lines(lines: &[&str]) -> Vec<String> {
     lines.iter().map(ToString::to_string).collect()
 }
@@ -335,12 +305,12 @@ async fn a_save_writes_the_file() {
     let server = start(dir.path()).await;
     server
         .client()
-        .save_layout("mine", lines(&["output", "editor below output"]), None)
+        .save_layout("mine", lines(&["output", "editor below main"]), None, None)
         .await
         .expect("the save");
     assert_eq!(
         place_of(dir.path(), "mine"),
-        ["output", "editor below output"]
+        ["output", "editor below main"]
     );
     let listed = layout(&server, &["list"]).await;
     assert!(
@@ -356,7 +326,7 @@ async fn a_save_of_a_bad_layout() {
     let server = start(dir.path()).await;
     let error = server
         .client()
-        .save_layout("mine", lines(&["output"]), None)
+        .save_layout("mine", lines(&["output"]), None, None)
         .await
         .expect_err("no editor")
         .to_string();
@@ -370,7 +340,7 @@ async fn a_save_with_a_built_in_name() {
     let server = start(dir.path()).await;
     let error = server
         .client()
-        .save_layout("classic", lines(&["editor"]), None)
+        .save_layout("classic", lines(&["editor"]), None, None)
         .await
         .expect_err("a built-in name")
         .to_string();
@@ -383,7 +353,7 @@ async fn a_save_with_a_bad_name() {
     let server = start(dir.path()).await;
     let result = server
         .client()
-        .save_layout("../x", lines(&["editor"]), None)
+        .save_layout("../x", lines(&["editor"]), None, None)
         .await;
     assert!(result.is_err());
     assert!(!dir.path().join("clients").exists());
@@ -396,7 +366,7 @@ async fn a_save_with_the_name_of_two_dots() {
     let server = start(dir.path()).await;
     let error = server
         .client()
-        .save_layout("..", lines(&["output", "editor below output"]), None)
+        .save_layout("..", lines(&["output", "editor below main"]), None, None)
         .await
         .expect_err("two dots")
         .to_string();
@@ -412,7 +382,7 @@ async fn a_clients_path_that_is_a_file() {
     fs::write(&clients, "").unwrap();
     let error = server
         .client()
-        .save_layout("mine", lines(&["output", "editor below output"]), None)
+        .save_layout("mine", lines(&["output", "editor below main"]), None, None)
         .await
         .expect_err("clients is a file")
         .to_string();
@@ -605,7 +575,7 @@ async fn a_use_with_an_empty_name_and_no_key() {
 
 // The edits and the description.
 
-const TWO_LINES: &[&str] = &["output", "editor below output"];
+const TWO_LINES: &[&str] = &["output", "editor below main"];
 
 #[tokio::test]
 async fn an_edit_places_a_block() {
@@ -613,7 +583,7 @@ async fn an_edit_places_a_block() {
     let server = start(dir.path()).await;
     let output = layout(
         &server,
-        &["place", "mine", "output as notices right of output, 30%"],
+        &["place", "mine", "output as notices right of main, 30%"],
     )
     .await;
     assert!(output.status.success(), "{}", stderr(&output));
@@ -621,7 +591,7 @@ async fn an_edit_places_a_block() {
     let text = stdout(&shown);
     assert!(
         text.lines()
-            .any(|line| line == "3. output as notices right of output, 30%"),
+            .any(|line| line == "3. output as notices right of main, 30%"),
         "{text}"
     );
     assert_eq!(place_of(dir.path(), "mine").len(), 3);
@@ -693,16 +663,13 @@ async fn an_insert_from_the_command_line() {
     let server = start(dir.path()).await;
     let output = layout(
         &server,
-        &["insert", "mine", "2", "output as notices right of output"],
+        &["insert", "mine", "2", "output as notices right of main"],
     )
     .await;
     assert!(output.status.success(), "{}", stderr(&output));
     let shown = layout(&server, &["show", "mine"]).await;
     let text = stdout(&shown);
-    for line in [
-        "2. output as notices right of output",
-        "3. editor below output",
-    ] {
+    for line in ["2. output as notices right of main", "3. editor below main"] {
         assert!(text.lines().any(|each| each == line), "{text}");
     }
 }
@@ -711,8 +678,8 @@ async fn an_insert_from_the_command_line() {
 async fn a_delete_by_id() {
     let dir = mine(&[
         "output",
-        "editor below output",
-        "output as side right of output",
+        "editor below main",
+        "output as side right of main",
     ]);
     let server = start(dir.path()).await;
     let output = layout(&server, &["delete", "mine", "side"]).await;
@@ -756,7 +723,7 @@ async fn describe_gives_each_block() {
         .iter()
         .map(|block| block["id"].as_str().unwrap())
         .collect();
-    assert_eq!(ids, ["output", "tabs", "editor", "statusline", "notices"]);
+    assert_eq!(ids, ["main", "tabs", "editor", "statusline", "notices"]);
     let lines: Vec<u64> = blocks
         .iter()
         .map(|block| block["line"].as_u64().unwrap())
@@ -785,7 +752,7 @@ async fn describe_of_an_unknown_layout() {
 #[tokio::test]
 async fn an_edit_gives_the_same_file_as_the_command() {
     use support::process::{BOUND, wait_until};
-    let plan = ["output", "tabs above output", "editor below output"];
+    let plan = ["output", "tabs above main", "editor below main"];
     let with_mine = || mine(&plan).file("clients/global.toml", "layout = \"mine\"\n");
     // The first server has a client, which runs the command.
     let first = with_mine();
@@ -838,21 +805,21 @@ async fn an_edit_gives_the_same_file_as_the_command() {
 async fn a_size_of_fill_from_the_command_line() {
     let dir = mine(&[
         "output",
-        "editor below output",
-        "output as notices right of output, 30%",
+        "editor below main",
+        "output as notices right of main, 30%",
     ]);
     let server = start(dir.path()).await;
     let output = layout(&server, &["size", "mine", "notices", "40%"]).await;
     assert!(output.status.success(), "{}", stderr(&output));
     assert_eq!(
         place_of(dir.path(), "mine")[2],
-        "output as notices right of output, 40%"
+        "output as notices right of main, 40%"
     );
     let output = layout(&server, &["size", "mine", "notices", "fill"]).await;
     assert!(output.status.success(), "{}", stderr(&output));
     assert_eq!(
         place_of(dir.path(), "mine")[2],
-        "output as notices right of output"
+        "output as notices right of main"
     );
 }
 
@@ -860,17 +827,55 @@ async fn a_size_of_fill_from_the_command_line() {
 #[tokio::test]
 async fn a_save_through_a_linked_directory() {
     // The directory `clients` of the configuration directory is a link to a directory.
-    let real = mine(&["output", "editor below output"]);
+    let real = mine(&["output", "editor below main"]);
     let config = tempfile::tempdir().expect("a directory");
     std::os::unix::fs::symlink(real.path().join("clients"), config.path().join("clients"))
         .expect("a link");
     let server = start(config.path()).await;
-    let output = layout(&server, &["place", "mine", "tabs above output"]).await;
+    let output = layout(&server, &["place", "mine", "tabs above main"]).await;
     assert!(output.status.success(), "{}", stderr(&output));
     assert_eq!(
         place_of(real.path(), "mine"),
-        ["output", "editor below output", "tabs above output"]
+        ["output", "editor below main", "tabs above main"]
     );
     // The link stays a link.
     assert!(config.path().join("clients").is_symlink());
+}
+
+#[tokio::test]
+async fn a_save_with_a_key_sets_the_entry_in_one_call() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    server
+        .client()
+        .save_layout(
+            "mine",
+            lines(&["output", "editor below main"]),
+            Some("laptop"),
+            Some("alpha/aria"),
+        )
+        .await
+        .expect("the save");
+    assert_eq!(
+        place_of(dir.path(), "mine"),
+        ["output", "editor below main"]
+    );
+    let device = fs::read_to_string(dir.path().join("clients/devices/laptop.toml")).unwrap();
+    let device: toml::Table = device.parse().expect("the device layer is TOML");
+    assert_eq!(device["world-layouts"]["alpha/aria"].as_str(), Some("mine"));
+    assert!(!device.contains_key("layout"), "{device:?}");
+}
+
+#[tokio::test]
+async fn a_save_with_a_key_and_no_device_is_refused() {
+    let dir = ConfigDir::empty();
+    let server = start(dir.path()).await;
+    let error = server
+        .client()
+        .save_layout("mine", lines(&["editor"]), None, Some("alpha/aria"))
+        .await
+        .expect_err("a key with no device")
+        .to_string();
+    assert!(error.contains("device"), "{error}");
+    assert!(!dir.path().join("clients/layouts/mine.toml").exists());
 }

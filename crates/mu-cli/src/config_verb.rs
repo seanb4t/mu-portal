@@ -160,8 +160,8 @@ pub fn render(reply: &proto::GetClientConfigResponse) -> String {
         );
     }
     let _ = writeln!(text, "# the lines of the layout {}:", reply.layout_name);
-    for (index, line) in reply.layout.iter().enumerate() {
-        let _ = writeln!(text, "#   {}. {line}", index + 1);
+    for line in mu_config::layout::numbered(&reply.layout) {
+        let _ = writeln!(text, "#   {line}");
     }
     if !reply.bindings.is_empty() {
         text.push_str("\n[keys]\n");
