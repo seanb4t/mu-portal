@@ -21,7 +21,7 @@ use crate::config::Echo;
 use crate::convert::convert;
 use crate::history::HISTORY_LIMIT;
 use crate::keymap::Wheel;
-use crate::model::{ConfigRetry, Late, Listing, Model, PaneId, QuitArm};
+use crate::model::{ConfigRetry, Late, Listing, Model, PaneId, QuitArm, TickWait, WorldStatus};
 use crate::pane::{Caps, PaneState};
 use crate::probe::{self, Outcome};
 use crate::registry::{ArgKind, EntryId, candidates};
@@ -54,8 +54,11 @@ pub enum Msg {
     /// The client configuration after an [`Effect::FetchConfig`], or the reason that the call
     /// failed.
     Config(Result<Box<mu_proto::GetClientConfigResponse>, String>),
-    /// The wait of an [`Effect::RetryConfig`] ended.
+    /// The wait of an [`Effect::Wait`] for [`Timer::RetryConfig`] ended.
     RetryConfig,
+    /// The wait of an [`Effect::Wait`] for [`Timer::Tick`] ended, at this time of the clock in
+    /// milliseconds since the Unix epoch.
+    Tick(i64),
     /// The result of an [`Effect::Connect`] or an [`Effect::Disconnect`].
     Control {
         /// The world of the call.
@@ -151,10 +154,12 @@ pub enum Effect {
     },
     /// Ask the server for the client configuration, and give it back as a [`Msg::Config`].
     FetchConfig,
-    /// Wait `after`, then give back a [`Msg::RetryConfig`].
-    RetryConfig {
+    /// Wait `after`, then give back the message of `then`.
+    Wait {
         /// The wait.
         after: Duration,
+        /// What the wait is for.
+        then: Timer,
     },
     /// Write `text` to the clipboard of the terminal.
     ClipboardWrite(String),
@@ -167,6 +172,20 @@ pub enum Effect {
         png: Vec<u8>,
     },
 }
+
+/// What an [`Effect::Wait`] is for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Timer {
+    /// The next fetch of the client configuration. The wait gives back a
+    /// [`Msg::RetryConfig`].
+    RetryConfig,
+    /// The next second of the clock. The wait gives back a [`Msg::Tick`] with the time of the
+    /// clock at its end.
+    Tick,
+}
+
+/// The wait between two ticks of the clock.
+pub const TICK: Duration = Duration::from_secs(1);
 
 /// The result of an [`Effect::Send`].
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -189,9 +208,28 @@ pub enum Reply {
     },
 }
 
-/// Changes `model` for `msg` and returns the effects for the loop to perform, in order.
+/// Changes `model` for `msg` and returns the effects for the loop to perform, in order. If
+/// the layout on the screen shows a time and no tick of the clock waits, the last effect is
+/// the wait of the next tick.
 pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
+    let mut effects = step(model, msg);
+    if model.tick == TickWait::Idle && model.shows_a_time() {
+        model.tick = TickWait::Waiting;
+        effects.push(Effect::Wait {
+            after: TICK,
+            then: Timer::Tick,
+        });
+    }
+    effects
+}
+
+fn step(model: &mut Model, msg: Msg) -> Vec<Effect> {
     match msg {
+        Msg::Tick(now_ms) => {
+            model.now_ms = now_ms;
+            model.tick = TickWait::Idle;
+            Vec::new()
+        }
         Msg::Terminal(TermEvent::Key(key)) => on_key(model, key),
         Msg::Terminal(TermEvent::Mouse(mouse)) => on_mouse(model, mouse),
         Msg::Terminal(TermEvent::Paste(text)) => {
@@ -866,7 +904,10 @@ fn config_failed(model: &mut Model, reason: &str) -> Vec<Effect> {
     let after = mu_client::backoff()
         .nth(failures)
         .unwrap_or(Duration::from_secs(5));
-    vec![Effect::RetryConfig { after }]
+    vec![Effect::Wait {
+        after,
+        then: Timer::RetryConfig,
+    }]
 }
 
 /// A list of the worlds, unless one is with the server already.
@@ -901,14 +942,23 @@ fn on_client(model: &mut Model, item: ClientEvent) -> Vec<Effect> {
             for world in &mut model.worlds {
                 world.unseen = false;
                 world.style = Style::default();
+                world.state = WorldStatus::Unknown;
+                world.connected_ms = None;
+                world.sent_ms = None;
                 if let Some(pane) = model.panes.get_mut(&world.pane) {
                     pane.clear();
                 }
             }
-            // The Reset does not clear the notices pane, so its notices are still there.
-            let pane = model.focused_pane();
-            if pane != PaneId::NOTICES {
-                model.replay_notices(pane);
+            for (key, pane) in &model.extra_panes {
+                if key.0.is_some()
+                    && let Some(pane) = model.panes.get_mut(pane)
+                {
+                    pane.clear();
+                }
+            }
+            // The Reset does not clear the panes of no world, so their notices are still there.
+            if model.focused_pane() != PaneId::NOTICES {
+                model.replay_notices();
             }
             return_waiting(model, "the server started again");
             if model.listing == Listing::Asked {
@@ -934,49 +984,78 @@ fn on_client(model: &mut Model, item: ClientEvent) -> Vec<Effect> {
             return_waiting(model, "the client lost the server");
             Vec::new()
         }
-        ClientEvent::Event(event) => {
-            model.lost = false;
-            let count = model.worlds.len();
-            let index = model.world(&event.world);
-            let effects = if model.worlds.len() > count {
-                list_worlds(model).into_iter().collect()
-            } else {
-                Vec::new()
+        ClientEvent::Event(event) => on_event(model, &event),
+    }
+}
+
+/// One event of a world: its state and its times, and its line in the pane of the world.
+fn on_event(model: &mut Model, event: &mu_proto::Event) -> Vec<Effect> {
+    model.lost = false;
+    let count = model.worlds.len();
+    let index = model.world(&event.world);
+    let effects = if model.worlds.len() > count {
+        list_worlds(model).into_iter().collect()
+    } else {
+        Vec::new()
+    };
+    let mut effects: Vec<Effect> = effects;
+    let unseen = model.focus != Some(index);
+    let world = &mut model.worlds[index];
+    world.unseen |= unseen;
+    match event.kind.as_known() {
+        Some(EventKind::EVENT_KIND_CONNECTED) => {
+            world.state = WorldStatus::Connected;
+            world.connected_ms = Some(event.time_ms);
+        }
+        Some(EventKind::EVENT_KIND_DISCONNECTED) => {
+            world.state = WorldStatus::Disconnected;
+            world.connected_ms = None;
+        }
+        _ => {}
+    }
+    if event.source.as_known() == Some(Source::SOURCE_PLAYER) {
+        world.sent_ms = Some(event.time_ms);
+    }
+    // The list gives the state after a connect or a disconnect, such as the wait for
+    // the next attempt.
+    if matches!(
+        event.kind.as_known(),
+        Some(EventKind::EVENT_KIND_CONNECTED | EventKind::EVENT_KIND_DISCONNECTED)
+    ) && model.listing == Listing::Idle
+    {
+        model.listing = Listing::Asked;
+        effects.push(Effect::ListWorlds);
+    }
+    let world = &mut model.worlds[index];
+    let pane = model
+        .panes
+        .entry(world.pane)
+        .or_insert_with(|| PaneState::with_caps(Arc::clone(&model.caps)));
+    let prompt = event.kind.as_known() == Some(EventKind::EVENT_KIND_PROMPT);
+    match event.source.as_known() {
+        Some(Source::SOURCE_PLAYER) => {
+            let spans = match model.echo {
+                Echo::Show => Vec::new(),
+                Echo::Dim => vec![(0, Style::default().add_modifier(Modifier::DIM))],
+                Echo::Hide => return effects,
             };
-            let unseen = model.focus != Some(index);
-            let world = &mut model.worlds[index];
-            world.unseen |= unseen;
-            let pane = model
-                .panes
-                .entry(world.pane)
-                .or_insert_with(|| PaneState::with_caps(Arc::clone(&model.caps)));
-            let prompt = event.kind.as_known() == Some(EventKind::EVENT_KIND_PROMPT);
-            match event.source.as_known() {
-                Some(Source::SOURCE_PLAYER) => {
-                    let spans = match model.echo {
-                        Echo::Show => Vec::new(),
-                        Echo::Dim => vec![(0, Style::default().add_modifier(Modifier::DIM))],
-                        Echo::Hide => return effects,
-                    };
-                    for row in echo_rows(&event.text, world.line_break.as_deref()) {
-                        pane.push_styled(&row, &spans);
-                    }
-                }
-                Some(Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => {
-                    pane.push(&line(&event));
-                }
-                _ if prompt => {
-                    let mut style = world.style;
-                    pane.set_unfinished(Some(convert(&event.text, &mut style)));
-                }
-                _ => {
-                    let converted = convert(&event.text, &mut world.style);
-                    pane.push_styled(&converted.text, &converted.spans);
-                }
+            for row in echo_rows(&event.text, world.line_break.as_deref()) {
+                pane.push_styled(&row, &spans);
             }
-            effects
+        }
+        Some(Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => {
+            pane.push(&line(event));
+        }
+        _ if prompt => {
+            let mut style = world.style;
+            pane.set_unfinished(Some(convert(&event.text, &mut style)));
+        }
+        _ => {
+            let converted = convert(&event.text, &mut world.style);
+            pane.push_styled(&converted.text, &converted.spans);
         }
     }
+    effects
 }
 
 /// The reply of the server to the first send of a world. After `Sent`, the next send of the

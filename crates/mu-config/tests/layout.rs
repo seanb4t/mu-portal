@@ -999,3 +999,20 @@ fn the_picture_of_the_sidebar() {
         "{picture}"
     );
 }
+
+// The streams.
+
+#[test]
+fn a_stream_goes_to_the_output_with_its_id() {
+    assert_eq!(layout(SIDEBAR).route("notices"), Some(&id_of("notices")));
+}
+
+#[test]
+fn a_stream_with_no_output_goes_to_the_first() {
+    assert_eq!(layout(SIDEBAR).route("channels"), Some(&id_of("output")));
+}
+
+#[test]
+fn a_plan_with_no_output() {
+    assert_eq!(layout(&["editor"]).route("notices"), None);
+}

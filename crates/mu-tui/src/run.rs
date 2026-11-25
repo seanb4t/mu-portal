@@ -15,7 +15,7 @@ use crate::kitty;
 use crate::model::Model;
 use crate::probe;
 use crate::screen::{self, Restore, Screen};
-use crate::update::{Effect, Msg, Reply, update};
+use crate::update::{Effect, Msg, Reply, Timer, update};
 use crate::view::view;
 
 /// Runs the client with the client configuration `config` of `device` on the alternate screen
@@ -82,6 +82,8 @@ async fn event_loop(
     let mut events = Box::pin(client.events());
     let mut hashes = Box::pin(client.config_hashes());
     let (replies, mut reply) = mpsc::unbounded_channel();
+    // The model takes the time of the clock before the first frame.
+    early.push_back(Msg::Tick(now_ms()));
     // The first list of the worlds, which `Model::starting` marks as asked.
     spawn_reply(&replies, listed_of(client.clone()));
     loop {
@@ -137,14 +139,33 @@ async fn event_loop(
                 Effect::FetchConfig => {
                     spawn_reply(&replies, config_of(client.clone(), device.to_owned()));
                 }
-                Effect::RetryConfig { after } => {
+                Effect::Wait { after, then } => {
                     spawn_reply(&replies, async move {
                         tokio::time::sleep(after).await;
-                        Msg::RetryConfig
+                        ended(then, now_ms)
                     });
                 }
             }
         }
+    }
+}
+
+/// The time of the system clock, in milliseconds since the Unix epoch.
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|since| i64::try_from(since.as_millis()).ok())
+        .unwrap_or(0)
+}
+
+/// The message of the end of the wait of `timer`. A tick takes its time from `clock` at that
+/// moment.
+#[must_use]
+pub fn ended(timer: Timer, clock: impl Fn() -> i64) -> Msg {
+    match timer {
+        Timer::RetryConfig => Msg::RetryConfig,
+        Timer::Tick => Msg::Tick(clock()),
     }
 }
 

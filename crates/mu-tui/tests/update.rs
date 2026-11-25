@@ -8,7 +8,7 @@ use std::time::Duration;
 use mu_tui::probe::{Outcome, PENDING_MAX};
 use mu_tui::store::CAPACITY;
 use mu_tui::width::Profile;
-use mu_tui::{Effect, Model, Msg, Position, update, view};
+use mu_tui::{Effect, Model, Msg, Position, Timer, update, view};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::CellDiffOption;
@@ -679,8 +679,9 @@ fn a_failed_fetch_fetches_again() {
     assert_eq!(
         (failed, again, notices_of(&model, "unavailable")),
         (
-            vec![Effect::RetryConfig {
-                after: Duration::from_millis(100)
+            vec![Effect::Wait {
+                after: Duration::from_millis(100),
+                then: Timer::RetryConfig,
             }],
             vec![Effect::FetchConfig],
             1
@@ -712,7 +713,7 @@ fn each_failed_fetch_waits_longer_until_an_apply() {
     let millis: Vec<Option<u128>> = effects
         .iter()
         .map(|effect| match effect {
-            Effect::RetryConfig { after } => Some(after.as_millis()),
+            Effect::Wait { after, .. } => Some(after.as_millis()),
             _ => None,
         })
         .collect();
@@ -751,8 +752,9 @@ fn a_late_failure_of_an_old_fetch_does_not_count() {
         ),
         (
             vec![],
-            vec![Effect::RetryConfig {
-                after: Duration::from_millis(100)
+            vec![Effect::Wait {
+                after: Duration::from_millis(100),
+                then: Timer::RetryConfig,
             }],
             0,
             1
@@ -772,8 +774,9 @@ fn a_hash_back_to_the_applied_one_resets_the_failures() {
     assert_eq!(
         (failed, notices_of(&model, "unavailable")),
         (
-            vec![Effect::RetryConfig {
-                after: Duration::from_millis(100)
+            vec![Effect::Wait {
+                after: Duration::from_millis(100),
+                then: Timer::RetryConfig,
             }],
             2
         )

@@ -4,7 +4,7 @@
 use mu_tui::probe::Outcome;
 use mu_tui::width::Profile;
 use mu_tui::wrap::{self, Row};
-use mu_tui::{EditorId, Effect, Model, Msg, update, view};
+use mu_tui::{Effect, Model, Msg, update, view};
 use proptest::prelude::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -175,7 +175,7 @@ fn terminal_of_1_row() {
     let mut app = app();
     type_lines(&mut app, &["one", "two", "three"]);
     screen(&mut app, 80, 1);
-    let editor = app.editor(EditorId::POSE).unwrap();
+    let editor = app.editor(&app.input_id()).unwrap();
     assert!(editor.area().height <= 1, "{:?}", editor.area());
 }
 

@@ -4,7 +4,8 @@ use std::collections::BTreeMap;
 
 use mu_client::{ClientError, PortalClient};
 pub use mu_config::Echo;
-use mu_config::{Kind, Os};
+use mu_config::layout::Layout;
+use mu_config::{Kind, Label, Os, Segment};
 use mu_proto::GetClientConfigResponse;
 
 use crate::keymap::Keymap;
@@ -33,6 +34,9 @@ impl Model {
     ///   stays, and a notice names the bad binding.
     /// - The echo takes its echo if [`Echo::named`] knows the name. Else the echo stays, and a
     ///   notice names it.
+    /// - The layout, the layout of each world entry, the label and the segments take their
+    ///   values if they pass the checks of `mu-config`. Else the old value stays, and a notice
+    ///   names the field.
     /// - Each of its notices that the last applied reply did not hold becomes a notice line.
     pub fn apply_config(&mut self, reply: GetClientConfigResponse) {
         let last = self.config.take();
@@ -58,6 +62,7 @@ impl Model {
             Some(echo) => self.echo = echo,
             None => self.notice(&format!("the server sent the bad echo {:?}", reply.echo)),
         }
+        self.apply_layouts(&reply);
         for notice in &reply.notices {
             let shown = last
                 .as_ref()
@@ -67,5 +72,50 @@ impl Model {
             }
         }
         self.config = Some(reply);
+    }
+
+    /// Takes the layouts, the label and the segments of `reply`. A reply with no line of a
+    /// layout gives the default layout.
+    fn apply_layouts(&mut self, reply: &GetClientConfigResponse) {
+        if !reply.layout.is_empty() {
+            match Layout::parse(&reply.layout) {
+                Ok(layout) => {
+                    self.layout = layout;
+                    self.layout_name.clone_from(&reply.layout_name);
+                }
+                Err(error) => self.notice(&format!(
+                    "the server sent the bad layout {}: {error}",
+                    reply.layout_name
+                )),
+            }
+        }
+        let mut worlds = BTreeMap::new();
+        for entry in &reply.world_layouts {
+            match Layout::parse(&entry.lines) {
+                Ok(layout) => {
+                    worlds.insert(entry.key.clone(), (entry.name.clone(), layout));
+                }
+                Err(error) => self.notice(&format!(
+                    "the server sent the bad layout {} for {}: {error}",
+                    entry.name, entry.key
+                )),
+            }
+        }
+        self.world_layouts = worlds;
+        if !reply.tab_label.is_empty() {
+            match Label::parse(&reply.tab_label) {
+                Ok(label) => self.label = label,
+                Err(error) => self.notice(&format!("the server sent the bad tab label: {error}")),
+            }
+        }
+        match (
+            Segment::check(&reply.statusline_left),
+            Segment::check(&reply.statusline_right),
+        ) {
+            (Ok(left), Ok(right)) => self.segments = (left, right),
+            (Err(error), _) | (_, Err(error)) => {
+                self.notice(&format!("the server sent a bad statusline: {error}"));
+            }
+        }
     }
 }

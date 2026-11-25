@@ -22,6 +22,9 @@ pub use step::{
 };
 pub use tree::{Block, Node, Part, PartSize};
 
+/// The name of the stream of the notices of the client.
+pub const NOTICES_STREAM: &str = "notices";
+
 /// The most lines of a plan.
 pub const LINES_MAX: usize = 32;
 /// The most levels of splits of a tree.
@@ -157,6 +160,29 @@ impl Layout {
     #[must_use]
     pub fn tree(&self) -> &Node {
         &self.tree
+    }
+
+    /// The id of each block of `kind`, in the order of the plan.
+    pub fn ids_of(&self, kind: BlockKind) -> impl Iterator<Item = &BlockId> {
+        self.steps
+            .iter()
+            .filter(move |step| step.kind == kind)
+            .map(|step| &step.id)
+    }
+
+    /// Whether the layout holds a block `id` of `kind`.
+    #[must_use]
+    pub fn holds(&self, kind: BlockKind, id: &BlockId) -> bool {
+        self.ids_of(kind).any(|each| each == id)
+    }
+
+    /// The `output` that shows the stream `stream`: the one with that id, or the first one of
+    /// the plan. None for a plan with no `output`.
+    #[must_use]
+    pub fn route(&self, stream: &str) -> Option<&BlockId> {
+        self.ids_of(BlockKind::Output)
+            .find(|id| id.as_str() == stream)
+            .or_else(|| self.ids_of(BlockKind::Output).next())
     }
 
     /// The same screen as a plan that mu writes from the tree. Each block keeps its id.
