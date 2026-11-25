@@ -22,7 +22,7 @@ The script runs with `uv run --script` and needs `gh`. It is read-only. It print
 | `no-label` | Add one kind or type label. The page lists them |
 | `change-no-milestone` | Set the milestone of the phase that the change served |
 | `duplicate-body` | Close the newer issue as a duplicate of the older one, and add the `duplicate` label |
-| `pr-closes-no-issue` | If the issue of that work is still open, close it by hand. Older pull requests are history only |
+| `pr-closes-no-issue` (a body with `Closes: none` passes) | If the issue of that work is still open, close it by hand. Older pull requests are history only |
 | `too-many-in-progress` | Ask the owner which item goes back to Next |
 | `change-without-proposal` | An empty folder in `openspec/changes/`. Look at it, then delete it |
 | `change-names-no-issue`, `change-issue-status` | Name the issue in the proposal, or set its status to In progress |

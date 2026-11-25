@@ -5,7 +5,7 @@
 ## Links
 
 - Closes #
-<!-- Name the issue of the change. A pull request with no issue, such as a dependency update or an archive, says so here. -->
+<!-- Name the issue of the change. A pull request with no issue, such as a dependency update or an archive, writes "Closes: none" and the reason. -->
 - OpenSpec change:
 
 ## Checks

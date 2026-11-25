@@ -37,7 +37,7 @@ The workflows of the Project set most of the status. You set the rest by hand.
 | You choose the next item | Next, by hand |
 | The work starts | In progress, by hand |
 
-A pull request names its issue with `Closes #<number>` in its body. The merge then closes the issue, and the Project moves it to Done. A pull request with no issue, such as a dependency update or an archive, says so in the body.
+A pull request names its issue with `Closes #<number>` in its body. The merge then closes the issue, and the Project moves it to Done. A pull request with no issue, such as a dependency update or an archive, writes `Closes: none` and the reason in the body. The audit accepts that line.
 
 ### Labels and milestones
 
