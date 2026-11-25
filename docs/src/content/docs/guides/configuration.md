@@ -22,7 +22,7 @@ If the directory does not exist, there are no configured worlds.
 
 If `mu client` starts a server, that server finds the directory by the same rule, from the environment of the client.
 
-The directory can also hold `server.toml`, the configuration of the server, and the directory `clients/`, the configuration of the clients. Neither makes a world. The guide [The server file and telemetry](/guides/telemetry/) describes `server.toml`. The guide [The client configuration](/guides/client/) describes the layers in `clients/`.
+The directory can also hold `server.toml`, the configuration of the server, and the directory `clients/`, the configuration of the clients. Neither makes a world. The guide [The server file and telemetry](/guides/telemetry/) describes `server.toml`. The guide [The client configuration](/guides/client/) describes the layers in `clients/`. Those layers hold the fields `layout`, `[tabs]`, `[statusline]` and `[world-layouts]`, and the guide [The layout of the client](/guides/layouts/) describes the layout files in `clients/layouts/`.
 
 ## The layout
 

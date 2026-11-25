@@ -6,6 +6,8 @@ pub mod config;
 pub mod config_file;
 pub mod config_verb;
 pub mod env_path;
+pub mod layout_verb;
+pub mod remote;
 pub mod server;
 pub mod server_config;
 pub mod socket;
@@ -82,6 +84,8 @@ pub enum Verb {
     Client(ClientArgs),
     /// Show the configuration of one client, or reload the directory, on a running server
     Config(config_verb::ConfigVerbArgs),
+    /// List and show the layouts of a running server
+    Layout(layout_verb::LayoutArgs),
     /// Run the server
     Server(ServerArgs),
     /// Print the name and the version
@@ -105,6 +109,7 @@ pub fn run(cli: Cli) -> ExitCode {
         None => client::run(&cli.client),
         Some(Verb::Client(args)) => client::run(&args),
         Some(Verb::Config(args)) => config_verb::run(&args),
+        Some(Verb::Layout(args)) => layout_verb::run(&args),
         Some(Verb::Server(args)) => server::run(&args),
         Some(Verb::World(args)) => world::run(&args),
         Some(Verb::Version) => print("version", &Cli::command().render_long_version()),

@@ -1,6 +1,6 @@
 ---
 title: The client configuration
-description: Choose the server and the device of mu client, and change its keys and echo line with the client layers of the server.
+description: Choose the server and the device of mu client, and change its keys, its echo line, its tab label and its statusline with the client layers of the server.
 sidebar:
   order: 4
 ---
@@ -78,13 +78,63 @@ A layer holds only these fields:
 | Field | Meaning |
 |---|---|
 | `echo` | `show`, `dim` or `hide`. The default is `dim` |
+| `layout` | The name of the layout of the screen. The default is `classic` |
+| `[tabs]` | The table of the tab label, with the field `label` |
+| `[statusline]` | The table of the statusline, with the lists `left` and `right` |
+| `[world-layouts]` | A table from a world id or a game name to the name of a layout |
 | `[keys]` | A table from a key name to the name of an entry, or to `none` |
+
+The guide [The layout of the client](/guides/layouts/) describes `layout` and `[world-layouts]`.
 
 The server reads the layers at its start. If you change a layer while the server runs, run `mu config reload`. Each attached client gets the new configuration with no restart.
 
 ## The echo line
 
 With `show`, the echo line has the normal style. With `dim`, it has the dim style. With `hide`, the client shows no echo line. The game can still show your text in its own words, such as `You say, "hello"`.
+
+## The tab label
+
+The field `label` of the table `[tabs]` sets the text of each world tab. The default is `{world}`, which is the world id. A label has 1 to 64 characters.
+
+```toml
+# clients/global.toml
+[tabs]
+label = "{number}:{character}"
+```
+
+| Field | Value |
+|---|---|
+| `{world}` | The world id |
+| `{game}` | The part of the id before the `/` |
+| `{character}` | The part of the id after the `/` |
+| `{number}` | The place of the world in the tabs, from 1 |
+
+Write `{{` for the character `{`, and `}}` for the character `}`. The client keeps its marks around the label: square brackets for the world in focus, `*` for unseen lines, and the count of the sends that wait.
+
+## The statusline
+
+The block `statusline` shows one row of segments about the world in focus. A layout must hold the block, as the built-in layout `status` does. The table `[statusline]` picks the segments of the left side and of the right side.
+
+```toml
+# clients/global.toml
+layout = "status"
+
+[statusline]
+left = ["world", "state"]
+right = ["idle"]
+```
+
+| Segment | Value |
+|---|---|
+| `world` | The world id |
+| `state` | `connecting`, `connected`, `disconnected` or `reconnecting` |
+| `connected` | The time since the world connected, while it is connected |
+| `idle` | The time since the last send to the world from any client |
+| `typed` | The count of characters in the editor with the input focus |
+
+The defaults are `left = ["world", "state"]` and `right = ["idle"]`. A segment with no value does not show. A time shows as `M:SS` under one hour, and as `H:MM:SS` from one hour. A layer that sets one list replaces the whole list of an earlier layer, and keeps the other list.
+
+If the two sides do not fit in the row, the right side shows in full and the left side is cut. With no world in focus, the row shows `no world`.
 
 ## The keys table
 
@@ -171,5 +221,7 @@ An earlier `mu client` read the file `client.toml` at the top of the configurati
 `mu client` no longer takes `--config` or `--socket`. Each of them is a usage error with exit status 2.
 
 ## Before a downgrade
+
+The guide [The layout of the client](/guides/layouts/#before-a-step-back-to-an-earlier-mu) gives the steps for a `mu` from before the layouts.
 
 An earlier `mu` does not know `clients/`. It reads each file in it as a stray file, and `mu world` and `mu server` stop with an error. Before you install an earlier binary, move `clients/` out of the configuration directory.

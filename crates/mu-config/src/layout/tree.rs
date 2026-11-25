@@ -207,7 +207,10 @@ fn made(step: &Step, line: usize) -> Result<(Block, Option<PartSize>), LayoutErr
             return bad("bad size: an editor takes only `max` and a count of rows");
         }
         (Some(_), SizeRule::OneRow) => {
-            return bad("bad size: this block always takes 1 row");
+            return bad(&format!(
+                "bad size: `{}` always takes 1 row",
+                step.kind.name()
+            ));
         }
         (Some(Size::Max(_)), SizeRule::Free) => {
             return bad("bad size: only an editor takes `max`");

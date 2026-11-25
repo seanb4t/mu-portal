@@ -2,19 +2,16 @@
 //! a running server. It never starts a server.
 
 use std::fmt::Write as _;
-use std::fs;
 use std::process::ExitCode;
 
 use clap::{Args, Subcommand};
-use mu_client::PortalClient;
 use mu_config::{
     FIELD_PATHS, KEYS_TABLE, Kind, Os, REPORT, STORE, WORLD_LAYOUTS_TABLE, filter, keyed_path,
 };
 use mu_proto as proto;
 
-use crate::bootstrap::{BootstrapArgs, Server};
-use crate::client::answered;
-use crate::socket::{checked_dir, current_uid, socket_dir};
+use crate::bootstrap::BootstrapArgs;
+use crate::remote::call;
 
 /// Arguments of `mu config`.
 #[derive(Clone, Debug, Args)]
@@ -61,22 +58,6 @@ pub fn run(args: &ConfigVerbArgs) -> ExitCode {
         ConfigCommand::Reload { bootstrap } => reload(bootstrap),
     };
     result.unwrap_or_else(|error| fail(&error))
-}
-
-/// Runs `call` with the client of `server` on a new runtime.
-fn call<T, F: Future<Output = Result<T, mu_client::ClientError>>>(
-    server: &Server,
-    call: impl FnOnce(PortalClient) -> F,
-) -> Result<T, String> {
-    let dir = socket_dir(&server.socket);
-    if fs::symlink_metadata(dir).is_ok() {
-        checked_dir(dir, current_uid()).map_err(|error| error.to_string())?;
-    }
-    let runtime = tokio::runtime::Runtime::new().map_err(|error| error.to_string())?;
-    runtime.block_on(async {
-        let client = PortalClient::unix(&server.socket);
-        answered(&server.url, server.wait, call(client)).await
-    })
 }
 
 fn show(bootstrap: &BootstrapArgs, kind: &str, os: Option<&str>) -> Result<ExitCode, String> {

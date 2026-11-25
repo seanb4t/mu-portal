@@ -28,6 +28,9 @@ service PortalService {
 
   // Reads the configuration directory again and applies the new client layers.
   rpc ReloadConfig(ReloadConfigRequest) returns (ReloadConfigResponse);
+
+  // Returns each built-in layout and each good layout file, and the notice of each bad one.
+  rpc ListLayouts(ListLayoutsRequest) returns (ListLayoutsResponse);
 }
 
 // `from_seq` is the first sequence number that the client wants. 0 and 1
@@ -199,6 +202,15 @@ message WatchConfigRequest {}
 
 message WatchConfigResponse {
   string store_hash = 1;
+}
+
+message ListLayoutsRequest {}
+
+message ListLayoutsResponse {
+  // Each built-in layout and each good layout file, in the order of the names.
+  repeated NamedLayout layouts = 1;
+  // One notice for each bad layout file.
+  repeated Notice notices = 2;
 }
 
 message ReloadConfigRequest {}

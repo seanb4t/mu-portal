@@ -1878,7 +1878,8 @@ async fn a_label_with_the_number() {
     let (_session, client, _config) =
         with_layer(TWO_WORLDS, "[tabs]\nlabel = \"{number}:{character}\"\n").await;
     client
-        .wait_top("the labels", |top| top.trim() == "[1:aria] 2:bryn")
+        // The world with no focus can have the mark of unseen lines.
+        .wait_top("the labels", |top| top.starts_with("[1:aria] 2:bryn"))
         .await;
 }
 

@@ -396,6 +396,22 @@ impl proto::PortalService for PortalApi {
         )))
     }
 
+    async fn list_layouts(
+        &self,
+        _ctx: RequestContext,
+        _request: ServiceRequest<'_, proto::ListLayoutsRequest>,
+    ) -> ServiceResult<proto::ListLayoutsResponse> {
+        traced("ListLayouts", async {
+            let (layouts, notices) = self.store.client().layouts();
+            Response::ok(proto::ListLayoutsResponse {
+                layouts: layouts.into_iter().map(named_layout).collect(),
+                notices: notices.iter().map(notice).collect(),
+                ..Default::default()
+            })
+        })
+        .await
+    }
+
     async fn reload_config(
         &self,
         _ctx: RequestContext,

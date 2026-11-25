@@ -195,6 +195,16 @@ impl PortalClient {
         Ok(self.inner.reload_config(request).await?.into_owned())
     }
 
+    /// Each layout that the server has, and the notice of each bad layout file.
+    ///
+    /// # Errors
+    ///
+    /// A [`ClientError`] if the call fails.
+    pub async fn list_layouts(&self) -> Result<proto::ListLayoutsResponse, ClientError> {
+        let request = proto::ListLayoutsRequest::default();
+        Ok(self.inner.list_layouts(request).await?.into_owned())
+    }
+
     /// One watch of the store hash, with no resume: the current hash, then each new one.
     ///
     /// # Errors
