@@ -833,3 +833,25 @@ async fn an_edit_gives_the_same_file_as_the_command() {
         fs::read_to_string(second.path().join("clients/layouts/mine.toml")).unwrap()
     );
 }
+
+#[tokio::test]
+async fn a_size_of_fill_from_the_command_line() {
+    let dir = mine(&[
+        "output",
+        "editor below output",
+        "output as notices right of output, 30%",
+    ]);
+    let server = start(dir.path()).await;
+    let output = layout(&server, &["size", "mine", "notices", "40%"]).await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        place_of(dir.path(), "mine")[2],
+        "output as notices right of output, 40%"
+    );
+    let output = layout(&server, &["size", "mine", "notices", "fill"]).await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        place_of(dir.path(), "mine")[2],
+        "output as notices right of output"
+    );
+}

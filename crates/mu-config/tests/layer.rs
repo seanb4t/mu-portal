@@ -35,6 +35,10 @@ fn the_defaults_pass_the_check() {
     assert_eq!(mu_config::check_fields(&ClientLayer::defaults()), Ok(()));
 }
 
+fn aria() -> mu_config::WorldId {
+    "alpha/aria".parse().expect("a world id")
+}
+
 fn label(text: &str) -> Label {
     Label::parse(text).unwrap_or_else(|error| panic!("{text}: {error}"))
 }
@@ -47,29 +51,23 @@ fn label_error(text: &str) -> String {
 
 #[test]
 fn a_label_with_the_number() {
-    assert_eq!(
-        label("{number}:{character}").render("alpha/aria", 2),
-        "2:aria"
-    );
+    assert_eq!(label("{number}:{character}").render(&aria(), 2), "2:aria");
 }
 
 #[test]
 fn the_game_and_the_character() {
-    assert_eq!(
-        label("{character}@{game}").render("alpha/aria", 1),
-        "aria@alpha"
-    );
+    assert_eq!(label("{character}@{game}").render(&aria(), 1), "aria@alpha");
 }
 
 #[test]
 fn the_default_label_is_the_world() {
     assert_eq!(Label::default(), label(mu_config::LABEL_DEFAULT));
-    assert_eq!(Label::default().render("alpha/aria", 1), "alpha/aria");
+    assert_eq!(Label::default().render(&aria(), 1), "alpha/aria");
 }
 
 #[test]
 fn braces() {
-    assert_eq!(label("{{{world}}}").render("alpha/aria", 1), "{alpha/aria}");
+    assert_eq!(label("{{{world}}}").render(&aria(), 1), "{alpha/aria}");
 }
 
 #[test]

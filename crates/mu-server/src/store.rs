@@ -10,7 +10,7 @@ use std::sync::Arc;
 use mu_config::layout::{BUILT_IN, BuiltIn, Change, DEFAULT_LAYOUT, Layout, LayoutFile};
 use mu_config::{
     Choice, ClientLayer, DeviceName, Echo, FIELD_PATHS, KEYS_TABLE, Kind, LABEL_DEFAULT,
-    LayoutName, NameError, Os, STORE, Segment, WORLD_LAYOUTS_TABLE, WorldId, WorldKey,
+    LayoutName, NameError, Os, STORE, SaveTarget, Segment, WORLD_LAYOUTS_TABLE, WorldId, WorldKey,
     check_fields, check_keys, filter, keyed_path, layout_for, save_target,
 };
 use mu_core::ResolvedWorld;
@@ -217,7 +217,7 @@ const PLACES: [Place; 3] = [
         check: |name| Os::parse(name).map(drop),
     },
     Place {
-        dir: "clients/devices",
+        dir: DEVICES_DIR,
         shown: "<device>",
         check: |name| DeviceName::new(name).map(drop),
     },
@@ -237,7 +237,12 @@ pub fn layout_path(name: &str) -> String {
 /// The name of the layout file at `path`, or none for a path that is not in the directory of
 /// the layout files.
 fn layout_file(path: &str) -> Option<&str> {
-    path.strip_prefix(LAYOUTS_DIR)?
+    name_in(path, LAYOUTS_DIR)
+}
+
+/// The name of the file at `path`, if it is a TOML file right under the directory `dir`.
+fn name_in<'a>(path: &'a str, dir: &str) -> Option<&'a str> {
+    path.strip_prefix(dir)?
         .strip_prefix('/')?
         .strip_suffix(".toml")
         .filter(|name| !name.contains('/'))
@@ -286,12 +291,7 @@ fn layer_rule(path: &str) -> Result<(), String> {
         return Ok(());
     }
     for place in &PLACES {
-        if let Some(name) = path
-            .strip_prefix(place.dir)
-            .and_then(|rest| rest.strip_prefix('/'))
-            .and_then(|file| file.strip_suffix(".toml"))
-            .filter(|name| !name.contains('/'))
-        {
+        if let Some(name) = name_in(path, place.dir) {
             return (place.check)(name).map_err(|error| error.to_string());
         }
     }
@@ -950,28 +950,29 @@ impl Store {
             let layout = Layout::parse(&lines).map_err(|error| refused(&error))?;
             let changed = layout.apply(change).map_err(|error| refused(&error))?;
             let lines = changed.layout.lines();
-            let saved = if built_in {
-                let Some(device) = device else {
-                    return Err(WriteError::Refused(format!(
-                        "{name} is a built-in layout: a change of it needs a device, and saves a new layout for that device"
-                    )));
-                };
-                let entries: BTreeMap<String, String> = part
-                    .resolve(Kind::Tui, Os::current(), &device)
+            let entries: BTreeMap<String, String> = match &device {
+                Some(device) if built_in => part
+                    .resolve(Kind::Tui, Os::current(), device)
                     .world_layouts
                     .into_iter()
                     .map(|entry| (entry.key, entry.name))
-                    .collect();
-                let choice = layout_for(world.as_ref(), &entries);
-                let target = save_target(&choice, &device).map_err(|error| refused(&error))?;
-                put_layout(root, &target, &lines)?;
-                put_choice(root, part, &device, &choice, Some(target.as_str()))?;
-                target.as_str().to_owned()
-            } else {
-                let target = LayoutName::new(&name).map_err(|error| refused(&error))?;
-                put_layout(root, &target, &lines)?;
-                name
+                    .collect(),
+                _ => BTreeMap::new(),
             };
+            let choice = layout_for(world.as_ref(), &entries);
+            if built_in && device.is_none() {
+                return Err(WriteError::Refused(format!(
+                    "{name} is a built-in layout: a change of it needs a device, and saves a new layout for that device"
+                )));
+            }
+            let device_name = device.as_ref().map_or("", DeviceName::as_str);
+            let target =
+                save_target(&choice, &name, device_name).map_err(|error| refused(&error))?;
+            put_layout(root, target.name(), &lines)?;
+            if let (SaveTarget::New(new), Some(device)) = (&target, &device) {
+                put_choice(root, part, device, &choice, Some(new.as_str()))?;
+            }
+            let saved = target.name().as_str().to_owned();
             Ok(Edited {
                 name: saved,
                 lines,

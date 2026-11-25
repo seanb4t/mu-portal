@@ -21,5 +21,6 @@ pub use layer::{
 };
 pub use names::{DEVICE_MAX, DeviceName, Kind, LayoutName, NameError, Os, listed};
 pub use world_id::{
-    BadWorldId, BadWorldKey, Choice, PART_RULE, WorldId, WorldKey, is_part, layout_for, save_target,
+    BadWorldId, BadWorldKey, Choice, PART_RULE, SaveTarget, WorldId, WorldKey, is_part, layout_for,
+    save_target,
 };

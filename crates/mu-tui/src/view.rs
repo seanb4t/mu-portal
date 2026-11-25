@@ -1,6 +1,7 @@
 //! [`view`]: draws the model. The solver of `mu-config` gives the rectangle of each pane of the
 //! layout, and one function draws each kind of block.
 
+use mu_config::WorldId;
 use mu_config::layout::{Area, BLOCKS, Block, BlockId, BlockKind, Placed, Solved, solve};
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -123,12 +124,7 @@ fn draw_arrange(model: &Model, solved: &Solved, frame: &mut Frame) {
 
 /// The block of `pane` that shows: the one in front of its stack.
 pub(crate) fn front<'a>(model: &Model, pane: &'a Placed) -> Option<&'a Block> {
-    let first = pane.blocks.first()?;
-    let wanted = model.fronts.get(&first.id);
-    pane.blocks
-        .iter()
-        .find(|block| Some(&block.id) == wanted)
-        .or(Some(first))
+    model.front_of(&pane.blocks)
 }
 
 /// The title row of `pane`: the id of each block, with the one that shows in square brackets.
@@ -223,7 +219,11 @@ fn top_row(model: &Model) -> String {
             .enumerate()
             .map(|(index, world)| {
                 let mark = if world.unseen { "*" } else { "" };
-                let label = clean(&model.label.render(&world.id, index + 1));
+                // An id that is no world id has no game and no character, so it shows as it is.
+                let label = world.id.parse::<WorldId>().map_or_else(
+                    |_| clean(&world.id),
+                    |id| clean(&model.label.render(&id, index + 1)),
+                );
                 // The first send is with the server. The ones after it wait for its reply.
                 let waiting = model
                     .sends

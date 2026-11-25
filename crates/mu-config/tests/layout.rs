@@ -1019,7 +1019,12 @@ fn a_plan_with_no_output() {
 
 // The name of a layout that a save from a built-in layout writes.
 
-use mu_config::{Choice, DeviceName, LayoutName, WorldKey, save_target};
+use mu_config::{Choice, DeviceName, LayoutName, SaveTarget, WorldKey};
+
+/// The name that a save of a change of the built-in layout `classic` writes.
+fn save_target(choice: &Choice, device: &DeviceName) -> Result<LayoutName, mu_config::NameError> {
+    mu_config::save_target(choice, "classic", device.as_str()).map(|target| target.name().clone())
+}
 
 fn device(name: &str) -> DeviceName {
     DeviceName::new(name).expect("a device name")
@@ -1088,6 +1093,89 @@ proptest! {
         let choice = if with_entry { entry(&key) } else { Choice::Default };
         if let Ok(name) = save_target(&choice, &device(&device_name)) {
             prop_assert_eq!(LayoutName::new(name.as_str()), Ok(name));
+        }
+    }
+}
+
+#[test]
+fn a_save_to_a_layout_of_the_player_keeps_its_name() {
+    let target = mu_config::save_target(&entry("alpha/aria"), "mine", "");
+    assert_eq!(
+        target,
+        Ok(SaveTarget::Same(LayoutName::new("mine").expect("a name")))
+    );
+}
+
+#[test]
+fn a_save_from_a_built_in_layout_gives_a_new_layout() {
+    let target = mu_config::save_target(&Choice::Default, "classic", "laptop");
+    assert_eq!(
+        target,
+        Ok(SaveTarget::New(LayoutName::new("laptop").expect("a name")))
+    );
+}
+
+// The range of a resize.
+
+#[test]
+fn a_border_in_a_split_of_21_columns() {
+    // 48 to 52 percent of 21 columns give 10 columns to each side of the divider.
+    let plan = layout(SIDEBAR);
+    let low = plan.resize_border(&id_of("notices"), 2, 21).expect("good");
+    assert_eq!(
+        low.layout.lines()[4],
+        "output as notices right of output, 48%"
+    );
+    let high = plan.resize_border(&id_of("notices"), 20, 21).expect("good");
+    assert_eq!(
+        high.layout.lines()[4],
+        "output as notices right of output, 52%"
+    );
+}
+
+#[test]
+fn a_larger_block_in_80_columns_stops_at_87_percent() {
+    let plan = layout(SIDEBAR);
+    let changed = plan.resize_by(&id_of("notices"), 20, 24, 80).expect("good");
+    assert_eq!(
+        changed.layout.lines()[4],
+        "output as notices right of output, 87%"
+    );
+    // 87 percent of 80 columns is 69 columns, which leaves 10 columns and the divider.
+    let solved = solve(&changed.layout, Area::new(80, 24), &|_, _| 1);
+    assert_eq!(
+        solved.pane_of(&id_of("output")).expect("a pane").area.width,
+        10
+    );
+}
+
+#[test]
+fn a_size_text_of_fill_removes_the_size() {
+    use mu_config::layout::Change;
+    assert_eq!(
+        Change::sized(id_of("notices"), "fill"),
+        Ok(Change::Fill(id_of("notices")))
+    );
+    assert_eq!(
+        Change::sized(id_of("notices"), " 40% "),
+        Ok(Change::Size(id_of("notices"), Size::Percent(40)))
+    );
+    assert!(Change::sized(id_of("notices"), "wide").is_err());
+}
+
+proptest! {
+    #[test]
+    fn a_text_pane_keeps_its_smallest_size(moves in prop::collection::vec(a_move(), 0..24)) {
+        // A screen of 300 by 100 has room for each of at most 8 outputs at 10 by 2.
+        let layout = grown(&moves);
+        let solved = solve(&layout, Area::new(300, 100), &|_, _| 1);
+        for pane in &solved.panes {
+            if pane.blocks.iter().any(|block| block.kind == BlockKind::Output) {
+                prop_assert!(
+                    pane.area.width >= 10 && pane.area.height >= 2,
+                    "{:?} in {:?}", pane.area, layout.lines()
+                );
+            }
         }
     }
 }

@@ -127,6 +127,9 @@ impl Os {
 /// The longest device name, in characters.
 pub const DEVICE_MAX: usize = 64;
 
+/// The rule of the characters of a device name and of a layout name, as the end of a sentence.
+const NAME_RULE: &str = "1 to 64 characters from a to z, 0 to 9, -, _ and .";
+
 /// The name of a device: 1 to [`DEVICE_MAX`] characters from `a` to `z`, `0` to `9`, `-`, `_`
 /// and `.`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -149,9 +152,7 @@ impl DeviceName {
             Err(NameError {
                 what: "device",
                 name: name.to_owned(),
-                reason: format!(
-                    "a device name has 1 to {DEVICE_MAX} characters from a to z, 0 to 9, -, _ and ."
-                ),
+                reason: format!("a device name has {NAME_RULE}"),
             })
         }
     }
@@ -186,11 +187,7 @@ impl LayoutName {
             name: name.to_owned(),
             reason,
         };
-        DeviceName::new(name).map_err(|_| {
-            bad(format!(
-                "a layout name has 1 to {DEVICE_MAX} characters from a to z, 0 to 9, -, _ and ."
-            ))
-        })?;
+        DeviceName::new(name).map_err(|_| bad(format!("a layout name has {NAME_RULE}")))?;
         if name == "." || name == ".." {
             return Err(bad("a layout name is not . or ..".to_owned()));
         }

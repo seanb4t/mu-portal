@@ -5,7 +5,9 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Arc;
 
-use mu_config::layout::{BUILT_IN, BlockId, BlockKind, DEFAULT_LAYOUT, Layout, NOTICES_STREAM};
+use mu_config::layout::{
+    BUILT_IN, Block, BlockId, BlockKind, DEFAULT_LAYOUT, Layout, NOTICES_STREAM,
+};
 use mu_config::{Choice, Label, Segment, WorldId, layout_for};
 use mu_proto::World as ProtoWorld;
 use ratatui::style::Style;
@@ -89,9 +91,13 @@ pub(crate) enum TickWait {
     Waiting,
 }
 
-/// The order of the worlds: by the game part, then by the character part.
-fn order(id: &str) -> (&str, &str) {
-    id.split_once('/').unwrap_or((id, ""))
+/// The order of the worlds: the order of [`WorldId`], by the game part and then by the
+/// character part. A text that is no world id comes first, in the order of its text.
+fn order(id: &str) -> (Option<WorldId>, &str) {
+    match id.parse::<WorldId>() {
+        Ok(world) => (Some(world), ""),
+        Err(_) => (None, id),
+    }
 }
 
 /// What set the arm of a quit, which decides what cancels it.
@@ -585,6 +591,16 @@ impl Model {
         }
     }
 
+    /// The block of `blocks`, the blocks of one pane, that shows: the one in front of the stack.
+    pub(crate) fn front_of<'a>(&self, blocks: &'a [Block]) -> Option<&'a Block> {
+        let first = blocks.first()?;
+        let wanted = self.fronts.get(&first.id);
+        blocks
+            .iter()
+            .find(|block| Some(&block.id) == wanted)
+            .or(Some(first))
+    }
+
     /// The pane of the `output` `id` of the world in focus: the pane of the world for the first
     /// `output` of the plan, and a pane of its own for each other one. None for a block that
     /// has no pane yet.
@@ -642,7 +658,6 @@ impl Model {
 
     /// The index of `id`, or `None` if the model does not hold that world.
     pub(crate) fn find(&self, id: &str) -> Option<usize> {
-        // The order key of `a` and `a/` is the same, so the id itself decides.
         self.search(id)
             .ok()
             .filter(|&index| self.worlds[index].id == id)

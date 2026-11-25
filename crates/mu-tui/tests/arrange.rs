@@ -276,6 +276,8 @@ fn a_letter_bound_to_undo_still_picks() {
     keys(&mut app, "ab");
     key(&mut app, KeyCode::Down, Modifiers::NONE);
     assert_eq!(app.layout().lines()[2], "tabs below output");
+    let rows = rows(&mut app);
+    assert!(rows[21].contains("alpha/aria]"), "{rows:?}");
 }
 
 #[test]

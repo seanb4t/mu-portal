@@ -1,7 +1,6 @@
 //! The statusline: one row of segments about the world in focus.
 
 use mu_config::Segment;
-use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::model::Model;
 use crate::text::clean;
@@ -52,44 +51,17 @@ pub fn row(model: &Model, width: u16) -> String {
         return "no world".to_owned();
     }
     let profile = &model.caps.profile;
-    let width_of =
-        |text: &str| -> usize { text.graphemes(true).map(|each| profile.width(each)).sum() };
     let left = side(model, &model.segments.0);
     let right = side(model, &model.segments.1);
-    if width_of(&right) > width {
-        // The right side shows in full as far as the row has room, from its end.
-        let mut kept: Vec<&str> = Vec::new();
-        let mut used = 0;
-        for grapheme in right.graphemes(true).rev() {
-            let next = used + profile.width(grapheme);
-            if next > width {
-                break;
-            }
-            kept.push(grapheme);
-            used = next;
-        }
-        kept.reverse();
-        return format!("{}{}", " ".repeat(width - used), kept.concat());
-    }
-    let right_width = width_of(&right);
-    // One column stays free between the two sides.
-    let left_room = if right.is_empty() {
-        width
-    } else {
-        (width - right_width).saturating_sub(1)
-    };
-    let mut shown = String::new();
-    let mut used = 0;
-    for grapheme in left.graphemes(true) {
-        let next = used + profile.width(grapheme);
-        if next > left_room {
-            break;
-        }
-        shown.push_str(grapheme);
-        used = next;
-    }
+    // The right side shows in full as far as the row has room, from its end.
+    let (right, right_width) = profile.cut(&right, width, true);
     if right.is_empty() {
-        return shown;
+        return profile.cut(&left, width, false).0.to_owned();
     }
-    format!("{shown}{}{right}", " ".repeat(width - right_width - used))
+    // One column stays free between the two sides.
+    let (left, left_width) = profile.cut(&left, (width - right_width).saturating_sub(1), false);
+    format!(
+        "{left}{}{right}",
+        " ".repeat(width - right_width - left_width)
+    )
 }

@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 use std::process::ExitCode;
 
 use clap::{Args, Subcommand};
-use mu_config::layout::{Layout, preview};
+use mu_config::layout::{Layout, REWRITTEN, preview};
 use mu_config::{STORE, filter};
 use mu_proto as proto;
 use proto::__buffa::oneof::edit_layout_request::Change as EditChange;
@@ -284,7 +284,7 @@ fn show(bootstrap: &BootstrapArgs, name: &str) -> Result<ExitCode, String> {
     if let Some(layout) = reply.layouts.iter().find(|layout| layout.name == name) {
         return Ok(crate::print(VERB, &described(layout)));
     }
-    let file = format!("clients/layouts/{name}.toml");
+    let file = mu_server::layout_path(name);
     match reply.notices.iter().find(|notice| notice.path == file) {
         Some(notice) => {
             crate::warn(VERB, &notice.text);
@@ -320,10 +320,7 @@ fn change(layout: &str, edit: &EditArgs, change: EditChange) -> Result<ExitCode,
         client.edit_layout(request).await
     })?;
     if reply.rewritten {
-        crate::warn(
-            VERB,
-            &"no change of one line gives this screen, so mu wrote the whole plan again",
-        );
+        crate::warn(VERB, &REWRITTEN);
     }
     let saved = proto::NamedLayout {
         name: reply.name.clone(),

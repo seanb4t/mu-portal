@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 
+use unicode_segmentation::UnicodeSegmentation as _;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 /// A class of grapheme. Terminals can disagree on the width of a grapheme of a risky class.
@@ -178,5 +179,38 @@ impl Profile {
             Rule::Const(width) => width,
         };
         usize::from(width)
+    }
+
+    /// The cells that the terminal gives `text`.
+    #[must_use]
+    pub fn width_of(&self, text: &str) -> usize {
+        text.graphemes(true).map(|each| self.width(each)).sum()
+    }
+
+    /// The part of `text` that fits in `width` cells, and the cells that it takes. It keeps
+    /// whole graphemes: from the start of the text, or from its end if `from_end` is true.
+    #[must_use]
+    pub fn cut<'a>(&self, text: &'a str, width: usize, from_end: bool) -> (&'a str, usize) {
+        let mut used = 0;
+        let mut bytes = 0;
+        let graphemes: Box<dyn Iterator<Item = &str>> = if from_end {
+            Box::new(text.graphemes(true).rev())
+        } else {
+            Box::new(text.graphemes(true))
+        };
+        for grapheme in graphemes {
+            let next = used + self.width(grapheme);
+            if next > width {
+                break;
+            }
+            used = next;
+            bytes += grapheme.len();
+        }
+        let kept = if from_end {
+            &text[text.len() - bytes..]
+        } else {
+            &text[..bytes]
+        };
+        (kept, used)
     }
 }

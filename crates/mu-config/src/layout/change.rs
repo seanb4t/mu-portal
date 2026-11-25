@@ -11,6 +11,11 @@ pub const PANE_COLUMNS_MIN: u16 = 10;
 pub const PANE_ROWS_MIN: u16 = 2;
 /// The percent of one step of [`Layout::resize_by`].
 pub const RESIZE_STEP: i32 = 5;
+/// The notice of a change that no edit of one line gives, so that mu wrote the plan again.
+pub const REWRITTEN: &str =
+    "no change of one line gives this screen, so mu wrote the whole plan again";
+/// The size text that removes the size of a block.
+pub const FILL: &str = "fill";
 
 /// One line of a plan, by its number or by the id of its block.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -57,6 +62,23 @@ pub enum Change {
     Delete(LineRef),
 }
 
+impl Change {
+    /// The change that sets the size of the block `id` from the text `size`: a size of a
+    /// sentence, or [`FILL`], which removes the size.
+    ///
+    /// # Errors
+    ///
+    /// The [`super::LineError`] of a text that is no size.
+    pub fn sized(id: BlockId, size: &str) -> Result<Self, super::LineError> {
+        let size = size.trim();
+        if size == FILL {
+            Ok(Self::Fill(id))
+        } else {
+            Size::parse(size).map(|size| Self::Size(id, size))
+        }
+    }
+}
+
 /// The result of a change of the screen.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Changed {
@@ -78,7 +100,10 @@ fn percent_range(total: u16, dir: Dir) -> Option<(u32, u32)> {
         return None;
     }
     let low = u32::from(PERCENT_MIN).max((least * 100).div_ceil(total));
-    let high = u32::from(PERCENT_MAX).min(total.checked_sub(least + divider)? * 100 / total);
+    // The solver rounds a percent down. So the largest good percent is the largest one whose
+    // cells leave the smallest size and the divider to the other side.
+    let room = total.checked_sub(least + divider)?;
+    let high = u32::from(PERCENT_MAX).min((100 * (room + 1) - 1) / total);
     (low <= high).then_some((low, high))
 }
 

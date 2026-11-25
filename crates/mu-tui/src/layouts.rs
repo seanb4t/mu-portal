@@ -1,14 +1,11 @@
 //! The changes of the layout in the client: each one changes the plan on the screen at once,
 //! and returns the effect that saves it on the server.
 
-use mu_config::layout::{Block, BlockId, BuiltIn, Change, Layout, LineRef, Size, Step};
-use mu_config::{Choice, DeviceName, LayoutName, save_target};
+use mu_config::layout::{Block, BlockId, Change, Layout, LineRef, REWRITTEN, Step};
+use mu_config::{Choice, LayoutName, SaveTarget, save_target};
 
 use crate::model::Model;
 use crate::update::{Effect, Then};
-
-/// The notice of a change that mu could not make with an edit of one line.
-const REWRITTEN: &str = "no change of one line gives this screen, so mu wrote the whole plan again";
 
 impl Model {
     /// The key of the entry that gives the layout on the screen, or none for the field `layout`.
@@ -48,26 +45,25 @@ impl Model {
         let name = self.layout_name().to_owned();
         let layout = self.layout().clone();
         let lines = layout.lines();
-        if BuiltIn::named(&name).is_none() {
-            if self.layout_name == name {
-                self.layout = layout.clone();
-            }
-            for (held, plan) in self.world_layouts.values_mut() {
-                if *held == name {
-                    *plan = layout.clone();
+        match save_target(&self.choice(), &name, &self.device) {
+            Ok(SaveTarget::Same(name)) => {
+                // Each world that uses this layout gets the change.
+                if self.layout_name == name.as_str() {
+                    self.layout = layout.clone();
                 }
+                for (held, plan) in self.world_layouts.values_mut() {
+                    if held.as_str() == name.as_str() {
+                        *plan = layout.clone();
+                    }
+                }
+                vec![Effect::SaveLayout {
+                    name: name.as_str().to_owned(),
+                    lines,
+                    device: self.device.clone(),
+                    then: Then::Nothing,
+                }]
             }
-            return vec![Effect::SaveLayout {
-                name,
-                lines,
-                device: self.device.clone(),
-                then: Then::Nothing,
-            }];
-        }
-        let target =
-            DeviceName::new(&self.device).and_then(|device| save_target(&self.choice(), &device));
-        match target {
-            Ok(target) => {
+            Ok(SaveTarget::New(target)) => {
                 let then = self.then_choose();
                 self.set_chosen(target.as_str().to_owned(), layout);
                 vec![Effect::SaveLayout {
@@ -133,16 +129,9 @@ impl Model {
             self.notice("/pane size needs the id of a block and a size");
             return Vec::new();
         };
-        let size = size.trim();
-        let change = BlockId::new(id).map_err(str::to_owned).and_then(|id| {
-            if size == "fill" {
-                Ok(Change::Fill(id))
-            } else {
-                Size::parse(size)
-                    .map(|size| Change::Size(id, size))
-                    .map_err(|error| error.to_string())
-            }
-        });
+        let change = BlockId::new(id)
+            .map_err(str::to_owned)
+            .and_then(|id| Change::sized(id, size).map_err(|error| error.to_string()));
         match change {
             Ok(change) => self.change_layout(change),
             Err(reason) => {
@@ -161,7 +150,7 @@ impl Model {
             return;
         };
         let first = stack[0].id.clone();
-        let front = self.fronts.get(&first).unwrap_or(&first);
+        let front = self.front_of(stack).map_or(&first, |block| &block.id);
         let place = stack
             .iter()
             .position(|block| &block.id == front)

@@ -189,7 +189,12 @@ In arrange mode, a drag that starts on a block and ends on another block SHALL m
 - **THEN** the pane of `notices` is right of the pane of `output`
 
 ### Requirement: Enter saves and Esc restores
-In arrange mode, Enter SHALL leave the mode and save the layout. Esc with no block picked SHALL leave the mode and restore the layout from before the mode. Esc with a block picked SHALL only drop the pick.
+In arrange mode, Enter SHALL leave the mode and save the layout. If the mode changed nothing, Enter SHALL leave the mode and save nothing. Esc with no block picked SHALL leave the mode and restore the layout from before the mode. Esc with a block picked SHALL only drop the pick.
+
+#### Scenario: Enter with no change
+- **GIVEN** the layout `classic` is in use, and arrange mode is on
+- **WHEN** the user presses Enter
+- **THEN** arrange mode is off, and the client asks the server for no save
 
 #### Scenario: Esc restores
 - **GIVEN** the layout `classic` is in use, arrange mode is on, and the user hid the tabs

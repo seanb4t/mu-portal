@@ -18,7 +18,7 @@ use crate::convert;
 use mu_config::{DeviceName, Kind, NameError, Os};
 
 use crate::store::{ClientPart, NamedLayout, Notice, Reloaded, Store, WriteError};
-use mu_config::layout::{BlockId, Change, Layout, LineRef, Size, Step, describe};
+use mu_config::layout::{BlockId, Change, Layout, LineRef, Step, describe};
 use proto::__buffa::oneof::edit_layout_request::Change as EditChange;
 
 /// The API of one server instance.
@@ -284,10 +284,9 @@ fn change_of(change: Option<EditChange>) -> Result<Change, ConnectError> {
         None => Err(ConnectError::invalid_argument("the request has no change")),
         Some(EditChange::Place(line)) => Ok(Change::Place(step(&line)?)),
         Some(EditChange::Hide(block)) => Ok(Change::Hide(id(&block)?)),
-        Some(EditChange::Size(size)) => Ok(Change::Size(
-            id(&size.id)?,
-            Size::parse(&size.size).map_err(|error| refused(&error))?,
-        )),
+        Some(EditChange::Size(size)) => {
+            Change::sized(id(&size.id)?, &size.size).map_err(|error| refused(&error))
+        }
         Some(EditChange::Insert(insert)) => Ok(Change::Insert(
             usize::try_from(insert.number).unwrap_or(usize::MAX),
             step(&insert.line)?,

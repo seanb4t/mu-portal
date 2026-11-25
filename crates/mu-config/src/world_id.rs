@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::str::FromStr;
 
+use crate::layout::BuiltIn;
 use crate::names::{DeviceName, LayoutName, NameError};
 
 /// The id `<game>/<character>` of a world.
@@ -184,20 +185,45 @@ pub fn layout_for<V>(world: Option<&WorldId>, entries: &BTreeMap<String, V>) -> 
     }
 }
 
-/// The name of the layout that a save from a built-in layout writes, for the device `device`
-/// and the choice in use: the device name for the field `layout`, and the device name, `.`
-/// and the key with `.` in place of `/` for an entry.
+/// Where a save of a layout goes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SaveTarget {
+    /// The layout is a layout of the player, and the save replaces it. No choice changes.
+    Same(LayoutName),
+    /// The layout is built in, so the save writes a new layout with this name, and the choice
+    /// in use then names it.
+    New(LayoutName),
+}
+
+impl SaveTarget {
+    /// The name of the layout that the save writes.
+    #[must_use]
+    pub const fn name(&self) -> &LayoutName {
+        match self {
+            Self::Same(name) | Self::New(name) => name,
+        }
+    }
+}
+
+/// Where a save of the layout `layout` goes, for the device named `device` and the choice in
+/// use. A layout of the player keeps its name, and needs no device. A built-in layout gives a new layout: with the device
+/// name for the field `layout`, and with the device name, `.` and the key with `.` in place of
+/// `/` for an entry.
 ///
 /// # Errors
 ///
 /// A [`NameError`] for a name that is no good name of a layout file: a name of more than 64
 /// characters, the name of a built-in layout, `.` or `..`.
-pub fn save_target(choice: &Choice, device: &DeviceName) -> Result<LayoutName, NameError> {
+pub fn save_target(choice: &Choice, layout: &str, device: &str) -> Result<SaveTarget, NameError> {
+    if BuiltIn::named(layout).is_none() {
+        return LayoutName::new(layout).map(SaveTarget::Same);
+    }
+    let device = DeviceName::new(device)?;
     let name = match choice {
         Choice::Default => device.as_str().to_owned(),
         Choice::Entry(key) => format!("{}.{}", device, key.as_str().replace('/', ".")),
     };
-    LayoutName::new(&name)
+    LayoutName::new(&name).map(SaveTarget::New)
 }
 
 #[cfg(test)]

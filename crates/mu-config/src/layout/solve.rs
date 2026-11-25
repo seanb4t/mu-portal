@@ -271,7 +271,7 @@ impl Solver<'_> {
             })
             .collect();
         let used = sum(sizes.iter().copied());
-        let mut rest = room.saturating_sub(used);
+        let rest = room.saturating_sub(used);
         if sharing == 0 {
             // Every part has a size. The last part takes the cells that are left over.
             if let Some(last) = sizes.last_mut() {
@@ -279,13 +279,22 @@ impl Solver<'_> {
             }
             return sizes;
         }
+        // Each sharing part takes its smallest size first. The parts then share the cells that
+        // are left in equal parts, and the first ones take the cells left over.
+        let kept = sum(asked
+            .iter()
+            .zip(&least)
+            .filter(|(size, _)| size.is_none())
+            .map(|(_, least)| *least));
+        let floor = if rest >= kept { kept } else { 0 };
+        let spare = rest - floor;
         let sharing = u16::try_from(sharing).unwrap_or(u16::MAX);
-        let (each, mut extra) = (rest / sharing, rest % sharing);
-        for (size, asked) in sizes.iter_mut().zip(&asked) {
+        let (each, mut extra) = (spare / sharing, spare % sharing);
+        for ((size, asked), least) in sizes.iter_mut().zip(&asked).zip(&least) {
             if asked.is_none() {
-                *size = each + u16::from(extra > 0);
+                let base = if floor == 0 { 0 } else { *least };
+                *size = base + each + u16::from(extra > 0);
                 extra = extra.saturating_sub(1);
-                rest = rest.saturating_sub(*size);
             }
         }
         sizes

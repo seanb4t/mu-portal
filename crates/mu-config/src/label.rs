@@ -3,6 +3,7 @@
 use std::fmt;
 
 use crate::names::listed;
+use crate::world_id::WorldId;
 
 /// The longest label, in characters.
 pub const LABEL_MAX: usize = 64;
@@ -127,8 +128,9 @@ impl Label {
 
     /// The label of the world `world`, which is tab `number` from 1.
     #[must_use]
-    pub fn render(&self, world: &str, number: usize) -> String {
-        let (game, character) = world.split_once('/').unwrap_or((world, ""));
+    pub fn render(&self, world: &WorldId, number: usize) -> String {
+        let (game, character) = (world.game(), world.character());
+        let world = world.as_str();
         let mut text = String::new();
         for piece in &self.0 {
             match piece {
