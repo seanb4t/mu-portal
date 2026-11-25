@@ -188,19 +188,31 @@ fn hk_pins(hk_pkl: &str) -> Vec<String> {
 /// The git URL of the fork of `ratatui-textarea`, which `[patch.crates-io]` names.
 const TEXTAREA_FORK: &str = "git+https://github.com/seanb4t/ratatui-textarea?";
 
-/// True if each `ratatui-textarea` package of `Cargo.lock` comes from the fork, and one exists.
+/// The git URL of the fork of ratatui, which `[patch.crates-io]` names for each of its crates.
+const RATATUI_FORK: &str = "git+https://github.com/seanb4t/ratatui?";
+
+/// The crates of the ratatui repository. Each one must come from its fork, or the build holds
+/// two `ratatui-core` crates whose types do not match.
+const RATATUI_CRATES: [&str; 6] = [
+    "ratatui",
+    "ratatui-core",
+    "ratatui-crossterm",
+    "ratatui-termina",
+    "ratatui-termwiz",
+    "ratatui-widgets",
+];
+
+/// True if each `name` package of `Cargo.lock` comes from `fork`, and one exists.
 /// A patch that does not match the version of the requirement gives only a warning, and the
 /// build then takes the crate from crates.io.
-fn textarea_is_the_fork(cargo_lock: &str) -> bool {
+fn comes_from(cargo_lock: &str, name: &str, fork: &str) -> bool {
     let lock = toml(cargo_lock);
     let sources: Vec<&str> = lock
         .get("package")
         .and_then(toml::Value::as_array)
         .into_iter()
         .flatten()
-        .filter(|package| {
-            package.get("name").and_then(toml::Value::as_str) == Some("ratatui-textarea")
-        })
+        .filter(|package| package.get("name").and_then(toml::Value::as_str) == Some(name))
         .map(|package| {
             package
                 .get("source")
@@ -208,10 +220,7 @@ fn textarea_is_the_fork(cargo_lock: &str) -> bool {
                 .unwrap_or("")
         })
         .collect();
-    !sources.is_empty()
-        && sources
-            .iter()
-            .all(|source| source.starts_with(TEXTAREA_FORK))
+    !sources.is_empty() && sources.iter().all(|source| source.starts_with(fork))
 }
 
 /// True if the two import lines of `hk.pkl` hold four releases equal to the `hk` release of `mise.toml`.
@@ -951,7 +960,11 @@ fn design_rules_cover_spikes() {
 
 #[test]
 fn textarea_comes_from_the_fork() {
-    assert!(textarea_is_the_fork(&repo_file("Cargo.lock")));
+    assert!(comes_from(
+        &repo_file("Cargo.lock"),
+        "ratatui-textarea",
+        TEXTAREA_FORK
+    ));
 
     let package = |source: &str| {
         format!(
@@ -960,12 +973,40 @@ fn textarea_comes_from_the_fork() {
     };
     let fork = "git+https://github.com/seanb4t/ratatui-textarea?rev=abc#abc";
     let registry = "registry+https://github.com/rust-lang/crates.io-index";
-    assert!(textarea_is_the_fork(&package(fork)));
+    assert!(comes_from(
+        &package(fork),
+        "ratatui-textarea",
+        TEXTAREA_FORK
+    ));
     for (case, lock) in [
         ("the registry", package(registry)),
         ("both sources", package(fork) + &package(registry)),
         ("no package", String::new()),
     ] {
-        assert!(!textarea_is_the_fork(&lock), "{case} breaks the rule");
+        assert!(
+            !comes_from(&lock, "ratatui-textarea", TEXTAREA_FORK),
+            "{case} breaks the rule"
+        );
     }
+}
+
+#[test]
+fn ratatui_crates_come_from_the_fork() {
+    let lock = repo_file("Cargo.lock");
+    for name in RATATUI_CRATES {
+        assert!(comes_from(&lock, name, RATATUI_FORK), "{name}");
+    }
+
+    let core = |source: &str| {
+        format!(
+            "[[package]]\nname = \"ratatui-core\"\nversion = \"0.1.2\"\nsource = \"{source}\"\n"
+        )
+    };
+    let fork = "git+https://github.com/seanb4t/ratatui?rev=abc#abc";
+    let other = "git+https://github.com/seanb4t/ratatui-textarea?rev=abc#abc";
+    assert!(comes_from(&core(fork), "ratatui-core", RATATUI_FORK));
+    assert!(
+        !comes_from(&core(other), "ratatui-core", RATATUI_FORK),
+        "the textarea fork is not the ratatui fork"
+    );
 }

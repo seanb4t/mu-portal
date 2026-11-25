@@ -66,7 +66,7 @@ serde_path_to_error = "0.1.20"
 sha2 = "0.11.0"
 syn = { version = "3.0.10", default-features = false }
 tempfile = "3.27.0"
-termina = { version = "0.3.3", features = ["event-stream"] }
+termina = { version = "0.4.0", features = ["event-stream"] }
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 toml = "1.2.1"
@@ -85,7 +85,15 @@ walkdir = "2.5.0"
 winnow = { version = "1.0.5", default-features = false, features = ["ascii", "std"] }
 
 # The fork of ratatui-textarea, at its branch `mu`: a cursor that moves by grapheme, a width
-# function, and the count of the wrapped rows. The patch applies only while the fork has the
-# version that `[workspace.dependencies]` asks for.
+# function, and the count of the wrapped rows. The fork of ratatui, at its branch `mu`: release
+# 0.30.2 with termina 0.4 (ratatui/ratatui#2769), until a ratatui release has it. Each crate of
+# ratatui comes from the fork, so that the build holds one ratatui-core. A patch applies only
+# while the fork has the version that `[workspace.dependencies]` asks for.
 [patch.crates-io]
+ratatui = { git = "https://github.com/seanb4t/ratatui", rev = "3c5b9c13c71b1fc9291668328c804c770207f745" }
+ratatui-core = { git = "https://github.com/seanb4t/ratatui", rev = "3c5b9c13c71b1fc9291668328c804c770207f745" }
+ratatui-crossterm = { git = "https://github.com/seanb4t/ratatui", rev = "3c5b9c13c71b1fc9291668328c804c770207f745" }
+ratatui-termina = { git = "https://github.com/seanb4t/ratatui", rev = "3c5b9c13c71b1fc9291668328c804c770207f745" }
+ratatui-termwiz = { git = "https://github.com/seanb4t/ratatui", rev = "3c5b9c13c71b1fc9291668328c804c770207f745" }
+ratatui-widgets = { git = "https://github.com/seanb4t/ratatui", rev = "3c5b9c13c71b1fc9291668328c804c770207f745" }
 ratatui-textarea = { git = "https://github.com/seanb4t/ratatui-textarea", rev = "462cce4cdf10ba145f18cc27abadbea240379598" }
