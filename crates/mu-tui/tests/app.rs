@@ -3483,3 +3483,21 @@ fn a_drag_back_to_its_start_saves_nothing() {
     assert_eq!(app.layout().lines(), SIDEBAR_LINES);
     assert_eq!(app.layout_name(), name);
 }
+
+#[test]
+fn the_earlier_lines_of_a_stand_in_come_back_with_main() {
+    let mut app = laptop_with(SIDEBAR_LINES);
+    // The lines of `/layout plan` are notices.
+    enter(&mut app, "/layout plan");
+    let down = "-- 1. output".to_owned();
+    let shown = block_rows(&mut app, "notices");
+    assert!(shown.contains(&down), "{shown:?} {:?}", app.input());
+    enter(&mut app, "/pane hide main");
+    let rows = block_rows(&mut app, "notices");
+    assert!(rows.contains(&"Welcome, aria.".to_owned()), "{rows:?}");
+    assert!(!rows.contains(&down), "{rows:?}");
+    enter(&mut app, "/place output left of notices");
+    let rows = block_rows(&mut app, "notices");
+    assert!(rows.contains(&down), "{rows:?}");
+    assert!(!rows.contains(&"Welcome, aria.".to_owned()), "{rows:?}");
+}

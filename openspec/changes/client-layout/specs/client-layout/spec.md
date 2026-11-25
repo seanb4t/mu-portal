@@ -47,7 +47,15 @@ Each line of text SHALL have the name of a stream. The lines of a world that no 
 - **THEN** the pane of `channels` shows its title row and no other line
 
 ### Requirement: One output is the main output
-One `output` of the plan SHALL be the main output: the one with the id `main`, or the first `output` of the plan if none has that id. A line `output` with no `as` SHALL make the block `main`, so each other `output` SHALL set its own id with `as`. The lines of a world SHALL stay together, and the main output SHALL show them, also after a change of the layout gives another main output. The client SHALL keep the lines of a world while the plan has no `output`.
+One `output` of the plan SHALL be the main output: the one with the id `main`, or the first `output` of the plan if none has that id. A line `output` with no `as` SHALL make the block `main`, so each other `output` SHALL set its own id with `as`.
+
+#### Scenario: The main output is not the first output line
+- **GIVEN** a layout holds the lines `editor`, `output as notices above editor` and `output left of notices`
+- **WHEN** mu routes the stream of a world, and the stream `notices`
+- **THEN** the stream of the world goes to `main`, and the stream `notices` goes to `notices`
+
+### Requirement: The lines of a world stay with the main output
+The lines of a world SHALL stay together, and the main output SHALL show them, also after a change of the layout gives another main output. The client SHALL keep the lines of a world while the plan has no `output`. A block that becomes the main output SHALL keep its own earlier lines, and SHALL show them again when another block is the main output.
 
 #### Scenario: A hide of the main output
 - **GIVEN** the layout `sidebar` is in use, and the world in focus is the fake world `alpha/aria`
@@ -60,15 +68,16 @@ One `output` of the plan SHALL be the main output: the one with the id `main`, o
 - **THEN** the pane of `main` shows `Welcome, aria.` and `A later line.`
 - **AND** the pane of `notices` shows neither of them
 
+#### Scenario: The earlier lines of a block that stands in for main
+- **GIVEN** the layout `sidebar` is in use, the world in focus is the fake world `alpha/aria`, and the user ran the command `/layout plan`, so the pane of `notices` shows the line `-- 1. output`
+- **WHEN** the user runs the command `/pane hide main`
+- **THEN** the pane of `notices` shows `Welcome, aria.` and does not show `-- 1. output`
+- **AND** after the command `/place output left of notices`, the pane of `notices` shows `-- 1. output` again
+
 #### Scenario: A line of a world with no output
 - **GIVEN** the layout `classic` is in use, and the world in focus is the fake world `alpha/aria`
 - **WHEN** the user runs the command `/pane hide main`, the world sends the line `While no output.`, and the user runs the command `/place output above editor`
 - **THEN** the pane of `main` shows `Welcome, aria.` and `While no output.`
-
-#### Scenario: The main output is not the first output line
-- **GIVEN** a layout holds the lines `editor`, `output as notices above editor` and `output left of notices`
-- **WHEN** mu routes the stream of a world, and the stream `notices`
-- **THEN** the stream of the world goes to `main`, and the stream `notices` goes to `notices`
 
 ### Requirement: A line stays in the output where it arrived
 The client SHALL put each line into one `output` when the line arrives. That SHALL be the `output` that shows the stream of the line at that time, for the world of the line. A later change of the layout SHALL NOT move the line to the lines of another stream. A notice SHALL be a line of the stream `notices` for the world in focus. The notice of a line that the server refused SHALL be a line of the stream `notices` for the world of that line.

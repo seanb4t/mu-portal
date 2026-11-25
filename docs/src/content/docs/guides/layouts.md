@@ -203,7 +203,7 @@ An `output` shows the lines of the stream with its id, for the world in focus. A
 - The block `main` is the main output. It shows the lines of the world, and each stream that has no `output` of its own. If no block has the id `main`, the first `output` of the plan is the main output.
 - The notices of the client are the stream `notices`. With `output as notices` in the layout, the notices show there. Without it, they show in the main output.
 - A line stays with the lines of its stream. An output that you add later starts with the new lines only.
-- The lines of a world stay together. If you hide `main`, the next main output shows them, and a new `main` takes them back. The client keeps them while the layout has no `output`.
+- The lines of a world stay together. If you hide `main`, the next main output shows them, and a new `main` takes them back. The block that stands in keeps its own earlier lines, and shows them again when `main` is back. The client keeps them while the layout has no `output`.
 
 With more than one `output` on the screen, each pane of outputs shows a title row with the id of each of its blocks. The id in square brackets is the block that shows.
 
