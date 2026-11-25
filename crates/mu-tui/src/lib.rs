@@ -36,5 +36,5 @@ pub use pane::{Caps, OutputPane, PaneState, Position};
 pub use registry::{Arg, ArgKind, ENTRIES, Entry, EntryId, candidates};
 pub use run::{CALL_LIMIT, control_of, ended, reply_of, run, timed, within};
 pub use text::echo_rows;
-pub use update::{Action, Effect, Msg, Reply, TICK, Timer, update};
+pub use update::{Action, Effect, Msg, Reply, TICK, Then, Timer, update};
 pub use view::{catalog_blocks, drawn_blocks, solved, view};

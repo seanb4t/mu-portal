@@ -164,6 +164,8 @@ A control character, such as a tab or a carriage return, is not a key name. Use 
 
 ### Kept keys
 
+The key Alt+E runs `editor-next`, which gives the input focus to the next editor of the layout. The entries `pane-next` and `layout-next` have no default key. The guide [The layout of the client](/guides/layouts/) describes them.
+
 The default keys leave Tab, Shift+Tab and Ctrl+Space with no binding. A later version of the client uses them for completion. You can bind them now, but a later version can change what they do by default.
 
 ### Keys that a terminal does not send

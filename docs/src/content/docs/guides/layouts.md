@@ -257,6 +257,44 @@ The client draws the layout of the world in focus. It takes the entry of the wor
 
 If an entry names a layout that does not exist, the entry does not apply, and a notice names it.
 
+## Change the layout in the client
+
+You can change the layout while the client runs. The screen shows each change at once, and the client saves it on the server.
+
+| Command | Result |
+|---|---|
+| `/place <sentence>` | Puts a block on the screen. A block that is on the screen moves |
+| `/pane hide <id>` | Takes a block off the screen. The last editor stays |
+| `/pane size <id> <size>` | Sets the size of a block. The size `fill` removes it |
+| `/layout plan` | Shows the numbered lines of the layout |
+| `/layout insert <number> <sentence>` | Puts a line at that number |
+| `/layout edit <line> <sentence>` | Replaces a line. The line is a number or the id of its block |
+| `/layout delete <line>` | Removes a line |
+| `/layout use <name>` | Sets the layout of this device |
+| `/layout here <name>` | Sets the layout of the world in focus. With no name, it removes that choice |
+| `/layout save <name>` | Saves the layout on the screen under a new name |
+| `/layout list` | Shows the name of each layout |
+
+Two entries have no command of two words. `pane-next` shows the next block of a stack, and `layout-next` uses the next layout in the order of the names. Neither has a default key, so bind them in `[keys]`.
+
+The mouse changes sizes:
+
+- Drag the divider between two panes left or right.
+- Drag the title row of a pane up or down, if the pane is below another pane.
+- Click a name in a title row to show that block of a stack.
+
+A drag inside a pane still selects text. A size from a drag is a whole percent, from 10% to 90%.
+
+### Where a change is saved
+
+- If the layout on the screen is one of your own layouts, the change goes into that file. Each world that uses the layout gets the change.
+- If the layout is built in, the change makes a new layout with the name of the device. The layer of the device then names it.
+- If an entry of `[world-layouts]` chose the built-in layout, the new layout has the name `<device>.<game>.<character>`. Only that entry then names it, so the other worlds keep their screen.
+
+If the new name is not a good layout name, the client does not save, and a notice tells you to use `/layout save <name>`. That happens for a name of more than 64 characters, and for a device with the name of a built-in layout.
+
+If the server refuses a save, the screen keeps the change, and a notice gives the reason.
+
 ## Change a layout from the shell
 
 The verb `mu layout` changes a layout on a running server. A script or an agent uses the same commands. Each attached client draws the result.

@@ -65,8 +65,8 @@ The command `/place <sentence>` SHALL take one placement sentence that is not a 
 
 #### Scenario: Insert in the middle
 - **GIVEN** the layout in use holds the lines `output`, `editor below output` and `statusline below editor`
-- **WHEN** the user runs the command `/layout insert 2 output as notices right of output`
-- **THEN** the plan holds `output as notices right of output` as line 2
+- **WHEN** the user runs the command `/layout insert 3 output as notices right of output`
+- **THEN** the plan holds `output as notices right of output` as line 3, and `statusline below editor` as line 4
 - **AND** the notices are beside the output only, and the editor takes the whole width
 
 #### Scenario: Edit a line by its id

@@ -1125,3 +1125,200 @@ proptest! {
         }
     }
 }
+
+// The commands of the layout and the save (layout-editing).
+
+use mu_tui::Then;
+
+/// Types `text` and presses Enter, and returns the effects of the Enter.
+fn run_command(model: &mut Model, text: &str) -> Vec<Effect> {
+    type_text(model, text);
+    press(model, KeyCode::Enter, Modifiers::NONE)
+}
+
+fn laptop() -> Model {
+    model().with_device("laptop")
+}
+
+#[test]
+fn a_block_argument_lists_the_ids_of_the_plan() {
+    let mut model = laptop();
+    configure(
+        &mut model,
+        layout_config(EDITOR_LAYOUTS[1], &[], &["world"], &[]),
+    );
+    assert_eq!(
+        mu_tui::candidates(&model, mu_tui::ArgKind::Block),
+        ["output", "editor", "scratch"]
+    );
+}
+
+#[test]
+fn a_layout_argument_lists_the_layouts() {
+    let mut model = laptop();
+    assert_eq!(
+        mu_tui::candidates(&model, mu_tui::ArgKind::Layout),
+        ["classic", "focus", "sidebar", "status"]
+    );
+    update(
+        &mut model,
+        Msg::Layouts {
+            next: false,
+            names: Ok(vec!["classic".to_owned(), "mine".to_owned()]),
+        },
+    );
+    assert_eq!(
+        mu_tui::candidates(&model, mu_tui::ArgKind::Layout),
+        ["classic", "mine"]
+    );
+}
+
+#[test]
+fn a_save_from_a_built_in_layout_takes_the_device_name() {
+    let mut model = laptop();
+    let effects = run_command(&mut model, "/pane hide tabs");
+    assert_eq!(
+        effects,
+        [Effect::SaveLayout {
+            name: "laptop".to_owned(),
+            lines: vec!["output".to_owned(), "editor below output".to_owned()],
+            device: "laptop".to_owned(),
+            then: Then::SetField,
+        }]
+    );
+    assert_eq!(model.layout_name(), "laptop");
+}
+
+#[test]
+fn a_save_from_the_built_in_layout_of_a_world_sets_its_entry() {
+    let mut model = laptop();
+    let config = layout_config(CLASSIC, &[("alpha/aria", CLASSIC)], &["world"], &[]);
+    let mut config = config;
+    "classic".clone_into(&mut config.world_layouts[0].name);
+    configure(&mut model, config);
+    let effects = run_command(&mut model, "/pane hide tabs");
+    assert_eq!(
+        effects,
+        [Effect::SaveLayout {
+            name: "laptop.alpha.aria".to_owned(),
+            lines: vec!["output".to_owned(), "editor below output".to_owned()],
+            device: "laptop".to_owned(),
+            then: Then::SetEntry("alpha/aria".to_owned()),
+        }]
+    );
+    // The other world keeps the layout of the field `layout`.
+    press(&mut model, KeyCode::Char('n'), Modifiers::CONTROL);
+    assert_eq!(model.layout().lines().len(), 3);
+}
+
+#[test]
+fn a_save_to_a_player_layout_keeps_its_name() {
+    let mut model = laptop();
+    let mut config = layout_config(&["output", "editor below output"], &[], &["world"], &[]);
+    "mine".clone_into(&mut config.layout_name);
+    configure(&mut model, config);
+    let effects = run_command(&mut model, "/place tabs at top");
+    assert_eq!(
+        effects,
+        [Effect::SaveLayout {
+            name: "mine".to_owned(),
+            lines: vec![
+                "output".to_owned(),
+                "editor below output".to_owned(),
+                "tabs at top".to_owned()
+            ],
+            device: "laptop".to_owned(),
+            then: Then::Nothing,
+        }]
+    );
+}
+
+#[test]
+fn a_failed_save_keeps_the_screen() {
+    let mut model = laptop();
+    run_command(&mut model, "/pane hide tabs");
+    let effects = update(
+        &mut model,
+        Msg::LayoutSaved(Err("clients/devices/laptop.toml: bad".to_owned())),
+    );
+    assert_eq!(effects, []);
+    assert_eq!(model.layout().lines(), ["output", "editor below output"]);
+    assert_eq!(notices_of(&model, "clients/devices/laptop.toml"), 1);
+}
+
+#[test]
+fn a_device_with_no_good_layout_name_does_not_save() {
+    let mut model = model().with_device("focus");
+    let effects = run_command(&mut model, "/pane hide tabs");
+    assert_eq!(effects, []);
+    assert_eq!(model.layout().lines(), ["output", "editor below output"]);
+    assert_eq!(notices_of(&model, "/layout save"), 1);
+}
+
+#[test]
+fn layout_list_asks_the_server() {
+    let mut model = laptop();
+    assert_eq!(
+        run_command(&mut model, "/layout list"),
+        [Effect::ListLayouts { next: false }]
+    );
+}
+
+#[test]
+fn a_list_for_show_makes_no_use_call() {
+    let mut model = laptop();
+    let effects = update(
+        &mut model,
+        Msg::Layouts {
+            next: false,
+            names: Ok(vec!["classic".to_owned(), "focus".to_owned()]),
+        },
+    );
+    assert_eq!(effects, []);
+}
+
+#[test]
+fn the_next_layout_wraps() {
+    let mut model = laptop();
+    let names = vec!["classic".to_owned(), "focus".to_owned()];
+    let next = |model: &mut Model| {
+        update(
+            model,
+            Msg::Layouts {
+                next: true,
+                names: Ok(names.clone()),
+            },
+        )
+    };
+    let use_of = |name: &str| Effect::UseLayout {
+        device: "laptop".to_owned(),
+        name: name.to_owned(),
+        key: None,
+    };
+    assert_eq!(next(&mut model), [use_of("focus")]);
+    let mut config = layout_config(&["output", "editor below output"], &[], &["world"], &[]);
+    "focus".clone_into(&mut config.layout_name);
+    configure(&mut model, config);
+    assert_eq!(next(&mut model), [use_of("classic")]);
+}
+
+#[test]
+fn layout_here_sets_the_entry_of_the_world_in_focus() {
+    let mut model = laptop();
+    assert_eq!(
+        run_command(&mut model, "/layout here focus"),
+        [Effect::UseLayout {
+            device: "laptop".to_owned(),
+            name: "focus".to_owned(),
+            key: Some("alpha/aria".to_owned()),
+        }]
+    );
+    assert_eq!(
+        run_command(&mut model, "/layout here"),
+        [Effect::UseLayout {
+            device: "laptop".to_owned(),
+            name: String::new(),
+            key: Some("alpha/aria".to_owned()),
+        }]
+    );
+}

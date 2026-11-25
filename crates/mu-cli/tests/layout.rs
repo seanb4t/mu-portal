@@ -781,3 +781,55 @@ async fn describe_of_an_unknown_layout() {
         stderr(&output)
     );
 }
+
+#[tokio::test]
+async fn an_edit_gives_the_same_file_as_the_command() {
+    use support::process::{BOUND, wait_until};
+    let plan = ["output", "tabs above output", "editor below output"];
+    let with_mine = || mine(&plan).file("clients/global.toml", "layout = \"mine\"\n");
+    // The first server has a client, which runs the command.
+    let first = with_mine();
+    let mut session = Session::start(
+        ServerBuilder::new()
+            .fake_worlds(&["alpha/aria"])
+            .arg("--config")
+            .arg(first.path()),
+    )
+    .await;
+    session.welcome("alpha/aria").await;
+    let mut client = PtyClient::start_args(
+        session.server.socket(),
+        session.server.dir().path(),
+        Answers::Default,
+        &["--device".as_ref(), "laptop".as_ref()],
+        &[],
+    );
+    client.wait_greeting().await;
+    let mut hashes = session
+        .server
+        .client()
+        .watch_config()
+        .await
+        .expect("the watch of the configuration");
+    hashes.next().await.expect("the current store hash");
+    client.send(b"/pane hide tabs\r");
+    wait_until(BOUND, "the save of the client", async {
+        while place_of(first.path(), "mine").len() != 2 {
+            hashes.next().await.expect("the next store hash");
+        }
+    })
+    .await;
+    // The second server gets the same change from the command line.
+    let second = with_mine();
+    let server = start(second.path()).await;
+    let output = layout(&server, &["hide", "mine", "tabs"]).await;
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        place_of(first.path(), "mine"),
+        place_of(second.path(), "mine")
+    );
+    assert_eq!(
+        fs::read_to_string(first.path().join("clients/layouts/mine.toml")).unwrap(),
+        fs::read_to_string(second.path().join("clients/layouts/mine.toml")).unwrap()
+    );
+}

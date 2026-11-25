@@ -91,10 +91,11 @@ impl Model {
     pub(crate) fn change_layout(&mut self, change: Change) -> Vec<Effect> {
         match self.layout().apply(change) {
             Ok(changed) => {
+                // The notice goes to an output of the new layout, so it shows after the change.
+                self.show_layout(changed.layout);
                 if changed.rewritten {
                     self.notice(REWRITTEN);
                 }
-                self.show_layout(changed.layout);
                 self.save_shown()
             }
             Err(error) => {
