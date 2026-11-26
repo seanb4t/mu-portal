@@ -109,7 +109,7 @@ model {
       description 'Server engine. It does not know the wire format.'
     }
     muConfig = crate 'mu-config' {
-      description 'Client configuration: the fields of a client layer, the key names and the entry names.'
+      description 'Shared configuration: the fields of a client layer, the key names, the entry names, the stream names and the walk of game text.'
     }
     muFakeServer = crate 'mu-fake-server' {
       description 'Fake games for the tests and for the --fake-world flag.'
@@ -134,6 +134,7 @@ model {
     muTui -> muClient 'depends on'
     muTui -> muProto 'depends on'
     muTui -> muConfig 'depends on'
+    muCore -> muConfig 'depends on'
     muFakeServer -> muCore 'depends on'
     muCore -> muFakeServer 'tests depend on'
     muCli -> muCore 'depends on'
