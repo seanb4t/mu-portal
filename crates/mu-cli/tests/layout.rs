@@ -275,6 +275,138 @@ async fn five_editors() {
     bad_layout(&lines, &[FILE, "editor"]).await;
 }
 
+// The streams of the outputs.
+
+/// Runs `mu layout show mine` over the layout file of `lines`, and asserts that stdout holds
+/// line `number` of the plan as `wanted`.
+async fn shown_line<S: AsRef<str>>(lines: &[S], number: usize, wanted: &str) {
+    let dir = mine(lines);
+    let server = start(dir.path()).await;
+    let output = layout(&server, &["show", "mine"]).await;
+    let text = stdout(&output);
+    let line = format!("{number}. {wanted}");
+    assert!(
+        text.lines().any(|each| each == line),
+        "{text}\n{}",
+        stderr(&output)
+    );
+}
+
+#[tokio::test]
+async fn the_editor_alone() {
+    bad_layout(&["editor"], &[FILE, "main"]).await;
+}
+
+#[tokio::test]
+async fn no_main_output() {
+    bad_layout(&["editor", "output as side above editor"], &[FILE, "main"]).await;
+}
+
+#[tokio::test]
+async fn no_output_for_the_notices() {
+    bad_layout(
+        &["output as main showing main, chan-*", "editor below main"],
+        &[FILE, "notices"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn only_exclusions() {
+    bad_layout(
+        &[
+            "output",
+            "editor below main",
+            "output as side showing !chan-* right of main",
+        ],
+        &["line 3", "showing"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn an_empty_list_of_patterns() {
+    bad_layout(
+        &[
+            "output",
+            "editor below main",
+            "output as side showing right of main",
+        ],
+        &["line 3", "showing"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_reserved_pattern() {
+    bad_layout(
+        &[
+            "output",
+            "editor below main",
+            "output as side showing re:chan right of main",
+        ],
+        &["line 3", "re:chan"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_plan_keeps_the_patterns() {
+    let line = "output as comms showing chan-*, pages right of main, 30%";
+    shown_line(&["output", "editor below main", line], 3, line).await;
+}
+
+#[tokio::test]
+async fn an_id_in_upper_case() {
+    shown_line(
+        &[
+            "output",
+            "editor below main",
+            "output as Comms showing Chan-*, Pages right of main",
+        ],
+        3,
+        "output as comms showing chan-*, pages right of main",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn patterns_of_all_worlds() {
+    let line = "output as comms of all worlds showing chan-*, pages right of main, 30%";
+    shown_line(&["output", "editor below main", line], 3, line).await;
+}
+
+#[tokio::test]
+async fn the_main_output_of_all_worlds() {
+    bad_layout(
+        &["output as main of all worlds", "editor below main"],
+        &["line 1", "main"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn the_id_all() {
+    bad_layout(
+        &["output", "editor below main", "output as all right of main"],
+        &["line 3", "all"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn the_scope_after_the_place() {
+    bad_layout(
+        &[
+            "output",
+            "editor below main",
+            "output as chat right of main of all worlds",
+        ],
+        &["line 3"],
+    )
+    .await;
+}
+
 // The write calls.
 
 use mu_proto::__buffa::oneof::edit_layout_request::Change as EditChange;
@@ -872,7 +1004,12 @@ async fn a_save_with_a_key_and_no_device_is_refused() {
     let server = start(dir.path()).await;
     let error = server
         .client()
-        .save_layout("mine", lines(&["editor"]), None, Some("alpha/aria"))
+        .save_layout(
+            "mine",
+            lines(&["output", "editor below main"]),
+            None,
+            Some("alpha/aria"),
+        )
         .await
         .expect_err("a key with no device")
         .to_string();

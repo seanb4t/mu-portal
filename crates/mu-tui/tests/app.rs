@@ -2693,20 +2693,6 @@ fn a_notice_shows_under_the_world_in_focus_only() {
 }
 
 #[test]
-fn a_line_and_a_notice_with_no_output_draw() {
-    let mut app = two_worlds();
-    with_layout(&mut app, &["editor"]);
-    on_event(&mut app, game("alpha/aria", "A bell rings."));
-    enter(&mut app, "/focus nowhere/nobody");
-    let rows = screen(&mut app);
-    assert!(
-        rows.iter()
-            .all(|row| !row.contains("bell") && !row.starts_with("-- ")),
-        "{rows:?}"
-    );
-}
-
-#[test]
 fn a_layout_with_no_editor_from_the_server() {
     let mut app = two_worlds();
     with_layout(&mut app, &["output"]);
@@ -3411,53 +3397,6 @@ fn enter_with_no_world_goes_to_the_notices_block() {
 // The main output, and a save that changes nothing.
 
 #[test]
-fn a_hide_of_main_hands_the_game_lines_to_the_next_output() {
-    let mut app = laptop_with(SIDEBAR_LINES);
-    enter(&mut app, "/pane hide main");
-    on_event(&mut app, game("alpha/aria", "A later line."));
-    let rows = block_rows(&mut app, "notices");
-    assert!(rows.contains(&"Welcome, aria.".to_owned()), "{rows:?}");
-    assert!(rows.contains(&"A later line.".to_owned()), "{rows:?}");
-}
-
-#[test]
-fn a_new_main_takes_the_game_lines_back() {
-    let mut app = laptop_with(SIDEBAR_LINES);
-    enter(&mut app, "/pane hide main");
-    enter(&mut app, "/place output left of notices");
-    on_event(&mut app, game("alpha/aria", "A later line."));
-    let main = block_rows(&mut app, "main");
-    assert_eq!(main[..2], ["[main]", "Welcome, aria."]);
-    assert_eq!(main.last().unwrap(), "A later line.");
-    let notices = block_rows(&mut app, "notices");
-    assert!(
-        !notices.contains(&"Welcome, aria.".to_owned()),
-        "{notices:?}"
-    );
-    assert!(
-        !notices.contains(&"A later line.".to_owned()),
-        "{notices:?}"
-    );
-}
-
-#[test]
-fn a_game_line_with_no_output_is_kept() {
-    let mut app = laptop();
-    enter(&mut app, "/pane hide main");
-    assert_eq!(
-        app.layout()
-            .ids_of(mu_config::layout::BlockKind::Output)
-            .count(),
-        0
-    );
-    on_event(&mut app, game("alpha/aria", "While no output."));
-    enter(&mut app, "/place output above editor");
-    let rows = block_rows(&mut app, "main");
-    assert!(rows.contains(&"Welcome, aria.".to_owned()), "{rows:?}");
-    assert!(rows.contains(&"While no output.".to_owned()), "{rows:?}");
-}
-
-#[test]
 fn a_command_that_changes_nothing_saves_nothing() {
     let mut app = laptop();
     assert_eq!(enter(&mut app, "/place tabs above main"), []);
@@ -3484,35 +3423,6 @@ fn a_drag_back_to_its_start_saves_nothing() {
     assert_eq!(app.layout_name(), name);
 }
 
-#[test]
-fn the_earlier_lines_of_a_stand_in_come_back_with_main() {
-    let mut app = laptop_with(SIDEBAR_LINES);
-    // The lines of `/layout plan` are notices.
-    enter(&mut app, "/layout plan");
-    let down = "-- 1. output".to_owned();
-    let shown = block_rows(&mut app, "notices");
-    assert!(shown.contains(&down), "{shown:?} {:?}", app.input());
-    enter(&mut app, "/pane hide main");
-    let rows = block_rows(&mut app, "notices");
-    assert!(rows.contains(&"Welcome, aria.".to_owned()), "{rows:?}");
-    assert!(!rows.contains(&down), "{rows:?}");
-    enter(&mut app, "/place output left of notices");
-    let rows = block_rows(&mut app, "notices");
-    assert!(rows.contains(&down), "{rows:?}");
-    assert!(!rows.contains(&"Welcome, aria.".to_owned()), "{rows:?}");
-}
-
-#[test]
-fn a_hint_with_no_output_shows_when_an_output_comes() {
-    let mut app = laptop();
-    enter(&mut app, "/pane hide main");
-    // The plan has no `output`, so the lines of `/layout plan` have no pane yet.
-    enter(&mut app, "/layout plan");
-    enter(&mut app, "/place output above editor");
-    let rows = block_rows(&mut app, "main");
-    assert!(rows.contains(&"-- 1. tabs".to_owned()), "{rows:?}");
-}
-
 // The lines that wait for an output.
 
 /// A configuration with the player layout `name` of `lines`.
@@ -3520,16 +3430,6 @@ fn named_config(name: &str, lines: &[&str]) -> GetClientConfigResponse {
     let mut config = config_with(lines, &[], "{world}", &["world"], &[]);
     name.clone_into(&mut config.layout_name);
     config
-}
-
-#[test]
-fn a_waiting_notice_shows_when_a_new_configuration_has_an_output() {
-    let mut app = laptop();
-    app.apply_config(named_config("bare", &["editor"]));
-    enter(&mut app, "/layout plan");
-    app.apply_config(named_config("mine", &["output", "editor below main"]));
-    let rows = block_rows(&mut app, "main");
-    assert!(rows.contains(&"-- 1. editor".to_owned()), "{rows:?}");
 }
 
 #[test]
@@ -3558,24 +3458,6 @@ fn enter_cleared(app: &mut Model, text: &str) -> Vec<Effect> {
         press(app, key(KeyCode::Backspace));
     }
     enter(app, text)
-}
-
-#[test]
-fn a_waiting_notice_shows_when_the_focus_moves_to_a_world_with_an_output() {
-    let mut app = laptop();
-    let bare: &[&str] = &["editor"];
-    app.apply_config(config_with(
-        &["output", "tabs above main", "editor below main"],
-        &[("alpha/aria", bare)],
-        "{world}",
-        &["world"],
-        &[],
-    ));
-    assert_eq!(app.layout().lines(), ["editor"]);
-    enter(&mut app, "/layout plan");
-    enter(&mut app, "/focus beta/bryn");
-    let rows = block_rows(&mut app, "main");
-    assert!(rows.contains(&"-- 1. editor".to_owned()), "{rows:?}");
 }
 
 // An edit of the layout and the focus.

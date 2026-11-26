@@ -652,8 +652,7 @@ impl Model {
     /// of its plan, and a pane of its own for each other one. None for a block that has no
     /// pane yet. This is the one rule of which pane an `output` shows.
     pub(crate) fn pane_of(&self, world: Option<&str>, id: &BlockId) -> Option<PaneId> {
-        let first = self.layout_of(world).main_output()?;
-        if first == id {
+        if id.as_str() == mu_config::stream::MAIN {
             return Some(self.world_pane(world));
         }
         self.extra_panes
@@ -670,7 +669,17 @@ impl Model {
     /// The pane that takes a line of the stream `stream` for `world`, made if it does not
     /// exist yet. None if the layout of the world holds no `output`.
     pub(crate) fn pane_in(&mut self, world: Option<&str>, stream: &str) -> Option<PaneId> {
-        let target = self.layout_of(world).route(stream)?.clone();
+        let layout = self.layout_of(world);
+        let name = mu_config::stream::StreamName::new(stream).ok()?;
+        let named = |wanted: &str| {
+            layout
+                .ids_of(BlockKind::Output)
+                .find(|id| id.as_str() == wanted)
+        };
+        let target = named(stream)
+            .or_else(|| layout.showing(&name).map(|(id, _)| id).next())
+            .or_else(|| named(mu_config::stream::MAIN))?
+            .clone();
         if let Some(pane) = self.pane_of(world, &target) {
             return Some(pane);
         }
@@ -847,13 +856,16 @@ impl Model {
     }
 }
 
+/// The plan of [`default_layout`] if the default layout does not build.
+pub(crate) const FALLBACK_LAYOUT: &[&str] = &["output", "editor below main"];
+
 /// The layout of a client whose configuration names none.
 pub(crate) fn default_layout() -> Layout {
     let lines = BUILT_IN
         .iter()
         .find(|each| each.name == DEFAULT_LAYOUT)
-        .map_or(&["editor"][..], |each| each.lines);
+        .map_or(FALLBACK_LAYOUT, |each| each.lines);
     Layout::parse(lines)
-        .or_else(|_| Layout::parse(&["editor"]))
-        .unwrap_or_else(|error| unreachable!("the plan of one editor is good: {error}"))
+        .or_else(|_| Layout::parse(FALLBACK_LAYOUT))
+        .unwrap_or_else(|error| unreachable!("the fallback plan is good: {error}"))
 }

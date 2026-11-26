@@ -46,6 +46,7 @@ fn step(block: &Block, place: Place, size: Option<PartSize>) -> Step {
         id: block.id.clone(),
         place,
         size,
+        selection: block.selection.clone(),
     }
 }
 

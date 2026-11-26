@@ -260,22 +260,17 @@ impl Model {
 
     /// The step that places the pick with `place`.
     fn arrange_step(&self, pick: &Pick, place: Place) -> Option<Step> {
-        let kind = match pick {
-            Pick::New(kind, _) => *kind,
+        match pick {
+            Pick::New(kind, _) => Some(Step::new(*kind, pick.id().clone(), place, None)),
             Pick::Shown(id) => {
-                self.layout()
-                    .steps()
-                    .iter()
-                    .find(|step| &step.id == id)?
-                    .kind
+                let shown = self.layout().steps().iter().find(|step| &step.id == id)?;
+                Some(Step {
+                    place,
+                    size: None,
+                    ..shown.clone()
+                })
             }
-        };
-        Some(Step {
-            kind,
-            id: pick.id().clone(),
-            place,
-            size: None,
-        })
+        }
     }
 
     /// A plain letter: it picks a block, or names the second block.

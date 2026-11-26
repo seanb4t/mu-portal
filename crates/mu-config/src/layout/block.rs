@@ -63,7 +63,7 @@ pub const BLOCKS: &[BlockRow] = &[
         kind: BlockKind::Output,
         name: "output",
         id: MAIN,
-        min: 0,
+        min: 1,
         max: 8,
         size: SizeRule::Free,
         stacks: true,

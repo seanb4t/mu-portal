@@ -736,7 +736,12 @@ async fn a_refused_save_writes_no_layout_file() {
     write(dir.path(), "clients/devices/laptop.toml", BAD_LAYER);
     let store = open(dir.path());
     let error = store
-        .save_layout("mine", lines_of(&["editor"]), Some("laptop"), None)
+        .save_layout(
+            "mine",
+            lines_of(&["output", "editor below main"]),
+            Some("laptop"),
+            None,
+        )
         .await
         .expect_err("the device layer is bad")
         .to_string();
@@ -800,7 +805,12 @@ async fn a_device_file_that_the_server_cannot_read_writes_no_layout_file() {
     fs::remove_file(dir.path().join("clients/devices/laptop.toml")).unwrap();
     fs::create_dir(dir.path().join("clients/devices/laptop.toml")).unwrap();
     store
-        .save_layout("mine", lines_of(&["editor"]), Some("laptop"), None)
+        .save_layout(
+            "mine",
+            lines_of(&["output", "editor below main"]),
+            Some("laptop"),
+            None,
+        )
         .await
         .expect_err("the device file is a directory");
     assert!(!dir.path().join("clients/layouts/mine.toml").exists());
@@ -958,7 +968,12 @@ async fn a_save_that_makes_a_good_layer_bad_writes_no_layout_file() {
         "[server]\nconnect_wait_seconds = 2\n",
     );
     store
-        .save_layout("mine", lines_of(&["editor"]), Some("laptop"), None)
+        .save_layout(
+            "mine",
+            lines_of(&["output", "editor below main"]),
+            Some("laptop"),
+            None,
+        )
         .await
         .expect_err("the edited text is a bad layer");
     assert!(!dir.path().join("clients/layouts/mine.toml").exists());
@@ -1005,7 +1020,12 @@ async fn a_link_to_a_directory_is_not_written() {
     std::os::unix::fs::symlink(outside.path(), &link).expect("a link");
     let store = open(dir.path());
     let error = store
-        .save_layout("mine", lines_of(&["editor"]), None, None)
+        .save_layout(
+            "mine",
+            lines_of(&["output", "editor below main"]),
+            None,
+            None,
+        )
         .await
         .expect_err("a link to a directory")
         .to_string();
@@ -1031,7 +1051,12 @@ async fn a_link_to_nothing_is_not_written() {
     std::os::unix::fs::symlink(dir.path().join("gone.toml"), &link).expect("a link");
     let store = open(dir.path());
     let error = store
-        .save_layout("mine", lines_of(&["editor"]), None, None)
+        .save_layout(
+            "mine",
+            lines_of(&["output", "editor below main"]),
+            None,
+            None,
+        )
         .await
         .expect_err("a link to nothing")
         .to_string();
@@ -1046,7 +1071,12 @@ async fn a_write_whose_caller_goes_away_still_ends_with_a_reload() {
     let mut watch = store.watch();
     let before = watch.borrow_and_update().store_hash().to_owned();
     {
-        let save = store.save_layout("mine", lines_of(&["editor"]), None, None);
+        let save = store.save_layout(
+            "mine",
+            lines_of(&["output", "editor below main"]),
+            None,
+            None,
+        );
         tokio::pin!(save);
         // One poll starts the write. The caller then drops the call, as a call with a
         // deadline that ends does.

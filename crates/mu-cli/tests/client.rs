@@ -1611,42 +1611,6 @@ async fn no_tabs() {
 }
 
 #[tokio::test]
-async fn the_editor_alone() {
-    // The client starts with the default layout, so the greeting shows when it knows its world.
-    let (mut session, mut client, config) = with_layer(&["alpha/aria"], "").await;
-    let config = config
-        .file("clients/layouts/mine.toml", &layout_file(&["editor"]))
-        .file("clients/global.toml", "layout = \"mine\"\n");
-    let output = mu_async(
-        &[
-            "config",
-            "reload",
-            "--server",
-            &server_url(session.server.socket()),
-        ],
-        &[],
-    )
-    .await;
-    assert!(output.status.success(), "{}", stderr(&output));
-    client
-        .wait_rows("a screen with the editor alone", |rows| {
-            rows.iter().all(|row| row.trim().is_empty())
-        })
-        .await;
-    client.send(b"hi\r");
-    let event = session
-        .until("the player event", |event| {
-            event.kind == EventKind::EVENT_KIND_INPUT
-        })
-        .await;
-    assert_eq!(
-        (event.world.as_str(), event.text.as_str()),
-        ("alpha/aria", "hi")
-    );
-    drop(config);
-}
-
-#[tokio::test]
 async fn the_output_above_the_tabs() {
     let (_session, client, _config) = with_layout(
         &["alpha/aria"],

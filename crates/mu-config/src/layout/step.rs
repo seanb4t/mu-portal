@@ -3,6 +3,7 @@
 use std::fmt;
 
 use super::block::BlockKind;
+use crate::stream::{Scope, Selection};
 
 /// The longest id of a block, in characters.
 pub const ID_MAX: usize = 32;
@@ -10,6 +11,7 @@ pub const ID_MAX: usize = 32;
 /// The words of a sentence. No id is one of them.
 pub const WORDS: &[&str] = &[
     "as", "above", "below", "left", "right", "of", "at", "top", "bottom", "with", "and", "max",
+    "all", "worlds", "showing",
 ];
 
 /// The id of a block: 1 to [`ID_MAX`] characters from `a` to `z`, `0` to `9` and `-`. It
@@ -218,13 +220,46 @@ pub struct Step {
     pub place: Place,
     /// The size after the comma.
     pub size: Option<Size>,
+    /// The streams that an `output` shows, and for which worlds. None for each other block.
+    pub selection: Option<Selection>,
+}
+
+impl Step {
+    /// The step of a block of `kind` with `id`, with the default selection of an `output`.
+    #[must_use]
+    pub fn new(kind: BlockKind, id: BlockId, place: Place, size: Option<Size>) -> Self {
+        let selection =
+            (kind == BlockKind::Output).then(|| Selection::default_for(&id, Scope::World));
+        Self {
+            kind,
+            id,
+            place,
+            size,
+            selection,
+        }
+    }
 }
 
 impl fmt::Display for Step {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.kind.name())?;
-        if self.id.as_str() != self.kind.default_id() {
+        let chosen = self.selection.as_ref().filter(|selection| {
+            selection.scope == Scope::AllWorlds || !selection.is_default_for(&self.id)
+        });
+        if self.id.as_str() != self.kind.default_id() || chosen.is_some() {
             write!(f, " as {}", self.id)?;
+        }
+        if let Some(selection) = chosen {
+            if selection.scope == Scope::AllWorlds {
+                f.write_str(" of all worlds")?;
+            }
+            if !selection.is_default_for(&self.id) {
+                f.write_str(" showing")?;
+                for (index, pattern) in selection.patterns().iter().enumerate() {
+                    let join = if index == 0 { " " } else { ", " };
+                    write!(f, "{join}{pattern}")?;
+                }
+            }
         }
         match &self.place {
             Place::First => {}

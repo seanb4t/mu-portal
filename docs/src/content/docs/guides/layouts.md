@@ -18,7 +18,9 @@ A block is one part of the screen. mu has four kinds of block:
 | `editor` | The text that you type | One to four |
 | `statusline` | One row of facts about the world in focus | None or one |
 
-Each block has an id. The id is the name of the block, with one exception: the id of `output` is `main`. So the line `output` makes the block `main`, and other lines name it as `main`. A second `output` or a second `editor` needs its own id, which you set with `as`: `output as notices`.
+Each block has an id. The id is the name of the block, with one exception: the id of `output` is `main`. So the line `output` makes the block `main`, and other lines name it as `main`. A second `output` or a second `editor` needs its own id, which you set with `as`: `output as notices`. mu turns each upper-case letter of an id to lower case.
+
+Each layout holds one `output` with the id `main`, and at least one `output` that shows the stream `notices`. A layout without them is bad. A change that removes them, such as a hide of `main`, is refused.
 
 ## The sentences
 
@@ -36,6 +38,8 @@ A layout is a plan: a list of lines in order. Each line is one sentence that pla
 | `statusline at bottom` | The statusline takes the whole bottom edge of the screen. The other edges are `top`, `left` and `right` |
 | `output as channels with notices` | The two outputs share one pane as a stack. A title row shows a tab for each |
 | `output as notices right of main and editor` | The new block stands beside two neighbors |
+| `output as comms showing chan-*, pages right of main` | The output shows the streams that the patterns name |
+| `output as chat of all worlds right of main` | The output shows its streams for every world, in one pane |
 
 A line splits only the pane that its anchor has at that point. So the order of the lines decides the shape, and the same lines in another order can give another screen.
 
@@ -102,7 +106,7 @@ $ mu layout show status
 
 ```text
 $ mu layout show sidebar
-1. output
+1. output as main showing main
 2. tabs above main
 3. editor below main
 4. statusline below editor
@@ -198,12 +202,15 @@ If a layout file is bad, the server skips it and writes one notice. The notice n
 
 ## Several outputs
 
-An `output` shows the lines of the stream with its id, for the world in focus. A stream is a named set of lines.
+A stream is a named set of lines. The lines of a world are in the stream `main`, and the notices of the client are in the stream `notices`.
 
-- The block `main` is the main output. It shows the lines of the world, and each stream that has no `output` of its own. If no block has the id `main`, the first `output` of the plan is the main output.
-- The notices of the client are the stream `notices`. With `output as notices` in the layout, the notices show there. Without it, they show in the main output.
+- An `output` with no `showing` shows the stream with the same name as its id. The output `main` with no `showing` shows the streams `main` and `notices`.
+- After `showing`, a list of patterns separated by commas names the streams of the output. A pattern is a glob: `*` matches any text and `?` matches one character. A pattern that starts with `!` excludes the streams that it matches, and an exclusion wins. The list holds at least one pattern without `!`. A pattern that starts with `re:` or `/` is refused, because those forms are kept for a later syntax.
+- The words `of all worlds` come right after the id, and before `showing`. They make one pane that shows the streams of every world. The output `main` cannot take them.
+- The words `all`, `worlds` and `showing` are words of the sentences, so they are not ids.
 - A line stays with the lines of its stream. An output that you add later starts with the new lines only.
-- The lines of a world stay together. If you hide `main`, the next main output shows them, and a new `main` takes them back. The block that stands in keeps its own earlier lines, and shows them again when `main` is back. The client keeps them while the layout has no `output`.
+
+`sidebar` writes `output as main showing main`, so its notices show only in the pane of `notices`.
 
 With more than one `output` on the screen, each pane of outputs shows a title row with the id of each of its blocks. The id in square brackets is the block that shows.
 
@@ -349,7 +356,7 @@ A change keeps your other lines where it can. If no change of one line gives the
 
 ```text
 $ mu layout describe sidebar
-1. main (output): column 1, row 2, 55 by 21: the lines of the world in focus, and each stream with no output of its own
+1. main (output): column 1, row 2, 55 by 21: the stream main of the world in focus
 2. tabs (tabs): column 1, row 1, 80 by 1: one tab for each world of the server
 3. editor (editor): column 1, row 23, 80 by 1: the text that the player types for the world in focus
 4. statusline (statusline): column 1, row 24, 80 by 1: the segments of the world in focus

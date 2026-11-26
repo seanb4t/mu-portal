@@ -6,6 +6,7 @@ use mu_config::layout::{
     BLOCKS, BUILT_IN, BlockId, BlockKind, Dir, Edge, Layout, LineRef, Node, PartSize, Place, Side,
     Size, SizeRule, Step, WORDS,
 };
+use mu_config::stream::{Pattern, Scope, Selection};
 use proptest::prelude::*;
 
 fn layout(lines: &[&str]) -> Layout {
@@ -57,13 +58,47 @@ fn size() -> impl Strategy<Value = Option<Size>> {
     ]
 }
 
+fn scope() -> impl Strategy<Value = Scope> {
+    prop_oneof![Just(Scope::World), Just(Scope::AllWorlds)]
+}
+
+fn patterns() -> impl Strategy<Value = Option<Vec<Pattern>>> {
+    prop::option::of(
+        prop::collection::vec("!?[a-c*?][a-c*?-]{0,3}", 1..4).prop_map(|texts| {
+            texts
+                .iter()
+                .map(|text| Pattern::new(text).expect("the pattern gives a pattern"))
+                .collect()
+        }),
+    )
+}
+
+fn selection_of(id: &BlockId, scope: Scope, patterns: Option<Vec<Pattern>>) -> Selection {
+    patterns
+        .and_then(|patterns| Selection::new(scope, patterns).ok())
+        .unwrap_or_else(|| Selection::default_for(id, scope))
+}
+
 fn step() -> impl Strategy<Value = Step> {
-    (kind(), prop::option::of(id()), place(), size()).prop_map(|(kind, id, place, size)| Step {
-        kind,
-        id: id.unwrap_or_else(|| BlockId::of(kind)),
-        place,
-        size,
-    })
+    (
+        kind(),
+        prop::option::of(id()),
+        place(),
+        size(),
+        scope(),
+        patterns(),
+    )
+        .prop_map(|(kind, id, place, size, scope, patterns)| {
+            let id = id.unwrap_or_else(|| BlockId::of(kind));
+            let selection = (kind == BlockKind::Output).then(|| selection_of(&id, scope, patterns));
+            Step {
+                kind,
+                id,
+                place,
+                size,
+                selection,
+            }
+        })
 }
 
 /// One try to add a line to a plan. Each number picks by its rest after a division.
@@ -75,6 +110,8 @@ struct Move {
     edge: Edge,
     anchors: Vec<usize>,
     size: Option<Size>,
+    scope: Scope,
+    patterns: Option<Vec<Pattern>>,
 }
 
 fn a_move() -> impl Strategy<Value = Move> {
@@ -85,25 +122,38 @@ fn a_move() -> impl Strategy<Value = Move> {
         prop::sample::select(Edge::ALL.to_vec()),
         prop::collection::vec(0_usize..64, 1..4),
         size(),
+        scope(),
+        patterns(),
     )
-        .prop_map(|(kind, form, side, edge, anchors, size)| Move {
-            kind,
-            form,
-            side,
-            edge,
-            anchors,
-            size,
-        })
+        .prop_map(
+            |(kind, form, side, edge, anchors, size, scope, patterns)| Move {
+                kind,
+                form,
+                side,
+                edge,
+                anchors,
+                size,
+                scope,
+                patterns,
+            },
+        )
 }
 
 /// A good layout from `moves`: each move that gives a bad plan is left out.
 fn grown(moves: &[Move]) -> Layout {
-    let mut steps = vec![Step {
-        kind: BlockKind::Editor,
-        id: BlockId::of(BlockKind::Editor),
-        place: Place::First,
-        size: None,
-    }];
+    let main = BlockId::of(BlockKind::Output);
+    let mut steps = vec![
+        Step::new(BlockKind::Output, main.clone(), Place::First, None),
+        Step::new(
+            BlockKind::Editor,
+            BlockId::of(BlockKind::Editor),
+            Place::Beside {
+                side: Side::Below,
+                anchors: vec![main],
+            },
+            None,
+        ),
+    ];
     for (number, each) in moves.iter().enumerate() {
         let pick = |index: usize| steps[index % steps.len()].id.clone();
         let place = match each.form {
@@ -119,11 +169,15 @@ fn grown(moves: &[Move]) -> Layout {
             },
         };
         let mut next = steps.clone();
+        let id = BlockId::new(&format!("b{number}")).expect("an id");
+        let selection = (each.kind == BlockKind::Output)
+            .then(|| selection_of(&id, each.scope, each.patterns.clone()));
         next.push(Step {
             kind: each.kind,
-            id: BlockId::new(&format!("b{number}")).expect("an id"),
+            id,
             place,
             size: each.size,
+            selection,
         });
         if Layout::from_steps(next.clone()).is_ok() {
             steps = next;
@@ -199,7 +253,7 @@ fn ids(layout: &Layout) -> BTreeSet<String> {
 }
 
 const SIDEBAR: &[&str] = &[
-    "output",
+    "output as main showing main",
     "tabs above main",
     "editor below main",
     "statusline below editor",
@@ -221,15 +275,24 @@ fn a_second_editor_with_no_id() {
 }
 
 fn editors(count: usize) -> Vec<String> {
-    let mut lines = vec!["editor".to_owned()];
+    let mut lines = vec!["editor".to_owned(), "output above editor".to_owned()];
     lines.extend((1..count).map(|number| format!("editor as e{number} above editor")));
     lines
 }
 
 fn outputs(count: usize) -> Vec<String> {
     let mut lines = vec!["editor".to_owned()];
-    lines.extend((0..count).map(|number| format!("output as o{number} above editor")));
+    lines.extend((0..count).map(|number| out(number, "above editor")));
     lines
+}
+
+/// The line of output `number` at `place`. Output 0 is `main`.
+fn out(number: usize, place: &str) -> String {
+    if number == 0 {
+        format!("output {place}")
+    } else {
+        format!("output as o{number} {place}")
+    }
 }
 
 #[test]
@@ -240,7 +303,7 @@ fn four_editors() {
 #[test]
 fn five_editors() {
     let text = Layout::parse(&editors(5)).expect_err("five").to_string();
-    assert!(text.contains("line 5") && text.contains("editor"), "{text}");
+    assert!(text.contains("line 6") && text.contains("editor"), "{text}");
 }
 
 #[test]
@@ -316,7 +379,7 @@ fn an_id_that_is_a_word_of_the_sentences() {
 #[test]
 fn an_id_of_32_characters() {
     let line = format!("output as {} above editor", "a".repeat(32));
-    assert!(Layout::parse(&["editor", line.as_str()]).is_ok());
+    assert!(Layout::parse(&["output", "editor below main", line.as_str()]).is_ok());
 }
 
 #[test]
@@ -456,7 +519,7 @@ fn too_many_lines() {
 #[test]
 fn the_largest_plan() {
     let mut lines = editors(4);
-    lines.extend((0..8).map(|number| format!("output as o{number} above editor")));
+    lines.extend((1..8).map(|number| out(number, "above editor")));
     lines.push("tabs at top".to_owned());
     lines.push("statusline at bottom".to_owned());
     assert_eq!(lines.len(), 14);
@@ -465,13 +528,15 @@ fn the_largest_plan() {
 
 /// A plan whose tree has one more level for each output.
 fn nested(outputs: usize) -> Vec<String> {
-    let mut lines = vec![
-        "editor".to_owned(),
-        "output as o0 right of editor".to_owned(),
-    ];
+    let mut lines = vec!["editor".to_owned(), "output right of editor".to_owned()];
     for number in 1..outputs {
         let side = if number % 2 == 1 { "below" } else { "right of" };
-        lines.push(format!("output as o{number} {side} o{}", number - 1));
+        let anchor = if number == 1 {
+            "main".to_owned()
+        } else {
+            format!("o{}", number - 1)
+        };
+        lines.push(out(number, &format!("{side} {anchor}")));
     }
     lines
 }
@@ -741,7 +806,7 @@ fn a_move_to_a_later_anchor_goes_to_the_end() {
     assert_eq!(
         changed.layout.lines(),
         [
-            "output",
+            "output as main showing main",
             "editor below main",
             "statusline below editor",
             "output as notices right of main, 30%",
@@ -886,7 +951,7 @@ proptest! {
                     1 => Place::With(anchor),
                     _ => Place::Beside { side: each.side, anchors: vec![anchor] },
                 };
-                let step = Step { kind: old.kind, id: old.id, place, size: each.size };
+                let step = Step { place, size: each.size, ..old };
                 (before.place(step.clone()), None, Some(step))
             }
         };
@@ -969,7 +1034,7 @@ fn two_percents_past_the_split() {
     let solved = solved(
         &[
             "editor",
-            "output as a right of editor, 60%",
+            "output right of editor, 60%",
             "output as b right of editor, 60%",
         ],
         100,
@@ -977,7 +1042,7 @@ fn two_percents_past_the_split() {
     );
     let (editor, a, b) = (
         rect(&solved, "editor"),
-        rect(&solved, "a"),
+        rect(&solved, "main"),
         rect(&solved, "b"),
     );
     assert!(editor.1 >= editor.0, "{editor:?}");
@@ -997,7 +1062,7 @@ fn two_large_counts_in_one_split() {
     let solved = solved(
         &[
             "editor",
-            "output as a above editor, 65535",
+            "output above editor, 65535",
             "output as b above editor, 65535",
         ],
         80,
@@ -1048,23 +1113,6 @@ fn the_picture_of_the_sidebar() {
         picture.contains("notices") && picture.contains('┬'),
         "{picture}"
     );
-}
-
-// The streams.
-
-#[test]
-fn a_stream_goes_to_the_output_with_its_id() {
-    assert_eq!(layout(SIDEBAR).route("notices"), Some(&id_of("notices")));
-}
-
-#[test]
-fn a_stream_with_no_output_goes_to_the_first() {
-    assert_eq!(layout(SIDEBAR).route("channels"), Some(&id_of("main")));
-}
-
-#[test]
-fn a_plan_with_no_output() {
-    assert_eq!(layout(&["editor"]).route("notices"), None);
 }
 
 // The name of a layout that a save from a built-in layout writes.
@@ -1327,40 +1375,6 @@ proptest! {
     }
 }
 
-// The main output.
-
-#[test]
-fn the_main_output_is_the_one_with_the_id_main() {
-    // The block `notices` is the first `output` line, and `main` is not.
-    let plan = layout(&[
-        "editor",
-        "output as notices above editor",
-        "output left of notices",
-    ]);
-    assert_eq!(plan.main_output(), Some(&id_of("main")));
-    assert_eq!(plan.route("alpha/aria"), Some(&id_of("main")));
-    assert_eq!(plan.route("notices"), Some(&id_of("notices")));
-}
-
-#[test]
-fn with_no_block_main_the_first_output_is_the_main_one() {
-    let plan = layout(&[
-        "editor",
-        "output as notices above editor",
-        "output as side left of notices",
-    ]);
-    assert_eq!(plan.main_output(), Some(&id_of("notices")));
-    assert_eq!(plan.route("side"), Some(&id_of("side")));
-    assert_eq!(plan.route("alpha/aria"), Some(&id_of("notices")));
-}
-
-#[test]
-fn a_plan_with_no_output_has_no_main_output() {
-    let plan = layout(&["editor"]);
-    assert_eq!(plan.main_output(), None);
-    assert_eq!(plan.route("notices"), None);
-}
-
 #[test]
 fn an_output_line_with_no_as_has_the_id_main() {
     let plan = layout(&["output", "editor below main"]);
@@ -1384,9 +1398,9 @@ fn the_numbered_lines_of_a_plan() {
 
 #[test]
 fn a_line_of_256_characters_is_read() {
-    let line = format!("editor{}", " ".repeat(250));
+    let line = format!("editor below main{}", " ".repeat(239));
     assert_eq!(line.chars().count(), 256);
-    assert!(Layout::parse(&[line]).is_ok());
+    assert!(Layout::parse(&["output".to_owned(), line]).is_ok());
 }
 
 #[test]
@@ -1412,6 +1426,7 @@ fn a_step_with_no_anchor_is_an_error() {
             anchors: Vec::new(),
         },
         size: None,
+        selection: None,
     };
     let text = Layout::from_steps(vec![step_of("output"), bad])
         .expect_err("no anchor")
@@ -1424,14 +1439,14 @@ fn a_save_from_a_built_in_layout_with_no_device_is_an_error() {
     assert!(mu_config::save_target(&Choice::Default, "classic", None).is_err());
 }
 
-/// A plan of six outputs with ids of 32 characters above the editor, and then the line `last`
-/// with a seventh output above all six. `size` is the text of its size, with its comma.
+/// A plan of `main`, the editor, six outputs with ids of 32 characters above the editor, and
+/// then the line `last` with a seventh output above all six. `size` is the text of its size, with its comma.
 fn seven_outputs(size: &str) -> Vec<String> {
     let ids: Vec<String> = "abcdef"
         .chars()
         .map(|first| format!("{first}{}", "x".repeat(31)))
         .collect();
-    let mut lines = vec!["editor".to_owned()];
+    let mut lines = vec!["output".to_owned(), "editor below main".to_owned()];
     lines.extend(ids.iter().map(|id| format!("output as {id} above editor")));
     let last = format!("g{}", "x".repeat(17));
     lines.push(format!(
@@ -1444,7 +1459,7 @@ fn seven_outputs(size: &str) -> Vec<String> {
 #[test]
 fn a_line_that_mu_writes_with_256_characters_is_read() {
     let lines = seven_outputs(", 30");
-    assert_eq!(lines[7].chars().count(), 256);
+    assert_eq!(lines[8].chars().count(), 256);
     let layout = Layout::parse(&lines).expect("good");
     assert_eq!(layout.lines(), lines);
 }
@@ -1453,18 +1468,18 @@ fn a_line_that_mu_writes_with_256_characters_is_read() {
 fn a_line_that_mu_writes_with_more_than_256_characters_is_refused() {
     // The line has 256 characters, and mu writes `,300` as `, 300`, which makes 257.
     let lines = seven_outputs(",300");
-    assert_eq!(lines[7].chars().count(), 256);
+    assert_eq!(lines[8].chars().count(), 256);
     let text = Layout::parse(&lines)
         .expect_err("the written line is too long")
         .to_string();
-    assert!(text.contains("line 8") && text.contains("256"), "{text}");
+    assert!(text.contains("line 9") && text.contains("256"), "{text}");
 }
 
 #[test]
 fn a_resize_that_makes_a_line_too_long_is_refused() {
     // The line has 255 characters with the size `, 3`, 256 with `, 30` and 257 with `, 300`.
     let lines = seven_outputs(", 3");
-    assert_eq!(lines[7].chars().count(), 255);
+    assert_eq!(lines[8].chars().count(), 255);
     let layout = Layout::parse(&lines).expect("good");
     let last = id_of(&format!("g{}", "x".repeat(17)));
     assert!(layout.resize(&last, Size::Cells(30)).is_ok());
@@ -1492,4 +1507,201 @@ proptest! {
         let read = Layout::parse(&layout.lines());
         prop_assert_eq!(read, Ok(layout));
     }
+}
+
+// The streams of an output.
+
+fn shown_by(step: &Step) -> (Scope, Vec<String>) {
+    let selection = step.selection.as_ref().expect("an output has a selection");
+    (
+        selection.scope,
+        selection
+            .patterns()
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+    )
+}
+
+#[test]
+fn an_output_of_all_worlds() {
+    let step = step_of("output as chat of all worlds right of main");
+    assert_eq!(shown_by(&step), (Scope::AllWorlds, vec!["chat".to_owned()]));
+}
+
+#[test]
+fn patterns_after_showing() {
+    let step = step_of("output as comms showing chan-*, !chan-ooc, pages");
+    assert_eq!(
+        shown_by(&step).1,
+        ["chan-*", "!chan-ooc", "pages"].map(str::to_owned)
+    );
+}
+
+#[test]
+fn patterns_end_at_the_place() {
+    let step = step_of("output as comms showing chan-*, pages right of main, 30%");
+    assert_eq!(
+        (shown_by(&step).1, step.place, step.size),
+        (
+            vec!["chan-*".to_owned(), "pages".to_owned()],
+            Place::Beside {
+                side: Side::Right,
+                anchors: vec![id_of("main")]
+            },
+            Some(Size::Percent(30))
+        )
+    );
+}
+
+#[test]
+fn a_place_word_ends_the_patterns() {
+    let step = step_of("output as comms showing chan-*, pages below main");
+    assert_eq!(
+        (shown_by(&step).1.len(), step.place),
+        (
+            2,
+            Place::Beside {
+                side: Side::Below,
+                anchors: vec![id_of("main")]
+            }
+        )
+    );
+}
+
+#[test]
+fn showing_with_no_pattern_before_a_place() {
+    let text = error(&[
+        "output",
+        "editor below main",
+        "output as side showing right of main",
+    ]);
+    assert!(
+        text.contains("line 3") && text.contains("showing"),
+        "{text}"
+    );
+}
+
+#[test]
+fn showing_at_the_end_of_the_line() {
+    let text = error(&["output", "editor below main", "output as side showing"]);
+    assert!(
+        text.contains("line 3") && text.contains("showing"),
+        "{text}"
+    );
+}
+
+#[test]
+fn showing_a_lone_exclusion() {
+    let text = error(&[
+        "output",
+        "editor below main",
+        "output as side showing ! right of main",
+    ]);
+    assert!(text.contains("line 3") && text.contains('!'), "{text}");
+}
+
+#[test]
+fn the_main_output_of_all_worlds() {
+    let text = error(&["output as main of all worlds", "editor below main"]);
+    assert!(text.contains("line 1") && text.contains("main"), "{text}");
+}
+
+#[test]
+fn the_id_all() {
+    let text = error(&["output", "editor below main", "output as all right of main"]);
+    assert!(text.contains("line 3") && text.contains("all"), "{text}");
+}
+
+#[test]
+fn the_id_showing() {
+    let text = error(&[
+        "output",
+        "editor below main",
+        "output as showing right of main",
+    ]);
+    assert!(
+        text.contains("line 3") && text.contains("showing"),
+        "{text}"
+    );
+}
+
+#[test]
+fn the_scope_after_the_place() {
+    let text = error(&[
+        "output",
+        "editor below main",
+        "output as chat right of main of all worlds",
+    ]);
+    assert!(text.contains("line 3"), "{text}");
+}
+
+#[test]
+fn a_rewrite_keeps_the_selection() {
+    let plan = layout(&[
+        "output",
+        "editor below main",
+        "output as comms of all worlds showing chan-*, pages right of main, 30%",
+    ]);
+    let moved = plan
+        .resize(&id_of("comms"), Size::Percent(40))
+        .expect("a good size");
+    assert!(
+        moved.layout.lines().contains(
+            &"output as comms of all worlds showing chan-*, pages right of main, 40%".to_owned()
+        ),
+        "{:?}",
+        moved.layout.lines()
+    );
+}
+
+// The outputs that a layout must hold.
+
+#[test]
+fn no_main_output() {
+    let text = error(&["editor", "output as side above editor"]);
+    assert!(text.contains("main"), "{text}");
+}
+
+#[test]
+fn no_output_for_the_notices() {
+    let text = error(&["output as main showing main, chan-*", "editor below main"]);
+    assert!(text.contains("notices"), "{text}");
+}
+
+#[test]
+fn an_output_one_to_eight_times() {
+    let text = error(&["editor"]);
+    assert!(text.contains("main"), "{text}");
+}
+
+#[test]
+fn hide_refuses_main() {
+    let text = layout(&["output", "tabs above main", "editor below main"])
+        .hide(&id_of("main"))
+        .expect_err("main stays")
+        .to_string();
+    assert!(text.contains("main"), "{text}");
+}
+
+#[test]
+fn hide_refuses_the_last_output_of_the_notices() {
+    let text = layout(SIDEBAR)
+        .hide(&id_of("notices"))
+        .expect_err("notices stay")
+        .to_string();
+    assert!(text.contains("notices"), "{text}");
+}
+
+#[test]
+fn hide_keeps_a_second_output_of_the_notices() {
+    assert!(
+        layout(&[
+            "output",
+            "editor below main",
+            "output as notices right of main"
+        ])
+        .hide(&id_of("notices"))
+        .is_ok()
+    );
 }
