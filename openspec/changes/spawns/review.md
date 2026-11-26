@@ -60,7 +60,10 @@ None.
 
 ## Accepted
 
-None.
+| id | severity | disposition | reason | ticket |
+|---|---|---|---|---|
+| R-74 | should-fix | accepted | a full round 12 runs the lenses test-coverage and test-honesty again |  |
+| R-75 | should-fix | accepted | a full round 12 runs the lenses test-coverage and test-honesty again |  |
 
 ## Rounds
 
@@ -397,8 +400,8 @@ None.
 | R-71 | 11 | 11 | should-fix | in-change | false-test | ["path","crates/mu-config/tests/layout.rs",1673] | fixed | bca5208b23e035c9841307d8552034cb7668bdb9 | 11 |  |  | The test is named for 'output one to eight times' but passes a layout with no output and asserts only that the error mentions main, so it cannot fail on the output-count rule. |
 | R-72 | 11 | 11 | suggestion | in-change |  | ["path","crates/mu-core/src/rules.rs",176] | fixed | bca5208b23e035c9841307d8552034cb7668bdb9 | 11 |  | severity? blocker 0.63 | Rule::streams reads only the first action and returns no streams if it is not Stream. #59 adds actions to the same rules, so a rule with a highlight before its stream would lose its streams, and #59 must rewrite this lookup. |
 | R-73 | 11 | 11 | suggestion | in-change |  | ["path","crates/mu-config/src/stream.rs",97] | fixed | bca5208b23e035c9841307d8552034cb7668bdb9 | 11 |  |  | The server writes the streams with Streams::to_wire and the client reads them with Streams::from_wire. Their round trip over any valid list of 1 to 8 names has only example tests. |
-| R-74 | 11 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-coverage partial"] |  |  |  |  |  | lens test-coverage reported partial, gaps: 1 |
-| R-75 | 11 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-honesty partial"] |  |  |  |  |  | lens test-honesty reported partial, gaps: 2 |
+| R-74 | 11 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-coverage partial"] | accepted | ticket: none; reason: a full round 12 runs the lenses test-coverage and test-honesty again |  |  |  | lens test-coverage reported partial, gaps: 1 |
+| R-75 | 11 | 11 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"test-honesty partial"] | accepted | ticket: none; reason: a full round 12 runs the lenses test-coverage and test-honesty again |  |  |  | lens test-honesty reported partial, gaps: 2 |
 
 ## Reviewed files
 
