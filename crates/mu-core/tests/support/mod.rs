@@ -67,6 +67,41 @@ fn resolved_on(
     (setup, game)
 }
 
+/// A world as [`world`] gives it, with the line rules of `rules`, a TOML text of `[[rules]]`.
+pub fn world_with_rules(text: &str, password: &str, rules: &str) -> (WorldSetup, FakeGame) {
+    let transport = FakeTransport::new(id(text).character(), password);
+    let game = transport.game();
+    let table: toml::Table = rules.parse().unwrap();
+    let entries = table
+        .get("rules")
+        .and_then(toml::Value::as_array)
+        .map_or_default(|rules| {
+            rules
+                .iter()
+                .map(|rule| {
+                    let table = rule.as_table().unwrap().clone();
+                    mu_core::world::Entry {
+                        id: table["id"].as_str().unwrap().to_owned(),
+                        table,
+                        origin: mu_core::world::LayerOrigin::Default,
+                    }
+                })
+                .collect()
+        });
+    let resolved = ResolvedWorld {
+        autoconnect: true,
+        reconnect: Reconnect::Off,
+        rules: mu_core::rules::Rules::new(entries).unwrap(),
+        ..ResolvedWorld::with_default_login(id(text), "env:PW".parse().unwrap())
+    };
+    let setup = WorldSetup::new(
+        resolved,
+        Some(Secret::new(password.to_owned())),
+        Arc::new(transport),
+    );
+    (setup, game)
+}
+
 pub fn portal(worlds: Vec<WorldSetup>, server_handlers: Vec<Arc<dyn Handler>>) -> Portal {
     Portal::start(
         Arc::new(MemoryJournal::new(mu_core::journal::DEFAULT_CAPACITY).unwrap()),

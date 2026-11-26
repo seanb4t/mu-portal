@@ -91,7 +91,10 @@ async fn hook_gags_game_line() {
 async fn hook_replaces_player_line() {
     let hook = PlayerHook {
         from: "hi",
-        action: HookAction::Replace("say hi".to_owned()),
+        action: HookAction::Change {
+            text: Some("say hi".to_owned()),
+            streams: None,
+        },
     };
     let (aria, game) = world("alpha/aria", PW);
     let portal = started(vec![aria.with_hook(Arc::new(hook))]).await;
@@ -300,7 +303,10 @@ async fn handler_connect_has_source_system() {
 async fn line_break_from_hook(text: &str) {
     let hook = PlayerHook {
         from: "hi",
-        action: HookAction::Replace(text.to_owned()),
+        action: HookAction::Change {
+            text: Some(text.to_owned()),
+            streams: None,
+        },
     };
     let (aria, game) = world("alpha/aria", PW);
     let portal = started(vec![aria.with_hook(Arc::new(hook))]).await;
@@ -573,4 +579,134 @@ async fn wait_covers_server_handler_loop() {
         assert_eq!(of_kind(&portal, EventKind::ScriptError).len(), 1);
     })
     .await;
+}
+
+/// A hook that gives `action` to each game line that contains `on`.
+struct GameHook {
+    on: &'static str,
+    action: HookAction,
+}
+
+impl Hook for GameHook {
+    fn on_game_line(&self, line: &str) -> HookAction {
+        if line.contains(self.on) {
+            self.action.clone()
+        } else {
+            HookAction::Pass
+        }
+    }
+}
+
+fn streams(names: &[&str]) -> mu_config::stream::Streams {
+    mu_config::stream::Streams::new(
+        names
+            .iter()
+            .map(|name| mu_config::stream::StreamName::new(name).unwrap()),
+    )
+    .unwrap()
+}
+
+fn set_streams(names: &[&str]) -> HookAction {
+    HookAction::Change {
+        text: None,
+        streams: Some(streams(names)),
+    }
+}
+
+/// The game line `text` of `alpha/aria`, once the portal records it.
+async fn game_line(portal: &Portal, text: &str) -> Event {
+    wait_event(portal, |event| {
+        event.kind == EventKind::Line && event.text == text
+    })
+    .await
+}
+
+const WHO_RULE: &str = r#"
+[[rules]]
+id = "who"
+pattern = '^You say, "WHO'
+until = 'End"$'
+stream = "who"
+"#;
+
+#[tokio::test(start_paused = true)]
+async fn a_hook_sets_the_streams() {
+    let rule = "[[rules]]\nid = \"chat\"\npattern = 'hi'\nstream = \"chat\"\n";
+    let (aria, _game) = world_with_rules("alpha/aria", PW, rule);
+    let hook = GameHook {
+        on: "hi",
+        action: set_streams(&["pages"]),
+    };
+    let portal = started(vec![aria.with_hook(Arc::new(hook))]).await;
+    portal.send(&id("alpha/aria"), "hi").await.unwrap();
+    let event = game_line(&portal, "You say, \"hi\"").await;
+    assert_eq!(event.streams, streams(&["pages"]));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_hook_rewrites_and_sets_the_streams() {
+    let (aria, _game) = world("alpha/aria", PW);
+    let hook = GameHook {
+        on: "hi",
+        action: HookAction::Change {
+            text: Some("HI".to_owned()),
+            streams: Some(streams(&["pages", "main"])),
+        },
+    };
+    let portal = started(vec![aria.with_hook(Arc::new(hook))]).await;
+    portal.send(&id("alpha/aria"), "hi").await.unwrap();
+    let event = game_line(&portal, "HI").await;
+    assert_eq!(event.streams, streams(&["pages", "main"]));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_player_hook_with_streams_keeps_main() {
+    let (aria, _game) = world("alpha/aria", PW);
+    let hook = PlayerHook {
+        from: "hi",
+        action: set_streams(&["pages"]),
+    };
+    let portal = started(vec![aria.with_hook(Arc::new(hook))]).await;
+    let seq = portal.send(&id("alpha/aria"), "hi").await.unwrap().unwrap();
+    let event = wait_event(&portal, |event| event.seq == seq).await;
+    assert_eq!(
+        (event.kind, event.streams),
+        (EventKind::Input, mu_config::stream::Streams::main())
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_hook_during_a_capture_keeps_its_streams() {
+    let (aria, _game) = world_with_rules("alpha/aria", PW, WHO_RULE);
+    let hook = GameHook {
+        on: "mid",
+        action: set_streams(&["pages"]),
+    };
+    let portal = started(vec![aria.with_hook(Arc::new(hook))]).await;
+    for text in ["WHO", "mid", "after"] {
+        portal.send(&id("alpha/aria"), text).await.unwrap();
+    }
+    let after = game_line(&portal, "You say, \"after\"").await;
+    let mid = game_line(&portal, "You say, \"mid\"").await;
+    assert_eq!(
+        (mid.streams, after.streams),
+        (streams(&["pages"]), streams(&["who"]))
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_gagged_line_ends_a_capture() {
+    let (aria, _game) = world_with_rules("alpha/aria", PW, WHO_RULE);
+    let portal = started(vec![aria.with_hook(Arc::new(GameGag("End")))]).await;
+    for text in ["WHO", "End", "after"] {
+        portal.send(&id("alpha/aria"), text).await.unwrap();
+    }
+    let after = game_line(&portal, "You say, \"after\"").await;
+    let ended = events(&portal)
+        .iter()
+        .any(|event| event.kind == EventKind::Line && event.text.contains("End"));
+    assert_eq!(
+        (after.streams, ended),
+        (mu_config::stream::Streams::main(), false)
+    );
 }

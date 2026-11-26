@@ -161,6 +161,7 @@ impl Portal {
                 line_break: setup.world.line_break,
                 reconnect: setup.world.reconnect,
                 hooks: setup.hooks,
+                rules: setup.world.rules,
                 handlers: setup.handlers,
                 journal: Arc::clone(&journal),
                 router: Arc::clone(&router),
