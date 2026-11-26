@@ -1378,7 +1378,7 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
     let kept = put_back(model, &world, lines);
     let notice = format!("-- {}{}", clean(&reason), in_history(kept));
     // The notice is about a line of `world`, so it goes to the notices of that world.
-    if let Some(pane) = model.pane_in(Some(&world), mu_config::layout::NOTICES_STREAM) {
+    if let Some(pane) = model.pane_in(Some(&world), mu_config::stream::NOTICES) {
         model.push(pane, &notice);
     }
     Vec::new()

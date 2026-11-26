@@ -2049,7 +2049,6 @@ dependencies = [
  "tokio",
  "unicode-segmentation",
  "unicode-width",
- "vte",
 ]
 
 [[package]]

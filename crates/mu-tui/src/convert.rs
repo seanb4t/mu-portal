@@ -1,13 +1,11 @@
 //! The conversion of game text: SGR sequences become style spans, and every other escape
 //! sequence goes.
 //!
-//! Each call starts a new `vte` parser in its ground state. Only the SGR style carries from one
-//! call to the next, through the style that the caller keeps for each world.
+//! Each call starts a new walk in its ground state. Only the SGR style carries from one call to
+//! the next, through the style that the caller keeps for each world.
 
+use mu_config::ansi::{SCREEN, Sink, walk};
 use ratatui::style::{Color, Modifier, Style};
-use vte::{Params, Parser, Perform};
-
-use crate::text::printable;
 
 /// The text of a game line with no control character, and its style spans.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -35,29 +33,17 @@ struct Converter<'a> {
     out: Converted,
 }
 
-impl Converter<'_> {
-    fn push(&mut self, c: char) {
+impl Sink for Converter<'_> {
+    fn char(&mut self, c: char) {
         if *self.style != self.last {
             self.out.spans.push((self.out.text.len(), *self.style));
             self.last = *self.style;
         }
-        self.out.text.push(printable(c));
-    }
-}
-
-impl Perform for Converter<'_> {
-    fn print(&mut self, c: char) {
-        self.push(c);
+        self.out.text.push(c);
     }
 
-    fn execute(&mut self, byte: u8) {
-        self.push(char::from(byte));
-    }
-
-    fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], ignore: bool, action: char) {
-        if action == 'm' && intermediates.is_empty() && !ignore {
-            sgr(self.style, params);
-        }
+    fn sgr(&mut self, groups: &[&[u16]]) {
+        sgr(self.style, groups);
     }
 }
 
@@ -68,7 +54,7 @@ pub fn convert(input: &str, style: &mut Style) -> Converted {
         last: Style::default(),
         out: Converted::default(),
     };
-    Parser::new().advance(&mut converter, input.as_bytes());
+    walk(input, &SCREEN, &mut converter);
     converter.out
 }
 
@@ -121,13 +107,13 @@ fn colon(values: &[u16]) -> Option<Color> {
     }
 }
 
-/// Applies the SGR parameters `params` to `style`.
-fn sgr(style: &mut Style, params: &Params) {
+/// Applies the SGR parameter groups `params` to `style`.
+fn sgr(style: &mut Style, params: &[&[u16]]) {
     if params.is_empty() {
         *style = Style::default();
         return;
     }
-    let mut groups = params.iter();
+    let mut groups = params.iter().copied();
     while let Some(group) = groups.next() {
         let code = group.first().copied().unwrap_or(0);
         match code {

@@ -5,9 +5,7 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Arc;
 
-use mu_config::layout::{
-    BUILT_IN, Block, BlockId, BlockKind, DEFAULT_LAYOUT, Layout, NOTICES_STREAM,
-};
+use mu_config::layout::{BUILT_IN, Block, BlockId, BlockKind, DEFAULT_LAYOUT, Layout};
 use mu_config::{Choice, Label, Segment, WorldId, layout_for};
 use mu_proto::World as ProtoWorld;
 use ratatui::style::Style;
@@ -622,7 +620,7 @@ impl Model {
             .filter(|line| !self.notices.contains(line))
             .collect();
         let lines: Vec<String> = self.notices.iter().cloned().chain(hints).collect();
-        match self.pane_for(NOTICES_STREAM) {
+        match self.pane_for(mu_config::stream::NOTICES) {
             Some(pane) => {
                 for line in &lines {
                     self.push(pane, line);
@@ -812,7 +810,7 @@ impl Model {
     fn show_notice(&mut self, line: &str) {
         // The lines that waited show first, so the lines keep their order.
         self.show_unshown();
-        if let Some(pane) = self.pane_for(NOTICES_STREAM) {
+        if let Some(pane) = self.pane_for(mu_config::stream::NOTICES) {
             self.push(pane, line);
         } else {
             if self.unshown.len() == UNSHOWN_MAX {
@@ -827,7 +825,7 @@ impl Model {
         if self.unshown.is_empty() {
             return;
         }
-        if let Some(pane) = self.pane_for(NOTICES_STREAM) {
+        if let Some(pane) = self.pane_for(mu_config::stream::NOTICES) {
             for line in std::mem::take(&mut self.unshown) {
                 self.push(pane, &line);
             }

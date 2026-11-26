@@ -13,17 +13,18 @@ pub const WORDS: &[&str] = &[
 ];
 
 /// The id of a block: 1 to [`ID_MAX`] characters from `a` to `z`, `0` to `9` and `-`. It
-/// starts with a letter, and is no word of [`WORDS`].
+/// starts with a letter, and is no word of [`WORDS`]. It is always lower case.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BlockId(String);
 
 impl BlockId {
-    /// Checks `id`.
+    /// Checks `id`, after it turns each upper-case letter to lower case.
     ///
     /// # Errors
     ///
     /// The reason that `id` is no id.
     pub fn new(id: &str) -> Result<Self, &'static str> {
+        let id = id.to_ascii_lowercase();
         let mut bytes = id.bytes();
         if !bytes.next().is_some_and(|first| first.is_ascii_lowercase()) {
             return Err("an id starts with a letter from a to z");
@@ -34,10 +35,10 @@ impl BlockId {
         if id.len() > ID_MAX {
             return Err("an id has at most 32 characters");
         }
-        if WORDS.contains(&id) {
+        if WORDS.contains(&id.as_str()) {
             return Err("an id is not a word of the sentences");
         }
-        Ok(Self(id.to_owned()))
+        Ok(Self(id))
     }
 
     /// The id of a block of `kind` whose line has no `as`.

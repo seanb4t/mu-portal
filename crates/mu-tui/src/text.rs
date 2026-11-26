@@ -30,20 +30,13 @@ pub(crate) fn clean_paste(text: &str) -> String {
     out
 }
 
-/// The char of the kitty image placeholder. Only the pane draws it, for an image line.
-pub(crate) const PLACEHOLDER: char = '\u{10EEEE}';
+pub(crate) use mu_config::ansi::PLACEHOLDER;
 
 /// `c` as it shows on the screen: a space for a tab, U+FFFD for each other control character
 /// and for the image placeholder, and every other char as it is.
 pub(crate) fn printable(c: char) -> char {
-    SCREEN.map(c)
+    mu_config::ansi::SCREEN.map(c)
 }
-
-/// The map of [`printable`].
-const SCREEN: mu_config::ControlMap = mu_config::ControlMap {
-    keep: &[('\t', ' ')],
-    also: &[PLACEHOLDER],
-};
 
 /// `text` as [`clean`] gives it, and `spans` in the order of their start. Spans with the same
 /// start keep their order. If `text` has a char that [`clean`] replaces, each byte offset moves

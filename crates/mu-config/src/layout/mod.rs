@@ -11,7 +11,9 @@ mod write;
 
 use std::fmt;
 
-pub use block::{BLOCKS, BlockKind, BlockRow, MAIN, SizeRule};
+use crate::stream::MAIN;
+
+pub use block::{BLOCKS, BlockKind, BlockRow, SizeRule};
 pub use builtin::{BUILT_IN, BuiltIn, DEFAULT_LAYOUT, LayoutFile};
 pub use change::{
     Change, Changed, FILL, LineRef, PANE_COLUMNS_MIN, PANE_ROWS_MIN, RESIZE_STEP, REWRITTEN,
@@ -24,9 +26,6 @@ pub use step::{
     Side, Size, Step, WORDS,
 };
 pub use tree::{Block, Node, Part, PartSize};
-
-/// The name of the stream of the notices of the client.
-pub const NOTICES_STREAM: &str = "notices";
 
 /// The lines `lines` of a plan with their numbers from 1, as each listing of a plan shows them.
 #[must_use]
