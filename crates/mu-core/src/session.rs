@@ -1,6 +1,7 @@
 //! The task of one world: its transport, framer, hooks and handlers.
 
 use mu_config::stream::Streams;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, VecDeque};
 use std::io;
 use std::num::NonZeroU32;
@@ -247,7 +248,8 @@ pub(crate) struct SessionParts {
     /// Whether and when the world connects again after a drop.
     pub(crate) reconnect: Reconnect,
     pub(crate) hooks: Vec<Arc<dyn Hook>>,
-    /// The line rules, which decide the streams of each line from the game.
+    /// The line rules, which decide the streams of each line from the game that no hook gave
+    /// streams.
     pub(crate) rules: Rules,
     pub(crate) handlers: Vec<Arc<dyn Handler>>,
     pub(crate) journal: Arc<dyn Journal>,
@@ -976,8 +978,16 @@ impl Session {
             match inbound {
                 Inbound::Line(line) => {
                     let hooked = run_hooks(&self.parts.hooks, &line, Hook::on_game_line);
+                    // The rules see the masked line, so no stream name and no error holds the
+                    // password.
+                    let masked = self
+                        .password
+                        .as_ref()
+                        .map_or(Cow::Borrowed(hooked.text.as_str()), |password| {
+                            Cow::Owned(password.mask(&hooked.text))
+                        });
                     // A capture counts each line from the game, a gagged one too.
-                    let route = self.route.route(&self.parts.rules, &hooked.text);
+                    let route = self.route.route(&self.parts.rules, &masked);
                     for error in &route.errors {
                         self.script_error(&error.text, 0);
                     }

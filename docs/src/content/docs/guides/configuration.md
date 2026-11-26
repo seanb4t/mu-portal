@@ -186,13 +186,13 @@ A rule has a match part and actions:
 | `pattern` | A regular expression. A line that it matches gets the actions |
 | `stream` | The action: a name, or a list of 1 to 8 names, for the streams of the line |
 | `until` | A regular expression that ends a capture of several lines |
-| `lines` | The most lines of a capture, the first included: 1 to 1000. The default is 100 |
+| `lines` | The most lines of a capture, the first included: 1 to 1000. The default is 100. A rule with `lines` must have `until` |
 
 A rule with no `stream` does nothing, and mu checks only its id. A rule with `stream` must have `pattern`, and another field in it is an error.
 
-The rules run on each line from the game, after the scripts, in their merged order. The first rule whose `pattern` matches applies, and no later rule runs on that line. Only the lines from the game are matched. A prompt, a line that the player sends and a notice of the server are always in `main`.
+The rules run on each line from the game, after the scripts, in their merged order. The first rule whose `pattern` matches applies, and no later rule runs on that line. The server matches only the lines from the game. A prompt, a line that the player sends and a notice of the server are always in `main`.
 
-A pattern has the full syntax of fancy-regex: named groups, lookahead, lookbehind, back-references and flags such as `(?i)`. Case counts unless a flag says otherwise. A pattern sees the text of the line without its color codes, as the screen shows it. If a match takes too many steps, it stops and counts as no match. The next rule then runs, and the server records one script error that names the rule.
+A pattern has the full syntax of fancy-regex: named groups, lookahead, lookbehind, back-references and flags such as `(?i)`. Case counts unless a flag says otherwise. A pattern sees the text of the line without its color codes, as the screen shows it, and with the password of the world masked. If a match takes too many steps, it stops and counts as no match. The next rule then runs, and the server records one script error that names the rule.
 
 ### Names from the match
 
@@ -200,7 +200,7 @@ An entry of `stream` with `$` is a template. `$1` is the text of group 1, `$name
 
 A stream name has 1 to 32 characters from `a` to `z`, `0` to `9` and `-`, and starts with a letter. It cannot be a word of the layout sentences, such as `with` or `showing`. mu turns each upper-case letter of a name to lower case, so `chan-$1` gives `chan-public` for `[Public]`. A prefix such as `chan-` keeps the names of one rule together, and an output can show all of them with `showing chan-*`.
 
-If a template gives a name that is not valid, such as `chan-role play`, the line goes to `main`. The server records one script error that names the rule and the name. It records no other such error for that rule until the world connects again.
+If a template gives a name that is not valid, such as `chan-role play`, the line goes to `main`. The name `notices` from a template is also bad, because only the client writes that stream. The server records one script error that names the rule and the name. It records no other such error for that rule until the world connects again.
 
 ### Captures of several lines
 

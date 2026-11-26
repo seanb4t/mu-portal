@@ -1256,6 +1256,12 @@ fn lines_of_zero() {
 }
 
 #[test]
+fn lines_without_until() {
+    let config = game_rule("pattern = \"x\"\nstream = \"who\"\nlines = 5");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "lines"]);
+}
+
+#[test]
 fn a_stream_name_that_is_a_word() {
     let config = game_rule("pattern = \"x\"\nstream = \"showing\"");
     fails_naming(&config.list(), &["games/alpha.toml", "chan", "showing"]);
@@ -1583,4 +1589,19 @@ fn a_bad_name_on_stderr() {
         .filter(|line| line.contains("chan") && line.contains("chan-role play"))
         .count();
     assert_eq!((matching, output.status.code()), (1, Some(0)), "{text}");
+}
+
+#[test]
+fn a_capture_names_the_notices() {
+    let config = with_rules(&rule("chan", "pattern = '^\\[(\\w+)\\] '\nstream = \"$1\""));
+    let output = matched(&config, "alpha/aria", &["[notices] hi"]);
+    let text = stderr(&output);
+    let named = text
+        .lines()
+        .any(|line| line.contains("chan") && line.contains("notices"));
+    assert_eq!(
+        (succeeds(&output), named),
+        ("main\t[notices] hi\n".to_owned(), true),
+        "{text}"
+    );
 }

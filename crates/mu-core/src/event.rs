@@ -132,8 +132,8 @@ pub struct NewEvent {
     pub text: String,
     /// The depth of the command chain that made the event. A line of the game has 0.
     pub depth: u8,
-    /// The streams of the event: the streams of the rules for a line from the game, and
-    /// [`Streams::main`] for each other event.
+    /// The streams of the event: for a line from the game, the streams that a hook set, else the
+    /// streams of the rules; [`Streams::main`] for each other event.
     pub streams: Streams,
 }
 

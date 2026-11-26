@@ -34,7 +34,7 @@ A rule SHALL have a match part, with `pattern`, `until` and `lines`, and actions
 - **AND** the exit status is 1
 
 ### Requirement: The fields of a rule are checked at the load
-In a rule with an action, `pattern` and `until` SHALL be strings that compile as regular expressions. `lines` SHALL be an integer from 1 to 1000. `stream` SHALL be a string or a list of 1 to 8 strings. The server SHALL turn each entry of `stream` with no `$` to lower case. Then each such entry SHALL be a valid stream name. Each error SHALL name the file, the id and the field.
+In a rule with an action, `pattern` and `until` SHALL be strings that compile as regular expressions. `lines` SHALL be an integer from 1 to 1000, in a rule that has `until`. `stream` SHALL be a string or a list of 1 to 8 strings. The server SHALL turn each entry of `stream` with no `$` to lower case. Then each such entry SHALL be a valid stream name. Each error SHALL name the file, the id and the field.
 
 #### Scenario: A pattern that does not compile
 - **GIVEN** the character `alpha/aria` has the rule `chan` with `pattern = "(["` and `stream = "chat"`
@@ -73,6 +73,12 @@ In a rule with an action, `pattern` and `until` SHALL be strings that compile as
 
 #### Scenario: Lines of zero
 - **GIVEN** the game `alpha` has the rule `who` with `pattern = "x"`, `stream = "who"`, `until = "y"` and `lines = 0`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr names `games/alpha.toml`, `who` and `lines`
+- **AND** the exit status is 1
+
+#### Scenario: Lines without until
+- **GIVEN** the game `alpha` has the rule `who` with `pattern = "x"`, `stream = "who"` and `lines = 5`
 - **WHEN** the user runs `mu world list --config <dir>`
 - **THEN** stderr names `games/alpha.toml`, `who` and `lines`
 - **AND** the exit status is 1
@@ -152,7 +158,7 @@ The server SHALL expand `$1`, `$name`, `${name}` and `$$` in each entry of `stre
 - **THEN** stdout is the line `pages,main` TAB `Bob pages: hi`
 
 ### Requirement: A bad name is reported once
-If a name from a capture is not valid, the server SHALL record a script error event that names the rule and the name. It SHALL record no other bad-name event for that rule until the world connects again.
+A name from a capture is bad if it is not valid, or if it is `notices`, because only the client writes that stream. If a name from a capture is bad, the server SHALL record a script error event that names the rule and the name. It SHALL record no other bad-name event for that rule until the world connects again.
 
 #### Scenario: Two bad names
 - **GIVEN** `global.toml` has the rule `chan` with `pattern = '^You say, "\[([^\]]+)\] '` and `stream = "chan-$1"`
@@ -160,6 +166,12 @@ If a name from a capture is not valid, the server SHALL record a script error ev
 - **WHEN** a client sends `[Role Play] one` and then `[Role Play] two` to `alpha/aria`, and reads the stream
 - **THEN** the stream holds exactly one script error event for `alpha/aria`, and its text contains `chan` and `chan-role play`
 - **AND** the game events `You say, "[Role Play] one"` and `You say, "[Role Play] two"` each have the one stream `main`
+
+#### Scenario: A capture names the notices
+- **GIVEN** `global.toml` has the rule `chan` with `pattern = '^\[(\w+)\] '` and `stream = "$1"`
+- **WHEN** the user runs `mu world match alpha/aria --config <dir>` with the stdin line `[notices] hi`
+- **THEN** stdout is the line `main` TAB `[notices] hi`
+- **AND** stderr names `chan` and `notices`
 
 ### Requirement: Only lines from the game are matched
 The server SHALL run the rules on the lines from the game only. Each other event SHALL have the one stream `main`. Prompts, side-protocol messages, player lines, echoes, logins, connects and script errors are such events.

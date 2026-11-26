@@ -644,6 +644,22 @@ async fn a_hook_sets_the_streams() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_rule_never_puts_the_password_in_a_stream() {
+    let rule = "[[rules]]\nid = \"pw\"\npattern = '^You say, \"pw (\\S+)\"'\nstream = \"$1\"\n";
+    let (aria, _game) = world_with_rules("alpha/aria", PW, rule);
+    let portal = started(vec![aria]).await;
+    portal
+        .send(&id("alpha/aria"), "pw s3cret-pw")
+        .await
+        .unwrap();
+    let event = game_line(&portal, "You say, \"pw ****\"").await;
+    let leaked = events(&portal).iter().any(|event| {
+        event.text.contains(PW) || event.streams.names().iter().any(|name| name.as_str() == PW)
+    });
+    assert_eq!((event.streams, leaked), (streams(&["main"]), false));
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_hook_rewrites_and_sets_the_streams() {
     let (aria, _game) = world("alpha/aria", PW);
     let hook = GameHook {

@@ -1,5 +1,7 @@
 //! The line rules of a world: a match part, and the actions that apply to a line that matches.
-//! [`RuleState::route`] is the one function that decides the streams of a line from the game.
+//! [`RuleState::route`] is the one function that gives the streams that the rules decide for a
+//! line from the game. A hook that sets streams wins over them (see
+//! [`HookAction::Change`](crate::HookAction::Change)).
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -8,7 +10,7 @@ use std::sync::Arc;
 
 use fancy_regex::{Captures, Regex, RegexBuilder};
 use mu_config::ansi::{PLACEHOLDER, SCREEN, Sink, walk};
-use mu_config::stream::{STREAMS_MAX, StreamName, Streams};
+use mu_config::stream::{NOTICES, STREAMS_MAX, StreamName, Streams};
 
 use crate::world::{ConfigError, Entry, FieldError};
 
@@ -148,6 +150,9 @@ impl Rule {
                 .transpose()?
                 .unwrap_or(LINES_DEFAULT),
         };
+        if table.contains_key("lines") && matcher.until.is_none() {
+            return Err(field_error(id, "lines", "takes effect only with until"));
+        }
         let mut actions = Vec::new();
         if let Some(stream) = table.get("stream") {
             actions.push(Action::Stream(templates(id, stream)?));
@@ -165,7 +170,8 @@ impl Rule {
         &self.id
     }
 
-    /// The streams of the action `stream` for a match with `captures`, or the bad name.
+    /// The streams of the action `stream` for a match with `captures`, or the bad name. A name
+    /// from a capture that is `notices` is bad.
     fn streams(&self, captures: &Captures<'_, str>) -> Result<Option<Streams>, String> {
         let Some(Action::Stream(templates)) = self.actions.first() else {
             return Ok(None);
@@ -178,6 +184,10 @@ impl Rule {
                     let mut expanded = String::new();
                     captures.expand(text, &mut expanded);
                     let lower = expanded.to_ascii_lowercase();
+                    // Only the client writes the notices, so game text cannot name them.
+                    if lower == NOTICES {
+                        return Err(lower);
+                    }
                     names.push(StreamName::new(&lower).map_err(|_| lower)?);
                 }
             }
@@ -452,6 +462,12 @@ mod tests {
     }
 
     #[test]
+    fn lines_without_until_is_refused() {
+        let error = compile("pattern = 'x'\nstream = 'who'\nlines = 5").expect_err("no until");
+        assert_eq!(error.field(), "rules.r.lines");
+    }
+
+    #[test]
     fn lines_of_1000_loads() {
         assert!(matches!(
             compile("pattern = 'x'\nstream = 'who'\nuntil = 'y'\nlines = 1000"),
@@ -625,6 +641,13 @@ mod tests {
             "{}",
             first.errors[0].text
         );
+    }
+
+    #[test]
+    fn a_capture_cannot_name_the_notices() {
+        let rules = rules(&[("chan", "pattern = '^\\[(\\w+)\\] '\nstream = '$1'")]);
+        let route = RuleState::default().route(&rules, "[notices] hi");
+        assert_eq!((names(&route), route.errors.len()), ("main".to_owned(), 1));
     }
 
     #[test]
