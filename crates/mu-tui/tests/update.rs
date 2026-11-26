@@ -1958,3 +1958,46 @@ fn a_world_with_another_layout_keeps_its_line() {
     focus_next(&mut model);
     assert_eq!(rows_of(&mut model, "chat"), ["alpha/aria: one"]);
 }
+
+#[test]
+fn a_stream_with_no_output_gives_no_notice_after_a_reset() {
+    let mut model = model();
+    send_line(&mut model, "alpha/aria", "[Public] one", &["chan-public"]);
+    update(&mut model, reset());
+    let rows = rows_of(&mut model, "main");
+    assert_eq!(
+        count(&rows, |row| row.contains("chan-public")),
+        0,
+        "{rows:?}"
+    );
+}
+
+/// The rows of the pane of `main`, with no whitespace, in one string.
+fn packed_main(model: &mut Model) -> String {
+    rows_of(model, "main").concat().split_whitespace().collect()
+}
+
+/// Whether the last hint in the pane of `main` names the stream `stream`.
+fn last_hint_names(model: &mut Model, stream: &str) -> bool {
+    let packed = packed_main(model);
+    let start = packed.rfind("--nooutput").expect("a hint");
+    packed[start..].contains(&format!("thestream{stream},"))
+}
+
+#[test]
+fn the_oldest_stream_with_no_output_gives_its_hint_again() {
+    let mut model = model();
+    for number in 0..=mu_tui::NO_OUTPUT_MAX {
+        send_line(
+            &mut model,
+            "alpha/aria",
+            "a line",
+            &[&format!("chan-{number}")],
+        );
+    }
+    // The pair of chan-1 is still in the memory, and the pair of chan-0 is not.
+    send_line(&mut model, "alpha/aria", "a line", &["chan-1"]);
+    let kept = last_hint_names(&mut model, &format!("chan-{}", mu_tui::NO_OUTPUT_MAX));
+    send_line(&mut model, "alpha/aria", "a line", &["chan-0"]);
+    assert_eq!((kept, last_hint_names(&mut model, "chan-0")), (true, true));
+}

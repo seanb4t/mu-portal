@@ -2576,25 +2576,6 @@ async fn unknown_focus(client: &mut PtyClient) {
         .await;
 }
 
-/// A server with no world and the layout `lines`, and a client on it that shows `title`.
-async fn no_world(lines: &[&str], title: &str) -> (Session, PtyClient, ConfigDir) {
-    let config = layout_dir(lines, "");
-    let session = Session::start(ServerBuilder::new().arg("--config").arg(config.path())).await;
-    let client = PtyClient::start_args(
-        session.server.socket(),
-        session.server.dir().path(),
-        Answers::Default,
-        &["--device".as_ref(), "laptop".as_ref()],
-        &[],
-    );
-    client
-        .wait_rows("the title", |rows| {
-            rows.iter().any(|row| row.contains(title))
-        })
-        .await;
-    (session, client, config)
-}
-
 /// A server with the fake world `alpha/aria` and the layout `sidebar` from
 /// `clients/global.toml`, and a client on it.
 async fn sidebar() -> (Session, PtyClient, ConfigDir) {
@@ -3052,15 +3033,17 @@ async fn two_worlds_in_one_pane() {
 
 #[tokio::test]
 async fn a_notice_in_an_output_of_all_worlds() {
-    let (_session, mut client, _config) = no_world(
+    // The tabs show `no worlds` after the first list, so the line goes in after it.
+    let config = layout_dir(
         &[
             "output as main showing main",
+            "tabs above main",
             "editor below main",
             "output as notices of all worlds right of main",
         ],
-        "[notices]",
-    )
-    .await;
+        "",
+    );
+    let (_session, mut client) = attached_with(&[], &config, Answers::Default).await;
     client.send(b"hi\r");
     client
         .wait_rows("the notice of no world", |rows| {

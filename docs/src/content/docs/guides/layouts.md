@@ -209,7 +209,7 @@ A stream is a named set of lines. The lines of a world are in the stream `main`,
 - The words `of all worlds` come right after the id, and before `showing`. They make one pane that shows the streams of every world. The output `main` cannot take them.
 - The words `all`, `worlds` and `showing` are words of the sentences, so they are not ids.
 - A line shows in each output that shows one of its streams, and one time in each such output. A line stays in the outputs where it arrived. An output that you add later starts with the new lines only.
-- If no output of the layout of a world shows a stream of a line, the client shows one notice that names the stream and the world. The client shows no other such notice for that stream and that world until it starts again. The line stays in the journal of the server.
+- If no output of the layout of a world shows a stream of a line, the client shows one notice that names the stream and the world. The client shows no other such notice for that stream and that world until it starts again. A Reset does not bring the notice back. The client remembers at most 256 pairs of a stream and a world, and forgets the oldest pair past that limit. A forgotten pair gets the notice again. The line stays in the journal of the server.
 
 If a layout has its own output for `notices`, write `output as main showing main` as its first line. Without `showing`, the output `main` shows the notices too. `sidebar` writes `output as main showing main`, so its notices show only in the pane of `notices`.
 

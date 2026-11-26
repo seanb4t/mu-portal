@@ -198,8 +198,9 @@ pub struct Model {
     pub(crate) late: Late,
     /// The notices of the client, which a reset of the panes keeps.
     pub(crate) notices: Vec<Kept>,
-    /// Each pair of a stream and a world that got the notice of a stream with no output.
-    pub(crate) no_output: HashSet<(String, String)>,
+    /// The newest pairs of a stream and a world that got the hint of a stream with no output,
+    /// at most [`NO_OUTPUT_MAX`], oldest first.
+    pub(crate) no_output: VecDeque<(String, String)>,
     /// True if a late answer gave mode 2027 as set before the probe.
     pub(crate) keeps_grapheme_mode: bool,
     /// Set by a Quit while a send has no reply yet, the send with the server included. A second
@@ -339,7 +340,7 @@ impl Model {
             ),
             late: Late::None,
             notices: Vec::new(),
-            no_output: HashSet::new(),
+            no_output: VecDeque::new(),
             keeps_grapheme_mode: false,
             quit_arm: None,
             listing: Listing::Idle,
@@ -875,6 +876,21 @@ impl Model {
             .unwrap_or(CLIENT_MAIN)
     }
 
+    /// Whether the stream `stream` of `world` gets the hint of a stream with no output: true the
+    /// first time, and again after [`NO_OUTPUT_MAX`] newer pairs pushed the pair out. A game
+    /// can make a new stream name for each line, so the memory of the pairs has a limit.
+    pub(crate) fn first_no_output(&mut self, stream: &str, world: &str) -> bool {
+        let pair = (stream.to_owned(), world.to_owned());
+        if self.no_output.contains(&pair) {
+            return false;
+        }
+        if self.no_output.len() == NO_OUTPUT_MAX {
+            self.no_output.pop_front();
+        }
+        self.no_output.push_back(pair);
+        true
+    }
+
     /// Adds the system line `-- <text>` of the world in focus, or of no world, as a line of the
     /// stream `notices`. After a Reset clears the panes of the worlds, the line comes back in
     /// each pane that shows it then.
@@ -909,6 +925,10 @@ impl Model {
         self.pose().set_text(text);
     }
 }
+
+/// The most pairs of a stream and a world that the client remembers for the hint of a stream
+/// with no output.
+pub const NO_OUTPUT_MAX: usize = 256;
 
 /// The stream `notices` alone.
 fn notices_stream() -> Vec<StreamName> {

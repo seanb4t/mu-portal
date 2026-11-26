@@ -1361,8 +1361,10 @@ fn on_event(model: &mut Model, event: &mu_proto::Event) -> Vec<Effect> {
         }
     }
     for stream in missing {
-        if model.no_output.insert((stream.to_string(), id.clone())) {
-            model.notice(&format!(
+        // A hint, not a kept notice: a Reset does not bring it back, so a game that makes many
+        // stream names cannot grow the kept notices.
+        if model.first_no_output(stream.as_str(), &id) {
+            model.hint(&format!(
                 "no output of the layout of {id} shows the stream {stream}, so its lines do not show"
             ));
         }

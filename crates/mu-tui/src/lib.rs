@@ -32,7 +32,7 @@ pub mod wrap;
 pub use config::Echo;
 pub use editor::{Editor, EditorState};
 pub use keymap::{Chord, Keymap, Wheel};
-pub use model::{FALLBACK_LAYOUT, Model, Owner, PaneId, PaneKey};
+pub use model::{FALLBACK_LAYOUT, Model, NO_OUTPUT_MAX, Owner, PaneId, PaneKey};
 pub use pane::{Caps, OutputPane, PaneState, Position};
 pub use registry::{Arg, ArgKind, ENTRIES, Entry, EntryId, candidates};
 pub use run::{CALL_LIMIT, control_of, ended, reply_of, run, timed, within};

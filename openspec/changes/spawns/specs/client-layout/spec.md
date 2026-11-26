@@ -218,7 +218,7 @@ A line SHALL show in each output that shows one of its streams. One output SHALL
 - **THEN** the pane of `main` shows `You say, "page hi"` one time
 
 ### Requirement: A stream with no output gets one notice
-A line can have a stream that no output of the layout of its world shows. Then the client SHALL show one notice that names the stream and the world. It SHALL show no other such notice for that stream and world until the client starts again. The line SHALL stay in the journal.
+A line can have a stream that no output of the layout of its world shows. Then the client SHALL show one notice that names the stream and the world. It SHALL show no other such notice for that stream and world until the client starts again. A Reset SHALL NOT bring the notice back. The line SHALL stay in the journal.
 
 #### Scenario: A channel with no output
 - **GIVEN** `global.toml` has the rule `chan` with `pattern = '^You say, "\[(\w+)\] '` and `stream = "chan-$1"`
@@ -226,6 +226,20 @@ A line can have a stream that no output of the layout of its world shows. Then t
 - **WHEN** the user sends `[Public] one` and `[Public] two`
 - **THEN** the pane of `main` shows one line that starts with `-- ` and contains `chan-public` and `alpha/aria`
 - **AND** the pane of `main` shows neither `You say, "[Public] one"` nor `You say, "[Public] two"`
+
+#### Scenario: No notice of a stream after a Reset
+- **GIVEN** the layout `classic` is in use, and a line of the stream `chan-public` of `alpha/aria` gave the notice of a stream with no output
+- **WHEN** the server sends a Reset
+- **THEN** the pane of `main` shows no line that contains `chan-public`
+
+### Requirement: The client remembers a limited number of streams with no output
+The client SHALL remember at most 256 pairs of a stream and a world that got the notice of a stream with no output. If a new pair comes past that limit, the client SHALL forget the oldest pair. A forgotten pair SHALL get the notice again.
+
+#### Scenario: The oldest stream gets its notice again
+- **GIVEN** the layout `classic` is in use, and lines of `alpha/aria` came in the streams `chan-0` to `chan-256`, one stream for each line
+- **WHEN** a line of `chan-1` comes, and then a line of `chan-0`
+- **THEN** the line of `chan-1` gives no notice
+- **AND** the line of `chan-0` gives the notice that names `chan-0`
 
 ### Requirement: A layout always keeps main and the notices
 A change can leave the layout with no `main`, or with no output that shows `notices`. Then the client SHALL refuse the change, also from a command, the mouse or arrange mode. The refusal SHALL change nothing, and SHALL show a notice with the reason.
