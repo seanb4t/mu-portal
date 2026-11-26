@@ -1,9 +1,9 @@
 ---
 verdict: changes-requested
 phase: plan
-reviewed_at: 2026-11-26T00:15:34+00:00
-head: 5a2f91766e2df48222525df7c121c36726befbd6
-round: 6
+reviewed_at: 2026-11-26T00:23:59+00:00
+head: 1d3f311021442edf187180d00652d30e3347dc50
+round: 7
 next_id: 57
 lenses:
   spec-lint: ok
@@ -20,7 +20,7 @@ lenses:
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-42 | verify | blocker | in-change | ver-fix-R-42: REGRESSED: the fix 4add08b11af8e98e19d725f76821dd52775dea3b of R-42 did not hold. D9 keeps the kept notices and replay_notices but gives no rule for a pane of Owner::All. At the first focus and after a Reset, replay_notices pushes each kept notice into the notices pane of the world in focus. For an output of all worlds that is the same pane that already shows it, so the notice shows twice. The kept list holds bare strings, so a replayed notice has no owner for its prefix.; ver-1: The fix of D9 puts each kept notice into each pane of Owner::All that shows notices after a Reset, whatever the layout of the notice's world. Live routing takes the layout of the world of the line. So after a Reset, a notice of beta/bryn under classic shows in the all-worlds notices pane of alpha/aria's layout, where it never showed before, and the sentence contradicts 'route each one through this same routing' and 'fills only the panes that lost them'. | openspec/changes/spawns/design.md:118 — "After a Reset, it puts each kept notice one time into each pane of `Owner::All` that shows `notices`." | ver-fix-R-42: fix it again; ver-1: In D9, make the Reset put each kept notice one time into each pane of Owner::All that the layout of its owner names for notices, through the same routing, and add a test of a kept notice of a world whose layout has no such output. | regression | severity? should-fix 0.60 | wrong-behaviour |
+| R-42 | verify | blocker | in-change | ver-fix-R-42: REGRESSED: the fix a6c01b92ad0c661c7f19182a36bf3d0922404d56 of R-42 did not hold. D9 keeps the kept notices and replay_notices but gives no rule for a pane of Owner::All. At the first focus and after a Reset, replay_notices pushes each kept notice into the notices pane of the world in focus. For an output of all worlds that is the same pane that already shows it, so the notice shows twice. The kept list holds bare strings, so a replayed notice has no owner for its prefix.; ver-1: The fix of R-42 drops the replay at the first focus. A notice made before the first list, such as the probe notice of the character widths or a failed list, stays in the pane of Owner::Client. Once a world has the focus the screen shows the panes of that world, so the user never sees the notice. The standing scenario 'A notice before the first list' of terminal-client wants it in the pane of alpha/aria. The change does not modify that spec. Task 7.1 has the tests that guard it rewritten, among them a_notice_before_the_first_list and notice_stays_when_the_first_world_event_comes. Task 7.4 adds a_focus_change_replays_no_notice, which locks the loss in. | openspec/changes/spawns/design.md:118 — "A focus change replays no notice, because each notice already reached the panes of its owner, and those panes keep their" | ver-fix-R-42: fix it again; ver-1: In D9, keep one replay at the first focus: each kept notice of Owner::Client is routed by the layout of the world that gets the focus, and pushed only into the panes of World(focus), not into a pane of Owner::All that already shows it. Keep a_notice_before_the_first_list and notice_stays_when_the_first_world_event_comes as they are in task 7.1, and narrow a_focus_change_replays_no_notice in task 7.4 to a focus change after the first. | regression | severity? should-fix 0.64 | wrong-behaviour |
 
 ## Repeats
 
@@ -44,6 +44,7 @@ None.
 | 4 | plan | follow-up | aedd20ff0417110f792f5a8f5dd2fc972dcd66fe | 7ac128cf9c34b79b8976101b7d50382d31600301b50318e260f3e90436c7a688 | changes-requested | 0 | 0 | 2 | 14 | 0 |  |
 | 5 | plan | follow-up | c6c660e986a9c71aa487274e73d8aba0abde359e | 6561008f068803d5324b79d5102e8dd89bf91545a936b5ebf05fbe1ca4838eb8 | changes-requested | 1 | 0 | 1 | 1 | 0 |  |
 | 6 | plan | follow-up | 5a2f91766e2df48222525df7c121c36726befbd6 | a6ec267d6250680589df66865fe6ad30798fa957f78c56ef05b327d7f10de327 | changes-requested | 0 | 0 | 1 | 1 | 0 |  |
+| 7 | plan | follow-up | 1d3f311021442edf187180d00652d30e3347dc50 | 85d6b409b09049b2ff758d1601c05f69f9a80ae23ef0cdd419824fb2149602fd | changes-requested | 0 | 0 | 1 | 0 | 0 |  |
 
 ## Judge
 
@@ -155,8 +156,9 @@ None.
 
 ## Lens notes
 
-- verify: review.md was not read, as the agent rules forbid; its hunks in fix_hunks are the record of the fix, not the fix.
-- verify: Under the fixed D9, the replay at the first focus fills no pane: it skips Owner::Client and Owner::All, and a notice of no world never routes to a world pane. A notice made before the first focus then no longer shows in the classic layout once a world has the focus, where the code at head replays it into the pane of that world. No scenario requires the old behaviour.
+- verify: R-42: the double show it names is gone at head. D9 line 118 now has the kept notices keep their owner, a Reset clears the panes of each world and of Owner::All, and replay_notices pushes each kept notice only into a pane that the Reset cleared. So a pane of Owner::All gets each notice one time, with the prefix of its owner.
+- verify: The regression ver-1 is in the same sentence group of the fix: the removal of the replay at a focus change, which closed the double show at the first focus.
+- verify: The code at head (model.rs 592 to 609, update.rs 1255 to 1258) replays the kept notices at the first focus and at a Reset only while a world has the focus. The tests notice_stays_when_the_first_world_event_comes and notice_shows_once_after_a_reset_that_follows_the_first_world_event in app.rs pin that behaviour, and D9 now reverses both.
 
 ## Ledger
 
@@ -203,7 +205,7 @@ None.
 | R-39 | 2 | 2 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"Lines of zero"] | fixed | 7fb4fdcffc5d0c31fe50af3ccbb4260410865ac9 | 2 |  |  | delta scenario 'Lines of zero' has no matrix row |
 | R-40 | 2 | 2 | should-fix | in-change | unmet-requirement | ["artifact",["review","absent-row"],"A capture of one line"] | fixed | 7fb4fdcffc5d0c31fe50af3ccbb4260410865ac9 | 2 |  |  | delta scenario 'A capture of one line' has no matrix row |
 | R-41 | 3 | 4 | blocker | in-change | unmet-requirement | ["artifact",["specs/client-layout/spec.md","Requirement: An output can show the streams of all worlds"],"The output `main` SHALL NOT take this form."] | resolved | resolved in round 4 from fixed 980174bd2dd7f8ec85aeb990303720827d3b4c55 | 3 |  |  | The spec forbids `of all worlds` on the output `main`, and the scenario expects an error with `line 1` and `main`. No decision refuses it: D8 reads the scope after any id, and from_steps only checks that main exists. |
-| R-42 | 3 | 6 | blocker | in-change | wrong-behaviour | ["artifact",["design.md","D9. The client routes by selection"],"the field `unshown`, `UNSHOWN_MAX`, `show_unshown`, and the branch of `replay_notices` that fills `unshown`."] | fixed | a6c01b92ad0c661c7f19182a36bf3d0922404d56 | 6 |  | severity? should-fix 0.60 | D9 keeps the kept notices and replay_notices but gives no rule for a pane of Owner::All. At the first focus and after a Reset, replay_notices pushes each kept notice into the notices pane of the world in focus. For an output of all worlds that is the same pane that already shows it, so the notice shows twice. The kept list holds bare strings, so a replayed notice has no owner for its prefix. |
+| R-42 | 3 | 7 | blocker | in-change | wrong-behaviour | ["artifact",["design.md","D9. The client routes by selection"],"the field `unshown`, `UNSHOWN_MAX`, `show_unshown`, and the branch of `replay_notices` that fills `unshown`."] |  | regressed from fixed a6c01b92ad0c661c7f19182a36bf3d0922404d56 | 6 |  | severity? should-fix 0.64 | D9 keeps the kept notices and replay_notices but gives no rule for a pane of Owner::All. At the first focus and after a Reset, replay_notices pushes each kept notice into the notices pane of the world in focus. For an output of all worlds that is the same pane that already shows it, so the notice shows twice. The kept list holds bare strings, so a replayed notice has no owner for its prefix. |
 | R-43 | 3 | 4 | should-fix | in-change | drift | ["artifact",["design.md","D8. An output selects streams"],"The words of a place are `above`, `below`, `left`, `right`, `with` and `at`."] | resolved | resolved in round 4 from fixed 980174bd2dd7f8ec85aeb990303720827d3b4c55 | 3 |  |  | D8 ends the list of patterns at a fixed list of place words. The parser already knows the first words of a place in its place parser, so the two lists can change apart when a place form is added. |
 | R-44 | 3 | 4 | should-fix | in-change | drift | ["artifact",["design.md","D9. The client routes by selection"],"and the branch of `replay_notices` that fills `unshown`. `Late::Waiting` and its probe tests stay."] | resolved | resolved in round 4 from fixed 980174bd2dd7f8ec85aeb990303720827d3b4c55 | 3 |  |  | D9 routes each notice by its owner, but keeps replay_notices and the owner-less list notices. The replay puts every kept notice into pane_for(NOTICES_STREAM) of the focused world, a second notice route beside D9's. |
 | R-45 | 3 | 5 | should-fix | in-change | wrong-behaviour | ["artifact",["design.md","D9. The client routes by selection"],"A notice with no such world belongs to no world, and its pane owner is `Owner::Client`."] | resolved | resolved in round 5 from fixed 7f12c47df28659270d345f2dba955bf8f254e191 | 4 |  |  | D9 keys the panes of no world by Owner::Client, but does not name PaneId::NOTICES, the fixed pane of no world that focused_pane and the Reset branch use. Two keys then name the pane of no world. |
