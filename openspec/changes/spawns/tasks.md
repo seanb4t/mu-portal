@@ -6,13 +6,13 @@ Each group lands its own tests and documentation before the next group starts.
 
 ## 1. Facts to check first
 
-- [ ] 1.1 Set the Project status of #102 to In progress. Make sure that `gh issue view 102 --json milestone,projectItems` shows the status and the milestone "Phase 1: Daily driver".
-- [ ] 1.2 Read the documentation of the current release of `fancy-regex`. Find the default backtrack limit, how to set it, and the error of a match at the limit. Also find how to expand `$1`, `$name`, `${name}` and `$$` from the captures. Make sure that design.md D3 and D5 name the calls and the default limit.
-- [ ] 1.3 Write a short test program against `fancy-regex`. Run the pattern `^(a+)+\1b$` on a line of 40 `a` characters. Make sure that the match passes the default backtrack limit. If it does not, correct the pattern or the line of the scenario "A pattern that backtracks too much".
-- [ ] 1.4 Read the documentation of the current release of `ulid`. Find the monotonic generator and its error at overflow. Make sure that design.md D7 names the calls.
-- [ ] 1.5 Read the documentation of `wildmatch` and `globset` for `*` and `?`. Make sure that design.md D8 names the crate that the work uses, with the reason.
-- [ ] 1.6 Read the documentation of the `vte` parser. Find the calls that a `Perform` gets for printable text, for a control character, and for an SGR sequence. Make sure that design.md D4 names them.
-- [ ] 1.7 Add `fancy-regex`, `ulid` and the glob crate to `[workspace.dependencies]`. In `workspace_boundary.rs`, add `fancy-regex` and `ulid` to the row of `mu-core`. Add `vte` and the glob crate to the row of `mu-config`, and remove `vte` from the row of `mu-tui`. Make sure that `cargo nextest run -p mu-cli --test workspace_boundary --locked` passes.
+- [x] 1.1 Set the Project status of #102 to In progress. Make sure that `gh issue view 102 --json milestone,projectItems` shows the status and the milestone "Phase 1: Daily driver".
+- [x] 1.2 Read the documentation of the current release of `fancy-regex`. Find the default backtrack limit, how to set it, and the error of a match at the limit. Also find how to expand `$1`, `$name`, `${name}` and `$$` from the captures. Make sure that design.md D3 and D5 name the calls and the default limit.
+- [x] 1.3 Write a short test program against `fancy-regex`. Run the pattern `^(a+)+\1b$` on a line of 40 `a` characters. Make sure that the match passes the default backtrack limit. If it does not, correct the pattern or the line of the scenario "A pattern that backtracks too much".
+- [x] 1.4 Read the documentation of the current release of `ulid`. Find the monotonic generator and its error at overflow. Make sure that design.md D7 names the calls.
+- [x] 1.5 Read the documentation of `wildmatch` and `globset` for `*` and `?`. Make sure that design.md D8 names the crate that the work uses, with the reason.
+- [x] 1.6 Read the documentation of the `vte` parser. Find the calls that a `Perform` gets for printable text, for a control character, and for an SGR sequence. Make sure that design.md D4 names them.
+- [x] 1.7 Add `fancy-regex`, `ulid` and the glob crate to `[workspace.dependencies]`. In `workspace_boundary.rs`, add `fancy-regex` and `ulid` to the row of `mu-core`. Add `vte` and the glob crate to the row of `mu-config`, and remove `vte` from the row of `mu-tui`. Make sure that `cargo nextest run -p mu-cli --test workspace_boundary --locked` passes.
 
 ## 2. Stream names, selections and the walk of game text in mu-config
 

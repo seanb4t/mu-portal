@@ -50,6 +50,7 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
     (
         "mu-core",
         &[
+            "fancy-regex",
             "fastrand",
             "figment2",
             "futures",
@@ -65,10 +66,14 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "tokio",
             "toml",
             "tracing",
+            "ulid",
             "walkdir",
         ],
     ),
-    ("mu-config", &["proptest", "serde", "toml", "winnow"]),
+    (
+        "mu-config",
+        &["proptest", "serde", "toml", "vte", "wildmatch", "winnow"],
+    ),
     ("mu-fake-server", &["futures", "tokio"]),
     (
         "mu-server",

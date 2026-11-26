@@ -61,11 +61,11 @@ Alternative: compile in the session at the connect. Rejected, because a bad patt
 
 The owner asked for the full syntax of a regular expression: named groups, lookaround and back-references. The `regex` crate has no lookaround and no back-references. `fancy-regex` adds them, and hands each part that needs no backtracking to `regex`. Its license is MIT. So rule 5rk42v8qs1 (reuse first) points to it. `pcre2` was rejected, because it links a C library.
 
-`fancy-regex` enters through `[workspace.dependencies]`, and the row of `mu-core` in the allowlist gets it. Task 1.2 reads its documentation for the default backtrack limit, the error at the limit, and how to expand a template from the captures.
+`fancy-regex` enters through `[workspace.dependencies]`, and the row of `mu-core` in the allowlist gets it. `RegexBuilder::backtrack_limit` sets the limit, and the default is 1,000,000 steps. A match at the limit returns `Error::RuntimeError(RuntimeError::BacktrackLimitExceeded)`. `Captures::expand` expands `$1`, `$name`, `${name}` and `$$`. A group that does not exist or did not match gives the empty string. The longest name wins, so `$1a` names the group `1a`, and a template writes `${1}a` for group 1.
 
 ### D4. One walk of game text
 
-`mu-config` gets the module `ansi` with `walk(text: &str, map: &ControlMap, sink: &mut impl Sink)`. It runs the `vte` parser. It gives the sink each printable character after the `ControlMap`, and the parameters of each SGR sequence. It drops each other escape sequence. `vte` moves from the row of `mu-tui` to the row of `mu-config` in the allowlist.
+`mu-config` gets the module `ansi` with `walk(text: &str, map: &ControlMap, sink: &mut impl Sink)`. It runs the `vte` parser with a `Perform` that takes `print(char)` for printable text, `execute(u8)` for a control character, and `csi_dispatch` with the action `m` for an SGR sequence. It gives the sink each printable character after the `ControlMap`, and the parameters of each SGR sequence. It drops each other escape sequence. `vte` moves from the row of `mu-tui` to the row of `mu-config` in the allowlist.
 
 The map `SCREEN` and its placeholder character move from `crates/mu-tui/src/text.rs` to `mu-config` as `ansi::SCREEN`. This map shows a tab as a space. `convert` in `crates/mu-tui/src/convert.rs` becomes a `Sink` that builds the styled text. `rules::plain(&str) -> Cow<str>` is a `Sink` that keeps only the characters. Both use `ansi::SCREEN`. A line with no escape byte and no control character returns borrowed. So the text that a pattern sees is the text that the screen shows, without its colors. The journal records the original text.
 
@@ -93,9 +93,9 @@ The session calls `route` after the hooks on each `Inbound::Line`, and only ther
 
 ### D7. Each event has a ULID and its streams
 
-The core `NewEvent` gets `streams: Streams`, and the core `Event` gets `id: Ulid` and `streams`. At the numbering of an event, the journal makes its id with the monotonic generator of the `ulid` crate. So two events in one millisecond still sort in their order. The protocol `Event` gets `string id = 7` and `repeated string streams = 8`. `mu-server` maps both. A ULID holds 80 random bits, so ids stay unique across restarts without a store.
+The core `NewEvent` gets `streams: Streams`, and the core `Event` gets `id: Ulid` and `streams`. At the numbering of an event, the journal makes its id with `ulid::Generator::generate()`, the monotonic generator of the `ulid` crate. So two events in one millisecond still sort in their order. The protocol `Event` gets `string id = 7` and `repeated string streams = 8`. `mu-server` maps both. A ULID holds 80 random bits, so ids stay unique across restarts without a store.
 
-The owner chose a ULID. Its text has 26 characters and sorts by time. `uuid` v7 was the alternative, because `uuid` is already a dependency. It was rejected, because it needs a new feature of `uuid` and its text has 36 characters. Task 1.4 reads the documentation of `ulid` for the generator, and for its error at overflow.
+The owner chose a ULID. Its text has 26 characters and sorts by time. `uuid` v7 was the alternative, because `uuid` is already a dependency. It was rejected, because it needs a new feature of `uuid` and its text has 36 characters. `generate()` returns `Err(Overflow)` when the random part of one millisecond runs out. The journal then calls `Overflow::commit_overflow_increment()`, which moves the id into the next millisecond, so the order holds.
 
 ### D8. An output selects streams
 
@@ -103,7 +103,7 @@ The owner chose a ULID. Its text has 26 characters and sorts by time. `uuid` v7 
 
 The parser reads `of all worlds` and then `showing`, right after `as <id>`. The list of patterns ends where the existing `place` parser of `parse.rs` matches, or at the end of the line. So the comma of a size stays after the place, and a new place form needs no second list of words. A pattern holds only the characters of a stream name, `*`, `?` and a first `!`. The parser turns it to lower case. An empty list, a lone `!`, a list of only exclusions, and a pattern that starts with `re:` or `/` are refused. The writer of the plan writes the scope and the patterns back. If the patterns are the default, it writes no `showing`.
 
-The glob match uses an existing crate. Task 1.5 compares `wildmatch` and `globset` for `*` and `?` on short names, and picks one by size and license.
+The glob match uses `wildmatch` (MIT). `WildMatch::new(pattern).matches(name)` takes `*` and `?`. It has no required dependency. `globset` was rejected, because it pulls `regex-automata`, `aho-corasick` and `bstr` for paths, and a stream name is not a path.
 
 `Layout::from_steps` refuses a layout with no `main` or with no output that shows `notices`, after its loop over the blocks. It also refuses `main` with the scope `AllWorlds`, with the line number and the word `main`. Each operation of `change.rs` builds its result through `from_steps`. So `/pane hide`, `/place`, the mouse and arrange mode refuse such a result, with no new code in `mu-tui`. `main_output()` and `route()` go away.
 

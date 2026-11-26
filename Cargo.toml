@@ -35,6 +35,7 @@ cargo_metadata = "0.23.1"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 connectrpc = { version = "0.9.1", default-features = false, features = ["axum", "client"] }
 connectrpc-build = "0.9.0"
+fancy-regex = "0.20.2"
 fastrand = "2.5.0"
 figment2 = { version = "0.11.5", default-features = false }
 futures = "0.3.34"
@@ -75,6 +76,7 @@ tonic = { version = "0.14.9", default-features = false, features = ["tls-native-
 tracing = "0.1.44"
 tracing-opentelemetry = { version = "0.34.0", default-features = false, features = ["metrics"] }
 tracing-subscriber = "0.3.23"
+ulid = "3.0.0"
 unicode-segmentation = "1.13.3"
 unicode-width = "0.2.3"
 url = "2.5.9"
@@ -82,6 +84,7 @@ uuid = { version = "1.29.2", features = ["v4"] }
 vt100 = "0.18.1"
 vte = "0.15.0"
 walkdir = "2.5.0"
+wildmatch = "2.7.0"
 winnow = { version = "1.0.5", default-features = false, features = ["ascii", "std"] }
 
 # The fork of ratatui-textarea, at its branch `mu`: a cursor that moves by grapheme, a width
