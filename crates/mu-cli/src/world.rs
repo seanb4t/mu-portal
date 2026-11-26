@@ -1,9 +1,11 @@
 //! The verb `mu world`: the configured worlds, read from the files with no server.
 
 use std::fmt::Write as _;
+use std::io::Read as _;
 use std::process::ExitCode;
 
 use clap::{Args, Subcommand};
+use mu_core::rules::RuleState;
 use mu_core::world::{Entry, FIELD_PATHS};
 use mu_core::{Reconnect, ReconnectMode, ResolvedWorld};
 
@@ -28,6 +30,13 @@ enum WorldCommand {
         #[command(flatten)]
         config: ConfigArgs,
     },
+    /// Read lines from stdin as lines from the game of a world, and print the streams of each
+    Match {
+        /// The id of the world, `<game>/<character>`
+        id: String,
+        #[command(flatten)]
+        config: ConfigArgs,
+    },
 }
 
 fn fail(error: &dyn std::fmt::Display) -> ExitCode {
@@ -39,6 +48,7 @@ pub fn run(args: &WorldArgs) -> ExitCode {
     let (config, id) = match &args.command {
         WorldCommand::List(config) => (config, None),
         WorldCommand::Show { id, config } => (config, Some(id)),
+        WorldCommand::Match { id, config } => return run_match(id, config),
     };
     let worlds = match config.worlds("world") {
         Ok(worlds) => worlds,
@@ -57,6 +67,31 @@ pub fn run(args: &WorldArgs) -> ExitCode {
             None => return fail(&format!("{id}: no configured world has this id")),
         },
     };
+    crate::print("world", &text)
+}
+
+/// Runs `mu world match`: one capture state for the whole of stdin.
+fn run_match(id: &str, config: &ConfigArgs) -> ExitCode {
+    let worlds = match config.worlds("world") {
+        Ok(worlds) => worlds,
+        Err(error) => return fail(&error),
+    };
+    let Some(world) = worlds.iter().find(|world| world.id.as_str() == id) else {
+        return fail(&format!("{id}: no configured world has this id"));
+    };
+    let mut input = Vec::new();
+    if let Err(error) = std::io::stdin().read_to_end(&mut input) {
+        return fail(&format!("stdin: {error}"));
+    }
+    let mut state = RuleState::default();
+    let mut text = String::new();
+    for line in String::from_utf8_lossy(&input).lines() {
+        let route = state.route(&world.rules, line);
+        for error in &route.errors {
+            crate::warn("world", error);
+        }
+        let _ = writeln!(text, "{}\t{line}", route.streams);
+    }
     crate::print("world", &text)
 }
 

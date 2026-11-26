@@ -167,6 +167,64 @@ disable = ["hl-ooc"]
 
 An id in `disable` must name an inherited entry. A rule and a script cannot have the same id.
 
+## Line rules
+
+A line rule sends a line from the game to one or more streams. A stream is a named set of lines, and an output of the layout of the client shows the streams that it names. A line that no rule sends elsewhere is in the stream `main`.
+
+```toml
+# global.toml
+[[rules]]
+id = "chan"
+pattern = '^\[([\w-]+)\] '
+stream = "chan-$1"
+```
+
+A rule has a match part and actions:
+
+| Field | What it does |
+|---|---|
+| `pattern` | A regular expression. A line that it matches gets the actions |
+| `stream` | The action: a name, or a list of 1 to 8 names, for the streams of the line |
+| `until` | A regular expression that ends a capture of several lines |
+| `lines` | The most lines of a capture, the first included: 1 to 1000. The default is 100 |
+
+A rule with no `stream` does nothing, and mu checks only its id. A rule with `stream` must have `pattern`, and another field in it is an error.
+
+The rules run on each line from the game, after the scripts, in their merged order. The first rule whose `pattern` matches applies, and no later rule runs on that line. Only the lines from the game are matched. A prompt, a line that the player sends and a notice of the server are always in `main`.
+
+A pattern has the full syntax of fancy-regex: named groups, lookahead, lookbehind, back-references and flags such as `(?i)`. Case counts unless a flag says otherwise. A pattern sees the text of the line without its color codes, as the screen shows it. If a match takes too many steps, it stops and counts as no match. The next rule then runs, and the server records one script error that names the rule.
+
+### Names from the match
+
+An entry of `stream` with `$` is a template. `$1` is the text of group 1, `$name` and `${name}` are the text of a named group, and `$$` is one `$`. A group that did not take part in the match gives an empty text. Write `${1}a` for group 1 and then `a`, because the longest name wins in `$1a`.
+
+A stream name has 1 to 32 characters from `a` to `z`, `0` to `9` and `-`, and starts with a letter. It cannot be a word of the layout sentences, such as `with` or `showing`. mu turns each upper-case letter of a name to lower case, so `chan-$1` gives `chan-public` for `[Public]`. A prefix such as `chan-` keeps the names of one rule together, and an output can show all of them with `showing chan-*`.
+
+If a template gives a name that is not valid, such as `chan-role play`, the line goes to `main`. The server records one script error that names the rule and the name. It records no other such error for that rule until the world connects again.
+
+### Captures of several lines
+
+If a rule has `until`, the line that matches `pattern` starts a capture. Each later line from the game gets the same streams, and no other rule runs. The first later line that matches `until` is in the capture and ends it. The line that starts a capture does not end it. A capture also ends when it holds `lines` lines, and when the world disconnects.
+
+```toml
+# global.toml
+[[rules]]
+id = "who"
+pattern = '^Player Name'
+until = 'players are connected\.$'
+stream = "who"
+```
+
+### Try the rules
+
+`mu world match` reads lines from stdin as lines from the game of one world. For each line, it prints the streams with commas between them, a tab, and the line. It prints each script error on stderr. It needs no server.
+
+```text
+$ printf '[Public] hi\nBob says, "hi"\n' | mu world match alpha/aria
+chan-public	[Public] hi
+main	Bob says, "hi"
+```
+
 ## See the result
 
 To list the configured worlds, run:

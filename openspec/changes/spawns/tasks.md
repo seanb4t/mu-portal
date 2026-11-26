@@ -36,8 +36,8 @@ Each group lands its own tests and documentation before the next group starts.
 
 ## 5. mu world match
 
-- [ ] 5.1 Add the verb `mu world match` (design.md D10). Make sure that these tests in `world_config.rs` pass, one for each spec scenario: `a_rule_with_no_action`, `the_earlier_rule_wins`, `a_character_rule_after_a_global_rule`, `no_match`, `a_rule_that_names_main`, `a_lookbehind_and_a_named_group`, `a_back_reference`, `case_counts`, `a_colored_line`, `a_fixed_stream_in_upper_case`, `one_stream_for_each_channel`, `a_name_from_a_capture_that_is_not_valid`, `a_line_in_two_streams`, `a_who_list`, `a_line_that_starts_and_could_end`, `another_rule_during_a_capture`, `a_capture_that_never_sees_its_end`, `a_capture_of_one_line`, `the_default_limit`, `match_an_unknown_world`, `match_with_no_rules` and `a_bad_name_on_stderr`.
-- [ ] 5.2 Add a section "Line rules" to `docs/src/content/docs/guides/configuration.md`: the match part, `stream`, templates with a prefix, lower-case names, captures of several lines, and `mu world match`. Make sure that `mise run docs:check` passes.
+- [x] 5.1 Add the verb `mu world match` (design.md D10). Make sure that these tests in `world_config.rs` pass, one for each spec scenario: `a_rule_with_no_action`, `the_earlier_rule_wins`, `a_character_rule_after_a_global_rule`, `no_match`, `a_rule_that_names_main`, `a_lookbehind_and_a_named_group`, `a_back_reference`, `case_counts`, `a_colored_line`, `a_fixed_stream_in_upper_case`, `one_stream_for_each_channel`, `a_name_from_a_capture_that_is_not_valid`, `a_line_in_two_streams`, `a_who_list`, `a_line_that_starts_and_could_end`, `another_rule_during_a_capture`, `a_capture_that_never_sees_its_end`, `a_capture_of_one_line`, `the_default_limit`, `match_an_unknown_world`, `match_with_no_rules` and `a_bad_name_on_stderr`.
+- [x] 5.2 Add a section "Line rules" to `docs/src/content/docs/guides/configuration.md`: the match part, `stream`, templates with a prefix, lower-case names, captures of several lines, and `mu world match`. Make sure that `mise run docs:check` passes.
 
 ## 6. Ids and streams in the session and the journal
 

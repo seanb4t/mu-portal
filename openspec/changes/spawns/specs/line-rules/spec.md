@@ -137,7 +137,7 @@ A pattern SHALL accept named groups, lookahead, lookbehind, back-references and 
 The server SHALL expand `$1`, `$name`, `${name}` and `$$` in each entry of `stream` with the captures of the match. A group that did not take part in the match SHALL give an empty text. The server SHALL turn each result to lower case, and SHALL drop a name that is twice in the list. If a result is not a valid stream name, the line SHALL have the one stream `main`.
 
 #### Scenario: One stream for each channel
-- **GIVEN** `global.toml` has the rule `chan` with `pattern = '^\[(\w+)\] '` and `stream = "chan-$1"`
+- **GIVEN** `global.toml` has the rule `chan` with `pattern = '^\[([\w-]+)\] '` and `stream = "chan-$1"`
 - **WHEN** the user runs `mu world match alpha/aria --config <dir>` with the stdin lines `[Public] hi` and `[RP-Help] yo`
 - **THEN** stdout is the lines `chan-public` TAB `[Public] hi` and `chan-rp-help` TAB `[RP-Help] yo`
 
