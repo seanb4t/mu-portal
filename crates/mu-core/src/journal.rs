@@ -107,6 +107,8 @@ pub struct BadCapacity(pub usize);
 struct Inner {
     events: Vec<Event>,
     live: broadcast::Sender<Event>,
+    /// The maker of the ids, which keeps them in the order of the events.
+    ids: ulid::Generator,
 }
 
 /// A journal in memory. A restart of the server loses it.
@@ -130,6 +132,7 @@ impl MemoryJournal {
             inner: Mutex::new(Inner {
                 events: Vec::new(),
                 live,
+                ids: ulid::Generator::new(),
             }),
         })
     }
@@ -147,14 +150,20 @@ fn last_of(events: &[Event]) -> Seq {
 impl Journal for MemoryJournal {
     fn append(&self, event: NewEvent) -> Event {
         let mut inner = self.lock();
+        let id = match inner.ids.generate() {
+            Ok(id) => id,
+            Err(overflow) => overflow.commit_overflow_increment(),
+        };
         let event = Event {
             seq: last_of(&inner.events).next(),
+            id,
             world: event.world,
             kind: event.kind,
             source: event.source,
             text: event.text,
             time: SystemTime::now(),
             depth: event.depth,
+            streams: event.streams,
         };
         inner.events.push(event.clone());
         // No receiver is not an error: the event stays in the journal.
@@ -194,6 +203,7 @@ mod tests {
     use super::*;
     use crate::event::{EventKind, Source};
     use crate::id::WorldId;
+    use mu_config::stream::Streams;
 
     fn new_event(world: &str, text: &str) -> NewEvent {
         NewEvent {
@@ -202,6 +212,7 @@ mod tests {
             source: Source::Game,
             text: text.to_owned(),
             depth: 0,
+            streams: Streams::main(),
         }
     }
 
@@ -361,6 +372,13 @@ mod tests {
     }
 
     proptest! {
+        #[test]
+        fn ids_sort_in_the_order_of_seq(count in 1_u64..2000) {
+            let journal = journal_of(count);
+            let events = journal.lock().events.clone();
+            prop_assert!(events.windows(2).all(|pair| pair[0].id < pair[1].id));
+        }
+
         #[test]
         fn resume_has_no_gap_for_any_cut(total in 0_u64..60, cut in 0_u64..60, later in 0_u64..10) {
             let cut = cut.min(total);

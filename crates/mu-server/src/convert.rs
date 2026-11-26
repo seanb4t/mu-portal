@@ -88,6 +88,8 @@ pub fn event(event: &Event) -> proto::Event {
         source: source(event.source).into(),
         text: event.text.clone(),
         time_ms,
+        id: event.id.to_string(),
+        streams: event.streams.to_wire(),
         ..Default::default()
     }
 }

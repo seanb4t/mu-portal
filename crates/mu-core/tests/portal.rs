@@ -476,6 +476,7 @@ async fn wait_on_journal_with_events_at_start() {
         source: Source::Script,
         text: "early".to_owned(),
         depth: 0,
+        streams: mu_config::stream::Streams::main(),
     });
     let (aria, _) = world("alpha/aria", PW);
     let portal = Portal::start(journal, vec![aria], vec![on(|_| Vec::new())]);

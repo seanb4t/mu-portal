@@ -1,7 +1,9 @@
 //! Events of the journal, and the rule that gives each event its source.
 
+use mu_config::stream::Streams;
 use std::fmt;
 use std::time::SystemTime;
+use ulid::Ulid;
 
 use crate::command::Origin;
 use crate::id::WorldId;
@@ -130,6 +132,9 @@ pub struct NewEvent {
     pub text: String,
     /// The depth of the command chain that made the event. A line of the game has 0.
     pub depth: u8,
+    /// The streams of the event: the streams of the rules for a line from the game, and
+    /// [`Streams::main`] for each other event.
+    pub streams: Streams,
 }
 
 /// An event in the journal.
@@ -137,6 +142,9 @@ pub struct NewEvent {
 pub struct Event {
     /// The sequence number.
     pub seq: Seq,
+    /// The id, which the journal makes when it numbers the event. It is unique also across a
+    /// restart of the server.
+    pub id: Ulid,
     /// The world of the event.
     pub world: WorldId,
     /// What the event records.
@@ -149,6 +157,8 @@ pub struct Event {
     pub time: SystemTime,
     /// The depth of the command chain that made the event. The schema does not carry it.
     pub depth: u8,
+    /// The streams of the event.
+    pub streams: Streams,
 }
 
 #[cfg(test)]

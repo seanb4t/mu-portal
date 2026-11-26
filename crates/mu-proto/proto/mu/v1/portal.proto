@@ -74,6 +74,10 @@ message Event {
   string text = 5;
   // Milliseconds since the Unix epoch.
   int64 time_ms = 6;
+  // The ULID of the event, unique also across a restart of the server.
+  string id = 7;
+  // The 1 to 8 stream names of the event. A client reads an empty list as `main`.
+  repeated string streams = 8;
 }
 
 enum EventKind {

@@ -203,3 +203,52 @@ async fn stream_past_the_end() {
     assert_eq!(last, 6);
     assert_eq!(stream.next().await.unwrap_err().code, "out_of_range");
 }
+
+// The ids and the streams of the events.
+
+fn ids_of(events: &[mu_proto::Event]) -> std::collections::BTreeSet<String> {
+    events.iter().map(|event| event.id.clone()).collect()
+}
+
+#[tokio::test]
+async fn ids_in_one_stream() {
+    let mut session = Session::with_worlds(&["alpha/aria"]).await;
+    for text in ["one", "two", "three"] {
+        session.client.send("alpha/aria", text).await.unwrap();
+    }
+    session.line("alpha/aria", "You say, \"three\"").await;
+    let seen = session.seen();
+    assert!(seen.iter().all(|event| event.id.len() == 26), "{seen:?}");
+    assert_eq!(ids_of(seen).len(), seen.len(), "{seen:?}");
+}
+
+#[tokio::test]
+async fn ids_after_a_restart() {
+    let first = Session::with_worlds(&["alpha/aria"]).await;
+    let before = ids_of(first.seen());
+    drop(first);
+    let mut second = Session::with_worlds(&["alpha/aria"]).await;
+    second.client.send("alpha/aria", "hi").await.unwrap();
+    second.line("alpha/aria", "You say, \"hi\"").await;
+    let after = ids_of(second.seen());
+    assert!(
+        !before.is_empty() && before.is_disjoint(&after),
+        "{before:?} {after:?}"
+    );
+}
+
+#[tokio::test]
+async fn no_event_without_a_stream() {
+    let mut session = Session::with_worlds(&["alpha/aria"]).await;
+    session.client.send("alpha/aria", "hi").await.unwrap();
+    session.line("alpha/aria", "You say, \"hi\"").await;
+    session.client.send("alpha/aria", "@drop").await.unwrap();
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    let seen = session.seen();
+    assert!(
+        seen.iter().all(|event| !event.streams.is_empty()),
+        "{seen:?}"
+    );
+}

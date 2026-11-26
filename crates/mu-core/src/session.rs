@@ -1,5 +1,6 @@
 //! The task of one world: its transport, framer, hooks and handlers.
 
+use mu_config::stream::Streams;
 use std::collections::{BTreeMap, VecDeque};
 use std::io;
 use std::num::NonZeroU32;
@@ -525,6 +526,7 @@ impl Session {
             source: Source::of(kind, origin),
             text,
             depth,
+            streams: Streams::main(),
         });
         tracing::event!(
             target: crate::METRICS_TARGET,
