@@ -821,7 +821,7 @@ fn layout_config(
             .iter()
             .map(|(key, lines)| NamedLayout {
                 key: (*key).to_owned(),
-                name: "other".to_owned(),
+                name: format!("of-{}", key.replace('/', "-")),
                 lines: texts(lines),
                 ..Default::default()
             })
@@ -1431,27 +1431,12 @@ fn a_failed_save_puts_back_the_last_good_layout_of_the_server() {
 use mu_config::layout::{BlockId, Layout};
 use mu_proto::World;
 
-fn strings(lines: &[&str]) -> Vec<String> {
-    lines.iter().map(ToString::to_string).collect()
-}
-
-/// A configuration with the layout `lines`, and the layout of each key of `worlds`.
+/// A configuration with the layout `lines`, and the layout of each key of `worlds`. The echo of
+/// a sent line shows as the line itself.
 fn layouts(lines: &[&str], worlds: &[(&str, &[&str])]) -> GetClientConfigResponse {
     GetClientConfigResponse {
-        revision: format!("{lines:?}{worlds:?}"),
         echo: "show".to_owned(),
-        layout_name: "test".to_owned(),
-        layout: strings(lines),
-        world_layouts: worlds
-            .iter()
-            .map(|(key, lines)| NamedLayout {
-                key: (*key).to_owned(),
-                name: format!("of-{}", key.replace('/', "-")),
-                lines: strings(lines),
-                ..Default::default()
-            })
-            .collect(),
-        ..Default::default()
+        ..layout_config(lines, worlds, &[], &[])
     }
 }
 
@@ -1480,7 +1465,7 @@ fn line_of(world: &str, text: &str, streams: &[&str]) -> Msg {
         kind: EventKind::EVENT_KIND_LINE.into(),
         source: Source::SOURCE_GAME.into(),
         text: text.to_owned(),
-        streams: strings(streams),
+        streams: texts(streams),
         ..Default::default()
     }))
 }
@@ -1526,11 +1511,6 @@ fn notices(rows: &[String]) -> usize {
 
 fn focus_next(model: &mut Model) {
     press(model, KeyCode::Char('n'), Modifiers::CONTROL);
-}
-
-fn run_line(model: &mut Model, text: &str) {
-    type_text(model, text);
-    press(model, KeyCode::Enter, Modifiers::NONE);
 }
 
 const CHAT_OF_ALL: &[&str] = &[
@@ -1708,7 +1688,7 @@ fn a_refused_line_notice_comes_back_after_a_reset() {
 fn a_notice_of_no_world_has_the_owner_client() {
     let mut model = Model::new([]);
     with_layouts(&mut model, NOTICES_OF_ALL, &[]);
-    run_line(&mut model, "hi");
+    run_command(&mut model, "hi");
     let rows = rows_of(&mut model, "notices");
     assert_eq!(
         count(&rows, |row| row.starts_with("client: -- ")),
@@ -1752,7 +1732,7 @@ fn prompt_in(lines: &[&str]) -> Model {
             kind: EventKind::EVENT_KIND_PROMPT.into(),
             source: Source::SOURCE_GAME.into(),
             text: "HP 10>".to_owned(),
-            streams: strings(&["main"]),
+            streams: texts(&["main"]),
             ..Default::default()
         })),
     );
@@ -1814,7 +1794,7 @@ fn a_pane_of_all_worlds_stays_at_a_focus_change() {
 fn a_notice_in_a_pane_of_all_worlds_has_its_world() {
     let mut model = model();
     with_layouts(&mut model, NOTICES_OF_ALL, &[]);
-    run_line(&mut model, "/focus nowhere/nobody");
+    run_command(&mut model, "/focus nowhere/nobody");
     let rows = rows_of(&mut model, "notices");
     assert_eq!(
         count(&rows, |row| row.starts_with("alpha/aria: -- ")),
@@ -1913,7 +1893,7 @@ fn a_reset_clears_the_panes_of_all_worlds() {
 #[test]
 fn a_reset_keeps_the_pane_of_no_world() {
     let mut model = Model::new([]);
-    run_line(&mut model, "hi");
+    run_command(&mut model, "hi");
     let before = rows_of(&mut model, "main");
     update(&mut model, reset());
     assert_eq!((rows_of(&mut model, "main"), before.len()), (before, 1));

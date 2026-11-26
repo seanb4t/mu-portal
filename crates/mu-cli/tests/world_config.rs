@@ -4,7 +4,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
-use support::{BASE_GAME, ConfigDir as Config, fails_naming, mu_command, mu_with, stderr, stdout};
+use support::{
+    BASE_GAME, ConfigDir as Config, fails_naming, mu_command, mu_with, rule, stderr, stdout,
+};
 
 mod support;
 
@@ -1183,11 +1185,8 @@ mod parses_back {
 // The checks of a line rule.
 
 /// The game `alpha` with the rule of `rule`, the text of one `[[rules]]` table after its id.
-fn game_rule(rule: &str) -> Config {
-    Config::base().file(
-        "games/alpha.toml",
-        &game(&[], &format!("[[rules]]\nid = \"chan\"\n{rule}\n")),
-    )
+fn game_rule(fields: &str) -> Config {
+    Config::base().file("games/alpha.toml", &game(&[], &rule("chan", fields)))
 }
 
 #[test]
@@ -1327,10 +1326,6 @@ fn with_rules(rules: &str) -> Config {
 }
 
 /// The rule `id` as a TOML table with `fields`.
-fn rule(id: &str, fields: &str) -> String {
-    format!("[[rules]]\nid = \"{id}\"\n{fields}\n")
-}
-
 /// The stdout of a match of `lines` for `alpha/aria`.
 fn match_lines(config: &Config, lines: &[&str]) -> String {
     succeeds(&matched(config, "alpha/aria", lines))

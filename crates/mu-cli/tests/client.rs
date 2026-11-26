@@ -1397,7 +1397,7 @@ async fn reload(socket: &std::path::Path) {
 async fn wait_notice(client: &PtyClient, texts: &[&str]) {
     client
         .wait_rows("the notice", |rows| {
-            let screen: String = rows.concat().split_whitespace().collect();
+            let screen = packed(rows);
             texts.iter().all(|text| screen.contains(text))
         })
         .await;
@@ -1777,8 +1777,7 @@ async fn the_editor_stops_at_its_max() {
 
 #[tokio::test]
 async fn the_sidebar_layout() {
-    let config = ConfigDir::empty().file("clients/global.toml", "layout = \"sidebar\"\n");
-    let (_session, client) = attached_showing(&["alpha/aria"], &config).await;
+    let (_session, client, _config) = sidebar().await;
     wait_row(&client, 24, "the statusline", |row| {
         row.starts_with("alpha/aria | ")
     })

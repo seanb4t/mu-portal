@@ -4,7 +4,7 @@ use mu_proto::__buffa::oneof::subscribe_response::Message;
 use mu_proto::{EventKind, Source, SubscribeResponse};
 
 use support::process::{BOUND, PW, ServerBuilder, Session, TWO_WORLDS, wait_until};
-use support::stderr;
+use support::{rule, stderr};
 
 mod support;
 
@@ -266,10 +266,6 @@ async fn with_global(global: &str) -> (Session, support::ConfigDir) {
     let mut session = Session::start(builder).await;
     session.welcome("alpha/aria").await;
     (session, dir)
-}
-
-fn rule(id: &str, fields: &str) -> String {
-    format!("[[rules]]\nid = \"{id}\"\n{fields}\n")
 }
 
 fn streams_of(event: &mu_proto::Event) -> Vec<&str> {

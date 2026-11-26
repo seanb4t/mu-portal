@@ -353,6 +353,11 @@ pub fn mode(path: &Path) -> u32 {
     fs::metadata(path).unwrap().permissions().mode() & 0o777
 }
 
+/// The TOML of one line rule with the id `id` and the fields `fields`.
+pub fn rule(id: &str, fields: &str) -> String {
+    format!("[[rules]]\nid = \"{id}\"\n{fields}\n")
+}
+
 /// The content of a layout file with `lines`.
 pub fn layout_file<S: AsRef<str>>(lines: &[S]) -> String {
     let quoted: Vec<String> = lines
