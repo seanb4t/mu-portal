@@ -85,7 +85,10 @@ pub fn render(world: &ResolvedWorld) -> Result<String, String> {
             .map_or_else(|| "unknown".to_owned(), ToString::to_string);
         let _ = writeln!(text, "{key} = {value} # {source}");
     }
-    for (array, entries) in [("rules", &world.rules), ("scripts", &world.scripts)] {
+    for (array, entries) in [
+        ("rules", world.rules.entries()),
+        ("scripts", &world.scripts),
+    ] {
         for entry in entries {
             text.push_str(&render_entry(array, entry)?);
         }

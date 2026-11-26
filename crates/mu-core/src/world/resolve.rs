@@ -1,6 +1,7 @@
 //! The resolver: it builds the chain of each world, merges the fields with `figment2`,
 //! accumulates the rules and the scripts, and checks the result.
 
+use crate::rules::Rules;
 use std::collections::BTreeMap;
 
 use crate::framer::Charset;
@@ -319,6 +320,7 @@ fn finish(
         sources.retain(|path, _| !path.starts_with("login."));
     }
     let defaults = WorldDefaults::default();
+    let rules = Rules::new(rules)?;
     Ok(ResolvedWorld {
         id,
         host,

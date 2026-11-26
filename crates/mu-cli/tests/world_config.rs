@@ -1156,7 +1156,7 @@ mod parses_back {
                 port: 4201,
                 login: Some(Login::new(&template, &name, "env:ARIA_PW".parse().unwrap()).unwrap()),
                 keepalive: Some(Keepalive::new(&command, 60).unwrap()),
-                rules: entries(rules.clone()),
+                rules: mu_core::rules::Rules::new(entries(rules.clone())).unwrap(),
                 scripts: entries(scripts.clone()),
                 sources: BTreeMap::new(),
                 ..ResolvedWorld::new("alpha/aria".parse().unwrap())
@@ -1178,4 +1178,102 @@ mod parses_back {
             prop_assert_eq!(array("scripts"), scripts);
         }
     }
+}
+
+// The checks of a line rule.
+
+/// The game `alpha` with the rule of `rule`, the text of one `[[rules]]` table after its id.
+fn game_rule(rule: &str) -> Config {
+    Config::base().file(
+        "games/alpha.toml",
+        &game(&[], &format!("[[rules]]\nid = \"chan\"\n{rule}\n")),
+    )
+}
+
+#[test]
+fn a_rule_with_a_stream_loads() {
+    let config = Config::base().file(
+        "global.toml",
+        "[[rules]]\nid = \"chan\"\npattern = '^\\[(\\w+)\\] '\nstream = \"chan-$1\"\n",
+    );
+    let text = succeeds(&config.show("alpha/aria"));
+    assert_eq!(ids(&text, "rules"), ["chan"]);
+}
+
+#[test]
+fn a_rule_with_an_unknown_field() {
+    let config = game_rule("pattern = \"x\"\nstream = \"chat\"\ncolour = \"red\"");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "colour"]);
+}
+
+#[test]
+fn an_action_with_no_pattern() {
+    let config = game_rule("stream = \"chat\"");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "pattern"]);
+}
+
+#[test]
+fn a_pattern_that_does_not_compile() {
+    let config = Config::base().file(
+        "characters/alpha/aria.toml",
+        "[[rules]]\nid = \"chan\"\npattern = \"([\"\nstream = \"chat\"\n",
+    );
+    fails_naming(
+        &config.list(),
+        &["characters/alpha/aria.toml", "chan", "pattern"],
+    );
+}
+
+#[test]
+fn a_fixed_stream_that_is_not_a_name() {
+    let config = game_rule("pattern = \"x\"\nstream = [\"chat\", \"1chat\"]");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "1chat"]);
+}
+
+#[test]
+fn an_empty_list_of_streams() {
+    let config = game_rule("pattern = \"x\"\nstream = []");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "stream"]);
+}
+
+#[test]
+fn too_many_streams() {
+    let nine: Vec<String> = (1..=9).map(|n| format!("\"s{n}\"")).collect();
+    let config = game_rule(&format!("pattern = \"x\"\nstream = [{}]", nine.join(", ")));
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "stream"]);
+}
+
+#[test]
+fn lines_out_of_range() {
+    let config = game_rule("pattern = \"x\"\nstream = \"who\"\nuntil = \"y\"\nlines = 1001");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "lines"]);
+}
+
+#[test]
+fn lines_of_zero() {
+    let config = game_rule("pattern = \"x\"\nstream = \"who\"\nuntil = \"y\"\nlines = 0");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "lines"]);
+}
+
+#[test]
+fn a_stream_name_that_is_a_word() {
+    let config = game_rule("pattern = \"x\"\nstream = \"showing\"");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "showing"]);
+}
+
+#[test]
+fn an_overridden_rule_is_still_checked() {
+    let config = Config::base()
+        .file(
+            "global.toml",
+            "[[rules]]\nid = \"chan\"\npattern = \"([\"\nstream = \"chat\"\n",
+        )
+        .file(
+            "games/alpha.toml",
+            &game(
+                &[],
+                "[[rules]]\nid = \"chan\"\npattern = \"x\"\nstream = \"chat\"\n",
+            ),
+        );
+    fails_naming(&config.list(), &["global.toml", "chan", "pattern"]);
 }

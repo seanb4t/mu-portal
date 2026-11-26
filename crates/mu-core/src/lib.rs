@@ -10,6 +10,7 @@ pub mod framer;
 pub mod id;
 pub mod journal;
 pub mod portal;
+pub mod rules;
 pub mod script;
 pub mod secret;
 mod session;
