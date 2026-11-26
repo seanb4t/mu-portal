@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use crate::layout::BlockId;
+use crate::layout::{BlockId, is_id_byte};
 
 /// The stream of each line that no rule sends elsewhere. It is also the id of an `output` whose
 /// line has no `as`.
@@ -32,6 +32,12 @@ impl StreamName {
     #[must_use]
     pub fn main() -> Self {
         Self(BlockId::of(crate::layout::BlockKind::Output))
+    }
+
+    /// The stream [`NOTICES`].
+    #[must_use]
+    pub fn notices() -> Self {
+        Self(BlockId::notices())
     }
 
     /// The name.
@@ -69,7 +75,7 @@ impl Streams {
     /// # Errors
     ///
     /// The reason when the list holds no name, or more than [`STREAMS_MAX`] names.
-    pub fn new(names: impl IntoIterator<Item = StreamName>) -> Result<Self, &'static str> {
+    pub fn new(names: impl IntoIterator<Item = StreamName>) -> Result<Self, String> {
         let mut kept: Vec<StreamName> = Vec::new();
         for name in names {
             if !kept.contains(&name) {
@@ -77,10 +83,12 @@ impl Streams {
             }
         }
         if kept.is_empty() {
-            return Err("a list of streams holds at least 1 name");
+            return Err("a list of streams holds at least 1 name".to_owned());
         }
         if kept.len() > STREAMS_MAX {
-            return Err("a list of streams holds at most 8 names");
+            return Err(format!(
+                "a list of streams holds at most {STREAMS_MAX} names"
+            ));
         }
         Ok(Self(kept))
     }
@@ -175,7 +183,7 @@ impl Pattern {
         }
         if !glob
             .bytes()
-            .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'-' | b'*' | b'?'))
+            .all(|byte| is_id_byte(byte) || byte == b'*' || byte == b'?')
         {
             return Err("a pattern holds only a to z, 0 to 9, -, * and ?, after one first !");
         }

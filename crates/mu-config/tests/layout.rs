@@ -1670,7 +1670,7 @@ fn no_output_for_the_notices() {
 }
 
 #[test]
-fn an_output_one_to_eight_times() {
+fn a_layout_with_only_an_editor() {
     let text = error(&["editor"]);
     assert!(text.contains("main"), "{text}");
 }

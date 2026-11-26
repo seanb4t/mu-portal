@@ -21,6 +21,7 @@ pub use change::{
 pub use parse::{LINE_MAX, LineError};
 pub use solve::{Area, Border, Placed, Solved, preview, solve};
 pub use solve::{Described, describe};
+pub(crate) use step::is_id_byte;
 pub use step::{
     BlockId, Dir, EDITOR_MAX, EDITOR_MAX_DEFAULT, Edge, ID_MAX, PERCENT_MAX, PERCENT_MIN, Place,
     Side, Size, Step, WORDS,
@@ -254,7 +255,7 @@ fn check_streams(steps: &[Step]) -> Result<(), LayoutError> {
             "the output `main` shows the world in focus, so it takes no `of all worlds`",
         ));
     }
-    let notices = StreamName::new(NOTICES).map_err(|reason| LayoutError::whole(NOTICES, reason))?;
+    let notices = StreamName::notices();
     if !steps.iter().any(|step| {
         step.selection
             .as_ref()

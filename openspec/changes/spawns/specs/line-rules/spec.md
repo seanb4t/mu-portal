@@ -34,7 +34,7 @@ A rule SHALL have a match part, with `pattern`, `until` and `lines`, and actions
 - **AND** the exit status is 1
 
 ### Requirement: The fields of a rule are checked at the load
-In a rule with an action, `pattern` and `until` SHALL be strings that compile as regular expressions. `lines` SHALL be an integer from 1 to 1000, in a rule that has `until`. `stream` SHALL be a string or a list of 1 to 8 strings. The server SHALL turn each entry of `stream` with no `$` to lower case. Then each such entry SHALL be a valid stream name. Each error SHALL name the file, the id and the field.
+In a rule with an action, `pattern` and `until` SHALL be strings that compile as regular expressions. `lines` SHALL be an integer from 1 to 1000, in a rule that has `until`. `stream` SHALL be a string or a list of 1 to 8 strings. The server SHALL turn each entry of `stream` with no `$` to lower case. Then each such entry SHALL be a valid stream name other than `notices`, because only the client writes that stream. Each error SHALL name the file, the id and the field.
 
 #### Scenario: A pattern that does not compile
 - **GIVEN** the character `alpha/aria` has the rule `chan` with `pattern = "(["` and `stream = "chat"`
@@ -81,6 +81,12 @@ In a rule with an action, `pattern` and `until` SHALL be strings that compile as
 - **GIVEN** the game `alpha` has the rule `who` with `pattern = "x"`, `stream = "who"` and `lines = 5`
 - **WHEN** the user runs `mu world list --config <dir>`
 - **THEN** stderr names `games/alpha.toml`, `who` and `lines`
+- **AND** the exit status is 1
+
+#### Scenario: A fixed stream names the notices
+- **GIVEN** the game `alpha` has the rule `chan` with `pattern = "x"` and `stream = ["NOTICES", "main"]`
+- **WHEN** the user runs `mu world list --config <dir>`
+- **THEN** stderr names `games/alpha.toml`, `chan` and `NOTICES`
 - **AND** the exit status is 1
 
 ### Requirement: A stream name is an id

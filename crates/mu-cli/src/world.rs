@@ -45,40 +45,41 @@ fn fail(error: &dyn std::fmt::Display) -> ExitCode {
 
 /// Runs `mu world`.
 pub fn run(args: &WorldArgs) -> ExitCode {
-    let (config, id) = match &args.command {
-        WorldCommand::List(config) => (config, None),
-        WorldCommand::Show { id, config } => (config, Some(id)),
-        WorldCommand::Match { id, config } => return run_match(id, config),
-    };
-    let worlds = match config.worlds("world") {
-        Ok(worlds) => worlds,
-        Err(error) => return fail(&error),
-    };
-    let text = match id {
-        None => worlds.iter().fold(String::new(), |mut text, world| {
-            let _ = writeln!(text, "{}", world.id);
-            text
-        }),
-        Some(id) => match worlds.iter().find(|world| world.id.as_str() == id) {
-            Some(world) => match render(world) {
-                Ok(text) => text,
-                Err(error) => return fail(&error),
-            },
-            None => return fail(&format!("{id}: no configured world has this id")),
+    match &args.command {
+        WorldCommand::List(config) => match config.worlds("world") {
+            Ok(worlds) => crate::print(
+                "world",
+                &worlds.iter().fold(String::new(), |mut text, world| {
+                    let _ = writeln!(text, "{}", world.id);
+                    text
+                }),
+            ),
+            Err(error) => fail(&error),
         },
-    };
-    crate::print("world", &text)
+        WorldCommand::Show { id, config } => match world_of(config, id).map(|world| render(&world))
+        {
+            Ok(Ok(text)) => crate::print("world", &text),
+            Ok(Err(error)) => fail(&error),
+            Err(code) => code,
+        },
+        WorldCommand::Match { id, config } => match world_of(config, id) {
+            Ok(world) => run_match(&world),
+            Err(code) => code,
+        },
+    }
+}
+
+/// The configured world `id`, or the exit code after the failure is reported.
+fn world_of(config: &ConfigArgs, id: &str) -> Result<ResolvedWorld, ExitCode> {
+    let worlds = config.worlds("world").map_err(|error| fail(&error))?;
+    worlds
+        .into_iter()
+        .find(|world| world.id.as_str() == id)
+        .ok_or_else(|| fail(&format!("{id}: no configured world has this id")))
 }
 
 /// Runs `mu world match`: one capture state for the whole of stdin.
-fn run_match(id: &str, config: &ConfigArgs) -> ExitCode {
-    let worlds = match config.worlds("world") {
-        Ok(worlds) => worlds,
-        Err(error) => return fail(&error),
-    };
-    let Some(world) = worlds.iter().find(|world| world.id.as_str() == id) else {
-        return fail(&format!("{id}: no configured world has this id"));
-    };
+fn run_match(world: &ResolvedWorld) -> ExitCode {
     let mut input = Vec::new();
     if let Err(error) = std::io::stdin().read_to_end(&mut input) {
         return fail(&format!("stdin: {error}"));

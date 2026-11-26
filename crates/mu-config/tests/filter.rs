@@ -21,3 +21,15 @@ proptest! {
         prop_assert_eq!(out.chars().count(), text.chars().count());
     }
 }
+
+#[test]
+fn a_map_keeps_a_text_it_writes_as_it_is() {
+    assert_eq!(
+        (
+            REPORT.keeps("one\ttwo\n"),
+            REPORT.keeps("one\u{7}"),
+            STORE.keeps("one\ttwo"),
+        ),
+        (true, false, false)
+    );
+}

@@ -22,6 +22,12 @@ impl ControlMap {
             c
         }
     }
+
+    /// Whether the map writes each character of `text` as itself.
+    #[must_use]
+    pub fn keeps(&self, text: &str) -> bool {
+        text.chars().all(|c| self.map(c) == c)
+    }
 }
 
 /// U+FFFD for every control character, the line break and the tab included. The text of a

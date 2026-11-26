@@ -1262,6 +1262,18 @@ fn lines_without_until() {
 }
 
 #[test]
+fn a_fixed_stream_names_the_notices() {
+    let config = game_rule("pattern = \"x\"\nstream = \"notices\"");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "notices"]);
+}
+
+#[test]
+fn a_list_of_streams_names_the_notices() {
+    let config = game_rule("pattern = \"x\"\nstream = [\"NOTICES\", \"main\"]");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "NOTICES"]);
+}
+
+#[test]
 fn a_stream_name_that_is_a_word() {
     let config = game_rule("pattern = \"x\"\nstream = \"showing\"");
     fails_naming(&config.list(), &["games/alpha.toml", "chan", "showing"]);

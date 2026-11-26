@@ -9,7 +9,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use fancy_regex::{Captures, Regex, RegexBuilder};
-use mu_config::ansi::{PLACEHOLDER, SCREEN, Sink, walk};
+use mu_config::ansi::{SCREEN, Sink, walk};
 use mu_config::stream::{NOTICES, STREAMS_MAX, StreamName, Streams};
 
 use crate::world::{ConfigError, Entry, FieldError};
@@ -43,6 +43,19 @@ pub enum Template {
 pub enum Action {
     /// Send the line to the streams of the templates.
     Stream(Vec<Template>),
+}
+
+impl Action {
+    /// The templates of a `Stream` action, and `None` for each other action.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "Stream is the one action, and each other action has no templates"
+    )]
+    fn templates(&self) -> Option<&[Template]> {
+        match self {
+            Self::Stream(templates) => Some(templates),
+        }
+    }
 }
 
 /// The match part of a rule.
@@ -80,12 +93,26 @@ fn lines(id: &str, value: &toml::Value) -> Result<u16, FieldError> {
         .as_integer()
         .and_then(|count| u16::try_from(count).ok())
         .filter(|count| (1..=LINES_MAX).contains(count))
-        .ok_or_else(|| field_error(id, "lines", "must be an integer from 1 to 1000"))
+        .ok_or_else(|| {
+            field_error(
+                id,
+                "lines",
+                format!("must be an integer from 1 to {LINES_MAX}"),
+            )
+        })
 }
 
 fn template(id: &str, text: &str) -> Result<Template, FieldError> {
     if text.contains('$') {
         return Ok(Template::Expand(text.to_owned()));
+    }
+    // Only the client writes the notices, so a rule cannot name them.
+    if text.eq_ignore_ascii_case(NOTICES) {
+        return Err(field_error(
+            id,
+            "stream",
+            format!("`{text}` is the stream of the client"),
+        ));
     }
     StreamName::new(text)
         .map(Template::Fixed)
@@ -117,7 +144,11 @@ fn templates(id: &str, value: &toml::Value) -> Result<Vec<Template>, FieldError>
         }
     };
     if texts.is_empty() || texts.len() > STREAMS_MAX {
-        return Err(field_error(id, "stream", "must hold 1 to 8 names"));
+        return Err(field_error(
+            id,
+            "stream",
+            format!("must hold 1 to {STREAMS_MAX} names"),
+        ));
     }
     texts.into_iter().map(|text| template(id, text)).collect()
 }
@@ -173,7 +204,7 @@ impl Rule {
     /// The streams of the action `stream` for a match with `captures`, or the bad name. A name
     /// from a capture that is `notices` is bad.
     fn streams(&self, captures: &Captures<'_, str>) -> Result<Option<Streams>, String> {
-        let Some(Action::Stream(templates)) = self.actions.first() else {
+        let Some(templates) = self.actions.iter().find_map(Action::templates) else {
             return Ok(None);
         };
         let mut names = Vec::with_capacity(templates.len());
@@ -397,11 +428,11 @@ impl Sink for Plain {
     fn sgr(&mut self, _groups: &[&[u16]]) {}
 }
 
-/// The text of `line` as the screen shows it, without its colors. A line with no control
-/// character comes back borrowed.
+/// The text of `line` as the screen shows it, without its colors. A line that the screen shows
+/// as it is comes back borrowed.
 #[must_use]
 pub fn plain(line: &str) -> Cow<'_, str> {
-    if !line.chars().any(|c| c.is_control() || c == PLACEHOLDER) {
+    if SCREEN.keeps(line) {
         return Cow::Borrowed(line);
     }
     let mut sink = Plain(String::with_capacity(line.len()));
@@ -451,14 +482,18 @@ mod tests {
 
     #[test]
     fn lines_below_zero_is_refused() {
-        let error = compile("pattern = 'x'\nstream = 'who'\nlines = -1").expect_err("below zero");
+        let error = compile("pattern = 'x'\nuntil = 'y'\nstream = 'who'\nlines = -1")
+            .expect_err("below zero");
         assert_eq!(error.field(), "rules.r.lines");
+        assert!(error.to_string().contains("from 1 to 1000"), "{error}");
     }
 
     #[test]
     fn lines_as_a_string_is_refused() {
-        let error = compile("pattern = 'x'\nstream = 'who'\nlines = '3'").expect_err("a string");
+        let error = compile("pattern = 'x'\nuntil = 'y'\nstream = 'who'\nlines = '3'")
+            .expect_err("a string");
         assert_eq!(error.field(), "rules.r.lines");
+        assert!(error.to_string().contains("from 1 to 1000"), "{error}");
     }
 
     #[test]

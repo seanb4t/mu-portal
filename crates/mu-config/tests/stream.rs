@@ -1,7 +1,7 @@
 //! The names of streams, the lists of them, and the selections of the outputs.
 
 use mu_config::layout::BlockId;
-use mu_config::stream::{MAIN, Pattern, Scope, Selection, StreamName, Streams};
+use mu_config::stream::{MAIN, NOTICES, Pattern, Scope, Selection, StreamName, Streams};
 use proptest::prelude::*;
 
 fn name(text: &str) -> StreamName {
@@ -216,6 +216,23 @@ proptest! {
         for text in &names {
             let stream = name(text);
             prop_assert_eq!(chosen.shows(&stream), other.shows(&stream));
+        }
+    }
+}
+
+#[test]
+fn the_notices_is_a_stream_name() {
+    assert_eq!(StreamName::notices(), name(NOTICES));
+}
+
+proptest! {
+    #[test]
+    fn the_wire_gives_the_same_streams(
+        texts in prop::collection::vec("[a-z][a-z0-9-]{0,31}", 1..=8),
+    ) {
+        let names = texts.iter().filter_map(|text| StreamName::new(text).ok());
+        if let Ok(streams) = Streams::new(names) {
+            prop_assert_eq!(Streams::from_wire(&streams.to_wire()), streams);
         }
     }
 }

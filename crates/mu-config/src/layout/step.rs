@@ -3,7 +3,12 @@
 use std::fmt;
 
 use super::block::BlockKind;
-use crate::stream::{Scope, Selection};
+use crate::stream::{NOTICES, Scope, Selection};
+
+/// Whether `byte` can be in an id after its first letter: a to z, 0 to 9 or `-`.
+pub(crate) fn is_id_byte(byte: u8) -> bool {
+    matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'-')
+}
 
 /// The longest id of a block, in characters.
 pub const ID_MAX: usize = 32;
@@ -31,7 +36,7 @@ impl BlockId {
         if !bytes.next().is_some_and(|first| first.is_ascii_lowercase()) {
             return Err("an id starts with a letter from a to z");
         }
-        if !bytes.all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'-')) {
+        if !bytes.all(is_id_byte) {
             return Err("an id holds only a to z, 0 to 9 and -");
         }
         if id.len() > ID_MAX {
@@ -47,6 +52,11 @@ impl BlockId {
     #[must_use]
     pub fn of(kind: BlockKind) -> Self {
         Self(kind.default_id().to_owned())
+    }
+
+    /// The id [`NOTICES`].
+    pub(crate) fn notices() -> Self {
+        Self(NOTICES.to_owned())
     }
 
     /// The id.
