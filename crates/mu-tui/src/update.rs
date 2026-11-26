@@ -23,13 +23,13 @@ use crate::convert::convert;
 use crate::history::HISTORY_LIMIT;
 use crate::keymap::Wheel;
 use crate::model::{
-    ConfigRetry, Drag, Late, Listing, Model, Owner, PaneKey, QuitArm, TickWait, WorldStatus,
+    ConfigRetry, Drag, Late, Listing, Model, Owner, QuitArm, TickWait, WorldStatus,
 };
 use crate::pane::{Caps, PaneState};
 use crate::probe::{self, Outcome};
 use crate::registry::{ArgKind, EntryId, candidates};
 use crate::store::Image;
-use crate::text::{clean, clean_paste, echo_rows, line};
+use crate::text::{clean, clean_paste, echo_rows, line, marked};
 use mu_config::Choice;
 use mu_config::layout::{BlockId, BlockKind};
 
@@ -1338,14 +1338,17 @@ fn on_event(model: &mut Model, event: &mu_proto::Event) -> Vec<Effect> {
         }
         Some(Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => vec![(line(event), Vec::new())],
         _ if prompt => {
-            // A prompt is the unfinished line of the pane of `main` of its world alone.
+            // A prompt is the unfinished line of each pane of its world that shows one of its
+            // streams. A pane of all worlds is shared, so it shows no prompt.
             let mut style = world.style;
             let converted = convert(&event.text, &mut style);
-            model
-                .panes
-                .at(&PaneKey::main(Some(&id)), &model.caps)
-                .set_unfinished(Some(converted));
-            return effects;
+            for key in keys.iter().filter(|key| key.owner != Owner::All) {
+                model
+                    .panes
+                    .at(key, &model.caps)
+                    .set_unfinished(Some(converted.clone()));
+            }
+            Vec::new()
         }
         _ => {
             let converted = convert(&event.text, &mut world.style);
@@ -1364,9 +1367,9 @@ fn on_event(model: &mut Model, event: &mu_proto::Event) -> Vec<Effect> {
         if model.first_no_output(stream.as_str(), &id) {
             model.show_notice(
                 &owner,
-                &format!(
-                    "-- no output of the layout of {id} shows the stream {stream}, so its lines do not show"
-                ),
+                &marked(&format!(
+                    "no output of the layout of {id} shows the stream {stream}, so its lines do not show"
+                )),
             );
         }
     }
@@ -1395,7 +1398,7 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
         vec![text]
     };
     let kept = put_back(model, &world, lines);
-    let notice = format!("-- {}{}", clean(&reason), in_history(kept));
+    let notice = marked(&format!("{}{}", clean(&reason), in_history(kept)));
     // The notice is about a line of `world`, so it goes to the notices of that world.
     model.show_notice(&Owner::World(world), &notice);
     Vec::new()

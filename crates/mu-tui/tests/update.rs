@@ -1724,18 +1724,10 @@ fn the_fallback_layout_is_valid() {
     assert!(Layout::parse(mu_tui::FALLBACK_LAYOUT).is_ok());
 }
 
-#[test]
-fn a_prompt_stays_in_main() {
+/// The layout `lines` in use, and a prompt `HP 10>` of `alpha/aria` in the stream `main`.
+fn prompt_in(lines: &[&str]) -> Model {
     let mut model = model();
-    with_layouts(
-        &mut model,
-        &[
-            "output",
-            "editor below main",
-            "output as log showing main right of main",
-        ],
-        &[],
-    );
+    with_layouts(&mut model, lines, &[]);
     update(
         &mut model,
         Msg::Client(ClientEvent::Event(Event {
@@ -1747,11 +1739,37 @@ fn a_prompt_stays_in_main() {
             ..Default::default()
         })),
     );
+    model
+}
+
+#[test]
+fn a_prompt_goes_to_each_output_that_shows_its_stream() {
+    let mut model = prompt_in(&[
+        "output",
+        "editor below main",
+        "output as log showing main right of main",
+        "output as chat showing chan-* below log",
+    ]);
     let shown = |model: &mut Model, id| count(&rows_of(model, id), |row| row == "HP 10>");
     assert_eq!(
-        (shown(&mut model, "main"), shown(&mut model, "log")),
-        (1, 0)
+        (
+            shown(&mut model, "main"),
+            shown(&mut model, "log"),
+            shown(&mut model, "chat")
+        ),
+        (1, 1, 0)
     );
+}
+
+#[test]
+fn an_output_of_all_worlds_shows_no_prompt() {
+    let mut model = prompt_in(&[
+        "output",
+        "editor below main",
+        "output as log of all worlds showing main right of main",
+    ]);
+    let rows = rows_of(&mut model, "log");
+    assert_eq!(count(&rows, |row| row.contains("HP 10>")), 0, "{rows:?}");
 }
 
 #[test]

@@ -53,7 +53,7 @@ pub(crate) fn clean_styled<'a>(
         sorted.sort_by_key(|&(start, _)| start);
         Cow::Owned(sorted)
     };
-    if text.chars().all(|c| printable(c) == c) {
+    if mu_config::ansi::SCREEN.keeps(text) {
         return (Cow::Borrowed(text), spans);
     }
     let mut out = String::with_capacity(text.len());
@@ -92,14 +92,17 @@ pub fn echo_rows(text: &str, line_break: Option<&str>) -> Vec<String> {
         .collect()
 }
 
+/// `text` with the mark `-- ` of a notice in front.
+pub(crate) fn marked(text: &str) -> String {
+    format!("-- {text}")
+}
+
 /// The text of an event on the screen with its control characters replaced: a line of the
 /// system or a credential after `-- `, and any other line alone. [`echo_rows`] gives the rows of
 /// a player line.
 pub(crate) fn line(event: &Event) -> String {
     match event.source.as_known() {
-        Some(Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => {
-            format!("-- {}", clean(&event.text))
-        }
+        Some(Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => marked(&clean(&event.text)),
         _ => clean(&event.text),
     }
 }

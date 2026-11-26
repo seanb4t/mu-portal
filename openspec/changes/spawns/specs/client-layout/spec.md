@@ -301,6 +301,19 @@ The form `output as <id> of all worlds` SHALL place an output that shows its str
 - **WHEN** the user runs the command `/place output as notices of all worlds right of main` and then `/focus nowhere/nobody`
 - **THEN** the pane of `notices` shows a line that starts with `alpha/aria: -- ` and contains `nowhere/nobody`
 
+### Requirement: A prompt goes to the outputs that show its streams
+A prompt of a world SHALL be the unfinished line of each `output` of that world that shows one of its streams. An `output` of all worlds SHALL show no prompt, because its pane is shared.
+
+#### Scenario: A prompt in two outputs
+- **GIVEN** the layout in use holds the lines `output`, `editor below main`, `output as log showing main right of main` and `output as chat showing chan-* below log`
+- **WHEN** the world `alpha/aria` sends the prompt `HP 10>` in the stream `main`
+- **THEN** the panes of `main` and `log` show `HP 10>` as their unfinished line, and the pane of `chat` does not
+
+#### Scenario: No prompt in an output of all worlds
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `output as log of all worlds showing main right of main`
+- **WHEN** the world `alpha/aria` sends the prompt `HP 10>` in the stream `main`
+- **THEN** the pane of `log` does not show `HP 10>`
+
 ### Requirement: A place keeps the streams of an output
 A `/place` of an `output` that is on the screen, with no `of all worlds` and no `showing`, SHALL keep the streams and the scope of that output. A `/place` with `of all worlds` or `showing` SHALL set them from the sentence.
 

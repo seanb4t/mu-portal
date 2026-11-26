@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use mu_config::layout::{BUILT_IN, Block, BlockId, BlockKind, DEFAULT_LAYOUT, Layout};
-use mu_config::stream::{NOTICES, Scope, StreamName};
+use mu_config::stream::{Scope, StreamName};
 use mu_config::{Choice, Label, Segment, WorldId, layout_for};
 use mu_proto::World as ProtoWorld;
 use ratatui::style::{Modifier, Style};
@@ -964,7 +964,7 @@ impl Model {
     /// stream `notices`. After a Reset clears the panes of the worlds, the line comes back in
     /// each pane that shows it then.
     pub(crate) fn notice(&mut self, text: &str) {
-        let line = format!("-- {text}");
+        let line = crate::text::marked(text);
         let owner = Owner::of(self.focused());
         let panes = self.show_notice(&owner, &line);
         self.notices.push(Kept { line, owner, panes });
@@ -975,7 +975,7 @@ impl Model {
     /// because it is about one moment.
     pub(crate) fn hint(&mut self, text: &str) {
         let owner = Owner::of(self.focused());
-        self.show_notice(&owner, &format!("-- {text}"));
+        self.show_notice(&owner, &crate::text::marked(text));
     }
 
     /// Adds `line` as a line of the stream `notices` of `owner`, and gives the keys of the
@@ -1001,7 +1001,7 @@ pub const NO_OUTPUT_MAX: usize = 256;
 
 /// The stream `notices` alone.
 fn notices_stream() -> Vec<StreamName> {
-    StreamName::new(NOTICES).into_iter().collect()
+    vec![StreamName::notices()]
 }
 
 /// The line `text` with the dim prefix `<owner>: ` in front, and `spans` moved past it.
