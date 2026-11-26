@@ -321,6 +321,7 @@ struct Capture {
 pub struct RuleState {
     capture: Option<Capture>,
     reported: BTreeSet<(String, ErrorKind)>,
+    hook_reported: bool,
 }
 
 impl RuleState {
@@ -402,13 +403,15 @@ impl RuleState {
         if !streams.names().contains(&StreamName::notices()) {
             return Route { streams, errors };
         }
-        self.report(
-            &mut errors,
-            HOOK,
-            ErrorKind::BadName,
-            "a hook named the stream notices, which only the client writes, so the line goes to main"
-                .to_owned(),
-        );
+        if !self.hook_reported {
+            self.hook_reported = true;
+            errors.push(RuleError {
+                rule: HOOK.to_owned(),
+                kind: ErrorKind::BadName,
+                text: "a hook named the stream notices, which only the client writes, so the line goes to main"
+                    .to_owned(),
+            });
+        }
         Route {
             streams: Streams::main(),
             errors,
@@ -419,6 +422,7 @@ impl RuleState {
     pub fn reset(&mut self) {
         self.capture = None;
         self.reported.clear();
+        self.hook_reported = false;
     }
 
     fn report(&mut self, errors: &mut Vec<RuleError>, rule: &str, kind: ErrorKind, text: String) {
@@ -711,6 +715,15 @@ mod tests {
         state.route(&rules, "[Role Play] one");
         state.reset();
         assert_eq!(state.route(&rules, "[Role Play] two").errors.len(), 1);
+    }
+
+    #[test]
+    fn a_rule_named_hook_reports_apart_from_a_hook() {
+        let rules = rules(&[("hook", "pattern = '^\\[([^\\]]+)\\] '\nstream = 'chan-$1'")]);
+        let mut state = RuleState::default();
+        let hooked = state.hooked(Streams::new(vec![StreamName::notices()]).unwrap());
+        let routed = state.route(&rules, "[Role Play] one");
+        assert_eq!((hooked.errors.len(), routed.errors.len()), (1, 1));
     }
 
     /// A pattern that passes the backtrack limit on a line of 40 `a` characters.
