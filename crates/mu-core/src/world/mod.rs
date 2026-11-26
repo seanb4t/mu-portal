@@ -31,7 +31,7 @@ pub use layer::{
 };
 pub use merge::merge_layers;
 pub use parse::{Hidden, parse as parse_toml};
-pub use resolve::{FIELD_PATHS, resolve};
+pub use resolve::{FIELD_PATHS, resolve, resolve_with_global};
 pub use snapshot::{CLIENTS_DIR, DirSnapshot, LINKED_DIRS_MAX, SnapEntry, is_under_clients};
 
 /// The login template of a world whose layers set none.

@@ -53,6 +53,18 @@ pub const FIELD_PATHS: &[&str] = &[
 /// The first error of a layer, a chain, the merge or a world. It names the file or the world,
 /// and the field.
 pub fn resolve(sources: &[&dyn LayerSource]) -> Result<Vec<ResolvedWorld>, ConfigError> {
+    resolve_with_global(sources).map(|(worlds, _)| worlds)
+}
+
+/// Resolves each world as [`resolve`] does, and also gives the line rules of the global layer
+/// alone, after its `disable`. With no global layer, the rules are empty.
+///
+/// # Errors
+///
+/// The errors of [`resolve`].
+pub fn resolve_with_global(
+    sources: &[&dyn LayerSource],
+) -> Result<(Vec<ResolvedWorld>, Rules), ConfigError> {
     let mut layers = Vec::new();
     for source in sources {
         layers.extend(source.layers()?);
@@ -85,7 +97,9 @@ pub fn resolve(sources: &[&dyn LayerSource]) -> Result<Vec<ResolvedWorld>, Confi
         }
     }
     worlds.sort_by(|a, b| a.id.cmp(&b.id));
-    Ok(worlds)
+    let global: Vec<&Layer> = index.global.into_iter().collect();
+    let (rules, _) = accumulate(&global)?;
+    Ok((worlds, Rules::new(rules)?))
 }
 
 /// The layers by what they configure.

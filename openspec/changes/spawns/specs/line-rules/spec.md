@@ -221,7 +221,7 @@ If its world disconnects, a capture SHALL end. The first line from the game afte
 If a match passes the backtrack limit of the engine, the match SHALL stop. The line SHALL then count as no match for that rule, and the server SHALL try the next rule. The server SHALL record one script error event that names the rule. It SHALL record no other slow-match event for that rule until the world connects again. A bad-name event of the same rule SHALL NOT count against this limit.
 
 #### Scenario: A pattern that backtracks too much
-- **GIVEN** `global.toml` has the rule `slow` with `pattern = '^(a|aa)+\1b'` and `stream = "slow"`, and then the rule `all` with `pattern = '^a'` and `stream = "rest"`
+- **GIVEN** `global.toml` has the rule `slow` with `pattern = '^You say, "(a|aa)+\1b'` and `stream = "slow"`, and then the rule `all` with `pattern = '^You say, "a'` and `stream = "rest"`
 - **AND** a server runs with `--config <dir>` and the fake world `alpha/aria`
 - **WHEN** a client sends a line of 40 `a` characters to `alpha/aria` and reads the stream
 - **THEN** the game event of that line has the one stream `rest`
