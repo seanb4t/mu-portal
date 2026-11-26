@@ -56,7 +56,7 @@ Each layout SHALL hold exactly one `output` with the id `main`. A line `output` 
 - **THEN** stderr holds one line that contains `clients/layouts/mine.toml` and `main`
 
 ### Requirement: A line stays in the output where it arrived
-At the arrival of a line, the client SHALL put it into each `output` that shows one of its streams at that time. The client SHALL use the outputs for the world of the line. A later change of the layout SHALL NOT move the line. A notice SHALL be a line of the stream `notices` for the world in focus. The notice of a line that the server refused SHALL be a line of the stream `notices` for the world of that line.
+At the arrival of a line, the client SHALL put it into each `output` that shows one of its streams at that time. The client SHALL use the outputs for the world of the line. A later change of the layout SHALL NOT move the line. A notice SHALL be a line of the stream `notices` for the world in focus. The notice of a line that the server refused SHALL be a line of the stream `notices` for the world of that line, and SHALL come back after a Reset.
 
 #### Scenario: A refused line goes to the notices
 - **GIVEN** the layout in use holds the lines `output as main showing main`, `tabs above main`, `editor below main`, `statusline below editor` and `output as notices right of main, 30%`, and `alpha/aria` has the focus
@@ -69,6 +69,11 @@ At the arrival of a line, the client SHALL put it into each `output` that shows 
 - **WHEN** the user sends the line `hi`, runs the command `/focus beta/bryn`, and the server then refuses the line with the reason `down`
 - **THEN** no pane shows a line that starts with `-- `
 - **AND** after the command `/focus alpha/aria`, the last line of the pane of `notices` is `-- down`
+
+#### Scenario: A refused line after a Reset
+- **GIVEN** the layout in use holds the lines `output as main showing main`, `tabs above main`, `editor below main`, `statusline below editor` and `output as notices right of main, 30%`, and `alpha/aria` has the focus
+- **WHEN** the server refuses a line of `alpha/aria` with the reason `down`, and then sends a Reset
+- **THEN** the pane of `notices` shows the line `-- down` one time
 
 #### Scenario: A line with no world goes to the notices
 - **GIVEN** the layout in use holds the lines `output as main showing main`, `tabs above main`, `editor below main`, `statusline below editor` and `output as notices right of main, 30%`, and the server has no world

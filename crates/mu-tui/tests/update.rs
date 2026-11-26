@@ -1688,6 +1688,23 @@ fn a_refused_line_notice_belongs_to_its_world() {
 }
 
 #[test]
+fn a_refused_line_notice_comes_back_after_a_reset() {
+    let mut model = model();
+    with_layouts(&mut model, NOTICES_BESIDE, &[]);
+    update(
+        &mut model,
+        Msg::Reply(mu_tui::Reply::Refused {
+            world: "alpha/aria".to_owned(),
+            text: "hi".to_owned(),
+            reason: "down".to_owned(),
+        }),
+    );
+    update(&mut model, reset());
+    let rows = rows_of(&mut model, "notices");
+    assert_eq!(count(&rows, |row| row == "-- down"), 1, "{rows:?}");
+}
+
+#[test]
 fn a_notice_of_no_world_has_the_owner_client() {
     let mut model = Model::new([]);
     with_layouts(&mut model, NOTICES_OF_ALL, &[]);

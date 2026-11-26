@@ -964,8 +964,13 @@ impl Model {
     /// stream `notices`. After a Reset clears the panes of the worlds, the line comes back in
     /// each pane that shows it then.
     pub(crate) fn notice(&mut self, text: &str) {
-        let line = crate::text::marked(text);
         let owner = Owner::of(self.focused());
+        self.keep_notice(owner, crate::text::marked(text));
+    }
+
+    /// Adds `line` as a line of the stream `notices` of `owner`. After a Reset clears the panes
+    /// of the worlds, the line comes back in each pane that shows it then.
+    pub(crate) fn keep_notice(&mut self, owner: Owner, line: String) {
         let panes = self.show_notice(&owner, &line);
         self.notices.push(Kept { line, owner, panes });
     }
