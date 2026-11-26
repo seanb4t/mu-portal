@@ -14,6 +14,9 @@ use mu_config::stream::{NOTICES, STREAMS_MAX, StreamName, Streams};
 
 use crate::world::{ConfigError, Entry, FieldError};
 
+/// The name in the errors of the streams that a hook set.
+const HOOK: &str = "hook";
+
 /// The count of lines of a capture with no `lines`.
 pub const LINES_DEFAULT: u16 = 100;
 
@@ -102,27 +105,26 @@ fn lines(id: &str, value: &toml::Value) -> Result<u16, FieldError> {
         })
 }
 
+/// `text` in lower case as the name of a stream of a line from the game, or the reason that it is
+/// none. Only the client writes the stream [`NOTICES`], so the game cannot name it.
+fn game_stream(text: &str) -> Result<StreamName, &'static str> {
+    if text.eq_ignore_ascii_case(NOTICES) {
+        return Err("only the client writes the stream notices");
+    }
+    StreamName::new(text)
+}
+
 fn template(id: &str, text: &str) -> Result<Template, FieldError> {
     if text.contains('$') {
         return Ok(Template::Expand(text.to_owned()));
     }
-    // Only the client writes the notices, so a rule cannot name them.
-    if text.eq_ignore_ascii_case(NOTICES) {
-        return Err(field_error(
+    game_stream(text).map(Template::Fixed).map_err(|reason| {
+        field_error(
             id,
             "stream",
-            format!("`{text}` is the stream of the client"),
-        ));
-    }
-    StreamName::new(text)
-        .map(Template::Fixed)
-        .map_err(|reason| {
-            field_error(
-                id,
-                "stream",
-                format!("`{text}` is not a stream name: {reason}"),
-            )
-        })
+            format!("`{text}` is not a stream name: {reason}"),
+        )
+    })
 }
 
 fn templates(id: &str, value: &toml::Value) -> Result<Vec<Template>, FieldError> {
@@ -215,11 +217,7 @@ impl Rule {
                     let mut expanded = String::new();
                     captures.expand(text, &mut expanded);
                     let lower = expanded.to_ascii_lowercase();
-                    // Only the client writes the notices, so game text cannot name them.
-                    if lower == NOTICES {
-                        return Err(lower);
-                    }
-                    names.push(StreamName::new(&lower).map_err(|_| lower)?);
+                    names.push(game_stream(&lower).map_err(|_| lower)?);
                 }
             }
         }
@@ -397,6 +395,26 @@ impl RuleState {
         }
     }
 
+    /// The streams that a hook set for a line from the game. Streams that hold [`NOTICES`] give
+    /// [`Streams::main`] and an error, which is reported once until [`Self::reset`].
+    pub fn hooked(&mut self, streams: Streams) -> Route {
+        let mut errors = Vec::new();
+        if !streams.names().contains(&StreamName::notices()) {
+            return Route { streams, errors };
+        }
+        self.report(
+            &mut errors,
+            HOOK,
+            ErrorKind::BadName,
+            "a hook named the stream notices, which only the client writes, so the line goes to main"
+                .to_owned(),
+        );
+        Route {
+            streams: Streams::main(),
+            errors,
+        }
+    }
+
     /// Ends a capture, and forgets the errors already reported.
     pub fn reset(&mut self) {
         self.capture = None;
@@ -444,6 +462,7 @@ pub fn plain(line: &str) -> Cow<'_, str> {
 mod tests {
     use super::*;
     use crate::world::LayerOrigin;
+    use proptest::prelude::*;
 
     fn table(text: &str) -> toml::Table {
         text.parse().expect("a table")
@@ -827,5 +846,21 @@ mod tests {
         state.route(&rules, "WHO");
         state.reset();
         assert_eq!(names(&state.route(&rules, "Aria")), "main");
+    }
+
+    proptest! {
+        #[test]
+        fn a_capture_never_holds_more_than_its_lines(lines in 1_u16..=1000, more in 0_usize..1100) {
+            let rules = rules(&[(
+                "who",
+                &format!("pattern = '^start$'\nuntil = '^end$'\nstream = 'who'\nlines = {lines}"),
+            )]);
+            let mut state = RuleState::default();
+            let caught = std::iter::once("start")
+                .chain(std::iter::repeat_n("x", more))
+                .filter(|line| names(&state.route(&rules, line)) == "who")
+                .count();
+            prop_assert_eq!(caught, usize::from(lines).min(more + 1));
+        }
     }
 }

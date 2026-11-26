@@ -644,6 +644,27 @@ async fn a_hook_sets_the_streams() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_hook_cannot_name_the_notices() {
+    let (aria, _game) = world_with_rules("alpha/aria", PW, "");
+    let hook = GameHook {
+        on: "hi",
+        action: set_streams(&["notices", "pages"]),
+    };
+    let portal = started(vec![aria.with_hook(Arc::new(hook))]).await;
+    portal.send(&id("alpha/aria"), "hi one").await.unwrap();
+    portal.send(&id("alpha/aria"), "hi two").await.unwrap();
+    let first = game_line(&portal, "You say, \"hi one\"").await;
+    game_line(&portal, "You say, \"hi two\"").await;
+    assert_eq!(
+        (
+            first.streams,
+            of_kind(&portal, EventKind::ScriptError).len()
+        ),
+        (streams(&["main"]), 1)
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_rule_never_puts_the_password_in_a_stream() {
     let rule = "[[rules]]\nid = \"pw\"\npattern = '^You say, \"pw (\\S+)\"'\nstream = \"$1\"\n";
     let (aria, _game) = world_with_rules("alpha/aria", PW, rule);

@@ -523,6 +523,15 @@ impl Session {
         &self.parts.world
     }
 
+    /// `text` with the password of the world masked.
+    fn masked<'a>(&self, text: &'a str) -> Cow<'a, str> {
+        self.password
+            .as_ref()
+            .map_or(Cow::Borrowed(text), |password| {
+                Cow::Owned(password.mask(text))
+            })
+    }
+
     /// Masks, records and hands an event to the world handlers.
     fn record(&mut self, kind: EventKind, origin: Origin, text: &str, depth: u8) -> Event {
         self.record_in(kind, origin, text, depth, Streams::main())
@@ -537,10 +546,7 @@ impl Session {
         depth: u8,
         streams: Streams,
     ) -> Event {
-        let text = self
-            .password
-            .as_ref()
-            .map_or_else(|| text.to_owned(), |password| password.mask(text));
+        let text = self.masked(text).into_owned();
         let event = self.parts.journal.append(NewEvent {
             world: self.world().clone(),
             kind,
@@ -980,20 +986,25 @@ impl Session {
                     let hooked = run_hooks(&self.parts.hooks, &line, Hook::on_game_line);
                     // The rules see the masked line, so no stream name and no error holds the
                     // password.
-                    let masked = self
-                        .password
-                        .as_ref()
-                        .map_or(Cow::Borrowed(hooked.text.as_str()), |password| {
-                            Cow::Owned(password.mask(&hooked.text))
-                        });
+                    let masked = self.masked(&hooked.text);
                     // A capture counts each line from the game, a gagged one too.
-                    let route = self.route.route(&self.parts.rules, &masked);
+                    let mut route = self.route.route(&self.parts.rules, &masked);
+                    if let Some(streams) = hooked.streams {
+                        let checked = self.route.hooked(streams);
+                        route.errors.extend(checked.errors);
+                        route.streams = checked.streams;
+                    }
                     for error in &route.errors {
                         self.script_error(&error.text, 0);
                     }
                     if !hooked.gagged {
-                        let streams = hooked.streams.unwrap_or(route.streams);
-                        self.record_in(EventKind::Line, Origin::System, &hooked.text, 0, streams);
+                        self.record_in(
+                            EventKind::Line,
+                            Origin::System,
+                            &hooked.text,
+                            0,
+                            route.streams,
+                        );
                     }
                 }
                 Inbound::Prompt(prompt) => {

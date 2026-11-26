@@ -191,10 +191,13 @@ fn place_next(input: &mut &str) -> ModalResult<()> {
 }
 
 /// A comma and a size that ends the line.
+/// The comma and the size at the end of a line.
+fn size_tail(input: &mut &str) -> ModalResult<Size> {
+    preceded(comma, cut_err(size)).parse_next(input)
+}
+
 fn size_next(input: &mut &str) -> ModalResult<()> {
-    (space0, ',', space0, size, space0, eof)
-        .void()
-        .parse_next(input)
+    (size_tail, space0, eof).void().parse_next(input)
 }
 
 fn comma(input: &mut &str) -> ModalResult<()> {
@@ -239,7 +242,7 @@ fn line<'a>(input: &mut &'a str) -> ModalResult<Draft<'a>> {
         (None, None)
     };
     let place = opt(preceded(space1, place)).parse_next(input)?;
-    let size = opt(preceded((space0, ',', space0), cut_err(size))).parse_next(input)?;
+    let size = opt(size_tail).parse_next(input)?;
     (space0, eof).parse_next(input)?;
     Ok(Draft {
         kind,

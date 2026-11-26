@@ -36,14 +36,14 @@ pub fn world(text: &str, password: &str) -> (WorldSetup, FakeGame) {
 }
 
 pub fn world_on(text: &str, password: &str, transport: FakeTransport) -> (WorldSetup, FakeGame) {
-    resolved_on(text, password, transport, None)
+    resolved_on(text, password, transport, None, None)
 }
 
 /// A world as [`world`] gives it, with the line break `line_break`.
 pub fn world_joining(text: &str, password: &str, line_break: &str) -> (WorldSetup, FakeGame) {
     let transport = FakeTransport::new(id(text).character(), password);
     let line_break = LineBreak::new(line_break).unwrap();
-    resolved_on(text, password, transport, Some(line_break))
+    resolved_on(text, password, transport, Some(line_break), None)
 }
 
 fn resolved_on(
@@ -51,14 +51,18 @@ fn resolved_on(
     password: &str,
     transport: FakeTransport,
     line_break: Option<LineBreak>,
+    rules: Option<mu_core::rules::Rules>,
 ) -> (WorldSetup, FakeGame) {
     let game = transport.game();
-    let resolved = ResolvedWorld {
+    let mut resolved = ResolvedWorld {
         autoconnect: true,
         reconnect: Reconnect::Off,
         line_break,
         ..ResolvedWorld::with_default_login(id(text), "env:PW".parse().unwrap())
     };
+    if let Some(rules) = rules {
+        resolved.rules = rules;
+    }
     let setup = WorldSetup::new(
         resolved,
         Some(Secret::new(password.to_owned())),
@@ -70,7 +74,6 @@ fn resolved_on(
 /// A world as [`world`] gives it, with the line rules of `rules`, a TOML text of `[[rules]]`.
 pub fn world_with_rules(text: &str, password: &str, rules: &str) -> (WorldSetup, FakeGame) {
     let transport = FakeTransport::new(id(text).character(), password);
-    let game = transport.game();
     let table: toml::Table = rules.parse().unwrap();
     let entries = table
         .get("rules")
@@ -88,18 +91,8 @@ pub fn world_with_rules(text: &str, password: &str, rules: &str) -> (WorldSetup,
                 })
                 .collect()
         });
-    let resolved = ResolvedWorld {
-        autoconnect: true,
-        reconnect: Reconnect::Off,
-        rules: mu_core::rules::Rules::new(entries).unwrap(),
-        ..ResolvedWorld::with_default_login(id(text), "env:PW".parse().unwrap())
-    };
-    let setup = WorldSetup::new(
-        resolved,
-        Some(Secret::new(password.to_owned())),
-        Arc::new(transport),
-    );
-    (setup, game)
+    let rules = mu_core::rules::Rules::new(entries).unwrap();
+    resolved_on(text, password, transport, None, Some(rules))
 }
 
 pub fn portal(worlds: Vec<WorldSetup>, server_handlers: Vec<Arc<dyn Handler>>) -> Portal {
