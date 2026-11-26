@@ -2,13 +2,14 @@
 //! changes it for each message. [`view`](crate::view) records what each pane drew, and returns
 //! a scrolled pane to the bottom when the newest row shows.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use mu_config::layout::{BUILT_IN, Block, BlockId, BlockKind, DEFAULT_LAYOUT, Layout};
+use mu_config::stream::{NOTICES, Scope, StreamName};
 use mu_config::{Choice, Label, Segment, WorldId, layout_for};
 use mu_proto::World as ProtoWorld;
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 
 use crate::config::Echo;
 use crate::editor::EditorState;
@@ -16,20 +17,69 @@ use crate::history::History;
 use crate::keymap::Keymap;
 use crate::pane::{Caps, PaneState};
 
-/// The id of an output pane. Each world has one pane, and one more pane holds the lines of no
-/// world.
+/// The handle of an output pane. A [`PaneKey`] names the pane that it stands for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PaneId(u32);
 
-impl PaneId {
-    /// The pane of notices for no world.
-    pub const NOTICES: Self = Self(0);
+/// The handle of the pane of `main` of no world, which the model makes at its start.
+const CLIENT_MAIN: PaneId = PaneId(0);
+
+/// Who a pane, an editor or a line belongs to.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Owner {
+    /// One world, by its id.
+    World(String),
+    /// No world.
+    Client,
+    /// Every world: the pane of an output of all worlds.
+    All,
+}
+
+impl Owner {
+    /// The owner `World` of `world`, or `Client` for no world.
+    #[must_use]
+    pub fn of(world: Option<&str>) -> Self {
+        world.map_or(Self::Client, |id| Self::World(id.to_owned()))
+    }
+}
+
+/// The name of an output pane or an editor: its owner and the id of its block.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PaneKey {
+    /// The owner.
+    pub owner: Owner,
+    /// The id of the block.
+    pub id: BlockId,
+}
+
+impl PaneKey {
+    /// The key of the block `id` of `owner`.
+    #[must_use]
+    pub const fn new(owner: Owner, id: BlockId) -> Self {
+        Self { owner, id }
+    }
+
+    /// The key of the output `main` of `world`, or of no world.
+    #[must_use]
+    pub fn main(world: Option<&str>) -> Self {
+        Self::new(Owner::of(world), BlockId::of(BlockKind::Output))
+    }
+}
+
+/// A notice of the client, which a reset of the panes keeps.
+#[derive(Clone, Debug)]
+pub(crate) struct Kept {
+    /// The line, with its `-- `.
+    pub(crate) line: String,
+    /// The world that the notice belongs to, or none.
+    pub(crate) owner: Option<String>,
+    /// The panes that hold the line.
+    pub(crate) panes: HashSet<PaneKey>,
 }
 
 #[derive(Debug)]
 pub(crate) struct World {
     pub(crate) id: String,
-    pub(crate) pane: PaneId,
     pub(crate) unseen: bool,
     /// The SGR style at the end of the last game line, which the next game line starts with.
     pub(crate) style: Style,
@@ -115,18 +165,17 @@ pub struct Model {
     /// An index into `worlds`. None if and only if there is no world.
     pub(crate) focus: Option<usize>,
     pub(crate) panes: HashMap<PaneId, PaneState>,
+    /// The handle of each pane that a line or a draw made, by its key.
+    pub(crate) pane_keys: HashMap<PaneKey, PaneId>,
     /// What the terminal can draw, which every pane shares.
     pub(crate) caps: Arc<Caps>,
     next_pane: u32,
-    /// The state of each editor, by the id of its world and the id of its block. The key with
-    /// no world is the editor while no world has the focus.
-    pub(crate) editors: HashMap<(Option<String>, BlockId), EditorState>,
+    /// The state of each editor, by its key. The owner `Client` holds the editors while no
+    /// world has the focus.
+    pub(crate) editors: HashMap<PaneKey, EditorState>,
     /// The editor with the input focus. [`Model::input_id`] gives the editor of the layout on
     /// the screen that it stands for.
     pub(crate) input: BlockId,
-    /// The pane of each `output` that is not the main output of its plan, by the id of its
-    /// world and the id of its block.
-    pub(crate) extra_panes: HashMap<(Option<String>, BlockId), PaneId>,
     /// The block in front of each stack, by the id of the first block of its pane.
     pub(crate) fronts: HashMap<BlockId, BlockId>,
     /// The sends of each world that the server did not answer yet, in the order of the keys.
@@ -148,9 +197,9 @@ pub struct Model {
     pub(crate) segments: (Vec<Segment>, Vec<Segment>),
     pub(crate) late: Late,
     /// The notices of the client, which a reset of the panes keeps.
-    pub(crate) notices: Vec<String>,
-    /// The notices and the hints that no pane showed, because the layout held no `output`.
-    pub(crate) unshown: Vec<String>,
+    pub(crate) notices: Vec<Kept>,
+    /// Each pair of a stream and a world that got the notice of a stream with no output.
+    pub(crate) no_output: HashSet<(String, String)>,
     /// True if a late answer gave mode 2027 as set before the probe.
     pub(crate) keeps_grapheme_mode: bool,
     /// Set by a Quit while a send has no reply yet, the send with the server included. A second
@@ -197,9 +246,6 @@ pub(crate) struct Served {
     /// The layout of each entry of `[world-layouts]`, by its key.
     pub(crate) worlds: BTreeMap<String, (String, Layout)>,
 }
-
-/// The most lines that wait for a pane of the notices. A new line past it drops the oldest.
-const UNSHOWN_MAX: usize = 200;
 
 /// The drag of a border between two panes.
 #[derive(Clone, Debug)]
@@ -272,10 +318,10 @@ impl Model {
         let mut model = Self {
             worlds: Vec::new(),
             focus: None,
-            panes: HashMap::from([(PaneId::NOTICES, PaneState::default())]),
+            panes: HashMap::from([(CLIENT_MAIN, PaneState::default())]),
+            pane_keys: HashMap::from([(PaneKey::main(None), CLIENT_MAIN)]),
             editors: HashMap::new(),
             input: BlockId::of(BlockKind::Editor),
-            extra_panes: HashMap::new(),
             fronts: HashMap::new(),
             sends: HashMap::new(),
             caps,
@@ -293,7 +339,7 @@ impl Model {
             ),
             late: Late::None,
             notices: Vec::new(),
-            unshown: Vec::new(),
+            no_output: HashSet::new(),
             keeps_grapheme_mode: false,
             quit_arm: None,
             listing: Listing::Idle,
@@ -351,8 +397,8 @@ impl Model {
 
     /// The notice lines of the client, which a reset of the panes keeps.
     #[must_use]
-    pub fn notices(&self) -> &[String] {
-        &self.notices
+    pub fn notices(&self) -> Vec<&str> {
+        self.notices.iter().map(|kept| kept.line.as_str()).collect()
     }
 
     /// The model with `device` as the name of this device.
@@ -508,14 +554,14 @@ impl Model {
     #[must_use]
     pub fn editor(&self, id: &BlockId) -> Option<&EditorState> {
         self.editors
-            .get(&(self.focused().map(str::to_owned), id.clone()))
+            .get(&PaneKey::new(Owner::of(self.focused()), id.clone()))
     }
 
     /// The editor `id` of `world`, made if it does not exist yet.
     pub(crate) fn editor_of(&mut self, world: Option<&str>, id: &BlockId) -> &mut EditorState {
         let caps = &self.caps;
         self.editors
-            .entry((world.map(str::to_owned), id.clone()))
+            .entry(PaneKey::new(Owner::of(world), id.clone()))
             .or_insert_with(|| EditorState::with_caps(Arc::clone(caps)))
     }
 
@@ -539,7 +585,7 @@ impl Model {
     #[must_use]
     pub fn input_of(&self, world: &str) -> Option<String> {
         self.find(world)?;
-        let key = (Some(world.to_owned()), self.input_id_of(Some(world)));
+        let key = PaneKey::new(Owner::of(Some(world)), self.input_id_of(Some(world)));
         self.editors.get(&key).map(EditorState::text)
     }
 
@@ -547,7 +593,7 @@ impl Model {
     #[must_use]
     pub fn text_of(&self, world: Option<&str>, id: &BlockId) -> Option<String> {
         self.editors
-            .get(&(world.map(str::to_owned), id.clone()))
+            .get(&PaneKey::new(Owner::of(world), id.clone()))
             .map(EditorState::text)
     }
 
@@ -570,8 +616,9 @@ impl Model {
     }
 
     /// Gives the focus to the world at `index` and clears its unseen mark. If no world had the
-    /// focus, the text of the loose editor moves into the editor of that world, and the kept
-    /// notices go into its pane. Until the first list ends, it does nothing.
+    /// focus, the text of each loose editor moves into the editor of that world, and each kept
+    /// notice of no world becomes a notice of that world and goes into its panes. Until the
+    /// first list ends, it does nothing.
     pub(crate) fn set_focus(&mut self, index: usize) {
         if self.first_list {
             return;
@@ -593,8 +640,8 @@ impl Model {
             let loose: Vec<BlockId> = self
                 .editors
                 .keys()
-                .filter(|(world, _)| world.is_none())
-                .map(|(_, editor)| editor.clone())
+                .filter(|key| key.owner == Owner::Client)
+                .map(|key| key.id.clone())
                 .collect();
             for editor in loose {
                 let state = self.editor_of(None, &editor);
@@ -604,31 +651,30 @@ impl Model {
                     self.editor_of(Some(&id), &editor).set_text(&text);
                 }
             }
+            for kept in &mut self.notices {
+                if kept.owner.is_none() {
+                    kept.owner = Some(id.clone());
+                }
+            }
             self.replay_notices();
         }
-        self.show_unshown();
         // The player now reads the notices of this world, so the line goes there.
         self.say_ended("the focus moved", ended);
     }
 
-    /// Adds the kept notices at the bottom of the pane that shows the notices of the world in
-    /// focus.
+    /// Routes each kept notice through the layout of its owner, and adds it at the bottom of
+    /// each pane that shows it and does not hold it yet.
     pub(crate) fn replay_notices(&mut self) {
-        // A kept notice that waited shows only one time, in the list of the kept notices.
-        let hints: Vec<String> = std::mem::take(&mut self.unshown)
-            .into_iter()
-            .filter(|line| !self.notices.contains(line))
-            .collect();
-        let lines: Vec<String> = self.notices.iter().cloned().chain(hints).collect();
-        match self.pane_for(mu_config::stream::NOTICES) {
-            Some(pane) => {
-                for line in &lines {
-                    self.push(pane, line);
+        let mut kept = std::mem::take(&mut self.notices);
+        for notice in &mut kept {
+            let (keys, _) = self.route(notice.owner.as_deref(), &notices_stream());
+            for key in keys {
+                if notice.panes.insert(key.clone()) {
+                    self.push_to(&key, notice.owner.as_deref(), &notice.line, &[]);
                 }
             }
-            // No pane shows the notices now, so each line waits for one.
-            None => self.unshown = lines,
         }
+        self.notices = kept;
     }
 
     /// The block of `blocks`, the blocks of one pane, that shows: the one in front of the stack.
@@ -641,61 +687,95 @@ impl Model {
             .or(Some(first))
     }
 
-    /// The pane of the world `world`, or the pane of notices for no world.
-    fn world_pane(&self, world: Option<&str>) -> PaneId {
-        world
-            .and_then(|id| self.find(id))
-            .map_or(PaneId::NOTICES, |index| self.worlds[index].pane)
+    /// The key of the `output` `id` in the layout of `world`: the owner `All` for an output of
+    /// all worlds, and the owner of `world` for each other output.
+    pub(crate) fn key_of(&self, world: Option<&str>, id: &BlockId) -> PaneKey {
+        let all = self
+            .layout_of(world)
+            .steps()
+            .iter()
+            .find(|step| step.kind == BlockKind::Output && &step.id == id)
+            .and_then(|step| step.selection.as_ref())
+            .is_some_and(|selection| selection.scope == Scope::AllWorlds);
+        let owner = if all { Owner::All } else { Owner::of(world) };
+        PaneKey::new(owner, id.clone())
     }
 
-    /// The pane of the `output` `id` of `world`: the pane of the world for the main `output`
-    /// of its plan, and a pane of its own for each other one. None for a block that has no
-    /// pane yet. This is the one rule of which pane an `output` shows.
+    /// The pane of the `output` `id` of `world`, or none for a block that holds no line yet.
+    /// This is the one rule of which pane an `output` shows.
     pub(crate) fn pane_of(&self, world: Option<&str>, id: &BlockId) -> Option<PaneId> {
-        if id.as_str() == mu_config::stream::MAIN {
-            return Some(self.world_pane(world));
+        self.pane_keys.get(&self.key_of(world, id)).copied()
+    }
+
+    /// The pane of `key`, made if it does not exist yet.
+    pub(crate) fn pane_at(&mut self, key: &PaneKey) -> PaneId {
+        if let Some(pane) = self.pane_keys.get(key) {
+            return *pane;
         }
-        self.extra_panes
-            .get(&(world.map(str::to_owned), id.clone()))
-            .copied()
+        let pane = PaneId(self.next_pane);
+        self.next_pane += 1;
+        self.panes
+            .insert(pane, PaneState::with_caps(Arc::clone(&self.caps)));
+        self.pane_keys.insert(key.clone(), pane);
+        pane
+    }
+
+    /// The keys of the panes that show a line of the streams `names` of `world`, each one time
+    /// and in the order of the plan, and the streams that no output of the layout of `world`
+    /// shows. This is the one rule of where a line goes.
+    pub(crate) fn route(
+        &self,
+        world: Option<&str>,
+        names: &[StreamName],
+    ) -> (Vec<PaneKey>, Vec<StreamName>) {
+        let layout = self.layout_of(world);
+        let mut keys: Vec<PaneKey> = Vec::new();
+        let mut missing = Vec::new();
+        for name in names {
+            let mut found = false;
+            for (id, selection) in layout.showing(name) {
+                found = true;
+                let owner = match selection.scope {
+                    Scope::AllWorlds => Owner::All,
+                    Scope::World => Owner::of(world),
+                };
+                let key = PaneKey::new(owner, id.clone());
+                if !keys.contains(&key) {
+                    keys.push(key);
+                }
+            }
+            if !found {
+                missing.push(name.clone());
+            }
+        }
+        (keys, missing)
+    }
+
+    /// Adds the line `text` of `owner`, a world or no world, with `spans` at the bottom of the
+    /// pane of `key`. A pane of all worlds puts the dim name of the owner in front of the line.
+    pub(crate) fn push_to(
+        &mut self,
+        key: &PaneKey,
+        owner: Option<&str>,
+        text: &str,
+        spans: &[(usize, Style)],
+    ) {
+        let pane = self.pane_at(key);
+        let Some(state) = self.panes.get_mut(&pane) else {
+            return;
+        };
+        if key.owner == Owner::All {
+            let (text, spans) = prefixed(owner.unwrap_or("client"), text, spans);
+            state.push_styled(&text, &spans);
+        } else {
+            state.push_styled(text, spans);
+        }
     }
 
     /// The pane of the `output` `id` of the world in focus.
     #[must_use]
     pub fn pane_of_block(&self, id: &BlockId) -> Option<PaneId> {
         self.pane_of(self.focused(), id)
-    }
-
-    /// The pane that takes a line of the stream `stream` for `world`, made if it does not
-    /// exist yet. None if the layout of the world holds no `output`.
-    pub(crate) fn pane_in(&mut self, world: Option<&str>, stream: &str) -> Option<PaneId> {
-        let layout = self.layout_of(world);
-        let name = mu_config::stream::StreamName::new(stream).ok()?;
-        let named = |wanted: &str| {
-            layout
-                .ids_of(BlockKind::Output)
-                .find(|id| id.as_str() == wanted)
-        };
-        let target = named(stream)
-            .or_else(|| layout.showing(&name).map(|(id, _)| id).next())
-            .or_else(|| named(mu_config::stream::MAIN))?
-            .clone();
-        if let Some(pane) = self.pane_of(world, &target) {
-            return Some(pane);
-        }
-        let pane = PaneId(self.next_pane);
-        self.next_pane += 1;
-        self.panes
-            .insert(pane, PaneState::with_caps(Arc::clone(&self.caps)));
-        self.extra_panes
-            .insert((world.map(str::to_owned), target), pane);
-        Some(pane)
-    }
-
-    /// The pane that takes a line of the stream `stream` for the world in focus.
-    pub(crate) fn pane_for(&mut self, stream: &str) -> Option<PaneId> {
-        let world = self.focused().map(str::to_owned);
-        self.pane_in(world.as_deref(), stream)
     }
 
     /// Takes the line break of each world of a list of the worlds. A listed world that the
@@ -736,22 +816,18 @@ impl Model {
             .binary_search_by(|world| order(&world.id).cmp(&order(id)))
     }
 
-    /// The index of `id`, which this adds in its order, with a new pane, if it is new. A new
-    /// world takes the focus when no world has it, with the notices in its pane, and the focus
-    /// stays on its world.
+    /// The index of `id`, which this adds in its order, with the pane of its `main`, if it is
+    /// new. A new world takes the focus when no world has it, with the notices in its panes,
+    /// and the focus stays on its world.
     pub(crate) fn world(&mut self, id: &str) -> usize {
         match self.search(id) {
             Ok(index) => index,
             Err(index) => {
-                let pane = PaneId(self.next_pane);
-                self.next_pane += 1;
-                self.panes
-                    .insert(pane, PaneState::with_caps(Arc::clone(&self.caps)));
+                self.pane_at(&PaneKey::main(Some(id)));
                 self.worlds.insert(
                     index,
                     World {
                         id: id.to_owned(),
-                        pane,
                         unseen: false,
                         style: Style::default(),
                         line_break: None,
@@ -790,63 +866,41 @@ impl Model {
         self.panes.get(&id)
     }
 
-    /// The pane of the world in focus, or the pane of notices.
+    /// The pane of `main` of the world in focus, or of no world when no world has the focus.
     #[must_use]
     pub fn focused_pane(&self) -> PaneId {
-        self.focused_world()
-            .map_or(PaneId::NOTICES, |world| world.pane)
+        self.pane_keys
+            .get(&PaneKey::main(self.focused()))
+            .copied()
+            .unwrap_or(CLIENT_MAIN)
     }
 
-    /// Adds the system line `-- <text>` at the bottom of the pane that shows the notices of the
-    /// world in focus. After a Reset clears the panes of the worlds, the line comes back in the
-    /// pane that shows the notices then.
+    /// Adds the system line `-- <text>` of the world in focus, or of no world, as a line of the
+    /// stream `notices`. After a Reset clears the panes of the worlds, the line comes back in
+    /// each pane that shows it then.
     pub(crate) fn notice(&mut self, text: &str) {
         let line = format!("-- {text}");
-        self.show_notice(&line);
-        self.notices.push(line);
+        let owner = self.focused().map(str::to_owned);
+        let panes = self.show_notice(owner.as_deref(), &line);
+        self.notices.push(Kept { line, owner, panes });
     }
 
-    /// Adds the line `-- <text>` at the bottom of the pane that shows the notices of the world
-    /// in focus, for a key that did nothing.
-    /// Unlike [`Self::notice`], the line does not come back after a Reset, because it is about
-    /// one moment.
+    /// Adds the line `-- <text>` of the world in focus as a line of the stream `notices`, for a
+    /// key that did nothing. Unlike [`Self::notice`], the line does not come back after a
+    /// Reset, because it is about one moment.
     pub(crate) fn hint(&mut self, text: &str) {
-        self.show_notice(&format!("-- {text}"));
+        let owner = self.focused().map(str::to_owned);
+        self.show_notice(owner.as_deref(), &format!("-- {text}"));
     }
 
-    /// Adds `line` at the bottom of the pane that shows the notices of the world in focus. A
-    /// layout with no `output` has no such pane, so the line waits for one.
-    fn show_notice(&mut self, line: &str) {
-        // The lines that waited show first, so the lines keep their order.
-        self.show_unshown();
-        if let Some(pane) = self.pane_for(mu_config::stream::NOTICES) {
-            self.push(pane, line);
-        } else {
-            if self.unshown.len() == UNSHOWN_MAX {
-                self.unshown.remove(0);
-            }
-            self.unshown.push(line.to_owned());
+    /// Adds `line` as a line of the stream `notices` of `owner`, and gives the keys of the
+    /// panes that took it.
+    pub(crate) fn show_notice(&mut self, owner: Option<&str>, line: &str) -> HashSet<PaneKey> {
+        let (keys, _) = self.route(owner, &notices_stream());
+        for key in &keys {
+            self.push_to(key, owner, line, &[]);
         }
-    }
-
-    /// Adds each line that waited for a pane of the notices, if the layout has one now.
-    pub(crate) fn show_unshown(&mut self) {
-        if self.unshown.is_empty() {
-            return;
-        }
-        if let Some(pane) = self.pane_for(mu_config::stream::NOTICES) {
-            for line in std::mem::take(&mut self.unshown) {
-                self.push(pane, &line);
-            }
-        }
-    }
-
-    /// Adds `line` at the bottom of `pane`.
-    pub(crate) fn push(&mut self, pane: PaneId, line: &str) {
-        self.panes
-            .entry(pane)
-            .or_insert_with(|| PaneState::with_caps(Arc::clone(&self.caps)))
-            .push(line);
+        keys.into_iter().collect()
     }
 
     /// Puts `text` in the pose editor, one line for each part between two LF, with the cursor at
@@ -856,8 +910,25 @@ impl Model {
     }
 }
 
-/// The plan of [`default_layout`] if the default layout does not build.
-pub(crate) const FALLBACK_LAYOUT: &[&str] = &["output", "editor below main"];
+/// The stream `notices` alone.
+fn notices_stream() -> Vec<StreamName> {
+    StreamName::new(NOTICES).into_iter().collect()
+}
+
+/// The line `text` with the dim prefix `<owner>: ` in front, and `spans` moved past it.
+fn prefixed(owner: &str, text: &str, spans: &[(usize, Style)]) -> (String, Vec<(usize, Style)>) {
+    let prefix = format!("{owner}: ");
+    let start = prefix.len();
+    let mut moved = vec![(0, Style::default().add_modifier(Modifier::DIM))];
+    if spans.first().is_none_or(|(offset, _)| *offset != 0) {
+        moved.push((start, Style::default()));
+    }
+    moved.extend(spans.iter().map(|(offset, style)| (offset + start, *style)));
+    (prefix + text, moved)
+}
+
+/// The plan of the default layout if the built-in default does not build.
+pub const FALLBACK_LAYOUT: &[&str] = &["output", "editor below main"];
 
 /// The layout of a client whose configuration names none.
 pub(crate) fn default_layout() -> Layout {

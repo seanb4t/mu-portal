@@ -1425,3 +1425,536 @@ fn a_failed_save_puts_back_the_last_good_layout_of_the_server() {
     // The notice of the bad layout shows one time, not again at the restore.
     assert_eq!(notices_of(&model, "the bad layout"), 1);
 }
+
+// The routing of lines and notices by the streams of each event.
+
+use mu_config::layout::{BlockId, Layout};
+use mu_proto::World;
+
+fn strings(lines: &[&str]) -> Vec<String> {
+    lines.iter().map(ToString::to_string).collect()
+}
+
+/// A configuration with the layout `lines`, and the layout of each key of `worlds`.
+fn layouts(lines: &[&str], worlds: &[(&str, &[&str])]) -> GetClientConfigResponse {
+    GetClientConfigResponse {
+        revision: format!("{lines:?}{worlds:?}"),
+        echo: "show".to_owned(),
+        layout_name: "test".to_owned(),
+        layout: strings(lines),
+        world_layouts: worlds
+            .iter()
+            .map(|(key, lines)| NamedLayout {
+                key: (*key).to_owned(),
+                name: format!("of-{}", key.replace('/', "-")),
+                lines: strings(lines),
+                ..Default::default()
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+
+/// Gives `model` the layout `lines`, and the layout of each key of `worlds`.
+fn with_layouts(model: &mut Model, lines: &[&str], worlds: &[(&str, &[&str])]) {
+    let config = layouts(lines, worlds);
+    model.apply_config(config.clone());
+    assert_eq!(model.config(), Some(&config));
+}
+
+/// A notice that a reset keeps: a failed list of the layouts with the reason `reason`.
+fn kept_notice(model: &mut Model, reason: &str) {
+    update(
+        model,
+        Msg::Layouts {
+            next: false,
+            names: Err(reason.to_owned()),
+        },
+    );
+}
+
+/// A line of the game of `world` with the streams `streams`.
+fn line_of(world: &str, text: &str, streams: &[&str]) -> Msg {
+    Msg::Client(ClientEvent::Event(Event {
+        world: world.to_owned(),
+        kind: EventKind::EVENT_KIND_LINE.into(),
+        source: Source::SOURCE_GAME.into(),
+        text: text.to_owned(),
+        streams: strings(streams),
+        ..Default::default()
+    }))
+}
+
+fn send_line(model: &mut Model, world: &str, text: &str, streams: &[&str]) {
+    update(model, line_of(world, text, streams));
+}
+
+fn block(id: &str) -> BlockId {
+    BlockId::new(id).expect("an id")
+}
+
+/// The rows of the pane of `id` on an 80 by 24 screen, with no trailing spaces, no empty row
+/// and no title row.
+fn rows_of(model: &mut Model, id: &str) -> Vec<String> {
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal.draw(|frame| view(model, frame)).unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let solved = mu_tui::solved(model, 80, 24);
+    let area = solved
+        .pane_of(&block(id))
+        .unwrap_or_else(|| panic!("no pane of {id}"))
+        .area;
+    let title = format!("[{id}]");
+    (area.y..area.y + area.height)
+        .map(|y| {
+            let row: String = (area.x..area.x + area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect();
+            row.trim_end().to_owned()
+        })
+        .filter(|row| !row.is_empty() && !row.starts_with(&title))
+        .collect()
+}
+
+fn count(rows: &[String], check: impl Fn(&str) -> bool) -> usize {
+    rows.iter().filter(|row| check(row)).count()
+}
+
+fn notices(rows: &[String]) -> usize {
+    count(rows, |row| row.starts_with("-- "))
+}
+
+fn focus_next(model: &mut Model) {
+    press(model, KeyCode::Char('n'), Modifiers::CONTROL);
+}
+
+fn run_line(model: &mut Model, text: &str) {
+    type_text(model, text);
+    press(model, KeyCode::Enter, Modifiers::NONE);
+}
+
+const CHAT_OF_ALL: &[&str] = &[
+    "output",
+    "editor below main",
+    "output as chat of all worlds right of main",
+];
+
+const NOTICES_OF_ALL: &[&str] = &[
+    "output as main showing main",
+    "editor below main",
+    "output as notices of all worlds right of main",
+];
+
+const NOTICES_BESIDE: &[&str] = &[
+    "output as main showing main",
+    "editor below main",
+    "output as notices right of main",
+];
+
+#[test]
+fn a_line_goes_to_each_matching_output() {
+    let mut model = model();
+    with_layouts(
+        &mut model,
+        &[
+            "output",
+            "editor below main",
+            "output as comms showing chan-*, pages right of main",
+            "output as log showing pages below comms",
+        ],
+        &[],
+    );
+    send_line(&mut model, "alpha/aria", "Bob pages: hi", &["pages"]);
+    let shown = |model: &mut Model, id| count(&rows_of(model, id), |row| row == "Bob pages: hi");
+    assert_eq!(
+        (
+            shown(&mut model, "comms"),
+            shown(&mut model, "log"),
+            shown(&mut model, "main")
+        ),
+        (1, 1, 0)
+    );
+}
+
+#[test]
+fn a_line_shows_once_in_one_output() {
+    let mut model = model();
+    with_layouts(
+        &mut model,
+        &[
+            "output as main showing main, notices, pages",
+            "editor below main",
+        ],
+        &[],
+    );
+    send_line(
+        &mut model,
+        "alpha/aria",
+        "Bob pages: hi",
+        &["pages", "main"],
+    );
+    let rows = rows_of(&mut model, "main");
+    assert_eq!(count(&rows, |row| row == "Bob pages: hi"), 1, "{rows:?}");
+}
+
+#[test]
+fn two_outputs_show_main() {
+    let mut model = model();
+    with_layouts(
+        &mut model,
+        &[
+            "output",
+            "editor below main",
+            "output as log showing main right of main",
+        ],
+        &[],
+    );
+    send_line(&mut model, "alpha/aria", "A bell rings.", &["main"]);
+    let shown = |model: &mut Model, id| count(&rows_of(model, id), |row| row == "A bell rings.");
+    assert_eq!(
+        (shown(&mut model, "main"), shown(&mut model, "log")),
+        (1, 1)
+    );
+}
+
+#[test]
+fn a_stream_with_no_output_gives_one_notice() {
+    let mut model = model();
+    send_line(&mut model, "alpha/aria", "[Public] one", &["chan-public"]);
+    send_line(&mut model, "alpha/aria", "[Public] two", &["chan-public"]);
+    let rows = rows_of(&mut model, "main");
+    let named = count(&rows, |row| {
+        row.starts_with("-- ") && row.contains("chan-public") && row.contains("alpha/aria")
+    });
+    assert_eq!(
+        (
+            named,
+            notices(&rows),
+            count(&rows, |row| row.starts_with("[Public]"))
+        ),
+        (1, 1, 0),
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn a_line_in_two_streams_gives_a_notice_for_the_stream_with_no_output() {
+    let mut model = model();
+    send_line(
+        &mut model,
+        "alpha/aria",
+        "Bob pages: hi",
+        &["pages", "main"],
+    );
+    let rows = rows_of(&mut model, "main");
+    assert_eq!(
+        (
+            count(&rows, |row| row == "Bob pages: hi"),
+            count(&rows, |row| row.starts_with("-- ") && row.contains("pages"))
+        ),
+        (1, 1),
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn an_event_with_no_streams_goes_to_main() {
+    let mut model = model();
+    send_line(&mut model, "alpha/aria", "A bell rings.", &[]);
+    let rows = rows_of(&mut model, "main");
+    assert_eq!(count(&rows, |row| row == "A bell rings."), 1, "{rows:?}");
+}
+
+#[test]
+fn a_refused_line_notice_belongs_to_its_world() {
+    let mut model = model();
+    with_layouts(&mut model, NOTICES_BESIDE, &[]);
+    update(
+        &mut model,
+        Msg::Reply(mu_tui::Reply::Refused {
+            world: "beta/bryn".to_owned(),
+            text: "hi".to_owned(),
+            reason: "down".to_owned(),
+        }),
+    );
+    let before = notices(&rows_of(&mut model, "notices"));
+    focus_next(&mut model);
+    let after = rows_of(&mut model, "notices");
+    assert_eq!(
+        (before, after.last().map(String::as_str)),
+        (0, Some("-- down")),
+        "{after:?}"
+    );
+}
+
+#[test]
+fn a_notice_of_no_world_has_the_owner_client() {
+    let mut model = Model::new([]);
+    with_layouts(&mut model, NOTICES_OF_ALL, &[]);
+    run_line(&mut model, "hi");
+    let rows = rows_of(&mut model, "notices");
+    assert_eq!(
+        count(&rows, |row| row.starts_with("client: -- ")),
+        1,
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn a_kept_notice_keeps_its_owner() {
+    let mut model = model();
+    kept_notice(&mut model, "nowhere/nobody");
+    focus_next(&mut model);
+    update(&mut model, reset());
+    let of_beta = notices(&rows_of(&mut model, "main"));
+    focus_next(&mut model);
+    let of_alpha = rows_of(&mut model, "main");
+    assert_eq!(
+        (
+            of_beta,
+            count(&of_alpha, |row| row.contains("nowhere/nobody"))
+        ),
+        (0, 1),
+        "{of_alpha:?}"
+    );
+}
+
+#[test]
+fn the_fallback_layout_is_valid() {
+    assert!(Layout::parse(mu_tui::FALLBACK_LAYOUT).is_ok());
+}
+
+#[test]
+fn a_prompt_stays_in_main() {
+    let mut model = model();
+    with_layouts(
+        &mut model,
+        &[
+            "output",
+            "editor below main",
+            "output as log showing main right of main",
+        ],
+        &[],
+    );
+    update(
+        &mut model,
+        Msg::Client(ClientEvent::Event(Event {
+            world: "alpha/aria".to_owned(),
+            kind: EventKind::EVENT_KIND_PROMPT.into(),
+            source: Source::SOURCE_GAME.into(),
+            text: "HP 10>".to_owned(),
+            streams: strings(&["main"]),
+            ..Default::default()
+        })),
+    );
+    let shown = |model: &mut Model, id| count(&rows_of(model, id), |row| row == "HP 10>");
+    assert_eq!(
+        (shown(&mut model, "main"), shown(&mut model, "log")),
+        (1, 0)
+    );
+}
+
+#[test]
+fn a_pane_of_all_worlds_is_shared() {
+    let mut model = model();
+    with_layouts(&mut model, CHAT_OF_ALL, &[]);
+    send_line(&mut model, "alpha/aria", "one", &["chat"]);
+    send_line(&mut model, "beta/bryn", "two", &["chat"]);
+    assert_eq!(
+        rows_of(&mut model, "chat"),
+        ["alpha/aria: one", "beta/bryn: two"]
+    );
+}
+
+#[test]
+fn a_pane_of_all_worlds_stays_at_a_focus_change() {
+    let mut model = model();
+    with_layouts(&mut model, CHAT_OF_ALL, &[]);
+    send_line(&mut model, "alpha/aria", "one", &["chat"]);
+    focus_next(&mut model);
+    assert_eq!(rows_of(&mut model, "chat"), ["alpha/aria: one"]);
+}
+
+#[test]
+fn a_notice_in_a_pane_of_all_worlds_has_its_world() {
+    let mut model = model();
+    with_layouts(&mut model, NOTICES_OF_ALL, &[]);
+    run_line(&mut model, "/focus nowhere/nobody");
+    let rows = rows_of(&mut model, "notices");
+    assert_eq!(
+        count(&rows, |row| row.starts_with("alpha/aria: -- ")),
+        1,
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn a_focus_change_replays_no_notice() {
+    let mut model = model();
+    kept_notice(&mut model, "down");
+    focus_next(&mut model);
+    let of_beta = notices(&rows_of(&mut model, "main"));
+    focus_next(&mut model);
+    let of_alpha = notices(&rows_of(&mut model, "main"));
+    assert_eq!((of_beta, of_alpha), (0, 1));
+}
+
+/// A model before its first list of the worlds, with the width notice of no world.
+fn starting_with_a_notice() -> Model {
+    let mut model = Model::starting();
+    probe(&mut model, &incomplete());
+    model
+}
+
+fn list(model: &mut Model) {
+    let worlds = ["alpha/aria", "beta/bryn"].map(|id| World {
+        id: id.to_owned(),
+        ..Default::default()
+    });
+    update(model, Msg::Listed(Ok(worlds.to_vec())));
+    assert_eq!(model.focused(), Some("alpha/aria"));
+}
+
+#[test]
+fn the_first_focus_carries_the_notices_of_no_world() {
+    let mut model = starting_with_a_notice();
+    list(&mut model);
+    focus_next(&mut model);
+    let of_beta = notices(&rows_of(&mut model, "main"));
+    focus_next(&mut model);
+    let of_alpha = rows_of(&mut model, "main");
+    assert_eq!(
+        (of_beta, count(&of_alpha, |row| row == WIDTH_NOTICE)),
+        (0, 1),
+        "{of_alpha:?}"
+    );
+}
+
+#[test]
+fn a_replay_skips_a_pane_that_holds_the_notice() {
+    let mut model = Model::starting();
+    with_layouts(&mut model, NOTICES_OF_ALL, &[]);
+    probe(&mut model, &incomplete());
+    list(&mut model);
+    let rows = rows_of(&mut model, "notices");
+    assert_eq!(
+        count(&rows, |row| row.contains("-- the terminal gave no")),
+        1,
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn the_first_focus_fills_a_shared_pane_that_lacks_the_notice() {
+    let mut model = Model::starting();
+    with_layouts(
+        &mut model,
+        &["output", "editor below main"],
+        &[("alpha/aria", NOTICES_OF_ALL)],
+    );
+    probe(&mut model, &incomplete());
+    list(&mut model);
+    let rows = rows_of(&mut model, "notices");
+    assert_eq!(
+        (
+            count(&rows, |row| row
+                .starts_with("alpha/aria: -- the terminal gave no")),
+            count(&rows, |row| row.contains(": -- "))
+        ),
+        (1, 1),
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn a_reset_clears_the_panes_of_all_worlds() {
+    let mut model = model();
+    with_layouts(&mut model, CHAT_OF_ALL, &[]);
+    send_line(&mut model, "alpha/aria", "one", &["chat"]);
+    update(&mut model, reset());
+    assert_eq!(rows_of(&mut model, "chat"), [] as [String; 0]);
+}
+
+#[test]
+fn a_reset_keeps_the_pane_of_no_world() {
+    let mut model = Model::new([]);
+    run_line(&mut model, "hi");
+    let before = rows_of(&mut model, "main");
+    update(&mut model, reset());
+    assert_eq!((rows_of(&mut model, "main"), before.len()), (before, 1));
+}
+
+#[test]
+fn a_reset_shows_a_notice_of_no_world_once() {
+    let mut model = Model::new([]);
+    probe(&mut model, &incomplete());
+    update(&mut model, reset());
+    update(&mut model, reset());
+    let rows = rows_of(&mut model, "main");
+    assert_eq!(count(&rows, |row| row == WIDTH_NOTICE), 1, "{rows:?}");
+}
+
+#[test]
+fn a_reset_replays_a_notice_by_the_layout_of_its_owner() {
+    let mut model = model();
+    with_layouts(
+        &mut model,
+        &["output", "editor below main"],
+        &[("alpha/aria", NOTICES_BESIDE)],
+    );
+    kept_notice(&mut model, "nowhere/nobody");
+    update(&mut model, reset());
+    assert_eq!(
+        (
+            notices(&rows_of(&mut model, "notices")),
+            notices(&rows_of(&mut model, "main"))
+        ),
+        (1, 0)
+    );
+}
+
+#[test]
+fn a_reset_puts_each_kept_notice_back_once() {
+    let mut model = model();
+    kept_notice(&mut model, "nowhere/nobody");
+    kept_notice(&mut model, "nowhere/else");
+    update(&mut model, reset());
+    update(&mut model, reset());
+    let rows = rows_of(&mut model, "main");
+    assert_eq!(
+        (
+            count(&rows, |row| row.contains("nowhere/nobody")),
+            count(&rows, |row| row.contains("nowhere/else"))
+        ),
+        (1, 1),
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn the_focused_pane_is_main_of_the_world_in_focus() {
+    let mut model = model();
+    let of_alpha = model.focused_pane();
+    focus_next(&mut model);
+    assert_eq!(
+        (
+            Some(of_alpha) != model.pane_of_block(&block("main")),
+            Some(model.focused_pane()) == model.pane_of_block(&block("main"))
+        ),
+        (true, true)
+    );
+}
+
+#[test]
+fn a_world_with_another_layout_keeps_its_line() {
+    let mut model = model();
+    with_layouts(
+        &mut model,
+        &["output", "editor below main"],
+        &[("alpha/aria", CHAT_OF_ALL)],
+    );
+    focus_next(&mut model);
+    send_line(&mut model, "alpha/aria", "one", &["chat"]);
+    focus_next(&mut model);
+    assert_eq!(rows_of(&mut model, "chat"), ["alpha/aria: one"]);
+}

@@ -48,7 +48,10 @@ pub fn solved(model: &Model, width: u16, height: u16) -> Solved {
     let rows_of = |id: &BlockId, columns: u16| {
         model
             .editors
-            .get(&(world.clone(), id.clone()))
+            .get(&crate::model::PaneKey::new(
+                crate::model::Owner::of(world.as_deref()),
+                id.clone(),
+            ))
             .map_or(1, |state| {
                 u16::try_from(state.rows(columns)).unwrap_or(u16::MAX)
             })

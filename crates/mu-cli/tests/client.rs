@@ -2475,3 +2475,626 @@ async fn arrange_mode_saves_through_the_server() {
         ["output", "editor below main", "tabs below main"]
     );
 }
+
+// The streams of each line, and the outputs that show them.
+
+/// The rule `chan` that sends each line `You say, "[<name>] ...` to the stream `chan-<name>`.
+const CHAN_RULE: &str =
+    "[[rules]]\nid = \"chan\"\npattern = '^You say, \"\\[(\\w+)\\] '\nstream = \"chan-$1\"\n";
+
+/// The rule `chan` that sends each line `You say, "[...` to the stream `chat`.
+const CHAT_RULE: &str =
+    "[[rules]]\nid = \"chan\"\npattern = '^You say, \"\\['\nstream = \"chat\"\n";
+
+/// The layout `sidebar`, with its main output and its output of the notices.
+const SIDEBAR: &[&str] = &[
+    "output as main showing main",
+    "tabs above main",
+    "editor below main",
+    "statusline below editor",
+    "output as notices right of main, 30%",
+];
+
+const CHAT_OF_ALL: &[&str] = &[
+    "output",
+    "editor below main",
+    "output as chat of all worlds right of main",
+];
+
+/// A server with `worlds`, the layout `lines` and `global.toml` of `global`, and a client on
+/// it that shows the greeting of the first world.
+async fn with_rules(
+    worlds: &[&str],
+    lines: &[&str],
+    global: &str,
+) -> (Session, PtyClient, ConfigDir) {
+    let config = layout_dir(lines, "").file("global.toml", global);
+    let (session, client) = attached_showing(worlds, &config).await;
+    (session, client, config)
+}
+
+/// The rows left of the first divider, and the rows right of it, of each row with a divider.
+fn sides(rows: &[String]) -> (Vec<String>, Vec<String>) {
+    rows.iter()
+        .filter_map(|row| row.split_once('│'))
+        .map(|(left, right)| (left.trim_end().to_owned(), right.trim_end().to_owned()))
+        .unzip()
+}
+
+/// The rows of `rows`, with no whitespace, in one string.
+fn packed(rows: &[String]) -> String {
+    rows.concat().split_whitespace().collect()
+}
+
+/// The count of rows that start a notice of the client. The system lines of a connect and a
+/// disconnect start with `-- ` too, and do not count.
+fn notice_rows(rows: &[String]) -> usize {
+    rows.iter()
+        .map(|row| row.trim_start())
+        .filter(|row| {
+            row.starts_with("-- ")
+                && !row.starts_with("-- connect")
+                && !row.starts_with("-- disconnected")
+        })
+        .count()
+}
+
+/// Sends each of `lines` with Enter, and waits for the reply of the fake game to the last one.
+async fn say(client: &mut PtyClient, lines: &[&str]) {
+    for line in lines {
+        client.send(format!("{line}\r").as_bytes());
+    }
+    let last = format!("You say, \"{}\"", lines[lines.len() - 1]);
+    client
+        .wait_rows("the reply to the last line", |rows| {
+            packed(rows).contains(&last.split_whitespace().collect::<String>())
+        })
+        .await;
+}
+
+/// Runs the command `text`.
+fn command(client: &mut PtyClient, text: &str) {
+    client.send(format!("{text}\r").as_bytes());
+}
+
+/// Runs `/focus nowhere/nobody`, waits for its notice, and clears the command that stays in
+/// the editor.
+async fn unknown_focus(client: &mut PtyClient) {
+    let text = "/focus nowhere/nobody";
+    command(client, text);
+    let notice = "--noworldisnamednowhere/nobody";
+    client
+        .wait_rows("the notice", |rows| {
+            packed(rows).contains(notice) || packed(&sides(rows).1).contains(notice)
+        })
+        .await;
+    client.send(&vec![0x7f; text.len()]);
+    client
+        .wait_rows("the empty editor", |rows| {
+            !rows.iter().any(|row| row.trim() == text)
+        })
+        .await;
+}
+
+/// A server with no world and the layout `lines`, and a client on it that shows `title`.
+async fn no_world(lines: &[&str], title: &str) -> (Session, PtyClient, ConfigDir) {
+    let config = layout_dir(lines, "");
+    let session = Session::start(ServerBuilder::new().arg("--config").arg(config.path())).await;
+    let client = PtyClient::start_args(
+        session.server.socket(),
+        session.server.dir().path(),
+        Answers::Default,
+        &["--device".as_ref(), "laptop".as_ref()],
+        &[],
+    );
+    client
+        .wait_rows("the title", |rows| {
+            rows.iter().any(|row| row.contains(title))
+        })
+        .await;
+    (session, client, config)
+}
+
+/// A server with the fake world `alpha/aria` and the layout `sidebar` from
+/// `clients/global.toml`, and a client on it.
+async fn sidebar() -> (Session, PtyClient, ConfigDir) {
+    let config = ConfigDir::empty().file("clients/global.toml", "layout = \"sidebar\"\n");
+    let (session, client) = attached_showing(&["alpha/aria"], &config).await;
+    (session, client, config)
+}
+
+#[tokio::test]
+async fn one_output_shows_the_notices_too() {
+    let (_session, mut client, _config) = with_layer(&["alpha/aria"], "").await;
+    unknown_focus(&mut client).await;
+    let rows = client.rows();
+    assert!(
+        rows.iter().any(|row| row.trim() == "Welcome, aria.") && notice_rows(&rows) == 1,
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn an_output_for_the_notices() {
+    let (_session, mut client, _config) = with_layout(
+        &["alpha/aria"],
+        &[
+            "output as main showing main",
+            "editor below main",
+            "output as notices right of main",
+        ],
+    )
+    .await;
+    unknown_focus(&mut client).await;
+    let (main, notices) = sides(&client.rows());
+    assert_eq!(
+        (
+            main.iter().any(|row| row.trim() == "Welcome, aria."),
+            notice_rows(&main),
+            notice_rows(&notices)
+        ),
+        (true, 0, 1),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn an_output_with_no_stream_yet() {
+    let (_session, client, _config) = with_layout(
+        &["alpha/aria"],
+        &[
+            "output",
+            "editor below main",
+            "output as channels right of main",
+        ],
+    )
+    .await;
+    let (_, channels) = sides(&client.rows());
+    let shown: Vec<&str> = channels
+        .iter()
+        .map(|row| row.trim())
+        .filter(|row| !row.is_empty())
+        .collect();
+    assert_eq!(shown, ["[channels]"], "{}", client.contents());
+}
+
+#[tokio::test]
+async fn the_main_output_is_not_the_first_output_line() {
+    let (_session, mut client, _config) = with_layout(
+        &["alpha/aria"],
+        &[
+            "editor",
+            "output as notices above editor",
+            "output as main showing main left of notices",
+        ],
+    )
+    .await;
+    say(&mut client, &["A line."]).await;
+    unknown_focus(&mut client).await;
+    let (main, notices) = sides(&client.rows());
+    assert_eq!(
+        (
+            main.iter().any(|row| row.trim() == "You say, \"A line.\""),
+            notice_rows(&notices)
+        ),
+        (true, 1),
+        "{}",
+        client.contents()
+    );
+}
+
+/// The reason of the refusal of a line to `alpha/aria` after a disconnect, with no whitespace.
+const NOT_CONNECTED: &str = "alpha/ariaisnotconnected";
+
+#[tokio::test]
+async fn a_refused_line_goes_to_the_notices() {
+    let (mut session, mut client, _config) = with_layout(&["alpha/aria"], SIDEBAR).await;
+    session.client.disconnect("alpha/aria").await.unwrap();
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    client.send(b"hi\r");
+    client
+        .wait_rows("the refusal in the notices", |rows| {
+            packed(&sides(rows).1).contains(NOT_CONNECTED)
+        })
+        .await;
+    assert!(
+        !packed(&sides(&client.rows()).0).contains(NOT_CONNECTED),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn a_refused_line_of_a_world_that_lost_the_focus() {
+    let (mut session, mut client, _config) = with_layout(TWO_WORLDS, SIDEBAR).await;
+    session.client.disconnect("alpha/aria").await.unwrap();
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    // The focus moves before the reply to the send comes back.
+    client.send(b"hi\r\x0e");
+    client
+        .wait_rows("the focus on beta/bryn", |rows| {
+            rows.iter().any(|row| row.contains("[beta/bryn]"))
+        })
+        .await;
+    // A line of beta/bryn and its reply come after the refusal of the line of alpha/aria.
+    say(&mut client, &["hello"]).await;
+    assert_eq!(
+        notice_rows(&sides(&client.rows()).1),
+        0,
+        "{}",
+        client.contents()
+    );
+    client.send(b"\x0e");
+    client
+        .wait_rows("the refusal in the notices of alpha/aria", |rows| {
+            packed(&sides(rows).1).contains(NOT_CONNECTED)
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn a_line_with_no_world_goes_to_the_notices() {
+    let config = layout_dir(SIDEBAR, "");
+    let (_session, mut client) = attached_with(&[], &config, Answers::Default).await;
+    client.send(b"hi\r");
+    client
+        .wait_rows("the notice", |rows| notice_rows(&sides(rows).1) > 0)
+        .await;
+    assert_eq!(
+        notice_rows(&sides(&client.rows()).0),
+        0,
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn a_notice_shows_under_the_world_in_focus_only() {
+    let (_session, mut client, _config) = with_layer(TWO_WORLDS, "").await;
+    unknown_focus(&mut client).await;
+    client.send(b"\x0e");
+    client
+        .wait_rows("the greeting of beta/bryn", |rows| {
+            rows.iter().any(|row| row.trim() == "Welcome, bryn.")
+        })
+        .await;
+    assert!(
+        !packed(&client.rows()).contains("nowhere/nobody"),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn an_output_that_comes_later_starts_with_new_lines() {
+    let (_session, mut client, _config) = with_layer(&["alpha/aria"], "").await;
+    unknown_focus(&mut client).await;
+    command(&mut client, "/place output as notices right of main");
+    client
+        .wait_rows("the pane of the notices", |rows| {
+            rows.iter().any(|row| row.contains("[notices]"))
+        })
+        .await;
+    let (main, notices) = sides(&client.rows());
+    let shown: Vec<&str> = notices
+        .iter()
+        .map(|row| row.trim())
+        .filter(|row| !row.is_empty())
+        .collect();
+    assert_eq!(shown, ["[notices]"], "{}", client.contents());
+    assert!(
+        main.iter()
+            .any(|row| row.trim_start().starts_with("-- ") && row.contains("nowhere/nobody")),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn the_sidebar_keeps_notices_out_of_main() {
+    let (_session, mut client, _config) = sidebar().await;
+    unknown_focus(&mut client).await;
+    let (main, notices) = sides(&client.rows());
+    assert_eq!(
+        (notice_rows(&main), notice_rows(&notices)),
+        (0, 1),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn one_output_for_all_channels() {
+    let (_session, mut client, _config) = with_rules(
+        &["alpha/aria"],
+        &[
+            "output",
+            "editor below main",
+            "output as comms showing chan-*, pages right of main",
+        ],
+        CHAN_RULE,
+    )
+    .await;
+    say(&mut client, &["[Public] one", "[Ooc] two"]).await;
+    let (main, comms) = sides(&client.rows());
+    let shows = |rows: &[String], text: &str| rows.iter().any(|row| row.trim() == text);
+    let one = "You say, \"[Public] one\"";
+    let two = "You say, \"[Ooc] two\"";
+    assert_eq!(
+        (
+            shows(&comms, one),
+            shows(&comms, two),
+            shows(&main, one),
+            shows(&main, two)
+        ),
+        (true, true, false, false),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn an_exclusion() {
+    let (_session, mut client, _config) = with_rules(
+        &["alpha/aria"],
+        &[
+            "output as main showing main, notices, chan-*, !chan-ooc",
+            "editor below main",
+        ],
+        CHAN_RULE,
+    )
+    .await;
+    say(&mut client, &["[Ooc] two", "[Public] one"]).await;
+    let rows = client.rows();
+    assert!(
+        !rows
+            .iter()
+            .any(|row| row.trim() == "You say, \"[Ooc] two\""),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn two_outputs_show_main() {
+    let (_session, client, _config) = with_layout(
+        &["alpha/aria"],
+        &[
+            "output",
+            "editor below main",
+            "output as log showing main right of main",
+        ],
+    )
+    .await;
+    client
+        .wait_rows("the greeting in both panes", |rows| {
+            let (main, log) = sides(rows);
+            [main, log]
+                .iter()
+                .all(|rows| rows.iter().any(|row| row.trim() == "Welcome, aria."))
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn a_line_in_two_streams_of_one_output() {
+    let rule =
+        "[[rules]]\nid = \"page\"\npattern = '^You say, \"page'\nstream = [\"pages\", \"main\"]\n";
+    let (_session, mut client, _config) = with_rules(
+        &["alpha/aria"],
+        &[
+            "output as main showing main, notices, pages",
+            "tabs above main",
+            "editor below main",
+        ],
+        rule,
+    )
+    .await;
+    say(&mut client, &["page hi"]).await;
+    let shown = client
+        .rows()
+        .iter()
+        .filter(|row| row.trim() == "You say, \"page hi\"")
+        .count();
+    assert_eq!(shown, 1, "{}", client.contents());
+}
+
+#[tokio::test]
+async fn a_channel_with_no_output() {
+    let config = ConfigDir::empty().file("global.toml", CHAN_RULE);
+    let (_session, mut client) = attached_showing(&["alpha/aria"], &config).await;
+    client.send(b"[Public] one\r[Public] two\r");
+    wait_notice(&client, &["chan-public", "alpha/aria"]).await;
+    // A third line comes after the two, so both of them arrived.
+    say(&mut client, &["three"]).await;
+    let rows = client.rows();
+    assert_eq!(
+        (
+            notice_rows(&rows),
+            packed(&rows).contains("Yousay,\"[Public]")
+        ),
+        (1, false),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn hide_the_main_output() {
+    let (_session, mut client, _config) = with_layer(&["alpha/aria"], "").await;
+    command(&mut client, "/pane hide main");
+    client
+        .wait_rows("the refusal", |rows| {
+            rows.iter()
+                .any(|row| row.trim_start().starts_with("-- ") && row.contains("main"))
+        })
+        .await;
+    assert!(
+        client
+            .rows()
+            .iter()
+            .any(|row| row.trim() == "Welcome, aria."),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn hide_the_only_output_of_the_notices() {
+    let (_session, mut client, _config) = sidebar().await;
+    command(&mut client, "/pane hide notices");
+    client
+        .wait_rows("the refusal in the notices", |rows| {
+            let notices = sides(rows).1;
+            notices
+                .iter()
+                .any(|row| row.trim_start().starts_with("-- "))
+                && packed(&notices).contains("notices")
+        })
+        .await;
+    assert!(
+        client.rows().iter().any(|row| row.contains("[notices]")),
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn hide_a_second_output_of_the_notices() {
+    let (_session, mut client, _config) = with_layout(
+        &["alpha/aria"],
+        &[
+            "output",
+            "editor below main",
+            "output as notices right of main",
+        ],
+    )
+    .await;
+    command(&mut client, "/pane hide notices");
+    client
+        .wait_rows("no pane of the notices", |rows| {
+            !rows
+                .iter()
+                .any(|row| row.contains("[notices]") || row.contains('│'))
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn a_page_from_another_world() {
+    let (_session, mut client, _config) = with_rules(TWO_WORLDS, CHAT_OF_ALL, CHAT_RULE).await;
+    command(&mut client, "/focus beta/bryn");
+    say(&mut client, &["[Public] hi"]).await;
+    command(&mut client, "/focus alpha/aria");
+    client
+        .wait_rows("the page of beta/bryn beside main of alpha/aria", |rows| {
+            let (main, chat) = sides(rows);
+            main.iter().any(|row| row.trim() == "Welcome, aria.")
+                && chat
+                    .iter()
+                    .any(|row| row.trim() == "beta/bryn: You say, \"[Public] hi\"")
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn a_place_command_with_the_scope() {
+    let (_session, mut client, _config) = with_layer(&["alpha/aria"], "").await;
+    command(
+        &mut client,
+        "/place output as notices of all worlds right of main",
+    );
+    client
+        .wait_rows("the pane of the notices", |rows| {
+            rows.iter().any(|row| row.contains("[notices]"))
+        })
+        .await;
+    command(&mut client, "/focus nowhere/nobody");
+    client
+        .wait_rows("the notice of alpha/aria", |rows| {
+            let notices = sides(rows).1;
+            notices
+                .iter()
+                .any(|row| row.trim_start().starts_with("alpha/aria: -- "))
+                && packed(&notices).contains("nowhere/nobody")
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn two_worlds_in_one_pane() {
+    let (_session, mut client, _config) = with_rules(TWO_WORLDS, CHAT_OF_ALL, CHAT_RULE).await;
+    say(&mut client, &["[Public] one"]).await;
+    command(&mut client, "/focus beta/bryn");
+    say(&mut client, &["[Public] two"]).await;
+    let chat: Vec<String> = sides(&client.rows())
+        .1
+        .iter()
+        .map(|row| row.trim().to_owned())
+        .filter(|row| row.contains(": You say"))
+        .collect();
+    assert_eq!(
+        chat,
+        [
+            "alpha/aria: You say, \"[Public] one\"",
+            "beta/bryn: You say, \"[Public] two\""
+        ],
+        "{}",
+        client.contents()
+    );
+}
+
+#[tokio::test]
+async fn a_notice_in_an_output_of_all_worlds() {
+    let (_session, mut client, _config) = no_world(
+        &[
+            "output as main showing main",
+            "editor below main",
+            "output as notices of all worlds right of main",
+        ],
+        "[notices]",
+    )
+    .await;
+    client.send(b"hi\r");
+    client
+        .wait_rows("the notice of no world", |rows| {
+            sides(rows)
+                .1
+                .iter()
+                .any(|row| row.trim_start().starts_with("client: -- "))
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn a_world_with_another_layout() {
+    let config = ConfigDir::empty()
+        .file("clients/layouts/chat.toml", &layout_file(CHAT_OF_ALL))
+        .file(
+            "clients/global.toml",
+            "[world-layouts]\n\"alpha/aria\" = \"chat\"\n\"beta/bryn\" = \"classic\"\n",
+        )
+        .file("global.toml", CHAT_RULE);
+    let (_session, mut client) = attached_showing(TWO_WORLDS, &config).await;
+    command(&mut client, "/focus beta/bryn");
+    client.send(b"[Public] two\r");
+    // The stream `chat` has no output in the layout of beta/bryn.
+    wait_notice(&client, &["streamchat", "beta/bryn"]).await;
+    command(&mut client, "/focus alpha/aria");
+    client
+        .wait_rows("the pane of chat", |rows| {
+            rows.iter().any(|row| row.contains("[chat]"))
+        })
+        .await;
+    assert!(
+        !packed(&sides(&client.rows()).1).contains("beta/bryn:"),
+        "{}",
+        client.contents()
+    );
+}

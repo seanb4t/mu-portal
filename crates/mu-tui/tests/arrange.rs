@@ -467,7 +467,7 @@ fn a_new_configuration_ends_arrange_mode() {
 #[test]
 fn a_border_that_cannot_move_says_why() {
     let mut app = laptop_with(&[
-        "output",
+        "output as main showing main",
         "editor below main",
         "output as notices right of main, 50%",
     ]);
@@ -547,9 +547,9 @@ fn a_failed_save_ends_arrange_mode_with_its_own_reason() {
     let effects = update(&mut app, Msg::LayoutSaved(Err("down".to_owned())));
     assert_eq!(effects, [Effect::FetchConfig]);
     assert!(!app.arranges());
-    let ended: Vec<&String> = app
+    let ended: Vec<&str> = app
         .notices()
-        .iter()
+        .into_iter()
         .filter(|line| line.contains("arrange mode ended"))
         .collect();
     assert_eq!(ended.len(), 1, "{:?}", app.notices());
@@ -581,5 +581,21 @@ fn a_focus_move_ends_arrange_mode_and_puts_the_layout_back() {
             .any(|line| line.contains("the focus moved") && line.contains("arrange mode ended")),
         "{:?}",
         app.notices()
+    );
+}
+
+#[test]
+fn a_move_keeps_the_selection() {
+    let mut app = laptop_with(&[
+        "output",
+        "editor below main",
+        "output as comms of all worlds showing chan-*, !chan-ooc below main",
+    ]);
+    arrange(&mut app);
+    let (x, y, width, height) = area_of(&app, "main");
+    drag_block(&mut app, "comms", (x + width - 1, y + height / 2));
+    assert_eq!(
+        app.layout().lines()[2],
+        "output as comms of all worlds showing chan-*, !chan-ooc right of main"
     );
 }

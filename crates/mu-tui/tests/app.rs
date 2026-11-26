@@ -2491,7 +2491,7 @@ const TWO_EDITORS: &[&str] = &[
 ];
 
 const SIDE_NOTICES: &[&str] = &[
-    "output",
+    "output as main showing main",
     "editor below main",
     "output as notices right of main",
 ];
@@ -2984,7 +2984,7 @@ fn the_default_max() {
 // The commands of the layout.
 
 const SIDEBAR_LINES: &[&str] = &[
-    "output",
+    "output as main showing main",
     "tabs above main",
     "editor below main",
     "statusline below editor",
@@ -3423,32 +3423,13 @@ fn a_drag_back_to_its_start_saves_nothing() {
     assert_eq!(app.layout_name(), name);
 }
 
-// The lines that wait for an output.
+// Helpers of the configuration and the editor.
 
 /// A configuration with the player layout `name` of `lines`.
 fn named_config(name: &str, lines: &[&str]) -> GetClientConfigResponse {
     let mut config = config_with(lines, &[], "{world}", &["world"], &[]);
     name.clone_into(&mut config.layout_name);
     config
-}
-
-#[test]
-fn waiting_lines_show_one_time_and_in_their_order() {
-    let mut app = laptop();
-    app.apply_config(named_config("bare", &["editor"]));
-    // The first line is a kept notice, and the second is a hint.
-    enter(&mut app, "/focus nowhere/nobody");
-    app.apply_config(named_config("mine", &["output", "editor below main"]));
-    enter_cleared(&mut app, "/layout plan");
-    let rows = block_rows(&mut app, "main");
-    let notice = rows.iter().position(|row| row.contains("nowhere/nobody"));
-    let hint = rows.iter().position(|row| row == "-- 1. output");
-    assert!(notice.is_some() && notice < hint, "{rows:?}");
-    let shown = rows
-        .iter()
-        .filter(|row| row.contains("nowhere/nobody"))
-        .count();
-    assert_eq!(shown, 1, "{rows:?}");
 }
 
 /// Clears the editor, types `text` and presses Enter.

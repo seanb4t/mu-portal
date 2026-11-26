@@ -25,7 +25,6 @@ impl Model {
             self.layout_name = name;
             self.layout = layout;
         }
-        self.show_unshown();
     }
 
     /// Puts `layout` on the screen under the new name `name`, and returns the effect that

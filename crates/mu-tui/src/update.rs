@@ -3,10 +3,11 @@
 //! [`model`](crate::model) says.
 
 use std::collections::VecDeque;
-use std::sync::Arc;
+
 use std::time::Duration;
 
 use mu_client::ClientEvent;
+use mu_config::stream::Streams;
 use mu_proto::{EventKind, Source, World as ProtoWorld};
 use ratatui::style::{Modifier, Style};
 use ratatui_textarea::{CursorMove, Input, Key};
@@ -22,7 +23,7 @@ use crate::convert::convert;
 use crate::history::HISTORY_LIMIT;
 use crate::keymap::Wheel;
 use crate::model::{
-    ConfigRetry, Drag, Late, Listing, Model, PaneId, QuitArm, TickWait, WorldStatus,
+    ConfigRetry, Drag, Late, Listing, Model, Owner, PaneKey, QuitArm, TickWait, WorldStatus,
 };
 use crate::pane::{Caps, PaneState};
 use crate::probe::{self, Outcome};
@@ -1241,21 +1242,20 @@ fn on_client(model: &mut Model, item: ClientEvent) -> Vec<Effect> {
                 world.state = WorldStatus::Unknown;
                 world.connected_ms = None;
                 world.sent_ms = None;
-                if let Some(pane) = model.panes.get_mut(&world.pane) {
-                    pane.clear();
-                }
             }
-            for (key, pane) in &model.extra_panes {
-                if key.0.is_some()
+            // The replay of the journal fills the panes of the worlds again. The panes of no
+            // world keep their lines, so their notices are still there.
+            for (key, pane) in &model.pane_keys {
+                if key.owner != Owner::Client
                     && let Some(pane) = model.panes.get_mut(pane)
                 {
                     pane.clear();
                 }
             }
-            // The Reset does not clear the panes of no world, so their notices are still there.
-            if model.focused_pane() != PaneId::NOTICES {
-                model.replay_notices();
+            for kept in &mut model.notices {
+                kept.panes.retain(|key| key.owner == Owner::Client);
             }
+            model.replay_notices();
             return_waiting(model, "the server started again");
             if model.listing == Listing::Asked {
                 model.listing = Listing::AskedBeforeReset;
@@ -1322,33 +1322,49 @@ fn on_event(model: &mut Model, event: &mu_proto::Event) -> Vec<Effect> {
         model.listing = Listing::Asked;
         effects.push(Effect::ListWorlds);
     }
+    let id = model.worlds[index].id.clone();
+    let streams = Streams::from_wire(&event.streams);
+    let (keys, missing) = model.route(Some(&id), streams.names());
     let world = &mut model.worlds[index];
-    let pane = model
-        .panes
-        .entry(world.pane)
-        .or_insert_with(|| PaneState::with_caps(Arc::clone(&model.caps)));
     let prompt = event.kind.as_known() == Some(EventKind::EVENT_KIND_PROMPT);
-    match event.source.as_known() {
+    let rows: Vec<(String, Vec<(usize, Style)>)> = match event.source.as_known() {
         Some(Source::SOURCE_PLAYER) => {
             let spans = match model.echo {
                 Echo::Show => Vec::new(),
                 Echo::Dim => vec![(0, Style::default().add_modifier(Modifier::DIM))],
                 Echo::Hide => return effects,
             };
-            for row in echo_rows(&event.text, world.line_break.as_deref()) {
-                pane.push_styled(&row, &spans);
-            }
+            echo_rows(&event.text, world.line_break.as_deref())
+                .into_iter()
+                .map(|row| (row, spans.clone()))
+                .collect()
         }
-        Some(Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => {
-            pane.push(&line(event));
-        }
+        Some(Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => vec![(line(event), Vec::new())],
         _ if prompt => {
+            // A prompt is the unfinished line of the pane of `main` of its world alone.
             let mut style = world.style;
-            pane.set_unfinished(Some(convert(&event.text, &mut style)));
+            let converted = convert(&event.text, &mut style);
+            let pane = model.pane_at(&PaneKey::main(Some(&id)));
+            if let Some(pane) = model.panes.get_mut(&pane) {
+                pane.set_unfinished(Some(converted));
+            }
+            return effects;
         }
         _ => {
             let converted = convert(&event.text, &mut world.style);
-            pane.push_styled(&converted.text, &converted.spans);
+            vec![(converted.text, converted.spans)]
+        }
+    };
+    for key in &keys {
+        for (text, spans) in &rows {
+            model.push_to(key, Some(&id), text, spans);
+        }
+    }
+    for stream in missing {
+        if model.no_output.insert((stream.to_string(), id.clone())) {
+            model.notice(&format!(
+                "no output of the layout of {id} shows the stream {stream}, so its lines do not show"
+            ));
         }
     }
     effects
@@ -1378,9 +1394,7 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
     let kept = put_back(model, &world, lines);
     let notice = format!("-- {}{}", clean(&reason), in_history(kept));
     // The notice is about a line of `world`, so it goes to the notices of that world.
-    if let Some(pane) = model.pane_in(Some(&world), mu_config::stream::NOTICES) {
-        model.push(pane, &notice);
-    }
+    model.show_notice(Some(&world), &notice);
     Vec::new()
 }
 

@@ -141,7 +141,6 @@ impl Model {
             DEFAULT_LAYOUT.clone_into(&mut self.layout_name);
             self.world_layouts.clear();
         }
-        self.show_unshown();
     }
 
     /// Takes the layouts, the label and the segments of `reply`. A reply with no line of a
@@ -177,8 +176,6 @@ impl Model {
             layout: self.layout.clone(),
             worlds: self.world_layouts.clone(),
         });
-        // A layout with an `output` can now show the lines that waited for one.
-        self.show_unshown();
         if !reply.tab_label.is_empty() {
             match Label::parse(&reply.tab_label) {
                 Ok(label) => self.label = label,

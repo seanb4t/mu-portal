@@ -27,7 +27,9 @@ mu builds a tree from the plan. The tree has two kinds of node:
 
 The plan is the layout. The server stores the plan, the API carries it, and the client holds it. The tree is a result of the plan, and mu builds it again after each change.
 
-Each block has an id. The id is the name of the block, or the word after `as`. The one exception is `output`, whose id is `main`. That block shows the lines of the world and each stream with no block of its own. A block named `output` beside a block named `notices` did not say that. Commands, anchors and API calls name a block by its id. An id is written in the line, so no change to another line changes it.
+Each block has an id. The id is the name of the block, or the word after `as`. The one exception is `output`, whose id is `main`. Commands, anchors and API calls name a block by its id. An id is written in the line, so no change to another line changes it. mu turns each upper-case letter of an id to lower case.
+
+An output shows the streams that its line names after `showing`. With no `showing`, it shows the stream with the name of its id, and `main` shows `main` and `notices`. The id `main` gives the block no other role. A line goes to each output that shows one of its streams. So no block takes the lines of another block, and a hide or a move never sends lines to a new pane. Each layout must hold `main` and an output that shows `notices`, so each line of a world and each notice has an output.
 
 A size belongs to one line. Only a placed block takes a size, and the side of its anchor shares the rest. So a resize is an edit of one line.
 
@@ -55,3 +57,5 @@ The plan is the source of truth, and not the tree, for one reason: the lines of 
 - A reader of sentences is part of mu. It uses the `winnow` parser library, which the `toml` crate already brings into the build.
 - Two property tests guard the writer. A line that mu writes reads back to the same step. A plan that mu writes builds the same tree, with the same ids.
 - A pane that floats over other panes does not fit this model, because each cell of the screen belongs to one pane.
+- A change that leaves no `main`, or no output of the notices, is refused. A layout with only an editor is bad.
+- A stream that no output shows gets one notice for each world. Its lines stay in the journal.

@@ -202,15 +202,55 @@ If a layout file is bad, the server skips it and writes one notice. The notice n
 
 ## Several outputs
 
-A stream is a named set of lines. The lines of a world are in the stream `main`, and the notices of the client are in the stream `notices`.
+A stream is a named set of lines. The lines of a world are in the stream `main`, and the notices of the client are in the stream `notices`. The line rules of the server send a line of a game to other streams. The guide [The configuration](/guides/configuration/#line-rules) describes the rules.
 
 - An `output` with no `showing` shows the stream with the same name as its id. The output `main` with no `showing` shows the streams `main` and `notices`.
 - After `showing`, a list of patterns separated by commas names the streams of the output. A pattern is a glob: `*` matches any text and `?` matches one character. A pattern that starts with `!` excludes the streams that it matches, and an exclusion wins. The list holds at least one pattern without `!`. A pattern that starts with `re:` or `/` is refused, because those forms are kept for a later syntax.
 - The words `of all worlds` come right after the id, and before `showing`. They make one pane that shows the streams of every world. The output `main` cannot take them.
 - The words `all`, `worlds` and `showing` are words of the sentences, so they are not ids.
-- A line stays with the lines of its stream. An output that you add later starts with the new lines only.
+- A line shows in each output that shows one of its streams, and one time in each such output. A line stays in the outputs where it arrived. An output that you add later starts with the new lines only.
+- If no output of the layout of a world shows a stream of a line, the client shows one notice that names the stream and the world. The client shows no other such notice for that stream and that world until it starts again. The line stays in the journal of the server.
 
-`sidebar` writes `output as main showing main`, so its notices show only in the pane of `notices`.
+If a layout has its own output for `notices`, write `output as main showing main` as its first line. Without `showing`, the output `main` shows the notices too. `sidebar` writes `output as main showing main`, so its notices show only in the pane of `notices`.
+
+### An output for each channel
+
+An output that shows the streams of a rule is a spawn. This example sends each channel and each page of a game to a pane of its own. First, the rules in `global.toml` name the streams:
+
+```toml
+# global.toml
+[[rules]]
+id = "chan"
+pattern = '^\[([\w-]+)\] '
+stream = "chan-$1"
+
+[[rules]]
+id = "page"
+pattern = '^\w+ pages: '
+stream = "pages"
+```
+
+Then the layout places one output for the channels and one for the pages:
+
+```toml
+# clients/layouts/spawns.toml
+place = [
+  "output as main showing main",
+  "tabs above main",
+  "editor below main",
+  "output as comms showing chan-*, !chan-ooc right of main, 40%",
+  "output as pages of all worlds below comms",
+  "output as notices with comms",
+]
+```
+
+The pane of `comms` shows each channel except `chan-ooc`. No output shows `chan-ooc`, so its first line gives one notice. The pane of `pages` shows the pages of every world. The pane of `notices` shares one pane with `comms` as a stack.
+
+### The owner of a line
+
+In an output of all worlds, each line starts with its owner and `: `, in dim text. The owner of a line of a world is the id of the world, such as `alpha/aria: `. The owner of a notice is the world that the notice is about. A notice that is about no world has the owner `client`.
+
+An output of all worlds is one pane for every world. It keeps its lines when the focus moves. A line of a world goes only to the outputs that the layout of that world names. So if the world in focus has a layout with no such output, the pane does not show.
 
 With more than one `output` on the screen, each pane of outputs shows a title row with the id of each of its blocks. The id in square brackets is the block that shows.
 
