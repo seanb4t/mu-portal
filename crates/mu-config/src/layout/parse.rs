@@ -9,6 +9,7 @@ use winnow::token::take_while;
 use winnow::{ModalResult, Parser};
 
 use super::block::BlockKind;
+use super::change::Change;
 use super::step::{BlockId, EDITOR_MAX, Edge, PERCENT_MAX, PERCENT_MIN, Place, Side, Size, Step};
 use crate::stream::{Pattern, Scope, Selection};
 
@@ -328,6 +329,31 @@ impl Step {
     ///
     /// A [`LineError`] that names the word where the reader stopped, and its column.
     pub fn parse(text: &str) -> Result<Self, LineError> {
+        read(text).map(|(step, _)| step)
+    }
+}
+
+impl Change {
+    /// The change of the command `/place <text>`: [`Change::Move`] for an `output` with no
+    /// `of all worlds` and no `showing`, and [`Change::Place`] for each other line.
+    ///
+    /// # Errors
+    ///
+    /// A [`LineError`] as [`Step::parse`] gives it.
+    pub fn place(text: &str) -> Result<Self, LineError> {
+        read(text).map(|(step, named)| {
+            if step.kind == BlockKind::Output && !named {
+                Self::Move(step)
+            } else {
+                Self::Place(step)
+            }
+        })
+    }
+}
+
+/// The step of one line, and whether the line names the streams or the scope of an `output`.
+fn read(text: &str) -> Result<(Step, bool), LineError> {
+    {
         if text.trim().is_empty() {
             return Err(LineError {
                 word: String::new(),
@@ -368,6 +394,7 @@ impl Step {
                 reason,
             }
         })?;
-        draft.finish(text)
+        let named = draft.showing.is_some() || draft.all_worlds.is_some();
+        draft.finish(text).map(|step| (step, named))
     }
 }

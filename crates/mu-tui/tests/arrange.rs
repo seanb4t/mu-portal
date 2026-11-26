@@ -599,3 +599,25 @@ fn a_move_keeps_the_selection() {
         "output as comms of all worlds showing chan-*, !chan-ooc right of main"
     );
 }
+
+/// Types `text` and presses Enter.
+fn run_command(app: &mut Model, text: &str) {
+    for typed in text.chars() {
+        key(app, KeyCode::Char(typed), Modifiers::NONE);
+    }
+    key(app, KeyCode::Enter, Modifiers::NONE);
+}
+
+#[test]
+fn a_place_command_keeps_the_streams() {
+    let mut app = laptop_with(&[
+        "output",
+        "editor below main",
+        "output as comms of all worlds showing chan-* below main",
+    ]);
+    run_command(&mut app, "/place output as comms right of main");
+    assert_eq!(
+        app.layout().lines()[2],
+        "output as comms of all worlds showing chan-* right of main"
+    );
+}

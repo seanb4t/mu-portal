@@ -218,7 +218,7 @@ A line SHALL show in each output that shows one of its streams. One output SHALL
 - **THEN** the pane of `main` shows `You say, "page hi"` one time
 
 ### Requirement: A stream with no output gets one notice
-A line can have a stream that no output of the layout of its world shows. Then the client SHALL show one notice that names the stream and the world. It SHALL show no other such notice for that stream and world until the client starts again. A Reset SHALL NOT bring the notice back. The line SHALL stay in the journal.
+A line can have a stream that no output of the layout of its world shows. Then the client SHALL show one notice that names the stream and the world. It SHALL show no other such notice for that stream and world until the client starts again. The notice SHALL be a line of the stream `notices` for the world of the line. A Reset SHALL make the client forget each such stream and world, so the replay of the journal shows the notice again. The line SHALL stay in the journal.
 
 #### Scenario: A channel with no output
 - **GIVEN** `global.toml` has the rule `chan` with `pattern = '^You say, "\[(\w+)\] '` and `stream = "chan-$1"`
@@ -227,10 +227,16 @@ A line can have a stream that no output of the layout of its world shows. Then t
 - **THEN** the pane of `main` shows one line that starts with `-- ` and contains `chan-public` and `alpha/aria`
 - **AND** the pane of `main` shows neither `You say, "[Public] one"` nor `You say, "[Public] two"`
 
-#### Scenario: No notice of a stream after a Reset
+#### Scenario: The notice of a stream comes back after a Reset
 - **GIVEN** the layout `classic` is in use, and a line of the stream `chan-public` of `alpha/aria` gave the notice of a stream with no output
-- **WHEN** the server sends a Reset
-- **THEN** the pane of `main` shows no line that contains `chan-public`
+- **WHEN** the server sends a Reset, and the replay of the journal sends that line again
+- **THEN** the pane of `main` shows one line that contains `chan-public`
+
+#### Scenario: The notice of a stream goes to the world of the line
+- **GIVEN** the layout `classic` is in use, the fake worlds `alpha/aria` and `beta/bob` exist, and `beta/bob` has the focus
+- **WHEN** a line of the stream `chan-public` of `alpha/aria` comes
+- **THEN** the pane of `main` of `beta/bob` shows no line that contains `chan-public`
+- **AND** after the command `/focus alpha/aria`, the pane of `main` shows one line that contains `chan-public`
 
 ### Requirement: The client remembers a limited number of streams with no output
 The client SHALL remember at most 256 pairs of a stream and a world that got the notice of a stream with no output. If a new pair comes past that limit, the client SHALL forget the oldest pair. A forgotten pair SHALL get the notice again.
@@ -294,6 +300,19 @@ The form `output as <id> of all worlds` SHALL place an output that shows its str
 - **GIVEN** the layout `classic` is in use, and the world in focus is the fake world `alpha/aria`
 - **WHEN** the user runs the command `/place output as notices of all worlds right of main` and then `/focus nowhere/nobody`
 - **THEN** the pane of `notices` shows a line that starts with `alpha/aria: -- ` and contains `nowhere/nobody`
+
+### Requirement: A place keeps the streams of an output
+A `/place` of an `output` that is on the screen, with no `of all worlds` and no `showing`, SHALL keep the streams and the scope of that output. A `/place` with `of all worlds` or `showing` SHALL set them from the sentence.
+
+#### Scenario: A place command keeps the streams
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `output as comms of all worlds showing chan-* below main`
+- **WHEN** the user runs the command `/place output as comms right of main`
+- **THEN** the third line of the layout is `output as comms of all worlds showing chan-* right of main`
+
+#### Scenario: A place command with showing sets the streams
+- **GIVEN** the layout in use holds the lines `output`, `editor below main` and `output as comms of all worlds showing chan-* below main`
+- **WHEN** the user runs the command `/place output as comms showing pages right of main`
+- **THEN** the third line of the layout is `output as comms showing pages right of main`
 
 ### Requirement: A line in an output of all worlds names its owner
 In an output of all worlds, each line SHALL start with its owner and `: `. The owner of a line of a world SHALL be the id of the world. The owner of a notice of the client SHALL be the world that the notice belongs to. A notice that belongs to no world SHALL have the owner `client`. The prefix SHALL be dim.

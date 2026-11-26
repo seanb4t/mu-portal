@@ -194,7 +194,7 @@ fn draw_output(model: &mut Model, pane: &Placed, frame: &mut Frame) {
     };
     if let Some(state) = model
         .pane_of_block(&id)
-        .and_then(|pane| model.panes.get_mut(&pane))
+        .and_then(|pane| model.panes.get_mut(pane))
     {
         frame.render_stateful_widget(OutputPane, rect(content(pane)), state);
     }

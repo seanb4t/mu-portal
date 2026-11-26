@@ -20,7 +20,7 @@ A block is one part of the screen. mu has four kinds of block:
 
 Each block has an id. The id is the name of the block, with one exception: the id of `output` is `main`. So the line `output` makes the block `main`, and other lines name it as `main`. A second `output` or a second `editor` needs its own id, which you set with `as`: `output as notices`. mu turns each upper-case letter of an id to lower case.
 
-Each layout holds one `output` with the id `main`, and at least one `output` that shows the stream `notices`. A layout without them is bad. A change that removes them, such as a hide of `main`, is refused.
+Each layout holds one `output` with the id `main`, and at least one `output` that shows the stream `notices`. A layout without them is bad. The client refuses a change that removes them, such as a hide of `main`.
 
 ## The sentences
 
@@ -205,11 +205,11 @@ If a layout file is bad, the server skips it and writes one notice. The notice n
 A stream is a named set of lines. The lines of a world are in the stream `main`, and the notices of the client are in the stream `notices`. The line rules of the server send a line of a game to other streams. The guide [The configuration](/guides/configuration/#line-rules) describes the rules.
 
 - An `output` with no `showing` shows the stream with the same name as its id. The output `main` with no `showing` shows the streams `main` and `notices`.
-- After `showing`, a list of patterns separated by commas names the streams of the output. A pattern is a glob: `*` matches any text and `?` matches one character. A pattern that starts with `!` excludes the streams that it matches, and an exclusion wins. The list holds at least one pattern without `!`. A pattern that starts with `re:` or `/` is refused, because those forms are kept for a later syntax.
+- After `showing`, a list of patterns separated by commas names the streams of the output. A pattern is a glob: `*` matches any text and `?` matches one character. A pattern that starts with `!` excludes the streams that it matches, and an exclusion wins. The list holds at least one pattern without `!`. The client refuses a pattern that starts with `re:` or `/`, because mu keeps those forms for a later syntax.
 - The words `of all worlds` come right after the id, and before `showing`. They make one pane that shows the streams of every world. The output `main` cannot take them.
 - The words `all`, `worlds` and `showing` are words of the sentences, so they are not ids.
 - A line shows in each output that shows one of its streams, and one time in each such output. A line stays in the outputs where it arrived. An output that you add later starts with the new lines only.
-- If no output of the layout of a world shows a stream of a line, the client shows one notice that names the stream and the world. The client shows no other such notice for that stream and that world until it starts again. A Reset does not bring the notice back. The client remembers at most 256 pairs of a stream and a world, and forgets the oldest pair past that limit. A forgotten pair gets the notice again. The line stays in the journal of the server.
+- If no output of the layout of a world shows a stream of a line, the client shows one notice that names the stream and the world. The notice goes to the notices of that world. The client shows no other such notice for that stream and that world. It remembers at most 256 pairs of a stream and a world, and forgets the oldest pair past that limit. A forgotten pair gets the notice again. A Reset forgets every pair, so the replay of the journal shows the notice again. The line stays in the journal of the server.
 
 If a layout has its own output for `notices`, write `output as main showing main` as its first line. Without `showing`, the output `main` shows the notices too. `sidebar` writes `output as main showing main`, so its notices show only in the pane of `notices`.
 
@@ -311,7 +311,7 @@ You can change the layout while the client runs. The screen shows each change at
 
 | Command | Result |
 |---|---|
-| `/place <sentence>` | Puts a block on the screen. A block that is on the screen moves |
+| `/place <sentence>` | Puts a block on the screen. A block that is on the screen moves. An output that moves keeps its `of all worlds` and `showing` if the sentence has neither |
 | `/pane hide <id>` | Takes a block off the screen. The last editor stays |
 | `/pane size <id> <size>` | Sets the size of a block. The size `fill` removes it |
 | `/layout plan` | Shows the numbered lines of the layout |

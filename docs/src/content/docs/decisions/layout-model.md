@@ -57,5 +57,5 @@ The plan is the source of truth, and not the tree, for one reason: the lines of 
 - A reader of sentences is part of mu. It uses the `winnow` parser library, which the `toml` crate already brings into the build.
 - Two property tests guard the writer. A line that mu writes reads back to the same step. A plan that mu writes builds the same tree, with the same ids.
 - A pane that floats over other panes does not fit this model, because each cell of the screen belongs to one pane.
-- A change that leaves no `main`, or no output of the notices, is refused. A layout with only an editor is bad.
+- The client refuses a change that leaves no `main` or no output of the notices. A layout with only an editor is bad.
 - A stream that no output shows gets one notice for each world. Its lines stay in the journal.

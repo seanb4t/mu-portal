@@ -1960,14 +1960,31 @@ fn a_world_with_another_layout_keeps_its_line() {
 }
 
 #[test]
-fn a_stream_with_no_output_gives_no_notice_after_a_reset() {
+fn the_hint_of_a_stream_with_no_output_comes_back_after_a_reset() {
     let mut model = model();
     send_line(&mut model, "alpha/aria", "[Public] one", &["chan-public"]);
     update(&mut model, reset());
+    send_line(&mut model, "alpha/aria", "[Public] one", &["chan-public"]);
     let rows = rows_of(&mut model, "main");
     assert_eq!(
         count(&rows, |row| row.contains("chan-public")),
-        0,
+        1,
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn the_hint_of_a_stream_with_no_output_goes_to_the_world_of_the_line() {
+    let mut model = model();
+    send_line(&mut model, "beta/bryn", "[Public] one", &["chan-public"]);
+    let before = count(&rows_of(&mut model, "main"), |row| {
+        row.contains("chan-public")
+    });
+    focus_next(&mut model);
+    let rows = rows_of(&mut model, "main");
+    assert_eq!(
+        (before, count(&rows, |row| row.contains("chan-public"))),
+        (0, 1),
         "{rows:?}"
     );
 }

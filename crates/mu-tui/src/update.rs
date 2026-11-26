@@ -623,7 +623,7 @@ fn press_left(model: &mut Model, column: u16, row: u16) {
                 return;
             };
             model.pressed_pane = Some(id);
-            if let Some(state) = model.panes.get_mut(&id) {
+            if let Some(state) = model.panes.get_mut(id) {
                 match state.position(column, row) {
                     Some(position) => state.press(position),
                     None => state.clear_selection(),
@@ -668,7 +668,7 @@ fn drag_left(model: &mut Model, column: u16, row: u16) {
     }
     if let Some(state) = model
         .pressed_pane
-        .and_then(|pane| model.panes.get_mut(&pane))
+        .and_then(|pane| model.panes.get_mut(pane))
         && let Some(position) = state.position(column, row)
     {
         state.drag(position);
@@ -696,7 +696,7 @@ fn release_left(model: &mut Model) -> Vec<Effect> {
     model
         .pressed_pane
         .take()
-        .and_then(|pane| model.panes.get_mut(&pane))
+        .and_then(|pane| model.panes.get_mut(pane))
         .and_then(PaneState::release)
         .map(Effect::ClipboardWrite)
         .into_iter()
@@ -924,7 +924,7 @@ fn act(model: &mut Model, action: &Action) -> Vec<Effect> {
         }
         Action::Submit | Action::SubmitLines => {
             let effects = submit(model, *action == Action::SubmitLines);
-            if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
+            if let Some(state) = model.panes.get_mut(model.focused_pane()) {
                 state.to_bottom();
             }
             effects
@@ -1051,7 +1051,7 @@ fn record(model: &mut Model, text: &str) {
 
 /// Runs `change` on the state of the pane in focus.
 fn in_pane(model: &mut Model, change: impl FnOnce(&mut PaneState)) -> Vec<Effect> {
-    if let Some(state) = model.panes.get_mut(&model.focused_pane()) {
+    if let Some(state) = model.panes.get_mut(model.focused_pane()) {
         change(state);
     }
     Vec::new()
@@ -1245,17 +1245,14 @@ fn on_client(model: &mut Model, item: ClientEvent) -> Vec<Effect> {
             }
             // The replay of the journal fills the panes of the worlds again. The panes of no
             // world keep their lines, so their notices are still there.
-            for (key, pane) in &model.pane_keys {
-                if key.owner != Owner::Client
-                    && let Some(pane) = model.panes.get_mut(pane)
-                {
-                    pane.clear();
-                }
-            }
+            model.panes.clear_where(|key| key.owner != Owner::Client);
             for kept in &mut model.notices {
                 kept.panes.retain(|key| key.owner == Owner::Client);
             }
             model.replay_notices();
+            // The replay of the journal sends the lines of each stream with no output again,
+            // and their hints with them.
+            model.no_output.clear();
             return_waiting(model, "the server started again");
             if model.listing == Listing::Asked {
                 model.listing = Listing::AskedBeforeReset;
@@ -1344,10 +1341,10 @@ fn on_event(model: &mut Model, event: &mu_proto::Event) -> Vec<Effect> {
             // A prompt is the unfinished line of the pane of `main` of its world alone.
             let mut style = world.style;
             let converted = convert(&event.text, &mut style);
-            let pane = model.pane_at(&PaneKey::main(Some(&id)));
-            if let Some(pane) = model.panes.get_mut(&pane) {
-                pane.set_unfinished(Some(converted));
-            }
+            model
+                .panes
+                .at(&PaneKey::main(Some(&id)), &model.caps)
+                .set_unfinished(Some(converted));
             return effects;
         }
         _ => {
@@ -1355,18 +1352,22 @@ fn on_event(model: &mut Model, event: &mu_proto::Event) -> Vec<Effect> {
             vec![(converted.text, converted.spans)]
         }
     };
+    let owner = Owner::World(id.clone());
     for key in &keys {
         for (text, spans) in &rows {
-            model.push_to(key, Some(&id), text, spans);
+            model.push_to(key, &owner, text, spans);
         }
     }
     for stream in missing {
-        // A hint, not a kept notice: a Reset does not bring it back, so a game that makes many
-        // stream names cannot grow the kept notices.
+        // Not a kept notice, so a game that makes many stream names cannot grow the kept
+        // notices.
         if model.first_no_output(stream.as_str(), &id) {
-            model.hint(&format!(
-                "no output of the layout of {id} shows the stream {stream}, so its lines do not show"
-            ));
+            model.show_notice(
+                &owner,
+                &format!(
+                    "-- no output of the layout of {id} shows the stream {stream}, so its lines do not show"
+                ),
+            );
         }
     }
     effects
@@ -1396,7 +1397,7 @@ fn on_reply(model: &mut Model, reply: Reply) -> Vec<Effect> {
     let kept = put_back(model, &world, lines);
     let notice = format!("-- {}{}", clean(&reason), in_history(kept));
     // The notice is about a line of `world`, so it goes to the notices of that world.
-    model.show_notice(Some(&world), &notice);
+    model.show_notice(&Owner::World(world), &notice);
     Vec::new()
 }
 

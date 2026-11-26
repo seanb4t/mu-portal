@@ -57,7 +57,7 @@ Tracked by #102. It is change 12 of the Phase 1 plan in #61.
 | `showing` | Globs with `*` and `?`, and `!` to exclude. The order does not matter. A list of only exclusions is bad. Patterns that start with `re:` or `/` are kept for a later syntax. |
 | Default streams of an output | Its own id. For `main`, `main` and `notices`. A `showing` replaces the default. |
 | Overlap | A line shows in each output that matches one of its streams, and one time in each. |
-| A stream with no output | One notice for each stream and world until the client starts again. |
+| A stream with no output | One notice for each stream and world, for the world of the line. The client remembers at most 256 pairs, and a Reset forgets them. |
 | Required outputs | `main`, and an output that shows `notices`. A layout file without them is bad. A command, a drag or arrange mode that removes them is refused. |
 | `of all worlds` | Right after the id, before `showing`. Not on `main`. |
 | The owner prefix | Dim, on each line of an output of all worlds. A notice has the prefix of its world, such as `alpha/aria: `. A notice that belongs to no world has `client: `. |

@@ -1705,3 +1705,34 @@ fn hide_keeps_a_second_output_of_the_notices() {
         .is_ok()
     );
 }
+
+const COMMS: &[&str] = &[
+    "output",
+    "editor below main",
+    "output as comms of all worlds showing chan-* below main",
+];
+
+fn placed(text: &str) -> Vec<String> {
+    let change = mu_config::layout::Change::place(text).expect("a good line");
+    layout(COMMS)
+        .apply(change)
+        .expect("a good change")
+        .layout
+        .lines()
+}
+
+#[test]
+fn a_place_keeps_the_streams_of_an_output_on_the_screen() {
+    assert_eq!(
+        placed("output as comms right of main")[2],
+        "output as comms of all worlds showing chan-* right of main"
+    );
+}
+
+#[test]
+fn a_place_with_showing_sets_the_streams() {
+    assert_eq!(
+        placed("output as comms showing pages right of main")[2],
+        "output as comms showing pages right of main"
+    );
+}

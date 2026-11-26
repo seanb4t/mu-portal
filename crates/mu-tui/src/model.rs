@@ -19,7 +19,7 @@ use crate::pane::{Caps, PaneState};
 
 /// The handle of an output pane. A [`PaneKey`] names the pane that it stands for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct PaneId(u32);
+pub struct PaneId(usize);
 
 /// The handle of the pane of `main` of no world, which the model makes at its start.
 const CLIENT_MAIN: PaneId = PaneId(0);
@@ -40,6 +40,26 @@ impl Owner {
     #[must_use]
     pub fn of(world: Option<&str>) -> Self {
         world.map_or(Self::Client, |id| Self::World(id.to_owned()))
+    }
+
+    /// The owner of the pane of an output of `scope` in the layout of `world`: `All` for an
+    /// output of all worlds, and the owner of `world` for each other output. This is the one
+    /// rule of the owner of an output pane.
+    #[must_use]
+    pub fn of_output(scope: Scope, world: Option<&str>) -> Self {
+        match scope {
+            Scope::AllWorlds => Self::All,
+            Scope::World => Self::of(world),
+        }
+    }
+
+    /// The world of the owner `World`, and none for each other owner.
+    #[must_use]
+    pub fn world(&self) -> Option<&str> {
+        match self {
+            Self::World(id) => Some(id),
+            Self::Client | Self::All => None,
+        }
     }
 }
 
@@ -71,10 +91,75 @@ impl PaneKey {
 pub(crate) struct Kept {
     /// The line, with its `-- `.
     pub(crate) line: String,
-    /// The world that the notice belongs to, or none.
-    pub(crate) owner: Option<String>,
+    /// The world that the notice belongs to, or `Client` for none.
+    pub(crate) owner: Owner,
     /// The panes that hold the line.
     pub(crate) panes: HashSet<PaneKey>,
+}
+
+/// The output panes: the state of each pane, and the handle of each pane by its key. A handle
+/// comes only from [`Panes::at`], and no pane goes away, so each handle names a state.
+#[derive(Debug)]
+pub(crate) struct Panes {
+    /// The state of each pane, at the index of its handle.
+    states: Vec<PaneState>,
+    keys: HashMap<PaneKey, PaneId>,
+}
+
+impl Panes {
+    /// The pane of `main` of no world alone.
+    fn new() -> Self {
+        Self {
+            states: vec![PaneState::default()],
+            keys: HashMap::from([(PaneKey::main(None), CLIENT_MAIN)]),
+        }
+    }
+
+    /// The handle of the pane of `key`, or none for a pane that holds no line yet.
+    pub(crate) fn id(&self, key: &PaneKey) -> Option<PaneId> {
+        self.keys.get(key).copied()
+    }
+
+    /// The handle of the pane of `key`, made with `caps` if it does not exist yet.
+    pub(crate) fn make(&mut self, key: &PaneKey, caps: &Arc<Caps>) -> PaneId {
+        if let Some(pane) = self.keys.get(key) {
+            return *pane;
+        }
+        let pane = PaneId(self.states.len());
+        self.states.push(PaneState::with_caps(Arc::clone(caps)));
+        self.keys.insert(key.clone(), pane);
+        pane
+    }
+
+    /// The state of the pane of `key`, made with `caps` if it does not exist yet.
+    pub(crate) fn at(&mut self, key: &PaneKey, caps: &Arc<Caps>) -> &mut PaneState {
+        let pane = self.make(key, caps);
+        &mut self.states[pane.0]
+    }
+
+    /// The state of the pane `id`.
+    pub(crate) fn get(&self, id: PaneId) -> Option<&PaneState> {
+        self.states.get(id.0)
+    }
+
+    /// The state of the pane `id`, to change.
+    pub(crate) fn get_mut(&mut self, id: PaneId) -> Option<&mut PaneState> {
+        self.states.get_mut(id.0)
+    }
+
+    /// The state of each pane, to change.
+    pub(crate) fn states_mut(&mut self) -> impl Iterator<Item = &mut PaneState> {
+        self.states.iter_mut()
+    }
+
+    /// Clears each pane whose key `wanted` takes.
+    pub(crate) fn clear_where(&mut self, wanted: impl Fn(&PaneKey) -> bool) {
+        for (key, pane) in &self.keys {
+            if wanted(key) {
+                self.states[pane.0].clear();
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -164,12 +249,10 @@ pub struct Model {
     pub(crate) worlds: Vec<World>,
     /// An index into `worlds`. None if and only if there is no world.
     pub(crate) focus: Option<usize>,
-    pub(crate) panes: HashMap<PaneId, PaneState>,
-    /// The handle of each pane that a line or a draw made, by its key.
-    pub(crate) pane_keys: HashMap<PaneKey, PaneId>,
+    /// Each pane that a line or a draw made.
+    pub(crate) panes: Panes,
     /// What the terminal can draw, which every pane shares.
     pub(crate) caps: Arc<Caps>,
-    next_pane: u32,
     /// The state of each editor, by its key. The owner `Client` holds the editors while no
     /// world has the focus.
     pub(crate) editors: HashMap<PaneKey, EditorState>,
@@ -319,14 +402,12 @@ impl Model {
         let mut model = Self {
             worlds: Vec::new(),
             focus: None,
-            panes: HashMap::from([(CLIENT_MAIN, PaneState::default())]),
-            pane_keys: HashMap::from([(PaneKey::main(None), CLIENT_MAIN)]),
+            panes: Panes::new(),
             editors: HashMap::new(),
             input: BlockId::of(BlockKind::Editor),
             fronts: HashMap::new(),
             sends: HashMap::new(),
             caps,
-            next_pane: 1,
             lost: false,
             keymap: Keymap::default(),
             layout: default_layout(),
@@ -653,8 +734,8 @@ impl Model {
                 }
             }
             for kept in &mut self.notices {
-                if kept.owner.is_none() {
-                    kept.owner = Some(id.clone());
+                if kept.owner == Owner::Client {
+                    kept.owner = Owner::World(id.clone());
                 }
             }
             self.replay_notices();
@@ -668,10 +749,10 @@ impl Model {
     pub(crate) fn replay_notices(&mut self) {
         let mut kept = std::mem::take(&mut self.notices);
         for notice in &mut kept {
-            let (keys, _) = self.route(notice.owner.as_deref(), &notices_stream());
+            let (keys, _) = self.route(notice.owner.world(), &notices_stream());
             for key in keys {
                 if notice.panes.insert(key.clone()) {
-                    self.push_to(&key, notice.owner.as_deref(), &notice.line, &[]);
+                    self.push_to(&key, &notice.owner, &notice.line, &[]);
                 }
             }
         }
@@ -688,42 +769,32 @@ impl Model {
             .or(Some(first))
     }
 
-    /// The key of the `output` `id` in the layout of `world`: the owner `All` for an output of
-    /// all worlds, and the owner of `world` for each other output.
+    /// The key of the `output` `id` in the layout of `world`, by [`Owner::of_output`].
     pub(crate) fn key_of(&self, world: Option<&str>, id: &BlockId) -> PaneKey {
-        let all = self
+        let scope = self
             .layout_of(world)
             .steps()
             .iter()
             .find(|step| step.kind == BlockKind::Output && &step.id == id)
             .and_then(|step| step.selection.as_ref())
-            .is_some_and(|selection| selection.scope == Scope::AllWorlds);
-        let owner = if all { Owner::All } else { Owner::of(world) };
-        PaneKey::new(owner, id.clone())
+            .map_or(Scope::World, |selection| selection.scope);
+        PaneKey::new(Owner::of_output(scope, world), id.clone())
     }
 
     /// The pane of the `output` `id` of `world`, or none for a block that holds no line yet.
     /// This is the one rule of which pane an `output` shows.
     pub(crate) fn pane_of(&self, world: Option<&str>, id: &BlockId) -> Option<PaneId> {
-        self.pane_keys.get(&self.key_of(world, id)).copied()
+        self.panes.id(&self.key_of(world, id))
     }
 
     /// The pane of `key`, made if it does not exist yet.
     pub(crate) fn pane_at(&mut self, key: &PaneKey) -> PaneId {
-        if let Some(pane) = self.pane_keys.get(key) {
-            return *pane;
-        }
-        let pane = PaneId(self.next_pane);
-        self.next_pane += 1;
-        self.panes
-            .insert(pane, PaneState::with_caps(Arc::clone(&self.caps)));
-        self.pane_keys.insert(key.clone(), pane);
-        pane
+        self.panes.make(key, &self.caps)
     }
 
-    /// The keys of the panes that show a line of the streams `names` of `world`, each one time
-    /// and in the order of the plan, and the streams that no output of the layout of `world`
-    /// shows. This is the one rule of where a line goes.
+    /// The keys of the panes that show a line of the streams `names` of `world`, each one time,
+    /// in the order of `names` and in the order of the plan for each name, and the streams that
+    /// no output of the layout of `world` shows. This is the one rule of where a line goes.
     pub(crate) fn route(
         &self,
         world: Option<&str>,
@@ -736,11 +807,7 @@ impl Model {
             let mut found = false;
             for (id, selection) in layout.showing(name) {
                 found = true;
-                let owner = match selection.scope {
-                    Scope::AllWorlds => Owner::All,
-                    Scope::World => Owner::of(world),
-                };
-                let key = PaneKey::new(owner, id.clone());
+                let key = PaneKey::new(Owner::of_output(selection.scope, world), id.clone());
                 if !keys.contains(&key) {
                     keys.push(key);
                 }
@@ -752,21 +819,24 @@ impl Model {
         (keys, missing)
     }
 
-    /// Adds the line `text` of `owner`, a world or no world, with `spans` at the bottom of the
-    /// pane of `key`. A pane of all worlds puts the dim name of the owner in front of the line.
+    /// Adds the line `text` of `owner`, a world or `Client`, with `spans` at the bottom of the
+    /// pane of `key`. The owner of `key` is `owner` or `All`. A pane of all worlds puts the dim
+    /// name of the owner in front of the line.
     pub(crate) fn push_to(
         &mut self,
         key: &PaneKey,
-        owner: Option<&str>,
+        owner: &Owner,
         text: &str,
         spans: &[(usize, Style)],
     ) {
-        let pane = self.pane_at(key);
-        let Some(state) = self.panes.get_mut(&pane) else {
-            return;
-        };
+        debug_assert!(
+            key.owner == Owner::All || key.owner == *owner,
+            "a line of {owner:?} in a pane of {:?}",
+            key.owner
+        );
+        let state = self.panes.at(key, &self.caps);
         if key.owner == Owner::All {
-            let (text, spans) = prefixed(owner.unwrap_or("client"), text, spans);
+            let (text, spans) = prefixed(owner.world().unwrap_or("client"), text, spans);
             state.push_styled(&text, &spans);
         } else {
             state.push_styled(text, spans);
@@ -853,7 +923,7 @@ impl Model {
     /// Wraps and draws every pane for a terminal with `caps`.
     pub(crate) fn set_caps(&mut self, caps: Caps) {
         self.caps = Arc::new(caps);
-        for pane in self.panes.values_mut() {
+        for pane in self.panes.states_mut() {
             pane.set_caps(Arc::clone(&self.caps));
         }
         for editor in self.editors.values_mut() {
@@ -864,15 +934,14 @@ impl Model {
     /// The state of the pane `id`.
     #[must_use]
     pub fn pane(&self, id: PaneId) -> Option<&PaneState> {
-        self.panes.get(&id)
+        self.panes.get(id)
     }
 
     /// The pane of `main` of the world in focus, or of no world when no world has the focus.
     #[must_use]
     pub fn focused_pane(&self) -> PaneId {
-        self.pane_keys
-            .get(&PaneKey::main(self.focused()))
-            .copied()
+        self.panes
+            .id(&PaneKey::main(self.focused()))
             .unwrap_or(CLIENT_MAIN)
     }
 
@@ -896,23 +965,23 @@ impl Model {
     /// each pane that shows it then.
     pub(crate) fn notice(&mut self, text: &str) {
         let line = format!("-- {text}");
-        let owner = self.focused().map(str::to_owned);
-        let panes = self.show_notice(owner.as_deref(), &line);
+        let owner = Owner::of(self.focused());
+        let panes = self.show_notice(&owner, &line);
         self.notices.push(Kept { line, owner, panes });
     }
 
-    /// Adds the line `-- <text>` of the world in focus as a line of the stream `notices`, for a
-    /// key that did nothing. Unlike [`Self::notice`], the line does not come back after a
-    /// Reset, because it is about one moment.
+    /// Adds the line `-- <text>` of the world in focus, or of no world, as a line of the
+    /// stream `notices`. Unlike [`Self::notice`], the line does not come back after a Reset,
+    /// because it is about one moment.
     pub(crate) fn hint(&mut self, text: &str) {
-        let owner = self.focused().map(str::to_owned);
-        self.show_notice(owner.as_deref(), &format!("-- {text}"));
+        let owner = Owner::of(self.focused());
+        self.show_notice(&owner, &format!("-- {text}"));
     }
 
     /// Adds `line` as a line of the stream `notices` of `owner`, and gives the keys of the
     /// panes that took it.
-    pub(crate) fn show_notice(&mut self, owner: Option<&str>, line: &str) -> HashSet<PaneKey> {
-        let (keys, _) = self.route(owner, &notices_stream());
+    pub(crate) fn show_notice(&mut self, owner: &Owner, line: &str) -> HashSet<PaneKey> {
+        let (keys, _) = self.route(owner.world(), &notices_stream());
         for key in &keys {
             self.push_to(key, owner, line, &[]);
         }

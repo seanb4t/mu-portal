@@ -290,7 +290,7 @@ fn change_of(change: Option<EditChange>) -> Result<Change, ConnectError> {
     let line_ref = |text: &str| LineRef::parse(text).map_err(|error| named(text, &error));
     match change {
         None => Err(ConnectError::invalid_argument("the request has no change")),
-        Some(EditChange::Place(line)) => Ok(Change::Place(step(&line)?)),
+        Some(EditChange::Place(line)) => Change::place(&line).map_err(|error| named(&line, &error)),
         Some(EditChange::Hide(block)) => Ok(Change::Hide(id(&block)?)),
         Some(EditChange::Size(size)) => {
             Change::sized(id(&size.id)?, &size.size).map_err(|error| refused(&error))
