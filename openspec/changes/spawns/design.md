@@ -127,7 +127,7 @@ The waiting notices go away, because each layout has an output for `notices`: th
 
 ### D10. `mu world match`
 
-`crates/mu-cli/src/world.rs` gets the verb `match`. It resolves the world as `mu world show` does, builds one `RuleState`, and calls `route` on each line of stdin. It splits stdin with `LineFramer`, the line rule of a session: it drops each CR and cuts a line at `MAX_LINE` bytes. A last line with no line break still counts. It prints the names of `Streams` with commas, a tab and the line, with `crate::print`. It prints each error on stderr with `crate::warn`, and exits 0. It needs no server, so it is the main test seam for D5.
+`crates/mu-cli/src/world.rs` gets the verb `match`. It resolves the world as `mu world show` does, builds one `RuleState`, and calls `route` on each line of stdin. It splits stdin with `LineFramer`, the line rule of a session: it drops each CR and cuts a line at `MAX_LINE` bytes. It does not use `TelnetFramer`, so the charset of the world and the drop of a NUL after a CR do not apply. Stdin is UTF-8 text that the owner gives, not bytes from a game. A last line with no line break still counts. It prints the names of `Streams` with commas, a tab and the line, with `crate::print`. It prints each error on stderr with `crate::warn`, and exits 0. It needs no server, so it is the main test seam for D5.
 
 ### D11. A fake world takes the rules of global.toml
 
