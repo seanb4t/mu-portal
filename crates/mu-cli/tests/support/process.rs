@@ -64,6 +64,25 @@ impl Drop for Reaper {
     }
 }
 
+/// Reads `events` to the first event that `check` accepts, and adds each event it reads to `seen`.
+pub async fn read_until(
+    mut events: impl futures::Stream<Item = mu_proto::Event> + Unpin,
+    what: &str,
+    check: impl Fn(&mu_proto::Event) -> bool,
+    seen: &mut Vec<mu_proto::Event>,
+) -> mu_proto::Event {
+    wait_until(BOUND, what, async {
+        while let Some(event) = futures::StreamExt::next(&mut events).await {
+            seen.push(event.clone());
+            if check(&event) {
+                return event;
+            }
+        }
+        panic!("the events ended before {what}")
+    })
+    .await
+}
+
 /// The one bounded wait: `future`, or a failed test at `bound` that names `what`.
 pub async fn wait_until<T>(
     bound: Duration,
@@ -472,18 +491,13 @@ impl Session {
         if let Some(event) = self.seen.iter().find(|event| check(event)) {
             return event.clone();
         }
-        wait_until(BOUND, what, async {
-            loop {
-                let item = futures::StreamExt::next(&mut self.events).await;
-                if let Some(mu_client::ClientEvent::Event(event)) = item {
-                    self.seen.push(event.clone());
-                    if check(&event) {
-                        return event;
-                    }
-                }
-            }
-        })
-        .await
+        let events = futures::StreamExt::filter_map(&mut self.events, |item| {
+            std::future::ready(match item {
+                mu_client::ClientEvent::Event(event) => Some(event),
+                _ => None,
+            })
+        });
+        read_until(events, what, check, &mut self.seen).await
     }
 
     /// Reads to the game line `text` of `world`.

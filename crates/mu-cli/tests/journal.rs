@@ -3,7 +3,7 @@
 use mu_proto::__buffa::oneof::subscribe_response::Message;
 use mu_proto::{EventKind, Source, SubscribeResponse};
 
-use support::process::{BOUND, PW, ServerBuilder, Session, TWO_WORLDS, wait_until};
+use support::process::{BOUND, PW, ServerBuilder, Session, TWO_WORLDS, read_until, wait_until};
 use support::{rule, stderr};
 
 mod support;
@@ -256,6 +256,30 @@ async fn no_event_without_a_stream() {
 
 // The line rules on the events of a server.
 
+#[tokio::test]
+async fn a_bad_global_rule_stops_a_server_of_fake_worlds() {
+    let dir = support::ConfigDir::empty().file(
+        "global.toml",
+        &rule("bad", "pattern = \"^x\"\nstream = \"notices\""),
+    );
+    let builder = ServerBuilder::new()
+        .arg("--config")
+        .arg(dir.path())
+        .fake_worlds(&["alpha/aria"]);
+    let socket = builder.dir().join("s.sock");
+    let output = builder.output().await;
+    let text = stderr(&output);
+    assert_eq!(
+        (
+            output.status.code(),
+            text.contains("global.toml") && text.contains("bad"),
+            socket.exists()
+        ),
+        (Some(1), true, false),
+        "{text}"
+    );
+}
+
 /// A server with `global.toml` of `global` and the fake world `alpha/aria`, after its greeting.
 /// The directory lives as long as the session.
 async fn with_global(global: &str) -> (Session, support::ConfigDir) {
@@ -429,19 +453,23 @@ async fn a_fake_world_with_no_rules() {
 
 /// Reads `stream` from its start to the game line `text`, and gives every event it read.
 async fn read_to(stream: &mut mu_client::EventStream, text: &str) -> Vec<mu_proto::Event> {
+    let messages = futures::stream::unfold(stream, |stream| async move {
+        let message = stream.next().await.unwrap()?;
+        Some((message, stream))
+    });
+    let events = futures::StreamExt::filter_map(messages, |message| {
+        std::future::ready(match message.message {
+            Some(Message::Event(event)) => Some(*event),
+            _ => None,
+        })
+    });
     let mut read = Vec::new();
-    wait_until(BOUND, text, async {
-        loop {
-            let message = stream.next().await.unwrap();
-            if let Some(Message::Event(event)) = message.and_then(|message| message.message) {
-                let done = event.kind == EventKind::EVENT_KIND_LINE && event.text == text;
-                read.push(*event);
-                if done {
-                    return;
-                }
-            }
-        }
-    })
+    read_until(
+        std::pin::pin!(events),
+        text,
+        |event| event.kind == EventKind::EVENT_KIND_LINE && event.text == text,
+        &mut read,
+    )
     .await;
     read
 }

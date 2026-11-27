@@ -1346,6 +1346,15 @@ fn match_drops_a_carriage_return_as_the_session_does() {
 }
 
 #[test]
+fn match_keeps_a_nul_after_a_carriage_return() {
+    let config = with_rules(&rule("ab", "pattern = \"^ab$\"\nstream = \"x\""));
+    assert_eq!(
+        succeeds(&matched_raw(&config, "alpha/aria", b"a\r\0b\n")),
+        "main\ta\0b\n"
+    );
+}
+
+#[test]
 fn match_cuts_a_long_line_as_the_session_does() {
     let config = with_rules(&rule("a", "pattern = \"^a\"\nstream = \"x\""));
     let long = "a".repeat(mu_core::framer::MAX_LINE + 3);

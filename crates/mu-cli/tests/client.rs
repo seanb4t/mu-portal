@@ -2583,9 +2583,11 @@ async fn unknown_focus(client: &mut PtyClient) {
 /// A server with the fake world `alpha/aria` and the layout `sidebar` from
 /// `clients/global.toml`, and a client on it.
 async fn sidebar() -> (Session, PtyClient, ConfigDir) {
-    let config = ConfigDir::empty().file("clients/global.toml", "layout = \"sidebar\"\n");
-    let (session, client) = attached_showing(&["alpha/aria"], &config).await;
-    (session, client, config)
+    with_config(
+        &["alpha/aria"],
+        ConfigDir::empty().file("clients/global.toml", "layout = \"sidebar\"\n"),
+    )
+    .await
 }
 
 #[tokio::test]
