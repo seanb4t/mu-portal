@@ -150,7 +150,8 @@ fn last_of(events: &[Event]) -> Seq {
 impl Journal for MemoryJournal {
     fn append(&self, event: NewEvent) -> Event {
         let mut inner = self.lock();
-        let id = match inner.ids.generate() {
+        let time = SystemTime::now();
+        let id = match inner.ids.generate_from_datetime(time) {
             Ok(id) => id,
             Err(overflow) => overflow.commit_overflow_increment(),
         };
@@ -161,7 +162,7 @@ impl Journal for MemoryJournal {
             kind: event.kind,
             source: event.source,
             text: event.text,
-            time: SystemTime::now(),
+            time,
             depth: event.depth,
             streams: event.streams,
         };
@@ -234,6 +235,19 @@ mod tests {
             dst.fill(!0);
             Ok(())
         }
+    }
+
+    #[test]
+    fn an_id_has_the_time_of_its_event() {
+        let event = MemoryJournal::new(DEFAULT_CAPACITY)
+            .unwrap()
+            .append(new_event("alpha/aria", "one"));
+        let millis = event
+            .time
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        assert_eq!(u128::from(event.id.timestamp_ms()), millis);
     }
 
     #[test]
