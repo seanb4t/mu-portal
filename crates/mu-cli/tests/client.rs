@@ -1561,7 +1561,11 @@ async fn attached_showing(worlds: &[&str], config: &ConfigDir) -> (Session, PtyC
 
 /// A server with `worlds` and the layout `lines`, and a client on it that shows the greeting.
 async fn with_layout(worlds: &[&str], lines: &[&str]) -> (Session, PtyClient, ConfigDir) {
-    let config = layout_dir(lines, "");
+    with_config(worlds, layout_dir(lines, "")).await
+}
+
+/// A server with `worlds` and `config`, and a client on it that shows the greeting.
+async fn with_config(worlds: &[&str], config: ConfigDir) -> (Session, PtyClient, ConfigDir) {
     let (session, client) = attached_showing(worlds, &config).await;
     (session, client, config)
 }
@@ -2507,9 +2511,7 @@ async fn with_rules(
     lines: &[&str],
     global: &str,
 ) -> (Session, PtyClient, ConfigDir) {
-    let config = layout_dir(lines, "").file("global.toml", global);
-    let (session, client) = attached_showing(worlds, &config).await;
-    (session, client, config)
+    with_config(worlds, layout_dir(lines, "").file("global.toml", global)).await
 }
 
 /// The rows left of the first divider, and the rows right of it, of each row with a divider.

@@ -21,15 +21,26 @@ const RATE: usize = 20;
 /// The depth limit of the spec.
 const DEPTH: usize = 8;
 
-struct GameGag(&'static str);
+struct GameHook {
+    on: &'static str,
+    action: HookAction,
+}
 
-impl Hook for GameGag {
+impl Hook for GameHook {
     fn on_game_line(&self, line: &str) -> HookAction {
-        if line.contains(self.0) {
-            HookAction::Gag
+        if line.contains(self.on) {
+            self.action.clone()
         } else {
             HookAction::Pass
         }
+    }
+}
+
+/// Gags each game line that contains `on`.
+fn game_gag(on: &'static str) -> GameHook {
+    GameHook {
+        on,
+        action: HookAction::Gag,
     }
 }
 
@@ -73,7 +84,7 @@ fn count_lines(lines: &[String], text: &str) -> usize {
 #[tokio::test(start_paused = true)]
 async fn hook_gags_game_line() {
     let (aria, game) = world("alpha/aria", PW);
-    let portal = started(vec![aria.with_hook(Arc::new(GameGag("spam")))]).await;
+    let portal = started(vec![aria.with_hook(Arc::new(game_gag("spam")))]).await;
     assert!(game.say("buy spam now"));
     assert!(game.say("hello"));
     wait_event(&portal, |event| {
@@ -582,21 +593,6 @@ async fn wait_covers_server_handler_loop() {
 }
 
 /// A hook that gives `action` to each game line that contains `on`.
-struct GameHook {
-    on: &'static str,
-    action: HookAction,
-}
-
-impl Hook for GameHook {
-    fn on_game_line(&self, line: &str) -> HookAction {
-        if line.contains(self.on) {
-            self.action.clone()
-        } else {
-            HookAction::Pass
-        }
-    }
-}
-
 fn streams(names: &[&str]) -> mu_config::stream::Streams {
     mu_config::stream::Streams::new(
         names
@@ -734,7 +730,7 @@ async fn a_hook_during_a_capture_keeps_its_streams() {
 #[tokio::test(start_paused = true)]
 async fn a_gagged_line_ends_a_capture() {
     let (aria, _game) = world_with_rules("alpha/aria", PW, WHO_RULE);
-    let portal = started(vec![aria.with_hook(Arc::new(GameGag("End")))]).await;
+    let portal = started(vec![aria.with_hook(Arc::new(game_gag("End")))]).await;
     for text in ["WHO", "End", "after"] {
         portal.send(&id("alpha/aria"), text).await.unwrap();
     }
