@@ -258,8 +258,8 @@ async fn a_size_on_the_first_line() {
 
 #[tokio::test]
 async fn nine_outputs() {
-    let mut lines = vec!["editor".to_owned()];
-    lines.extend((0..9).map(|number| format!("output as o{number} above editor")));
+    let mut lines = vec!["editor".to_owned(), "output above editor".to_owned()];
+    lines.extend((1..9).map(|number| format!("output as o{number} above editor")));
     bad_layout(&lines, &[FILE, "output"]).await;
 }
 
@@ -346,6 +346,32 @@ async fn a_reserved_pattern() {
             "output as side showing re:chan right of main",
         ],
         &["line 3", "re:chan"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_pattern_that_is_a_word() {
+    bad_layout(
+        &[
+            "output",
+            "editor below main",
+            "output as side showing at below main",
+        ],
+        &["line 3", "at"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_pattern_that_starts_with_a_digit() {
+    bad_layout(
+        &[
+            "tabs",
+            "output as main showing main, notices, 30 below tabs",
+            "editor below main",
+        ],
+        &["line 2", "30"],
     )
     .await;
 }

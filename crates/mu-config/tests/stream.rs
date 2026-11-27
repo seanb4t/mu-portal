@@ -3,6 +3,9 @@
 use mu_config::layout::BlockId;
 use mu_config::stream::{MAIN, NOTICES, Pattern, Scope, Selection, StreamName, Streams};
 use proptest::prelude::*;
+use support::glob;
+
+mod support;
 
 fn name(text: &str) -> StreamName {
     StreamName::new(text).unwrap_or_else(|error| panic!("{text}: {error}"))
@@ -183,6 +186,22 @@ fn a_lone_exclusion_is_bad() {
 }
 
 #[test]
+fn a_pattern_that_is_a_word_is_bad() {
+    assert_eq!(
+        (Pattern::new("at").is_err(), Pattern::new("!Right").is_err()),
+        (true, true)
+    );
+}
+
+#[test]
+fn a_pattern_that_starts_with_a_digit_is_bad() {
+    assert_eq!(
+        (Pattern::new("30").is_err(), Pattern::new("!3*").is_err()),
+        (true, true)
+    );
+}
+
+#[test]
 fn a_reserved_pattern_is_bad() {
     assert_eq!(
         (
@@ -191,10 +210,6 @@ fn a_reserved_pattern_is_bad() {
         ),
         (true, true)
     );
-}
-
-fn glob() -> impl Strategy<Value = String> {
-    "!?[a-c*?][a-c*?-]{0,3}"
 }
 
 proptest! {

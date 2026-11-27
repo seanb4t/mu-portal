@@ -8,6 +8,9 @@ use mu_config::layout::{
 };
 use mu_config::stream::{Pattern, Scope, Selection};
 use proptest::prelude::*;
+use support::glob;
+
+mod support;
 
 fn layout(lines: &[&str]) -> Layout {
     Layout::parse(lines).unwrap_or_else(|error| panic!("{lines:?}: {error}"))
@@ -63,14 +66,12 @@ fn scope() -> impl Strategy<Value = Scope> {
 }
 
 fn patterns() -> impl Strategy<Value = Option<Vec<Pattern>>> {
-    prop::option::of(
-        prop::collection::vec("!?[a-c*?][a-c*?-]{0,3}", 1..4).prop_map(|texts| {
-            texts
-                .iter()
-                .map(|text| Pattern::new(text).expect("the pattern gives a pattern"))
-                .collect()
-        }),
-    )
+    prop::option::of(prop::collection::vec(glob(), 1..4).prop_map(|texts| {
+        texts
+            .iter()
+            .map(|text| Pattern::new(text).expect("the pattern gives a pattern"))
+            .collect()
+    }))
 }
 
 fn selection_of(id: &BlockId, scope: Scope, patterns: Option<Vec<Pattern>>) -> Selection {

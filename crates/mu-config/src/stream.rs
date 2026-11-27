@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use crate::layout::{BlockId, is_id_byte};
+use crate::layout::{BlockId, WORDS, is_id_byte};
 
 /// The stream of each line that no rule sends elsewhere. It is also the id of an `output` whose
 /// line has no `as`.
@@ -186,6 +186,11 @@ impl Pattern {
             .all(|byte| is_id_byte(byte) || byte == b'*' || byte == b'?')
         {
             return Err("a pattern holds only a to z, 0 to 9, -, * and ?, after one first !");
+        }
+        if glob.starts_with(|c: char| c.is_ascii_digit()) || WORDS.contains(&glob) {
+            return Err(
+                "a pattern starts with no digit and is no word of the sentences, as a stream name",
+            );
         }
         Ok(Self {
             glob: wildmatch::WildMatch::new(glob),
