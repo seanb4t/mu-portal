@@ -9,7 +9,7 @@ use ratatui::style::Modifier;
 use termina::Event as TermEvent;
 use termina::event::{KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
-use support::{block, game_line, run_command};
+use support::{block, game_line, run_command, sidebar_lines};
 
 mod support;
 
@@ -107,12 +107,6 @@ fn area_of(app: &Model, id: &str) -> (u16, u16, u16, u16) {
 }
 
 const CLASSIC: &[&str] = &["output", "tabs above main", "editor below main"];
-/// The lines of the built-in layout `sidebar`.
-fn sidebar_lines() -> &'static [&'static str] {
-    mu_config::layout::BuiltIn::named("sidebar")
-        .expect("mu ships the layout sidebar")
-        .lines
-}
 const NOTICES_BELOW: &[&str] = &[
     "output",
     "editor below main",

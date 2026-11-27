@@ -11,7 +11,7 @@ use ratatui::backend::TestBackend;
 use termina::Event as TermEvent;
 use termina::event::{KeyCode, Modifiers};
 
-use support::{press, type_lines, type_text};
+use support::{press, type_lines, type_text, world_of};
 
 mod support;
 
@@ -273,13 +273,9 @@ fn world_editors_use_the_probed_widths() {
         ..Outcome::default()
     };
     assert_eq!(update(&mut app, Msg::Probe(outcome)), []);
-    let world = |id: &str| mu_proto::World {
-        id: id.to_owned(),
-        ..Default::default()
-    };
     update(
         &mut app,
-        Msg::Listed(Ok(vec![world("alpha/aria"), world("beta/bryn")])),
+        Msg::Listed(Ok(vec![world_of("alpha/aria"), world_of("beta/bryn")])),
     );
     type_text(&mut app, &format!("{FAMILY}x"));
     assert_eq!(column_of(&mut app, "x"), Some(8));

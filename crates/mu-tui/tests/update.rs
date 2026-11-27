@@ -19,7 +19,7 @@ fn model() -> Model {
     Model::new(["alpha/aria".to_owned(), "beta/bryn".to_owned()])
 }
 
-use support::{block, block_rows, game_line, press, run_command, type_text};
+use support::{block, block_rows, game_line, press, refused, run_command, type_text, world_of};
 
 mod support;
 
@@ -1424,7 +1424,6 @@ fn a_failed_save_puts_back_the_last_good_layout_of_the_server() {
 // The routing of lines and notices by the streams of each event.
 
 use mu_config::layout::Layout;
-use mu_proto::World;
 
 /// A configuration with the layout `lines`, and the layout of each key of `worlds`. The echo of
 /// a sent line shows as the line itself.
@@ -1615,14 +1614,7 @@ fn an_event_with_no_streams_goes_to_main() {
 fn a_refused_line_notice_belongs_to_its_world() {
     let mut model = model();
     with_layouts(&mut model, NOTICES_BESIDE, &[]);
-    update(
-        &mut model,
-        Msg::Reply(mu_tui::Reply::Refused {
-            world: "beta/bryn".to_owned(),
-            text: "hi".to_owned(),
-            reason: "down".to_owned(),
-        }),
-    );
+    update(&mut model, Msg::Reply(refused("beta/bryn", "hi", "down")));
     let before = notices(&rows_of(&mut model, "notices"));
     focus_next(&mut model);
     let after = rows_of(&mut model, "notices");
@@ -1637,14 +1629,7 @@ fn a_refused_line_notice_belongs_to_its_world() {
 fn a_refused_line_notice_comes_back_after_a_reset() {
     let mut model = model();
     with_layouts(&mut model, NOTICES_BESIDE, &[]);
-    update(
-        &mut model,
-        Msg::Reply(mu_tui::Reply::Refused {
-            world: "alpha/aria".to_owned(),
-            text: "hi".to_owned(),
-            reason: "down".to_owned(),
-        }),
-    );
+    update(&mut model, Msg::Reply(refused("alpha/aria", "hi", "down")));
     update(&mut model, reset());
     let rows = rows_of(&mut model, "notices");
     assert_eq!(count(&rows, |row| row == "-- down"), 1, "{rows:?}");
@@ -1654,14 +1639,7 @@ fn a_refused_line_notice_comes_back_after_a_reset() {
 fn a_kept_notice_of_all_worlds_comes_back_once_after_a_reset() {
     let mut model = model();
     with_layouts(&mut model, NOTICES_OF_ALL, &[]);
-    update(
-        &mut model,
-        Msg::Reply(mu_tui::Reply::Refused {
-            world: "alpha/aria".to_owned(),
-            text: "hi".to_owned(),
-            reason: "down".to_owned(),
-        }),
-    );
+    update(&mut model, Msg::Reply(refused("alpha/aria", "hi", "down")));
     update(&mut model, reset());
     let rows = rows_of(&mut model, "notices");
     assert_eq!(count(&rows, |row| row.ends_with("-- down")), 1, "{rows:?}");
@@ -1805,10 +1783,7 @@ fn starting_with_a_notice() -> Model {
 }
 
 fn list(model: &mut Model) {
-    let worlds = ["alpha/aria", "beta/bryn"].map(|id| World {
-        id: id.to_owned(),
-        ..Default::default()
-    });
+    let worlds = ["alpha/aria", "beta/bryn"].map(world_of);
     update(model, Msg::Listed(Ok(worlds.to_vec())));
     assert_eq!(model.focused(), Some("alpha/aria"));
 }

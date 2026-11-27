@@ -14,7 +14,10 @@ use ratatui::style::{Color, Modifier, Style};
 use termina::Event as TermEvent;
 use termina::event::{KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
-use support::{block, block_rows, game_event, rect_of, run_command, type_lines, type_text};
+use support::{
+    block, block_rows, game_event, rect_of, refused, run_command, sidebar_lines, type_lines,
+    type_text, world_of,
+};
 
 mod support;
 
@@ -203,10 +206,7 @@ fn no_worlds() {
 
 #[test]
 fn listed_worlds_are_the_worlds() {
-    let worlds = ["beta/bryn", "alpha/aria"].map(|id| World {
-        id: id.to_owned(),
-        ..Default::default()
-    });
+    let worlds = ["beta/bryn", "alpha/aria"].map(world_of);
     let mut app = after_list(Ok(worlds.to_vec()));
     assert_eq!(top(&mut app), "[alpha/aria] beta/bryn");
 }
@@ -271,11 +271,7 @@ fn control_characters_are_replaced() {
     );
     on_reply(
         &mut app,
-        Reply::Refused {
-            world: "alpha/aria".to_owned(),
-            text: String::new(),
-            reason: "bad\u{1b}]0;title\u{7}".to_owned(),
-        },
+        refused("alpha/aria", "", "bad\u{1b}]0;title\u{7}"),
     );
     assert_eq!(
         rows(&mut app),
@@ -351,14 +347,7 @@ fn a_refused_line() {
     let mut app = two_worlds();
     type_text(&mut app, "hi");
     assert_ne!(press(&mut app, key(KeyCode::Enter)), [] as [Effect; 0]);
-    on_reply(
-        &mut app,
-        Reply::Refused {
-            world: "alpha/aria".to_owned(),
-            text: "hi".to_owned(),
-            reason: "alpha/aria is not connected".to_owned(),
-        },
-    );
+    on_reply(&mut app, not_connected("alpha/aria", "hi"));
     assert_eq!(
         rows(&mut app).last().unwrap(),
         "-- alpha/aria is not connected"
@@ -376,7 +365,7 @@ fn a_refused_line_after_more_text() {
         [send("alpha/aria", "hi")]
     );
     type_text(&mut app, "next");
-    on_reply(&mut app, refused("alpha/aria", "hi"));
+    on_reply(&mut app, not_connected("alpha/aria", "hi"));
     assert_eq!(app.input(), "hi");
     up(&mut app);
     assert_eq!(app.input(), "next");
@@ -927,12 +916,8 @@ fn send(world: &str, text: &str) -> Effect {
     }
 }
 
-fn refused(world: &str, text: &str) -> Reply {
-    Reply::Refused {
-        world: world.to_owned(),
-        text: text.to_owned(),
-        reason: format!("{world} is not connected"),
-    }
+fn not_connected(world: &str, text: &str) -> Reply {
+    refused(world, text, &format!("{world} is not connected"))
 }
 
 #[test]
@@ -1019,7 +1004,7 @@ fn a_line_that_the_server_refuses() {
         sent(&mut app, "alpha/aria", "one"),
         [send("alpha/aria", "two")]
     );
-    on_reply(&mut app, refused("alpha/aria", "two"));
+    on_reply(&mut app, not_connected("alpha/aria", "two"));
     assert_eq!(app.input(), "two");
     assert_eq!(sent(&mut app, "alpha/aria", "two"), []);
     assert!(has_notice(&mut app, "not connected (1 in history)"));
@@ -1039,7 +1024,7 @@ fn the_last_line_is_refused() {
         [send("alpha/aria", "two")]
     );
     type_text(&mut app, "later");
-    on_reply(&mut app, refused("alpha/aria", "two"));
+    on_reply(&mut app, not_connected("alpha/aria", "two"));
     assert_eq!(app.input(), "two");
     up(&mut app);
     assert_eq!(app.input(), "later");
@@ -1137,7 +1122,7 @@ fn a_refused_send_of_enter_with_a_send_after_it() {
     type_text(&mut app, "two");
     assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
     type_text(&mut app, "later");
-    on_reply(&mut app, refused("alpha/aria", "one"));
+    on_reply(&mut app, not_connected("alpha/aria", "one"));
     assert_eq!(app.input(), "one");
     assert!(has_notice(&mut app, "not connected (2 in history)"));
     up(&mut app);
@@ -1161,7 +1146,7 @@ fn the_sends_stay_apart() {
     );
     type_text(&mut app, "c");
     assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
-    on_reply(&mut app, refused("alpha/aria", "a\nb"));
+    on_reply(&mut app, not_connected("alpha/aria", "a\nb"));
     assert_eq!(app.input(), "a\nb");
     // The returned `c` equals the newest entry, so the history keeps no new entry.
     assert!(has_notice(&mut app, "not connected"));
@@ -1299,7 +1284,7 @@ fn the_server_resets_while_lines_wait() {
 fn a_refusal_after_the_stream_ended() {
     let mut app = three_lines_sent();
     on_event(&mut app, ClientEvent::Lost);
-    on_reply(&mut app, refused("alpha/aria", "one"));
+    on_reply(&mut app, not_connected("alpha/aria", "one"));
     assert_eq!(app.input(), "one");
     up(&mut app);
     assert_eq!(app.input(), "two");
@@ -1882,7 +1867,7 @@ fn a_refusal_during_a_walk_of_the_history() {
     press(&mut app, key(KeyCode::Enter));
     type_text(&mut app, "draft");
     up(&mut app);
-    on_reply(&mut app, refused("alpha/aria", "one"));
+    on_reply(&mut app, not_connected("alpha/aria", "one"));
     assert_eq!(app.input(), "one");
     assert!(has_notice(&mut app, "(1 in history)"));
     let history = app.history("alpha/aria").unwrap();
@@ -1899,7 +1884,7 @@ fn a_refusal_out_of_focus() {
     assert_eq!(press(&mut app, alt_enter()), [send("beta/bryn", "b1")]);
     press(&mut app, ctrl('p'));
     type_text(&mut app, "typed");
-    on_reply(&mut app, refused("beta/bryn", "b1"));
+    on_reply(&mut app, not_connected("beta/bryn", "b1"));
     assert_eq!(app.input(), "typed");
     assert_eq!(app.history("alpha/aria").unwrap(), [] as [&str; 0]);
     assert_eq!(top(&mut app), "[alpha/aria] beta/bryn*");
@@ -1919,7 +1904,7 @@ fn a_refusal_out_of_focus_during_a_walk() {
     type_text(&mut app, "draft");
     up(&mut app);
     press(&mut app, ctrl('n'));
-    on_reply(&mut app, refused("alpha/aria", "one"));
+    on_reply(&mut app, not_connected("alpha/aria", "one"));
     assert_eq!(app.input(), "");
     press(&mut app, ctrl('p'));
     assert_eq!(app.input(), "one");
@@ -1960,7 +1945,7 @@ proptest! {
         type_lines(&mut app, &lines);
         assert_eq!(press(&mut app, alt_enter()), [send("alpha/aria", &texts[0])]);
         type_text(&mut app, &held);
-        on_reply(&mut app, refused("alpha/aria", &texts[0]));
+        on_reply(&mut app, not_connected("alpha/aria", &texts[0]));
         prop_assert_eq!(app.input(), texts[0].clone());
         let in_history = format!("({} in history)", texts.len());
         prop_assert!(has_notice(&mut app, &in_history));
@@ -1982,7 +1967,7 @@ fn returned_texts_past_the_limit_keep_the_draft() {
         [send("alpha/aria", &texts[0])]
     );
     type_text(&mut app, "DRAFT");
-    on_reply(&mut app, refused("alpha/aria", &texts[0]));
+    on_reply(&mut app, not_connected("alpha/aria", &texts[0]));
     assert_eq!(app.input(), texts[0]);
     assert!(has_notice(
         &mut app,
@@ -2069,7 +2054,7 @@ proptest! {
                 }
                 HistoryStep::Refuse(pick) if !with_server.is_empty() => {
                     let (world, text) = with_server.remove(pick % with_server.len());
-                    on_reply(&mut app, refused(&world, &text));
+                    on_reply(&mut app, not_connected(&world, &text));
                     put_back = Some(world);
                 }
                 HistoryStep::Accept(_) | HistoryStep::Refuse(_) => {}
@@ -2220,13 +2205,6 @@ proptest! {
 }
 
 // The first list of the worlds.
-
-fn world_of(id: &str) -> World {
-    World {
-        id: id.to_owned(),
-        ..Default::default()
-    }
-}
 
 fn list_ends(app: &mut Model, listed: Result<Vec<World>, String>) {
     assert_eq!(update(app, Msg::Listed(listed)), []);
@@ -2944,14 +2922,6 @@ fn the_default_max() {
 
 // The commands of the layout.
 
-const SIDEBAR_LINES: &[&str] = &[
-    "output as main showing main",
-    "tabs above main",
-    "editor below main",
-    "statusline below editor",
-    "output as notices right of main, 30%",
-];
-
 /// Two worlds on the device `laptop`.
 fn laptop() -> Model {
     let mut app = two_worlds().with_device("laptop");
@@ -3074,33 +3044,33 @@ fn hide_a_second_editor() {
 
 #[test]
 fn resize_the_notices() {
-    let mut app = laptop_with(SIDEBAR_LINES);
+    let mut app = laptop_with(sidebar_lines());
     run_command(&mut app, "/pane size notices 50%");
     assert_eq!(divider_column(&mut app), Some(40));
 }
 
 #[test]
 fn a_size_of_fill_removes_the_size() {
-    let mut app = laptop_with(SIDEBAR_LINES);
+    let mut app = laptop_with(sidebar_lines());
     run_command(&mut app, "/pane size notices fill");
     assert_eq!(app.layout().lines()[4], "output as notices right of main");
 }
 
 #[test]
 fn a_size_of_the_first_block() {
-    let mut app = laptop_with(SIDEBAR_LINES);
+    let mut app = laptop_with(sidebar_lines());
     assert_eq!(run_command(&mut app, "/pane size main 60%"), []);
-    assert_eq!(app.layout().lines(), SIDEBAR_LINES);
+    assert_eq!(app.layout().lines(), sidebar_lines());
     assert!(notice_with(&mut app, &["notices"]));
 }
 
 #[test]
 fn a_resize_changes_one_line() {
-    let mut app = laptop_with(SIDEBAR_LINES);
+    let mut app = laptop_with(sidebar_lines());
     run_command(&mut app, "/pane size notices 40%");
     let lines = app.layout().lines();
     assert_eq!(lines[4], "output as notices right of main, 40%");
-    assert_eq!(lines[..4], SIDEBAR_LINES[..4]);
+    assert_eq!(lines[..4], sidebar_lines()[..4]);
 }
 
 #[test]
@@ -3173,14 +3143,14 @@ fn insert_in_the_middle() {
 
 #[test]
 fn edit_a_line_by_its_id() {
-    let mut app = laptop_with(SIDEBAR_LINES);
+    let mut app = laptop_with(sidebar_lines());
     run_command(
         &mut app,
         "/layout edit notices output as notices left of main, 20%",
     );
     let lines = app.layout().lines();
     assert_eq!(lines[4], "output as notices left of main, 20%");
-    assert_eq!(lines[..4], SIDEBAR_LINES[..4]);
+    assert_eq!(lines[..4], sidebar_lines()[..4]);
     assert!(rect_of(&app, "notices").1 < rect_of(&app, "main").0);
 }
 
@@ -3196,7 +3166,7 @@ fn delete_a_line_that_others_need() {
 
 #[test]
 fn a_drag_to_the_left() {
-    let mut app = laptop_with(SIDEBAR_LINES);
+    let mut app = laptop_with(sidebar_lines());
     assert_eq!(divider_column(&mut app), Some(56));
     let effects = drag_from_to(&mut app, (55, 5), (39, 5));
     assert_eq!(divider_column(&mut app), Some(40));
@@ -3208,7 +3178,7 @@ fn a_drag_to_the_left() {
 
 #[test]
 fn a_drag_past_the_smallest_pane() {
-    let mut app = laptop_with(SIDEBAR_LINES);
+    let mut app = laptop_with(sidebar_lines());
     drag_from_to(&mut app, (55, 5), (77, 5));
     let (left, right, _, _) = rect_of(&app, "notices");
     assert_eq!(right - left + 1, 10);
@@ -3257,7 +3227,7 @@ fn a_click_on_a_title() {
 
 #[test]
 fn a_selection_beside_a_divider() {
-    let mut app = laptop_with(SIDEBAR_LINES);
+    let mut app = laptop_with(sidebar_lines());
     let row = u16::try_from(
         screen(&mut app)
             .iter()
@@ -3272,7 +3242,7 @@ fn a_selection_beside_a_divider() {
 
 #[test]
 fn a_drag_from_a_divider_selects_no_text() {
-    let mut app = laptop_with(SIDEBAR_LINES);
+    let mut app = laptop_with(sidebar_lines());
     let effects = drag_from_to(&mut app, (55, 5), (50, 5));
     assert!(
         effects
@@ -3285,7 +3255,7 @@ fn a_drag_from_a_divider_selects_no_text() {
 
 #[test]
 fn a_drag_does_not_drift() {
-    let mut app = laptop_with(SIDEBAR_LINES);
+    let mut app = laptop_with(sidebar_lines());
     draw(&mut app);
     mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 55, 5);
     for column in [40, 30, 45, 60, 50, 39] {
@@ -3307,35 +3277,21 @@ fn has_a_notice_row(app: &mut Model, id: &str) -> bool {
 
 #[test]
 fn a_refused_line_goes_to_the_notices_block() {
-    let mut app = laptop_with(SIDEBAR_LINES);
+    let mut app = laptop_with(sidebar_lines());
     type_text(&mut app, "hi");
     assert_ne!(press(&mut app, key(KeyCode::Enter)), [] as [Effect; 0]);
-    on_reply(
-        &mut app,
-        Reply::Refused {
-            world: "alpha/aria".to_owned(),
-            text: "hi".to_owned(),
-            reason: "down".to_owned(),
-        },
-    );
+    on_reply(&mut app, refused("alpha/aria", "hi", "down"));
     assert_eq!(block_rows(&mut app, "notices").last().unwrap(), "-- down");
     assert!(!has_a_notice_row(&mut app, "main"));
 }
 
 #[test]
 fn a_refused_line_of_another_world_waits_in_its_notices() {
-    let mut app = laptop_with(SIDEBAR_LINES);
+    let mut app = laptop_with(sidebar_lines());
     type_text(&mut app, "hi");
     assert_ne!(press(&mut app, key(KeyCode::Enter)), [] as [Effect; 0]);
     run_command(&mut app, "/focus beta/bryn");
-    on_reply(
-        &mut app,
-        Reply::Refused {
-            world: "alpha/aria".to_owned(),
-            text: "hi".to_owned(),
-            reason: "down".to_owned(),
-        },
-    );
+    on_reply(&mut app, refused("alpha/aria", "hi", "down"));
     // The world in focus shows nothing of it.
     assert!(!has_a_notice_row(&mut app, "notices"));
     assert!(!has_a_notice_row(&mut app, "main"));
@@ -3347,7 +3303,13 @@ fn a_refused_line_of_another_world_waits_in_its_notices() {
 #[test]
 fn enter_with_no_world_goes_to_the_notices_block() {
     let mut app = app(&[]).with_device("laptop");
-    app.apply_config(config_with(SIDEBAR_LINES, &[], "{world}", &["world"], &[]));
+    app.apply_config(config_with(
+        sidebar_lines(),
+        &[],
+        "{world}",
+        &["world"],
+        &[],
+    ));
     draw(&mut app);
     type_text(&mut app, "hi");
     assert_eq!(press(&mut app, key(KeyCode::Enter)), []);
@@ -3367,20 +3329,20 @@ fn a_command_that_changes_nothing_saves_nothing() {
 
 #[test]
 fn a_drag_back_to_its_start_saves_nothing() {
-    let mut app = laptop_with(SIDEBAR_LINES);
+    let mut app = laptop_with(sidebar_lines());
     let name = app.layout_name().to_owned();
     draw(&mut app);
     mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 55, 5);
     mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), 45, 5);
     draw(&mut app);
-    assert_ne!(app.layout().lines(), SIDEBAR_LINES);
+    assert_ne!(app.layout().lines(), sidebar_lines());
     mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), 55, 5);
     draw(&mut app);
     assert_eq!(
         mouse(&mut app, MouseEventKind::Up(MouseButton::Left), 55, 5),
         []
     );
-    assert_eq!(app.layout().lines(), SIDEBAR_LINES);
+    assert_eq!(app.layout().lines(), sidebar_lines());
     assert_eq!(app.layout_name(), name);
 }
 
@@ -3406,19 +3368,19 @@ fn enter_cleared(app: &mut Model, text: &str) -> Vec<Effect> {
 
 #[test]
 fn a_focus_move_during_a_drag_ends_the_drag_and_puts_the_layout_back() {
-    let mut app = laptop_with(SIDEBAR_LINES);
+    let mut app = laptop_with(sidebar_lines());
     draw(&mut app);
     mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 55, 5);
     mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), 45, 5);
     draw(&mut app);
-    assert_ne!(app.layout().lines(), SIDEBAR_LINES);
+    assert_ne!(app.layout().lines(), sidebar_lines());
     // The key of the next world moves the focus while the button is down.
     enter_cleared(&mut app, "/focus beta/bryn");
-    assert_eq!(app.layout().lines(), SIDEBAR_LINES);
+    assert_eq!(app.layout().lines(), sidebar_lines());
     mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), 40, 5);
     let effects = mouse(&mut app, MouseEventKind::Up(MouseButton::Left), 40, 5);
     assert_eq!(effects, []);
-    assert_eq!(app.layout().lines(), SIDEBAR_LINES);
+    assert_eq!(app.layout().lines(), sidebar_lines());
     let rows = block_rows(&mut app, "notices");
     assert!(
         rows.iter().any(|row| row.contains("the drag ended")),
@@ -3428,13 +3390,13 @@ fn a_focus_move_during_a_drag_ends_the_drag_and_puts_the_layout_back() {
 
 #[test]
 fn a_new_configuration_ends_a_drag_and_says_so() {
-    let mut app = laptop_with(SIDEBAR_LINES);
+    let mut app = laptop_with(sidebar_lines());
     draw(&mut app);
     mouse(&mut app, MouseEventKind::Down(MouseButton::Left), 55, 5);
     mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), 45, 5);
     // The configuration of the server changes while the button is down.
-    app.apply_config(named_config("other", SIDEBAR_LINES));
-    assert_eq!(app.layout().lines(), SIDEBAR_LINES);
+    app.apply_config(named_config("other", sidebar_lines()));
+    assert_eq!(app.layout().lines(), sidebar_lines());
     let effects = mouse(&mut app, MouseEventKind::Up(MouseButton::Left), 45, 5);
     assert_eq!(effects, []);
     let rows = block_rows(&mut app, "notices").join(" ");

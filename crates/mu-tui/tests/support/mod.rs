@@ -4,12 +4,36 @@
 
 use mu_client::ClientEvent;
 use mu_config::layout::BlockId;
-use mu_proto::{Event, EventKind, Source};
-use mu_tui::{Effect, Model, Msg, update, view};
+use mu_proto::{Event, EventKind, Source, World};
+use mu_tui::{Effect, Model, Msg, Reply, update, view};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use termina::Event as TermEvent;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
+
+/// The lines of the built-in layout `sidebar`.
+pub fn sidebar_lines() -> &'static [&'static str] {
+    mu_config::layout::BuiltIn::named("sidebar")
+        .expect("mu ships the layout sidebar")
+        .lines
+}
+
+/// The world `id` as the server lists it.
+pub fn world_of(id: &str) -> World {
+    World {
+        id: id.to_owned(),
+        ..Default::default()
+    }
+}
+
+/// The reply that refuses the line `text` of `world` for `reason`.
+pub fn refused(world: &str, text: &str, reason: &str) -> Reply {
+    Reply::Refused {
+        world: world.to_owned(),
+        text: text.to_owned(),
+        reason: reason.to_owned(),
+    }
+}
 
 /// The block id `id`.
 pub fn block(id: &str) -> BlockId {
