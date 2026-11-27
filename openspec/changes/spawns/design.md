@@ -93,9 +93,9 @@ The session calls `route` after the hooks on each `Inbound::Line`, and only ther
 
 ### D7. Each event has a ULID and its streams
 
-The core `NewEvent` gets `streams: Streams`, and the core `Event` gets `id: Ulid` and `streams`. At the numbering of an event, the journal makes its id with `ulid::Generator::generate()`, the monotonic generator of the `ulid` crate. So two events in one millisecond still sort in their order. The protocol `Event` gets `string id = 7` and `repeated string streams = 8`. `mu-server` maps both. A ULID holds 80 random bits, so ids stay unique across restarts without a store.
+The core `NewEvent` gets `streams: Streams`, and the core `Event` gets `id: Ulid` and `streams`. At the numbering of an event, the journal reads the clock once, and makes its id from that time with `ulid::Generator::generate_from_datetime()`, the monotonic generator of the `ulid` crate. The event takes the same time, so the time in the id is the time of the event. Two events in one millisecond still sort in their order. The protocol `Event` gets `string id = 7` and `repeated string streams = 8`. `mu-server` maps both. A ULID holds 80 random bits, so ids stay unique across restarts without a store.
 
-The owner chose a ULID. Its text has 26 characters and sorts by time. `uuid` v7 was the alternative, because `uuid` is already a dependency. It was rejected, because it needs a new feature of `uuid` and its text has 36 characters. `generate()` returns `Err(Overflow)` when the random part of one millisecond runs out. The journal then calls `Overflow::commit_overflow_increment()`, which moves the id into the next millisecond, so the order holds. The unit test `an_id_after_a_full_millisecond_keeps_the_order` fills the random part with one bits to reach that branch.
+The owner chose a ULID. Its text has 26 characters and sorts by time. `uuid` v7 was the alternative, because `uuid` is already a dependency. It was rejected, because it needs a new feature of `uuid` and its text has 36 characters. `generate()` returns `Err(Overflow)` when the random part of one millisecond runs out. The journal then calls `Overflow::commit_overflow_increment()`, which moves the id into the next millisecond, so the order holds. The unit test `an_id_after_a_full_millisecond_keeps_the_order` fills the random part with one bits to reach that branch. Its source of one bits implements `rand_core::TryRng`, so `rand_core` is a dev-dependency of `mu-core`, and the workspace boundary allows it.
 
 ### D8. An output selects streams
 
@@ -127,7 +127,7 @@ The waiting notices go away, because each layout has an output for `notices`: th
 
 ### D10. `mu world match`
 
-`crates/mu-cli/src/world.rs` gets the verb `match`. It resolves the world as `mu world show` does, builds one `RuleState`, and calls `route` on each line of stdin. It prints the names of `Streams` with commas, a tab and the line, with `crate::print`. It prints each error on stderr with `crate::warn`, and exits 0. It needs no server, so it is the main test seam for D5.
+`crates/mu-cli/src/world.rs` gets the verb `match`. It resolves the world as `mu world show` does, builds one `RuleState`, and calls `route` on each line of stdin. It splits stdin with `LineFramer`, the line rule of a session: it drops each CR and cuts a line at `MAX_LINE` bytes. A last line with no line break still counts. It prints the names of `Streams` with commas, a tab and the line, with `crate::print`. It prints each error on stderr with `crate::warn`, and exits 0. It needs no server, so it is the main test seam for D5.
 
 ### D11. A fake world takes the rules of global.toml
 

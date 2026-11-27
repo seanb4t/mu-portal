@@ -94,4 +94,4 @@ Tracked by #102. It is change 12 of the Phase 1 plan in #61.
 - `crates/mu-config`: the stream names, `showing`, `of all worlds`, the required `main` and `notices`, the `sidebar` layout, and one walk of game text with `vte` for the client and the rules.
 - `crates/mu-tui`: routing by the streams of an event, the outputs of all worlds, and the notice for a stream with no output. The code of the main-output role and the waiting notices goes away. `convert.rs` uses the shared walk of game text.
 - `crates/mu-cli`: the verb `mu world match`, and the rules of a fake world.
-- New workspace dependencies: `fancy-regex`, `ulid` and a glob crate. `mu-config` also starts to use `vte`.
+- New workspace dependencies: `fancy-regex`, `ulid` and a glob crate, and `rand_core` for a test of `mu-core`. `mu-config` also starts to use `vte`.
