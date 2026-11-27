@@ -358,7 +358,7 @@ async fn a_pattern_that_is_a_word() {
             "editor below main",
             "output as side showing at below main",
         ],
-        &["line 3", "at"],
+        &["line 3", "`at`"],
     )
     .await;
 }
@@ -371,7 +371,7 @@ async fn a_pattern_that_starts_with_a_digit() {
             "output as main showing main, notices, 30 below tabs",
             "editor below main",
         ],
-        &["line 2", "30"],
+        &["line 2", "`30`"],
     )
     .await;
 }

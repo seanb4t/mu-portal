@@ -2002,7 +2002,7 @@ fn last_hint_names(model: &mut Model, stream: &str) -> bool {
 #[test]
 fn the_oldest_stream_with_no_output_gives_its_hint_again() {
     let mut model = model();
-    for number in 0..=mu_tui::NO_OUTPUT_MAX {
+    for number in 0..=256 {
         send_line(
             &mut model,
             "alpha/aria",
@@ -2012,7 +2012,7 @@ fn the_oldest_stream_with_no_output_gives_its_hint_again() {
     }
     // The pair of chan-1 is still in the memory, and the pair of chan-0 is not.
     send_line(&mut model, "alpha/aria", "a line", &["chan-1"]);
-    let kept = last_hint_names(&mut model, &format!("chan-{}", mu_tui::NO_OUTPUT_MAX));
+    let kept = last_hint_names(&mut model, "chan-256");
     send_line(&mut model, "alpha/aria", "a line", &["chan-0"]);
     assert_eq!((kept, last_hint_names(&mut model, "chan-0")), (true, true));
 }

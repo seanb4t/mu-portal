@@ -10,7 +10,7 @@ use support::process::{
     Answers, BOUND, PtyClient, PtyOn, Reaper, Relay, SERVING, ServerBuilder, ServerProcess,
     Session, TWO_WORLDS, greeting, mu_on_pty, private_tempdir, server_url,
 };
-use support::{ConfigDir, layout_file, mode, mu_async, place_of, stderr};
+use support::{ConfigDir, layout_file, mode, mu_async, place_of, rule, stderr};
 
 mod support;
 
@@ -2482,21 +2482,24 @@ async fn arrange_mode_saves_through_the_server() {
 // The streams of each line, and the outputs that show them.
 
 /// The rule `chan` that sends each line `You say, "[<name>] ...` to the stream `chan-<name>`.
-const CHAN_RULE: &str =
-    "[[rules]]\nid = \"chan\"\npattern = '^You say, \"\\[(\\w+)\\] '\nstream = \"chan-$1\"\n";
+fn chan_rule() -> String {
+    rule(
+        "chan",
+        "pattern = '^You say, \"\\[(\\w+)\\] '\nstream = \"chan-$1\"",
+    )
+}
 
 /// The rule `chan` that sends each line `You say, "[...` to the stream `chat`.
-const CHAT_RULE: &str =
-    "[[rules]]\nid = \"chan\"\npattern = '^You say, \"\\['\nstream = \"chat\"\n";
+fn chat_rule() -> String {
+    rule("chan", "pattern = '^You say, \"\\['\nstream = \"chat\"")
+}
 
-/// The layout `sidebar`, with its main output and its output of the notices.
-const SIDEBAR: &[&str] = &[
-    "output as main showing main",
-    "tabs above main",
-    "editor below main",
-    "statusline below editor",
-    "output as notices right of main, 30%",
-];
+/// The lines of the built-in layout `sidebar`.
+fn sidebar_lines() -> &'static [&'static str] {
+    mu_config::layout::BuiltIn::named("sidebar")
+        .expect("mu ships the layout sidebar")
+        .lines
+}
 
 const CHAT_OF_ALL: &[&str] = &[
     "output",
@@ -2672,7 +2675,7 @@ const NOT_CONNECTED: &str = "alpha/ariaisnotconnected";
 
 #[tokio::test]
 async fn a_refused_line_goes_to_the_notices() {
-    let (mut session, mut client, _config) = with_layout(&["alpha/aria"], SIDEBAR).await;
+    let (mut session, mut client, _config) = with_layout(&["alpha/aria"], sidebar_lines()).await;
     session.client.disconnect("alpha/aria").await.unwrap();
     session
         .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
@@ -2692,7 +2695,7 @@ async fn a_refused_line_goes_to_the_notices() {
 
 #[tokio::test]
 async fn a_refused_line_of_a_world_that_lost_the_focus() {
-    let (mut session, mut client, _config) = with_layout(TWO_WORLDS, SIDEBAR).await;
+    let (mut session, mut client, _config) = with_layout(TWO_WORLDS, sidebar_lines()).await;
     session.client.disconnect("alpha/aria").await.unwrap();
     session
         .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
@@ -2706,9 +2709,10 @@ async fn a_refused_line_of_a_world_that_lost_the_focus() {
         .await;
     // A line of beta/bryn and its reply come after the refusal of the line of alpha/aria.
     say(&mut client, &["hello"]).await;
+    let (main, notices) = sides(&client.rows());
     assert_eq!(
-        notice_rows(&sides(&client.rows()).1),
-        0,
+        (notice_rows(&main), notice_rows(&notices)),
+        (0, 0),
         "{}",
         client.contents()
     );
@@ -2722,7 +2726,7 @@ async fn a_refused_line_of_a_world_that_lost_the_focus() {
 
 #[tokio::test]
 async fn a_line_with_no_world_goes_to_the_notices() {
-    let config = layout_dir(SIDEBAR, "");
+    let config = layout_dir(sidebar_lines(), "");
     let (_session, mut client) = attached_with(&[], &config, Answers::Default).await;
     client.send(b"hi\r");
     client
@@ -2800,7 +2804,7 @@ async fn one_output_for_all_channels() {
             "editor below main",
             "output as comms showing chan-*, pages right of main",
         ],
-        CHAN_RULE,
+        &chan_rule(),
     )
     .await;
     say(&mut client, &["[Public] one", "[Ooc] two"]).await;
@@ -2829,15 +2833,18 @@ async fn an_exclusion() {
             "output as main showing main, notices, chan-*, !chan-ooc",
             "editor below main",
         ],
-        CHAN_RULE,
+        &chan_rule(),
     )
     .await;
     say(&mut client, &["[Ooc] two", "[Public] one"]).await;
     let rows = client.rows();
-    assert!(
-        !rows
-            .iter()
-            .any(|row| row.trim() == "You say, \"[Ooc] two\""),
+    let shown = |text: &str| rows.iter().any(|row| row.trim() == text);
+    assert_eq!(
+        (
+            shown("You say, \"[Ooc] two\""),
+            shown("You say, \"[Public] one\"")
+        ),
+        (false, true),
         "{}",
         client.contents()
     );
@@ -2866,8 +2873,10 @@ async fn two_outputs_show_main() {
 
 #[tokio::test]
 async fn a_line_in_two_streams_of_one_output() {
-    let rule =
-        "[[rules]]\nid = \"page\"\npattern = '^You say, \"page'\nstream = [\"pages\", \"main\"]\n";
+    let page = rule(
+        "page",
+        "pattern = '^You say, \"page'\nstream = [\"pages\", \"main\"]",
+    );
     let (_session, mut client, _config) = with_rules(
         &["alpha/aria"],
         &[
@@ -2875,7 +2884,7 @@ async fn a_line_in_two_streams_of_one_output() {
             "tabs above main",
             "editor below main",
         ],
-        rule,
+        &page,
     )
     .await;
     say(&mut client, &["page hi"]).await;
@@ -2889,7 +2898,7 @@ async fn a_line_in_two_streams_of_one_output() {
 
 #[tokio::test]
 async fn a_channel_with_no_output() {
-    let config = ConfigDir::empty().file("global.toml", CHAN_RULE);
+    let config = ConfigDir::empty().file("global.toml", &chan_rule());
     let (_session, mut client) = attached_showing(&["alpha/aria"], &config).await;
     client.send(b"[Public] one\r[Public] two\r");
     wait_notice(&client, &["chan-public", "alpha/aria"]).await;
@@ -2970,7 +2979,7 @@ async fn hide_a_second_output_of_the_notices() {
 
 #[tokio::test]
 async fn a_page_from_another_world() {
-    let (_session, mut client, _config) = with_rules(TWO_WORLDS, CHAT_OF_ALL, CHAT_RULE).await;
+    let (_session, mut client, _config) = with_rules(TWO_WORLDS, CHAT_OF_ALL, &chat_rule()).await;
     command(&mut client, "/focus beta/bryn");
     say(&mut client, &["[Public] hi"]).await;
     command(&mut client, "/focus alpha/aria");
@@ -3011,7 +3020,7 @@ async fn a_place_command_with_the_scope() {
 
 #[tokio::test]
 async fn two_worlds_in_one_pane() {
-    let (_session, mut client, _config) = with_rules(TWO_WORLDS, CHAT_OF_ALL, CHAT_RULE).await;
+    let (_session, mut client, _config) = with_rules(TWO_WORLDS, CHAT_OF_ALL, &chat_rule()).await;
     say(&mut client, &["[Public] one"]).await;
     command(&mut client, "/focus beta/bryn");
     say(&mut client, &["[Public] two"]).await;
@@ -3064,7 +3073,7 @@ async fn a_world_with_another_layout() {
             "clients/global.toml",
             "[world-layouts]\n\"alpha/aria\" = \"chat\"\n\"beta/bryn\" = \"classic\"\n",
         )
-        .file("global.toml", CHAT_RULE);
+        .file("global.toml", &chat_rule());
     let (_session, mut client) = attached_showing(TWO_WORLDS, &config).await;
     command(&mut client, "/focus beta/bryn");
     client.send(b"[Public] two\r");

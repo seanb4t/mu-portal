@@ -1193,7 +1193,7 @@ fn game_rule(fields: &str) -> Config {
 fn a_rule_with_a_stream_loads() {
     let config = Config::base().file(
         "global.toml",
-        "[[rules]]\nid = \"chan\"\npattern = '^\\[(\\w+)\\] '\nstream = \"chan-$1\"\n",
+        &rule("chan", "pattern = '^\\[(\\w+)\\] '\nstream = \"chan-$1\""),
     );
     let text = succeeds(&config.show("alpha/aria"));
     assert_eq!(ids(&text, "rules"), ["chan"]);
@@ -1215,7 +1215,7 @@ fn an_action_with_no_pattern() {
 fn a_pattern_that_does_not_compile() {
     let config = Config::base().file(
         "characters/alpha/aria.toml",
-        "[[rules]]\nid = \"chan\"\npattern = \"([\"\nstream = \"chat\"\n",
+        &rule("chan", "pattern = \"([\"\nstream = \"chat\""),
     );
     fails_naming(
         &config.list(),
@@ -1283,14 +1283,11 @@ fn an_overridden_rule_is_still_checked() {
     let config = Config::base()
         .file(
             "global.toml",
-            "[[rules]]\nid = \"chan\"\npattern = \"([\"\nstream = \"chat\"\n",
+            &rule("chan", "pattern = \"([\"\nstream = \"chat\""),
         )
         .file(
             "games/alpha.toml",
-            &game(
-                &[],
-                "[[rules]]\nid = \"chan\"\npattern = \"x\"\nstream = \"chat\"\n",
-            ),
+            &game(&[], &rule("chan", "pattern = \"x\"\nstream = \"chat\"")),
         );
     fails_naming(&config.list(), &["global.toml", "chan", "pattern"]);
 }
@@ -1299,6 +1296,16 @@ fn an_overridden_rule_is_still_checked() {
 
 /// `mu world match <id> --config <dir>` with `lines` on stdin, each with a line break.
 fn matched(config: &Config, id: &str, lines: &[&str]) -> Output {
+    let mut input = String::new();
+    for line in lines {
+        input.push_str(line);
+        input.push('\n');
+    }
+    matched_raw(config, id, input.as_bytes())
+}
+
+/// Runs `mu world match id` with stdin of exactly `input`.
+fn matched_raw(config: &Config, id: &str, input: &[u8]) -> Output {
     use std::io::Write as _;
     let mut command = mu_command(&["world", "match", id, "--config", config.arg()], &[]);
     command
@@ -1306,17 +1313,12 @@ fn matched(config: &Config, id: &str, lines: &[&str]) -> Output {
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     let mut child = command.spawn().expect("mu starts");
-    let mut input = String::new();
-    for line in lines {
-        input.push_str(line);
-        input.push('\n');
-    }
     child
         .stdin
         .take()
         .expect("stdin")
-        .write_all(input.as_bytes())
-        .expect("stdin takes the lines");
+        .write_all(input)
+        .expect("stdin takes the input");
     child.wait_with_output().expect("mu ends")
 }
 
@@ -1349,6 +1351,22 @@ fn match_cuts_a_long_line_as_the_session_does() {
     let long = "a".repeat(mu_core::framer::MAX_LINE + 3);
     let out = match_lines(&config, &[&long]);
     assert_eq!(first_fields(&out), ["x", "x"]);
+}
+
+#[test]
+fn match_counts_a_last_line_with_no_line_break() {
+    assert_eq!(
+        succeeds(&matched_raw(&Config::base(), "alpha/aria", b"hi")),
+        "main\thi\n"
+    );
+}
+
+#[test]
+fn match_of_an_empty_stdin() {
+    assert_eq!(
+        succeeds(&matched_raw(&Config::base(), "alpha/aria", b"")),
+        ""
+    );
 }
 
 #[test]
