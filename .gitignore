@@ -105,3 +105,6 @@ dist
 
 target/
 .archify/
+
+# Python bytecode
+__pycache__/
