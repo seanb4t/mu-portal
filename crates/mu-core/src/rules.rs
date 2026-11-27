@@ -634,7 +634,10 @@ mod tests {
         assert_eq!(
             (
                 names(&route),
-                route.errors.first().map(|error| error.text.contains("a$"))
+                route
+                    .errors
+                    .first()
+                    .map(|error| error.text.contains("`a$`"))
             ),
             ("main".to_owned(), Some(true))
         );
@@ -718,6 +721,17 @@ mod tests {
         state.route(&rules, "[Role Play] one");
         state.reset();
         assert_eq!(state.route(&rules, "[Role Play] two").errors.len(), 1);
+    }
+
+    #[test]
+    fn reset_reports_a_hook_of_the_notices_again() {
+        let notices = || Streams::new(vec![StreamName::notices()]).unwrap();
+        let mut state = RuleState::default();
+        let first = state.hooked(notices()).errors.len();
+        let again = state.hooked(notices()).errors.len();
+        state.reset();
+        let after = state.hooked(notices()).errors.len();
+        assert_eq!((first, again, after), (1, 0, 1));
     }
 
     #[test]
