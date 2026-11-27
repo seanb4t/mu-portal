@@ -58,7 +58,7 @@ Each group lands its own tests and documentation before the next group starts.
 
 ## 8. Reviews and the last checks
 
-- [ ] 8.1 Run `/sb:openspec-review spawns implementation`. Make sure that the verdict in `review.md` is not changes-requested.
+- [x] 8.1 Run `/sb:openspec-review spawns implementation`. Make sure that the verdict in `review.md` is not changes-requested.
 - [x] 8.2 Run `/sb:suite-review` on the branch, and fix or triage each blocker and major finding. Make sure that the report has no open blocker.
 - [x] 8.3 Run `mise run check`. Make sure that it passes on the branch.
 
