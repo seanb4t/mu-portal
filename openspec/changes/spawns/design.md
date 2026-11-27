@@ -59,7 +59,7 @@ Alternative: compile in the session at the connect. Rejected, because a bad patt
 
 ### D3. fancy-regex is the engine
 
-The owner asked for the full syntax of a regular expression: named groups, lookaround and back-references. The `regex` crate has no lookaround and no back-references. `fancy-regex` adds them, and hands each part that needs no backtracking to `regex`. Its license is MIT. So rule 5rk42v8qs1 (reuse first) points to it. `pcre2` was rejected, because it links a C library.
+The owner asked for the full syntax of a regular expression: named groups, lookaround and back-references. The `regex` crate has no lookaround and no back-references. `fancy-regex` adds them, and hands each part that needs no backtracking to `regex-automata`, the engine of the `regex` crate. Its license is MIT. So rule 5rk42v8qs1 (reuse first) points to it. `pcre2` was rejected, because it links a C library.
 
 `fancy-regex` enters through `[workspace.dependencies]`, and the row of `mu-core` in the allowlist gets it. `RegexBuilder::backtrack_limit` sets the limit, and the default is 1,000,000 steps. A match at the limit returns `Error::RuntimeError(RuntimeError::BacktrackLimitExceeded)`. `Captures::expand` expands `$1`, `$name`, `${name}` and `$$`. A group that does not exist or did not match gives the empty string. The longest name wins, so `$1a` names the group `1a`, and a template writes `${1}a` for group 1.
 
@@ -156,7 +156,7 @@ The waiting notices go away, because each layout has an output for `notices`: th
 
 ## Risks / Trade-offs
 
-- [A pattern with heavy backtracking slows the session of a world] → The backtrack limit stops each match. One script error names the rule. A pattern with no fancy feature runs on the linear `regex` engine.
+- [A pattern with heavy backtracking slows the session of a world] → The backtrack limit stops each match. One script error names the rule. A pattern with no fancy feature runs on the linear engine of `regex-automata`.
 - [A line in several streams shows in several panes, and the owner sees it twice] → That is the choice of the owner. A `!` pattern removes a stream from an output.
 - [A layout from #172 can have an output for `notices` and a bare `output`. Then the notices show twice.] → The built-in `sidebar` writes `output as main showing main`. The guide tells the owner to make the same change to a layout file, and task 7.6 adds that advice.
 - [The words `all`, `worlds` and `showing` can no longer be ids] → No release exists. A layout with such an id fails with the line number.
