@@ -2942,11 +2942,15 @@ async fn hide_the_only_output_of_the_notices() {
     command(&mut client, "/pane hide notices");
     client
         .wait_rows("the refusal in the notices", |rows| {
-            let notices = sides(rows).1;
+            let notices: Vec<String> = sides(rows)
+                .1
+                .into_iter()
+                .filter(|row| !row.trim().is_empty())
+                .collect();
             notices
                 .iter()
-                .any(|row| row.trim_start().starts_with("-- "))
-                && packed(&notices).contains("notices")
+                .rposition(|row| row.trim_start().starts_with("-- "))
+                .is_some_and(|last| packed(&notices[last..]).contains("notices"))
         })
         .await;
     assert!(

@@ -224,10 +224,11 @@ async fn ids_in_one_stream() {
 
 #[tokio::test]
 async fn ids_after_a_restart() {
-    let first = Session::with_worlds(&["alpha/aria"]).await;
+    let dir = support::ConfigDir::empty();
+    let first = on_config(&dir).await;
     let before = ids_of(first.seen());
     drop(first);
-    let mut second = Session::with_worlds(&["alpha/aria"]).await;
+    let mut second = on_config(&dir).await;
     second.client.send("alpha/aria", "hi").await.unwrap();
     second.line("alpha/aria", "You say, \"hi\"").await;
     let after = ids_of(second.seen());
@@ -259,13 +260,18 @@ async fn no_event_without_a_stream() {
 /// The directory lives as long as the session.
 async fn with_global(global: &str) -> (Session, support::ConfigDir) {
     let dir = support::ConfigDir::empty().file("global.toml", global);
+    (on_config(&dir).await, dir)
+}
+
+/// A server on the configuration `dir` with the fake world `alpha/aria`, after its greeting.
+async fn on_config(dir: &support::ConfigDir) -> Session {
     let builder = ServerBuilder::new()
         .arg("--config")
         .arg(dir.path())
         .fake_worlds(&["alpha/aria"]);
     let mut session = Session::start(builder).await;
     session.welcome("alpha/aria").await;
-    (session, dir)
+    session
 }
 
 fn streams_of(event: &mu_proto::Event) -> Vec<&str> {
