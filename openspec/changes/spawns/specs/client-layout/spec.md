@@ -115,7 +115,7 @@ A layout SHALL be bad in each of these cases, and its notice SHALL name the line
 #### Scenario: A block that is not placed yet
 - **GIVEN** `clients/layouts/mine.toml` holds the lines `editor` and `tabs above main`
 - **WHEN** the user runs `mu layout show mine`
-- **THEN** stderr holds one line that contains `line 2` and `output`
+- **THEN** stderr holds one line that contains `line 2` and `main`
 
 #### Scenario: No editor
 - **GIVEN** `clients/layouts/mine.toml` holds the lines `output` and `tabs above main`
@@ -173,7 +173,7 @@ mu SHALL have these built-in layouts, and the default layout SHALL be `classic`:
 ## ADDED Requirements
 
 ### Requirement: An output shows the streams that its patterns match
-The form `output as <id> showing <pattern>, ...` SHALL set the streams of an output. A pattern SHALL be a glob with `*` and `?`. A pattern with `!` in front SHALL exclude. An output SHALL show a stream that matches at least one pattern without `!` and no pattern with `!`. The order of the patterns SHALL NOT matter. A list of only exclusions SHALL be bad, and so SHALL an empty list or a lone `!`. A pattern that starts with `re:` or `/` SHALL be bad.
+The form `output as <id> showing <pattern>, ...` SHALL set the streams of an output. A pattern SHALL be a glob with `*` and `?`. A pattern with `!` in front SHALL exclude. An output SHALL show a stream that matches at least one pattern without `!` and no pattern with `!`. The order of the patterns SHALL NOT matter.
 
 #### Scenario: One output for all channels
 - **GIVEN** `global.toml` has the rule `chan` with `pattern = '^You say, "\[(\w+)\] '` and `stream = "chan-$1"`
@@ -187,6 +187,14 @@ The form `output as <id> showing <pattern>, ...` SHALL set the streams of an out
 - **AND** the layout in use holds the lines `output as main showing main, notices, chan-*, !chan-ooc` and `editor below main`, and the world in focus is the fake world `alpha/aria`
 - **WHEN** the user sends `[Public] one` and `[Ooc] two`
 - **THEN** the pane of `main` shows `You say, "[Public] one"` and not `You say, "[Ooc] two"`
+
+#### Scenario: A plan keeps the patterns
+- **GIVEN** `clients/layouts/mine.toml` holds the lines `output`, `editor below main` and `output as comms showing chan-*, pages right of main, 30%`
+- **WHEN** the user runs `mu layout show mine`
+- **THEN** stdout holds the line `output as comms showing chan-*, pages right of main, 30%`
+
+### Requirement: A bad list of patterns is refused
+A list of only exclusions SHALL be bad, and so SHALL an empty list or a lone `!`. A pattern that starts with `re:` or `/` SHALL be bad. A pattern that starts with a digit, or that is a word of the sentences, SHALL be bad, because no stream name has that form.
 
 #### Scenario: Only exclusions
 - **GIVEN** `clients/layouts/mine.toml` holds the lines `output`, `editor below main` and `output as side showing !chan-* right of main`
@@ -203,10 +211,15 @@ The form `output as <id> showing <pattern>, ...` SHALL set the streams of an out
 - **WHEN** the user runs `mu layout show mine`
 - **THEN** stderr holds one line that contains `line 3` and `re:chan`
 
-#### Scenario: A plan keeps the patterns
-- **GIVEN** `clients/layouts/mine.toml` holds the lines `output`, `editor below main` and `output as comms showing chan-*, pages right of main, 30%`
+#### Scenario: A pattern that is a word
+- **GIVEN** `clients/layouts/mine.toml` holds the lines `output`, `editor below main` and `output as side showing at below main`
 - **WHEN** the user runs `mu layout show mine`
-- **THEN** stdout holds the line `output as comms showing chan-*, pages right of main, 30%`
+- **THEN** stderr holds one line that contains `line 3` and `at`
+
+#### Scenario: A pattern that starts with a digit
+- **GIVEN** `clients/layouts/mine.toml` holds the lines `tabs`, `output as main showing main, notices, 30 below tabs` and `editor below main`
+- **WHEN** the user runs `mu layout show mine`
+- **THEN** stderr holds one line that contains `line 2` and `30`
 
 ### Requirement: A line shows in each output that matches it
 A line SHALL show in each output that shows one of its streams. One output SHALL show a line one time. This SHALL also hold if the output shows more than one of the streams of the line.
