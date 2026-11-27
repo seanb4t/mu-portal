@@ -2,7 +2,9 @@
 
 #![allow(dead_code, reason = "each test binary uses a part of this module")]
 
+use mu_client::ClientEvent;
 use mu_config::layout::BlockId;
+use mu_proto::{Event, EventKind, Source};
 use mu_tui::{Effect, Model, Msg, update, view};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -52,6 +54,29 @@ pub fn press(model: &mut Model, code: KeyCode, modifiers: Modifiers) -> Vec<Effe
         model,
         Msg::Terminal(TermEvent::Key(KeyEvent::new(code, modifiers))),
     )
+}
+
+/// Types `text` and presses Enter, and returns the effects.
+pub fn run_command(model: &mut Model, text: &str) -> Vec<Effect> {
+    type_text(model, text);
+    press(model, KeyCode::Enter, Modifiers::NONE)
+}
+
+/// The line `text` from the game of `world`, in the streams `streams`.
+pub fn game_event(world: &str, text: &str, streams: &[&str]) -> ClientEvent {
+    ClientEvent::Event(Event {
+        world: world.to_owned(),
+        kind: EventKind::EVENT_KIND_LINE.into(),
+        source: Source::SOURCE_GAME.into(),
+        text: text.to_owned(),
+        streams: streams.iter().map(ToString::to_string).collect(),
+        ..Default::default()
+    })
+}
+
+/// The message of [`game_event`].
+pub fn game_line(world: &str, text: &str, streams: &[&str]) -> Msg {
+    Msg::Client(game_event(world, text, streams))
 }
 
 /// Types each char of `text`.

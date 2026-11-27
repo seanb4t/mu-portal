@@ -1,7 +1,6 @@
 //! Arrange mode: the keys, the letters and the drag.
 
-use mu_client::ClientEvent;
-use mu_proto::{Event, EventKind, GetClientConfigResponse, Source};
+use mu_proto::GetClientConfigResponse;
 use mu_tui::{Effect, Model, Msg, update, view};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -10,18 +9,12 @@ use ratatui::style::Modifier;
 use termina::Event as TermEvent;
 use termina::event::{KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
-use support::block;
+use support::{block, game_line, run_command};
 
 mod support;
 
 fn game(world: &str, text: &str) -> Msg {
-    Msg::Client(ClientEvent::Event(Event {
-        world: world.to_owned(),
-        kind: EventKind::EVENT_KIND_LINE.into(),
-        source: Source::SOURCE_GAME.into(),
-        text: text.to_owned(),
-        ..Default::default()
-    }))
+    game_line(world, text, &[])
 }
 
 /// Two worlds on the device `laptop`, with the layout `classic`.
@@ -600,13 +593,6 @@ fn a_move_keeps_the_selection() {
 }
 
 /// Types `text` and presses Enter.
-fn run_command(app: &mut Model, text: &str) {
-    for typed in text.chars() {
-        key(app, KeyCode::Char(typed), Modifiers::NONE);
-    }
-    key(app, KeyCode::Enter, Modifiers::NONE);
-}
-
 #[test]
 fn a_place_command_keeps_the_streams() {
     let mut app = laptop_with(&[

@@ -19,7 +19,7 @@ fn model() -> Model {
     Model::new(["alpha/aria".to_owned(), "beta/bryn".to_owned()])
 }
 
-use support::{block, block_rows, press, type_text};
+use support::{block, block_rows, game_line, press, run_command, type_text};
 
 mod support;
 
@@ -1153,11 +1153,6 @@ fn aria_entry() -> Choice {
 }
 
 /// Types `text` and presses Enter, and returns the effects of the Enter.
-fn run_command(model: &mut Model, text: &str) -> Vec<Effect> {
-    type_text(model, text);
-    press(model, KeyCode::Enter, Modifiers::NONE)
-}
-
 fn laptop() -> Model {
     model().with_device("laptop")
 }
@@ -1459,19 +1454,8 @@ fn kept_notice(model: &mut Model, reason: &str) {
 }
 
 /// A line of the game of `world` with the streams `streams`.
-fn line_of(world: &str, text: &str, streams: &[&str]) -> Msg {
-    Msg::Client(ClientEvent::Event(Event {
-        world: world.to_owned(),
-        kind: EventKind::EVENT_KIND_LINE.into(),
-        source: Source::SOURCE_GAME.into(),
-        text: text.to_owned(),
-        streams: texts(streams),
-        ..Default::default()
-    }))
-}
-
 fn send_line(model: &mut Model, world: &str, text: &str, streams: &[&str]) {
-    update(model, line_of(world, text, streams));
+    update(model, game_line(world, text, streams));
 }
 
 /// The rows of the pane of `id` by [`block_rows`], with no title row.
@@ -1664,6 +1648,23 @@ fn a_refused_line_notice_comes_back_after_a_reset() {
     update(&mut model, reset());
     let rows = rows_of(&mut model, "notices");
     assert_eq!(count(&rows, |row| row == "-- down"), 1, "{rows:?}");
+}
+
+#[test]
+fn a_kept_notice_of_all_worlds_comes_back_once_after_a_reset() {
+    let mut model = model();
+    with_layouts(&mut model, NOTICES_OF_ALL, &[]);
+    update(
+        &mut model,
+        Msg::Reply(mu_tui::Reply::Refused {
+            world: "alpha/aria".to_owned(),
+            text: "hi".to_owned(),
+            reason: "down".to_owned(),
+        }),
+    );
+    update(&mut model, reset());
+    let rows = rows_of(&mut model, "notices");
+    assert_eq!(count(&rows, |row| row.ends_with("-- down")), 1, "{rows:?}");
 }
 
 #[test]
