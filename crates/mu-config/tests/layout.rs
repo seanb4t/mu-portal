@@ -8,7 +8,7 @@ use mu_config::layout::{
 };
 use mu_config::stream::{Pattern, Scope, Selection};
 use proptest::prelude::*;
-use support::glob;
+use support::{glob, id_of};
 
 mod support;
 
@@ -74,10 +74,28 @@ fn patterns() -> impl Strategy<Value = Option<Vec<Pattern>>> {
     }))
 }
 
-fn selection_of(id: &BlockId, scope: Scope, patterns: Option<Vec<Pattern>>) -> Selection {
-    patterns
-        .and_then(|patterns| Selection::new(scope, patterns).ok())
-        .unwrap_or_else(|| Selection::default_for(id, scope))
+/// The step of a block, with a selection of `scope` and `patterns` for an output. Patterns that
+/// give no selection give the default selection of the block.
+fn step_of_parts(
+    kind: BlockKind,
+    id: BlockId,
+    place: Place,
+    size: Option<Size>,
+    scope: Scope,
+    patterns: Option<Vec<Pattern>>,
+) -> Step {
+    let selection = (kind == BlockKind::Output).then(|| {
+        patterns
+            .and_then(|patterns| Selection::new(scope, patterns).ok())
+            .unwrap_or_else(|| Selection::default_for(&id, scope))
+    });
+    Step {
+        kind,
+        id,
+        place,
+        size,
+        selection,
+    }
 }
 
 fn step() -> impl Strategy<Value = Step> {
@@ -91,14 +109,7 @@ fn step() -> impl Strategy<Value = Step> {
     )
         .prop_map(|(kind, id, place, size, scope, patterns)| {
             let id = id.unwrap_or_else(|| BlockId::of(kind));
-            let selection = (kind == BlockKind::Output).then(|| selection_of(&id, scope, patterns));
-            Step {
-                kind,
-                id,
-                place,
-                size,
-                selection,
-            }
+            step_of_parts(kind, id, place, size, scope, patterns)
         })
 }
 
@@ -171,15 +182,14 @@ fn grown(moves: &[Move]) -> Layout {
         };
         let mut next = steps.clone();
         let id = BlockId::new(&format!("b{number}")).expect("an id");
-        let selection = (each.kind == BlockKind::Output)
-            .then(|| selection_of(&id, each.scope, each.patterns.clone()));
-        next.push(Step {
-            kind: each.kind,
+        next.push(step_of_parts(
+            each.kind,
             id,
             place,
-            size: each.size,
-            selection,
-        });
+            each.size,
+            each.scope,
+            each.patterns.clone(),
+        ));
         if Layout::from_steps(next.clone()).is_ok() {
             steps = next;
         }
@@ -235,10 +245,6 @@ fn shape(node: &Node) -> String {
 
 fn shape_of(lines: &[&str]) -> String {
     shape(layout(lines).tree())
-}
-
-fn id_of(text: &str) -> BlockId {
-    BlockId::new(text).expect("an id")
 }
 
 fn step_of(text: &str) -> Step {

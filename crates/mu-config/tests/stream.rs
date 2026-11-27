@@ -3,7 +3,7 @@
 use mu_config::layout::BlockId;
 use mu_config::stream::{MAIN, NOTICES, Pattern, Scope, Selection, StreamName, Streams};
 use proptest::prelude::*;
-use support::glob;
+use support::{glob, id_of};
 
 mod support;
 
@@ -108,10 +108,6 @@ fn selection(texts: &[&str]) -> Selection {
     .unwrap_or_else(|error| panic!("{texts:?}: {error}"))
 }
 
-fn id(text: &str) -> BlockId {
-    BlockId::new(text).unwrap_or_else(|error| panic!("{text}: {error}"))
-}
-
 #[test]
 fn a_glob_matches() {
     let chosen = selection(&["chan-*", "page?"]);
@@ -145,7 +141,7 @@ fn the_order_does_not_matter() {
 
 #[test]
 fn the_default_is_the_id() {
-    let chosen = Selection::default_for(&id("comms"), Scope::World);
+    let chosen = Selection::default_for(&id_of("comms"), Scope::World);
     assert_eq!(
         (chosen.shows(&name("comms")), chosen.shows(&name("main"))),
         (true, false)
@@ -154,7 +150,7 @@ fn the_default_is_the_id() {
 
 #[test]
 fn the_default_of_main() {
-    let chosen = Selection::default_for(&id("main"), Scope::World);
+    let chosen = Selection::default_for(&id_of("main"), Scope::World);
     assert_eq!(
         (
             chosen.shows(&name("main")),
