@@ -14,7 +14,7 @@ use ratatui::style::{Color, Modifier, Style};
 use termina::Event as TermEvent;
 use termina::event::{KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
-use support::{type_lines, type_text};
+use support::{block, block_rows, rect_of, type_lines, type_text};
 
 mod support;
 
@@ -2402,7 +2402,7 @@ fn a_focus_command_before_the_first_list() {
 
 // The layout of the screen.
 
-use mu_config::layout::{BUILT_IN, BlockId, Layout, preview};
+use mu_config::layout::{BUILT_IN, Layout, preview};
 use mu_proto::{GetClientConfigResponse, NamedLayout};
 
 fn lines_of(lines: &[&str]) -> Vec<String> {
@@ -2448,40 +2448,6 @@ fn with_layout(app: &mut Model, lines: &[&str]) {
         &["world", "state"],
         &["idle"],
     ));
-}
-
-fn block(id: &str) -> BlockId {
-    BlockId::new(id).expect("an id")
-}
-
-/// The rectangle of the pane of `id` on an 80 by 24 screen, as `(first column, last column,
-/// first row, last row)`, each from 1.
-fn rect_of(app: &Model, id: &str) -> (u16, u16, u16, u16) {
-    let solved = mu_tui::solved(app, 80, 24);
-    let area = solved
-        .pane_of(&block(id))
-        .unwrap_or_else(|| panic!("no pane of {id}"))
-        .area;
-    (
-        area.x + 1,
-        area.x + area.width,
-        area.y + 1,
-        area.y + area.height,
-    )
-}
-
-/// The rows of the pane of `id` on an 80 by 24 screen, with no trailing spaces and no empty
-/// row.
-fn block_rows(app: &mut Model, id: &str) -> Vec<String> {
-    let buffer = draw(app);
-    let (left, right, top, bottom) = rect_of(app, id);
-    (top - 1..bottom)
-        .map(|y| {
-            let row: String = (left - 1..right).map(|x| buffer[(x, y)].symbol()).collect();
-            row.trim_end().to_owned()
-        })
-        .filter(|row| !row.is_empty())
-        .collect()
 }
 
 const TWO_EDITORS: &[&str] = &[

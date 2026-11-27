@@ -19,7 +19,7 @@ fn model() -> Model {
     Model::new(["alpha/aria".to_owned(), "beta/bryn".to_owned()])
 }
 
-use support::{press, type_text};
+use support::{block, block_rows, press, type_text};
 
 mod support;
 
@@ -1428,7 +1428,7 @@ fn a_failed_save_puts_back_the_last_good_layout_of_the_server() {
 
 // The routing of lines and notices by the streams of each event.
 
-use mu_config::layout::{BlockId, Layout};
+use mu_config::layout::Layout;
 use mu_proto::World;
 
 /// A configuration with the layout `lines`, and the layout of each key of `worlds`. The echo of
@@ -1474,30 +1474,12 @@ fn send_line(model: &mut Model, world: &str, text: &str, streams: &[&str]) {
     update(model, line_of(world, text, streams));
 }
 
-fn block(id: &str) -> BlockId {
-    BlockId::new(id).expect("an id")
-}
-
-/// The rows of the pane of `id` on an 80 by 24 screen, with no trailing spaces, no empty row
-/// and no title row.
+/// The rows of the pane of `id` by [`block_rows`], with no title row.
 fn rows_of(model: &mut Model, id: &str) -> Vec<String> {
-    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
-    terminal.draw(|frame| view(model, frame)).unwrap();
-    let buffer = terminal.backend().buffer().clone();
-    let solved = mu_tui::solved(model, 80, 24);
-    let area = solved
-        .pane_of(&block(id))
-        .unwrap_or_else(|| panic!("no pane of {id}"))
-        .area;
     let title = format!("[{id}]");
-    (area.y..area.y + area.height)
-        .map(|y| {
-            let row: String = (area.x..area.x + area.width)
-                .map(|x| buffer[(x, y)].symbol())
-                .collect();
-            row.trim_end().to_owned()
-        })
-        .filter(|row| !row.is_empty() && !row.starts_with(&title))
+    block_rows(model, id)
+        .into_iter()
+        .filter(|row| !row.starts_with(&title))
         .collect()
 }
 

@@ -1,7 +1,6 @@
 //! Arrange mode: the keys, the letters and the drag.
 
 use mu_client::ClientEvent;
-use mu_config::layout::BlockId;
 use mu_proto::{Event, EventKind, GetClientConfigResponse, Source};
 use mu_tui::{Effect, Model, Msg, update, view};
 use ratatui::Terminal;
@@ -10,6 +9,10 @@ use ratatui::buffer::Buffer;
 use ratatui::style::Modifier;
 use termina::Event as TermEvent;
 use termina::event::{KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
+
+use support::block;
+
+mod support;
 
 fn game(world: &str, text: &str) -> Msg {
     Msg::Client(ClientEvent::Event(Event {
@@ -98,10 +101,6 @@ fn mouse(app: &mut Model, kind: MouseEventKind, column: u16, row: u16) -> Vec<Ef
         modifiers: Modifiers::NONE,
     };
     update(app, Msg::Terminal(TermEvent::Mouse(event)))
-}
-
-fn block(id: &str) -> BlockId {
-    BlockId::new(id).expect("an id")
 }
 
 /// The rectangle of the pane of `id` in arrange mode: the first column, the first row, the
