@@ -33,5 +33,6 @@ walkdir = { workspace = true }
 hex = { workspace = true }
 mu-fake-server = { path = "../mu-fake-server" }
 proptest = { workspace = true }
+rand_core = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }

@@ -216,6 +216,40 @@ mod tests {
         }
     }
 
+    /// A source of random bits that gives only one bits.
+    struct Ones;
+
+    impl rand_core::TryRng for Ones {
+        type Error = std::convert::Infallible;
+
+        fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+            Ok(u32::MAX)
+        }
+
+        fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+            Ok(u64::MAX)
+        }
+
+        fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
+            dst.fill(!0);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn an_id_after_a_full_millisecond_keeps_the_order() {
+        let journal = MemoryJournal::new(DEFAULT_CAPACITY).unwrap();
+        let later = SystemTime::now() + std::time::Duration::from_secs(3600);
+        let full = journal
+            .lock()
+            .ids
+            .generate_from_datetime_with_source(later, &mut Ones)
+            .unwrap();
+        let first = journal.append(new_event("alpha/aria", "one")).id;
+        let second = journal.append(new_event("alpha/aria", "two")).id;
+        assert!(full < first && first < second, "{full} {first} {second}");
+    }
+
     fn journal_of(n: u64) -> MemoryJournal {
         let journal = MemoryJournal::new(DEFAULT_CAPACITY).unwrap();
         for i in 1..=n {

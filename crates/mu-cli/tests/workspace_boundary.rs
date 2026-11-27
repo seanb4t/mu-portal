@@ -58,6 +58,7 @@ const ALLOWED_CRATES: &[(&str, &[&str])] = &[
             "hex",
             "miniz_oxide",
             "proptest",
+            "rand_core",
             "secrecy",
             "serde",
             "serde_path_to_error",

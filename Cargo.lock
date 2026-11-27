@@ -1980,6 +1980,7 @@ dependencies = [
  "mu-config",
  "mu-fake-server",
  "proptest",
+ "rand_core 0.10.1",
  "secrecy",
  "serde",
  "serde_path_to_error",
