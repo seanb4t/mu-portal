@@ -7,7 +7,7 @@ use std::process::ExitCode;
 use clap::{Args, Subcommand};
 use mu_core::rules::RuleState;
 use mu_core::world::{Entry, FIELD_PATHS};
-use mu_core::{Reconnect, ReconnectMode, ResolvedWorld};
+use mu_core::{Framer as _, Inbound, LineFramer, Reconnect, ReconnectMode, ResolvedWorld};
 
 use crate::config::ConfigArgs;
 
@@ -84,10 +84,16 @@ fn run_match(world: &ResolvedWorld) -> ExitCode {
     if let Err(error) = std::io::stdin().read_to_end(&mut input) {
         return fail(&format!("stdin: {error}"));
     }
+    if !input.is_empty() && !input.ends_with(b"\n") {
+        input.push(b'\n');
+    }
     let mut state = RuleState::default();
     let mut text = String::new();
-    for line in String::from_utf8_lossy(&input).lines() {
-        let route = state.route(&world.rules, line);
+    for inbound in LineFramer::new().feed(&input) {
+        let Inbound::Line(line) = inbound else {
+            continue;
+        };
+        let route = state.route(&world.rules, &line);
         for error in &route.errors {
             crate::warn("world", error);
         }

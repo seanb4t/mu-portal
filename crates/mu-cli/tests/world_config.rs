@@ -1325,7 +1325,6 @@ fn with_rules(rules: &str) -> Config {
     Config::base().file("global.toml", rules)
 }
 
-/// The rule `id` as a TOML table with `fields`.
 /// The stdout of a match of `lines` for `alpha/aria`.
 fn match_lines(config: &Config, lines: &[&str]) -> String {
     succeeds(&matched(config, "alpha/aria", lines))
@@ -1336,6 +1335,20 @@ fn first_fields(text: &str) -> Vec<&str> {
     text.lines()
         .map(|line| line.split('\t').next().unwrap_or_default())
         .collect()
+}
+
+#[test]
+fn match_drops_a_carriage_return_as_the_session_does() {
+    let config = with_rules(&rule("two", "pattern = \"^two$\"\nstream = \"x\""));
+    assert_eq!(match_lines(&config, &["t\rwo"]), "x\ttwo\n");
+}
+
+#[test]
+fn match_cuts_a_long_line_as_the_session_does() {
+    let config = with_rules(&rule("a", "pattern = \"^a\"\nstream = \"x\""));
+    let long = "a".repeat(mu_core::framer::MAX_LINE + 3);
+    let out = match_lines(&config, &[&long]);
+    assert_eq!(first_fields(&out), ["x", "x"]);
 }
 
 #[test]

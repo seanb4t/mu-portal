@@ -264,3 +264,16 @@ If a match passes the backtrack limit of the engine, the match SHALL stop. The l
 - **WHEN** the user runs `mu world match alpha/aria --config <dir>` with the stdin line `[Role Play] hi`
 - **THEN** stderr holds one line that contains `chan` and `chan-role play`
 - **AND** the exit status is 0
+
+### Requirement: `mu world match` splits stdin as a session does
+`mu world match` SHALL split stdin as a session splits the lines from a game. It SHALL drop each CR, and it SHALL cut a line at the longest line that a session holds.
+
+#### Scenario: A carriage return in a line
+- **GIVEN** the configuration has a rule with the pattern `^two$` and the stream `x`
+- **WHEN** the user runs `mu world match alpha/aria --config <dir>` with the stdin line `t`, a CR, and `wo`
+- **THEN** stdout is the line `x` TAB `two`
+
+#### Scenario: A line longer than a session holds
+- **GIVEN** the configuration has a rule with the pattern `^a` and the stream `x`
+- **WHEN** the user runs `mu world match alpha/aria --config <dir>` with one stdin line of `a` characters, 3 longer than the longest line that a session holds
+- **THEN** stdout has two lines, and each one starts with `x` TAB
