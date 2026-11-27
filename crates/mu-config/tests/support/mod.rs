@@ -4,7 +4,8 @@
 
 use proptest::prelude::*;
 
-/// The text of a pattern: a glob of `a` to `c`, `*`, `?` and `-`, with an optional `!`.
+/// The text of a pattern: a glob of `a` to `c`, `*` and `?`, then also `0` to `9` and `-`,
+/// with an optional `!`.
 pub fn glob() -> impl Strategy<Value = String> {
-    "!?[a-c*?][a-c*?-]{0,3}"
+    "!?[a-c*?][a-c0-9*?-]{0,3}"
 }

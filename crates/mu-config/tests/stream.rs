@@ -194,6 +194,17 @@ fn a_pattern_that_is_a_word_is_bad() {
 }
 
 #[test]
+fn a_digit_after_the_first_character_is_good() {
+    assert_eq!(
+        (
+            Pattern::new("chan-1").map(|pattern| pattern.to_string()),
+            Pattern::new("!c9*").map(|pattern| pattern.to_string())
+        ),
+        (Ok("chan-1".to_owned()), Ok("!c9*".to_owned()))
+    );
+}
+
+#[test]
 fn a_pattern_that_starts_with_a_digit_is_bad() {
     assert_eq!(
         (Pattern::new("30").is_err(), Pattern::new("!3*").is_err()),
@@ -217,7 +228,7 @@ proptest! {
     fn any_order_of_the_patterns_shows_the_same(
         globs in prop::collection::vec(glob(), 1..5),
         seed in any::<u64>(),
-        names in prop::collection::vec("[a-c][a-c-]{0,4}", 1..8),
+        names in prop::collection::vec("[a-c][a-c0-9-]{0,4}", 1..8),
     ) {
         let patterns: Vec<Pattern> = globs.iter().filter_map(|text| Pattern::new(text).ok()).collect();
         let Ok(chosen) = Selection::new(Scope::World, patterns.clone()) else {
