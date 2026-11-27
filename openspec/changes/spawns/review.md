@@ -1,31 +1,25 @@
 ---
 verdict: approve-with-notes
 phase: implementation
-reviewed_at: 2026-11-26T17:49:21+00:00
-head: 9ab627bef59d0a891174d22b27a7b8ea178b330f
-round: 13
-next_id: 93
+reviewed_at: 2026-11-26T19:56:11+00:00
+head: b88816503b9157da21297b2cc6c1f287ba4c6d1c
+round: 14
+next_id: 99
 lenses:
   spec-lint: not-applicable
   approach: ok
-  fit: partial
-  test-coverage: partial
-  test-honesty: partial
-  invariants: ok
+  fit: ok
+  test-coverage: ok
+  test-honesty: ok
+  invariants: partial
   verify: not-applicable
 ---
 # Review
 
 ## Incomplete lenses
 
-- fit: partial, gaps: 1
-  - The production code of decisions D1, D2, D3, D4, D6, D7, D8 (beyond parse.rs), D9, D10 and D11 is not read again in this round; the round read the focus test files and guides, rules.rs, the masking in session.rs, parse.rs and the support module of mu-core.
-- test-coverage: partial, gaps: 2
-  - Rows are graded by test name present at head plus spot reads of about six assertions (a_refused_line_notice_comes_back_after_a_reset, a_who_list, a_line_in_two_streams, a_name_from_a_capture_that_is_not_valid); the THEN of the other rows is not read line by line.
-  - Event-journal and client.rs test bodies are not read.
-- test-honesty: partial, gaps: 2
-  - Not read: crates/mu-cli/tests/client.rs, journal.rs, screen_text.rs, mu-config tests (layout.rs, stream.rs, ansi.rs, filter.rs), mu-tui tests (app.rs, update.rs, arrange.rs) and the src unit tests of mu-tui, mu-config and mu-core other than rules.rs.
-  - Change artifacts (proposal, design, tasks) not read in full; spec lines were checked for the layout.rs scenarios only.
+- invariants: partial, gaps: 1
+  - D10: run_match in crates/mu-cli/src/world.rs and its world_config.rs tests were not read; its exit-status and stderr invariants are unverified by this lens.
 
 The verdict covers only what the lenses checked. While the `ctl-lens` row of an incomplete lens is open, the verdict cannot be `approve`.
 
@@ -33,23 +27,16 @@ The verdict covers only what the lenses checked. While the `ctl-lens` row of an 
 
 | id | lens | severity | scope | claim | evidence | action | mark | judge | consequence |
 |---|---|---|---|---|---|---|---|---|---|
-| R-85 | approach | should-fix | in-change | D8 says each end of the pattern list (a place, a comma and a size, the end of the line) comes after at least one pattern. The parser at head ends the list at a place or at the end of the line with no pattern, and only the size end needs one. A parser built from D8 would read `right` of `showing right of main` as a pattern and fail at `of`, so the scenario An empty list of patterns, which names `showing`, would not hold. design.md records no such deviation. | design.md > D8. An output selects streams — "Each of these ends comes after at least one pattern." | Correct D8: the list ends at a place or at the end of the line, also with no pattern, so an empty list is refused with the word `showing`. Only the end at a comma and a size needs at least one pattern before it. |  |  | next-change |
-| R-86 | approach,invariants | should-fix | in-change | app-2: D5 gives each pair of rule id and error kind one report, and the hook check its own error until reset(). The code records the hook error under the pair (`hook`, BadName) in the same set as the rules. A rule id can be any string, so a rule with the id `hook` shares that pair: after a hook names the notices, the first bad name of that rule records no script error, which the requirement A bad name is reported once demands.; inv-1: RuleState::hooked records its notices error under the rule id `hook`, and a rule id is any string. A rule named `hook` and the hook check share one (id, BadName) pair, so the first error silences the other until reset. | crates/mu-core/src/rules.rs:18 — "const HOOK: &str = "hook";" | app-2: Keep the report of the hook check apart from the rule ids, for example with its own flag in RuleState or a key type with a Hook variant, and state that key in D5.; inv-1: Key the reported set by a source that no rule id can equal, such as an enum with Rule(String) and Hook, and add a unit test in rules.rs with a rule `hook` that gives a bad name after a hook named the notices, and the reverse. |  |  | wrong-behaviour |
-| R-80 | fit | should-fix | in-change | The fix of R-80 shares size_tail, but the end of a line is still written three times: at_end, the tail of size_next, and the end of line. If the end of a line changes, the showing list ends by another rule than the line. | crates/mu-config/src/layout/parse.rs:186 — "(space0, eof).void().parse_next(input)" | Make size_next parse (size_tail, at_end), and make line end with at_end. | regression |  | drift |
-| R-87 | fit | should-fix | in-change | The new helper packed in client.rs repeats the packing of the screen rows that the existing wait_notice already does inline, so the tests of the streams and the older notice tests pack the rows by two copies. | crates/mu-cli/tests/client.rs:2526 — "rows.concat().split_whitespace().collect()" | Make wait_notice call packed(rows), and keep one definition of the packed screen text. |  |  | drift |
-| R-88 | fit | should-fix | in-change | The new helper strings in update.rs has the same body as the existing helper texts in the same file. | crates/mu-tui/tests/update.rs:1434 — "fn strings(lines: &[&str]) -> Vec<String> {" | Remove strings and call texts in the routing tests. |  |  | drift |
-| R-89 | fit | should-fix | in-change | The new helper run_line in update.rs types a text and presses Enter, the same body as the existing run_command, which only also returns the effects. | crates/mu-tui/tests/update.rs:1531 — "fn run_line(model: &mut Model, text: &str) {" | Remove run_line and call run_command, ignoring its effects. |  |  | drift |
-| R-90 | fit | should-fix | in-change | The new helper layouts in update.rs rebuilds the GetClientConfigResponse with a layout and world layouts that the existing layout_config already builds, with its own revision, echo and world-layout names. | crates/mu-tui/tests/update.rs:1439 — "fn layouts(lines: &[&str], worlds: &[(&str, &[&str])]) -> GetClientConfigResponse {" | Build the routing configuration with layout_config(lines, worlds, &[], &[]), and give layout_config a distinct name per world key if the routing tests need it. |  |  | drift |
-| R-91 | fit | should-fix | in-change | The change writes the TOML of one rule table three times: rule in journal.rs, rule in world_config.rs, and the format of game_rule in world_config.rs, while the tests share a support module. | crates/mu-cli/tests/journal.rs:271 — "fn rule(id: &str, fields: &str) -> String {" | Move rule to crates/mu-cli/tests/support/mod.rs, and make game_rule call rule("chan", ...). |  | severity? suggestion 0.77 | drift |
-| R-92 | fit | should-fix | in-change | The new helper sidebar in client.rs builds the same configuration and client as the existing test the_sidebar_layout, which does not call it. | crates/mu-cli/tests/client.rs:2582 — "let config = ConfigDir::empty().file("clients/global.toml", "layout = \\"sidebar\\"\\n");" | Make the_sidebar_layout start with sidebar(). |  |  | drift |
+| R-93 | fit | should-fix | in-change | Model::key_of in mu-tui finds the output step of an id in a layout and reads its selection, the same lookup that the private Layout::keeping in change.rs writes. Two hand-written finds of the selection of the output of an id. | crates/mu-tui/src/model.rs:778 — ".find(\|step\| step.kind == BlockKind::Output && &step.id == id)" | Add Layout::selection_of(&BlockId) -> Option<&Selection> in layout/mod.rs beside Layout::showing, and call it from Model::key_of and Layout::keeping. |  | severity? suggestion 0.78 | drift |
+| R-94 | fit | should-fix | in-change | solved in view.rs builds the editor key of the world in focus by hand and reads model.editors, the lookup that Model::editor already does. The change rewrote both with the new PaneKey, so the editor key rule now has a copy outside the model. | crates/mu-tui/src/view.rs:51 — ".get(&crate::model::PaneKey::new(" | In solved, call model.editor(id) instead of building the PaneKey from model.focused(). |  |  | drift |
+| R-95 | fit | should-fix | in-change | The rule that a capture is full is written twice in RuleState::route: as count >= lines for a running capture, and as lines > 1 with an implicit start count of 1 when a capture starts. D5 states one rule, that the capture ends when the count reaches lines. | crates/mu-core/src/rules.rs:352 — ".is_some_and(\|capture\| capture.count >= capture.lines)" | Give Capture a method full() (count >= lines). Build the capture with count 1, and keep it only if !full(); use full() after the count of a running capture too. |  |  | drift |
+| R-98 | invariants | should-fix | in-change | lens invariants reported partial, gaps: 1 | review > lens-status — "invariants partial" | rerun the lens or accept the gap in the review |  |  | unmet-requirement |
+| R-96 | approach | suggestion | in-change | The table What enforces each rule names any_layout_reads_back as the guard that the writer and the parser agree on the scope and the patterns. That test builds the written layout with Layout::written, which is from_steps(write::plan(tree)), and never parses a line of text. The test that writes a step as text and parses it back, with scopes and patterns in its generator, is a_line_reads_back. | design.md > What enforces each rule — "\| The writer and the parser agree on the scope and the patterns \| The property test `any_layout_reads_back`, which compa" | Name a_line_reads_back as the guard of the writer and the parser in that row, and keep any_layout_reads_back for the row A rewrite keeps the selection of each output. |  | severity? should-fix 0.74 |  |
+| R-97 | invariants | suggestion | in-change | D7 relies on commit_overflow_increment to keep ids in order when the random part of one millisecond runs out. No test reaches that branch: ids_sort_in_the_order_of_seq appends at most 2000 events from a random start. | design.md > D7. Each event has a ULID and its streams — "The journal then calls `Overflow::commit_overflow_increment()`, which moves the id into the next millisecond, so the ord" | In the test module of journal.rs, prime inner.ids with Generator::generate_from_datetime_with_source and a source of all one bits, append two events, and assert the second id is greater than the first. |  |  |  |
 
 ## Repeats
 
-| id | lens | severity | claim | evidence |
-|---|---|---|---|---|
-| R-84 | fit | should-fix | lens fit reported partial, gaps: 1 | review > lens-status — "fit partial" |
-| R-74 | test-coverage | should-fix | lens test-coverage reported partial, gaps: 2 | review > lens-status — "test-coverage partial" |
-| R-75 | test-honesty | should-fix | lens test-honesty reported partial, gaps: 2 | review > lens-status — "test-honesty partial" |
+None.
 
 ## Out of bound
 
@@ -80,10 +67,11 @@ None.
 | 11 | implementation | full | 3f3234a0df4b282fce7ff6854a864c9a41f21113 | 188416239a2c6a435b89f4250b94f9dc42db67fa3cba69b898688d98c7189c34 | changes-requested | 18 | 0 | 0 | 0 | 0 |  |
 | 12 | implementation | full | cf9cb24b8f27664d6543ef97ad591224843e3873 | 851e329d2369632f9b19a6611d499f9ae821d82c9e8267f7ffa9843f666d4028 | approve-with-notes | 9 | 1 | 0 | 0 | 0 | run again the lenses test-coverage and test-honesty, which were partial in round 11 |
 | 13 | implementation | full | 9ab627bef59d0a891174d22b27a7b8ea178b330f | 095f2a554577c506ab0072af6c6949b3575516dee16490ec0a0baa5f7912d519 | approve-with-notes | 8 | 3 | 1 | 0 | 0 | run the lenses fit and test-honesty again on the files that they did not read in round 12 |
+| 14 | implementation | full | b88816503b9157da21297b2cc6c1f287ba4c6d1c | 72fa2e589142b7ea7bdfd02dbe091b41586f990779f9bd839c9d3b725782973f | approve-with-notes | 6 | 0 | 0 | 0 | 0 | run the lenses fit, test-coverage and test-honesty again on the files that no earlier round read |
 
 ## Judge
 
-judge: 18 questions, 0.001 USD
+judge: 10 questions, 0.000 USD
 
 ## Coverage matrix
 
@@ -158,7 +146,7 @@ judge: 18 questions, 0.001 USD
 | Lines out of range | crates/mu-cli/tests/world_config.rs: lines_out_of_range | covered | pass |
 | Lines of zero | crates/mu-cli/tests/world_config.rs: lines_of_zero | covered | pass |
 | Lines without until | crates/mu-cli/tests/world_config.rs: lines_without_until | covered | pass |
-| A fixed stream names the notices | crates/mu-cli/tests/world_config.rs: a_fixed_stream_names_the_notices | covered | pass |
+| A fixed stream names the notices | crates/mu-cli/tests/world_config.rs: a_list_of_streams_names_the_notices | covered | pass |
 | A name that is a word of the sentences | crates/mu-cli/tests/world_config.rs: a_stream_name_that_is_a_word | covered | pass |
 | The earlier rule wins | crates/mu-cli/tests/world_config.rs: the_earlier_rule_wins | covered | pass |
 | A character rule after a global rule | crates/mu-cli/tests/world_config.rs: a_character_rule_after_a_global_rule | covered | pass |
@@ -263,7 +251,7 @@ None.
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=lines_out_of_range)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=lines_of_zero)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=lines_without_until)'`
-- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_fixed_stream_names_the_notices)'`
+- exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_list_of_streams_names_the_notices)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_stream_name_that_is_a_word)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=the_earlier_rule_wins)'`
 - exit 0: `cargo nextest run -p mu-cli --test world_config --locked -E 'test(=a_character_rule_after_a_global_rule)'`
@@ -299,32 +287,43 @@ None.
 
 ## Lens notes
 
-- approach: D1 to D11 were checked against the code at head: stream.rs, ansi.rs, rules.rs, check.rs, resolve.rs, script.rs, session.rs, journal.rs, convert.rs of mu-server, parse.rs, change.rs, layout/mod.rs, builtin.rs, model.rs, update.rs, arrange.rs, world.rs of mu-cli, store.rs and server.rs.
-- approach: The ulid 3.0.0 calls of D7 (Generator::generate, Overflow::commit_overflow_increment) and the fancy-regex 0.20.2 default backtrack limit of 1,000,000 of D3 hold in the pinned sources. The expansion rules of Captures::expand in D3 were not read again.
-- approach: The Context section of design.md describes the code before the change (for example ResolvedWorld.rules as Vec<Entry>, block::MAIN, NOTICES_STREAM, world.pane). These facts are not so at head by design, and are not raised as stale citations.
-- approach: model.rs keeps a fixed handle CLIENT_MAIN for the pane of main of no world, which focused_pane uses as its fallback. It maps to PaneKey::main(None), so it is not raised as a second name of that pane.
-- fit: The prompt names Cargo.toml as the path of the fit rules; it holds the workspace dependencies and no library-preference rows.
-- fit: The fixed rows R-58, R-78, R-79 and R-81 hold at head: text.rs alone writes the notice mark, game_stream holds the notices rule, record_in and route share masked, and world_with_rules calls resolved_on.
-- fit: parse.rs lines 193 and 194 hold two doc comment lines for size_tail that say the same thing, a leftover of the R-80 fix.
-- fit: The guides configuration.md (Line rules) and layouts.md (Several outputs) hold no second copy of each other's rules; the stream-name rule is stated once, in configuration.md.
-- invariants: I1: A Streams list always holds 1 to 8 distinct valid names \| enforced at crates/mu-config/src/stream.rs Streams::new and from_wire \| boundary test streams_hold_one_to_eight, streams_from_the_wire_with_nine_names, streams_from_the_wire_with_a_name_twice, proptest of the wire round trip in crates/mu-config/tests/stream.rs
-- invariants: I2: A stream name and a block id are always lower case, 1 to 32 id bytes, a letter first, not a word \| enforced at BlockId::new in crates/mu-config/src/layout/step.rs \| boundary test a_stream_name_of_32_characters and a_stream_name_of_33_characters
-- invariants: I3: A game line never carries the stream notices, from a fixed entry, a template or a hook \| enforced at game_stream and RuleState::hooked in crates/mu-core/src/rules.rs \| boundary test a_capture_cannot_name_the_notices, a_capture_names_the_notices, a_hook_cannot_name_the_notices; the hook error key collides with a rule id hook (inv-1)
-- invariants: I4: lines is an integer from 1 to 1000, only with until \| enforced at lines() and Rule::compile in rules.rs \| boundary test lines_of_zero, lines_out_of_range, lines_of_1000_loads, lines_below_zero_is_refused, lines_as_a_string_is_refused, lines_without_until_is_refused
-- invariants: I5: stream holds 1 to 8 entries \| enforced at templates() in rules.rs \| boundary test an_empty_list_of_streams, too_many_streams, a_list_of_eight_streams_loads
-- invariants: I6: A capture never holds more than lines lines, and until is never tried on its first line \| enforced at RuleState::route (count >= lines, lines > 1 start guard) \| boundary test a_capture_of_one_line, a_capture_ends_at_its_limit, proptest a_capture_never_holds_more_than_its_lines
-- invariants: I7: Each (rule, error kind) pair is reported at most once until reset, and reset runs at each connect and down \| enforced at RuleState::report and session.rs down() and connect() \| boundary test a_bad_name_is_reported_once, reset_reports_a_bad_name_again, a_rule_reports_each_kind_once, two_bad_names
-- invariants: I8: Event ids are unique and strictly increase with seq, also at overflow \| enforced at MemoryJournal::append with ulid Generator and commit_overflow_increment \| boundary test proptest ids_sort_in_the_order_of_seq, ids_after_a_restart; the overflow branch has no test and is not reachable in practice
-- invariants: I9: A layout always holds main of world scope and an output that shows notices \| enforced at check_streams in crates/mu-config/src/layout/mod.rs through from_steps \| boundary test no_main_output, no_output_for_the_notices, the_main_output_of_all_worlds, hide_refuses_main, hide_refuses_the_last_output_of_the_notices, hide_a_second_output_of_the_notices
-- invariants: I10: A showing list holds at least one inclusion and no reserved pattern \| enforced at Selection::new and Pattern::new in stream.rs \| boundary test an_empty_list_is_bad, a_lone_exclusion_is_bad, only_exclusions_are_bad, a_reserved_pattern_is_bad
-- invariants: I11: A line shows one time in each output \| enforced at Model::route dedup of PaneKey in crates/mu-tui/src/model.rs \| boundary test a_line_shows_once_in_one_output, a_line_in_two_streams_of_one_output
-- invariants: I12: The client remembers at most 256 stream and world pairs \| enforced at first_no_output with NO_OUTPUT_MAX \| boundary test the_oldest_stream_with_no_output_gives_its_hint_again passes 257 pairs and checks both sides
-- invariants: Probe: target/debug/mu, built at 12:46 after the last code commit, ran mu world match on inputs under probe/ of this handoff directory. [NOTICES] gave main and one warning, a second [NOTICES] gave no second warning, a 32-character capture with prefix x- gave main, lines = 1000 loaded, and a capture ended at until.
-- invariants: The kept notices of the client have no cap, and a refused line now adds one (commit 6406d0b). The growth follows the sends of the player, not the game, so it is not raised as a finding.
-- test-coverage: Every one of the 95 scenario headings maps to a test that exists at head; no scenario is missing.
-- test-coverage: The delta specs hold no BREAKING requirement, so no breaking-unproven finding.
-- test-honesty: Read in full with no finding: unit tests of crates/mu-core/src/rules.rs, new tests of crates/mu-core/tests/scripts.rs lines 583-750, store.rs hunks (only the layout lines changed), layout.rs lines 278-410 (bad_layout counts exactly one matching stderr line plus exit 1 and empty stdout), world_config.rs lines 1183-1620.
-- test-honesty: No #[ignore] and no '\|\| true' in crates/.
+- approach: D1 to D11 were read against the code at head: stream.rs, rules.rs, check.rs, resolve.rs, session.rs, script.rs, journal.rs, parse.rs, change.rs, layout/mod.rs, step.rs, model.rs, update.rs, arrange.rs, world.rs, store.rs and server.rs. Each decision matches the code.
+- approach: fancy-regex 0.20.2 and ulid 3.0.0 in the cargo registry confirm the default backtrack limit, BacktrackLimitExceeded, Captures::expand, Generator::generate and Overflow::commit_overflow_increment that D3 and D7 name.
+- approach: The fixes of R-85 (the ends of the pattern list in D8) and R-86 (the own flag of the hook error in D5) hold at head.
+- approach: app-1 is a suggestion, not should-fix: the wrong test name in the table has none of the five consequences, because a_line_reads_back does guard the rule.
+- approach: The guide advice of task 7.6 is in layouts.md line 215, so the risk of notices shown twice has a real mitigation.
+- fit: The fit rules path is the workspace Cargo.toml. It holds the workspace dependencies only, with no library-preference rows. fancy-regex, ulid and wildmatch enter through [workspace.dependencies], as D3, D7 and D8 say.
+- fit: FALLBACK_LAYOUT in mu-tui model.rs holds the same lines as the built-in layout focus. D9 names the fallback plan, and nothing depends on the two staying equal, so it is not raised.
+- fit: Pre-existing, not raised: Model::input_of repeats Model::text_of with the input id; default_layout repeats BuiltIn::named and BuiltIn::layout; text::clean equals mu_config::filter(text, &SCREEN) now that SCREEN is a ControlMap; BlockId::new writes 32 by hand beside ID_MAX.
+- fit: Read this round for copies: mu-config stream.rs, ansi.rs, filter.rs, layout mod.rs, step.rs, change.rs, solve.rs, tree.rs, write.rs, builtin.rs; mu-tui update.rs, model.rs, arrange.rs, layouts.rs, view.rs, convert.rs, config.rs, text.rs, history.rs; mu-core session.rs, script.rs, journal.rs, event.rs, rules.rs, world/check.rs, world/resolve.rs; mu-server convert.rs, store.rs, service.rs; mu-cli server.rs and world.rs.
+- invariants: No enforcement point of this change is a script; all are Rust code, so no edge-input probe was run.
+- invariants: I1: A stream name is 1 to 32 lower-case id characters, a letter first, not a word of the sentences \| enforced at BlockId::new (crates/mu-config/src/layout/step.rs:33), wrapped by StreamName::new \| boundary test a_stream_name_of_32_characters, a_stream_name_of_33_characters, a_stream_name_that_is_a_word
+- invariants: I2: Streams holds 1 to 8 names, none twice \| enforced at Streams::new (crates/mu-config/src/stream.rs:78) \| boundary test streams_hold_one_to_eight, streams_drop_a_name_twice
+- invariants: I3: The client reads an empty, too long or bad wire list as main \| enforced at Streams::from_wire (stream.rs:103) \| boundary test streams_from_the_wire_with_no_name, _with_nine_names, _with_a_bad_name, _with_a_name_twice; property the_wire_gives_the_same_streams
+- invariants: I4: lines is an integer from 1 to 1000, only with until \| enforced at rules::lines (crates/mu-core/src/rules.rs:94) and Rule::compile line 186 \| boundary test lines_below_zero_is_refused, lines_as_a_string_is_refused, lines_of_1000_loads, lines_of_zero and the 1001 scenario in world_config.rs, lines_without_until_is_refused
+- invariants: I5: stream holds 1 to 8 entries, each fixed entry a valid name other than notices in any case \| enforced at rules::templates and game_stream (rules.rs:110-156) \| boundary test a_list_of_eight_streams_loads, an_empty_list_of_streams, the 9-name scenario, the NOTICES scenario
+- invariants: I6: A name from a capture that is invalid or notices gives main, one BadName per rule until reset, and starts no capture \| enforced at Rule::streams and RuleState::route (rules.rs:208, 367-380) \| boundary test a_capture_cannot_name_the_notices, a_bad_name_is_reported_once, a_bad_name_starts_no_capture, reset_reports_a_bad_name_again
+- invariants: I7: A capture holds at most lines lines, the first included, and until is never tried on its first line \| enforced at RuleState::route (rules.rs:332-390, lines > 1 guard at 382) \| boundary test a_capture_of_one_line, a_capture_ends_at_its_limit, the_first_line_does_not_end_a_capture; property a_capture_never_holds_more_than_its_lines over 1..=1000
+- invariants: I8: One report for each pair of rule id and kind until reset, and the hook error has its own flag \| enforced at RuleState::report and hook_reported (rules.rs:322-436) \| boundary test a_rule_reports_each_kind_once, two_errors_on_one_line, a_rule_named_hook_reports_apart_from_a_hook
+- invariants: I9: A slow match counts as no match; a slow until keeps the capture \| enforced at RuleState::route Err arms (rules.rs:341, 362) \| boundary test a_slow_match_counts_as_no_match, a_slow_until_keeps_the_capture
+- invariants: I10: The server never writes the stream notices \| enforced at game_stream for rules and RuleState::hooked for hooks (rules.rs:401) \| boundary test a_capture_cannot_name_the_notices and the hook tests of scripts.rs (names only, not read)
+- invariants: I11: The rules see the masked text after the hooks, and route runs on every game line, gagged ones included \| enforced at session.rs:986-1008 \| tests named in task 4.5 and 6.2 (names only)
+- invariants: I12: plain equals the text that convert shows \| enforced by the shared ansi::walk and ansi::SCREEN \| property the_rules_see_the_text_of_the_screen (crates/mu-cli/tests/screen_text.rs); its generator omits PLACEHOLDER, which both sides map through the same SCREEN, so not raised
+- invariants: I13: Event ids are unique and sort in the order of seq \| enforced at MemoryJournal::append with ulid::Generator (journal.rs:153) \| property ids_sort_in_the_order_of_seq; the overflow edge has no test (inv-1)
+- invariants: I14: A pattern is a glob of id bytes, * and ?, with one first !, and a selection holds at least one non-excluding pattern \| enforced at Pattern::new and Selection::new (stream.rs:167, 225) \| boundary test an_empty_list_is_bad, a_lone_exclusion_is_bad, only_exclusions_are_bad, a_reserved_pattern_is_bad; property any_order_of_the_patterns_shows_the_same
+- invariants: I15: A layout holds output main, not of all worlds, and an output that shows notices \| enforced at check_streams in Layout::from_steps (crates/mu-config/src/layout/mod.rs:237), which every change.rs operation passes \| boundary test the main-of-all-worlds and no-notices tests of crates/mu-config/tests/layout.rs (lines 1606, 1668) and the /pane hide client tests
+- invariants: I16: An output step has a Selection, and only an output step has one \| enforced by the constructors Step::new and Draft::finish, not by from_steps; every production path at head uses them, so not raised
+- invariants: I17: Writer and parser agree on scope and patterns \| enforced at Step Display and parse::showing \| property any_layout_reads_back, whose strategy draws Scope and patterns
+- invariants: I18: The client remembers at most 256 pairs, oldest forgotten first \| enforced at Model::first_no_output (crates/mu-tui/src/model.rs:951) \| boundary test the_oldest_stream_with_no_output_gives_its_hint_again, which fails for a capacity of 255 or 257
+- invariants: I19: A line enters each pane one time \| enforced at Model::route key dedup (model.rs:811) \| tests a_line_shows_once_in_one_output and the client scenario (names only)
+- invariants: Prior rows R-23, R-64, R-65, R-66, R-69, R-70, R-73, R-78, R-82, R-83 and R-86 (fixed) were checked at head and their defects are gone.
+- test-coverage: All rows read at the THEN step for crates/mu-cli/tests/client.rs, journal.rs, world_config.rs, layout.rs; unit tests of mu-tui update.rs read only for the five rows that cite them.
+- test-coverage: The proposal and the specs hold no BREAKING requirement, so no breaking-unproven finding applies.
+- test-honesty: Read with no finding: mu-config tests stream.rs, ansi.rs, filter.rs and the new hunks of layout.rs; mu-tui tests update.rs (new routing section), arrange.rs and the changed hunks of app.rs; mu-cli tests client.rs (streams section), journal.rs, screen_text.rs, layout.rs, world_config.rs (rule checks and mu world match) and workspace_boundary.rs; mu-core tests scripts.rs (new hook tests) and the unit tests of journal.rs; mu-server unit test helper in service.rs.
+- test-honesty: No new disabled or skipped test. The only should_panic in the crates is the older one in repo_config.rs, outside this change.
+- test-honesty: crates/mu-cli/tests/client.rs an_exclusion asserts only that the Ooc line is absent. The Public line is checked through the wait of say(), which times out unless the reply to the last line shows, so the scenario THEN holds, but only by that wait. Not raised as a finding.
+- test-honesty: The coarse text.contains assertions in mu-config layout.rs and mu-cli layout.rs (the_id_all, the_scope_after_the_place, the_main_output_of_all_worlds) match the THEN lines of the spec scenarios word for word, and LineError names the offending word and not the whole line, so the word check can fail for the stated reason.
+- test-honesty: mu-cli world_config.rs a_rule_with_a_stream_loads checks only that the id chan is listed, not its stream field. The rule match tests later in that file cover the stream, so not raised.
 
 ## Ledger
 
@@ -422,6 +421,12 @@ None.
 | R-90 | 13 | 13 | should-fix | in-change | drift | ["path","crates/mu-tui/tests/update.rs",1439] | fixed | 6cc30383249bc2e305184dd36ded38b9f1e02761 | 13 |  |  | The new helper layouts in update.rs rebuilds the GetClientConfigResponse with a layout and world layouts that the existing layout_config already builds, with its own revision, echo and world-layout names. |
 | R-91 | 13 | 13 | should-fix | in-change | drift | ["path","crates/mu-cli/tests/journal.rs",271] | fixed | 6cc30383249bc2e305184dd36ded38b9f1e02761 | 13 |  | severity? suggestion 0.77 | The change writes the TOML of one rule table three times: rule in journal.rs, rule in world_config.rs, and the format of game_rule in world_config.rs, while the tests share a support module. |
 | R-92 | 13 | 13 | should-fix | in-change | drift | ["path","crates/mu-cli/tests/client.rs",2582] | fixed | 6cc30383249bc2e305184dd36ded38b9f1e02761 | 13 |  |  | The new helper sidebar in client.rs builds the same configuration and client as the existing test the_sidebar_layout, which does not call it. |
+| R-93 | 14 | 14 | should-fix | in-change | drift | ["path","crates/mu-tui/src/model.rs",778] |  |  |  |  | severity? suggestion 0.78 | Model::key_of in mu-tui finds the output step of an id in a layout and reads its selection, the same lookup that the private Layout::keeping in change.rs writes. Two hand-written finds of the selection of the output of an id. |
+| R-94 | 14 | 14 | should-fix | in-change | drift | ["path","crates/mu-tui/src/view.rs",51] |  |  |  |  |  | solved in view.rs builds the editor key of the world in focus by hand and reads model.editors, the lookup that Model::editor already does. The change rewrote both with the new PaneKey, so the editor key rule now has a copy outside the model. |
+| R-95 | 14 | 14 | should-fix | in-change | drift | ["path","crates/mu-core/src/rules.rs",352] |  |  |  |  |  | The rule that a capture is full is written twice in RuleState::route: as count >= lines for a running capture, and as lines > 1 with an implicit start count of 1 when a capture starts. D5 states one rule, that the capture ends when the count reaches lines. |
+| R-96 | 14 | 14 | suggestion | in-change |  | ["artifact",["design.md","What enforces each rule"],"\| The writer and the parser agree on the scope and the patterns \| The property test `any_layout_reads_back`, which compares trees that hold the `Selection` \|"] |  |  |  |  | severity? should-fix 0.74 | The table What enforces each rule names any_layout_reads_back as the guard that the writer and the parser agree on the scope and the patterns. That test builds the written layout with Layout::written, which is from_steps(write::plan(tree)), and never parses a line of text. The test that writes a step as text and parses it back, with scopes and patterns in its generator, is a_line_reads_back. |
+| R-97 | 14 | 14 | suggestion | in-change |  | ["artifact",["design.md","D7. Each event has a ULID and its streams"],"The journal then calls `Overflow::commit_overflow_increment()`, which moves the id into the next millisecond, so the order holds."] |  |  |  |  |  | D7 relies on commit_overflow_increment to keep ids in order when the random part of one millisecond runs out. No test reaches that branch: ids_sort_in_the_order_of_seq appends at most 2000 events from a random start. |
+| R-98 | 14 | 14 | should-fix | in-change | unmet-requirement | ["artifact",["review","lens-status"],"invariants partial"] |  |  |  |  |  | lens invariants reported partial, gaps: 1 |
 
 ## Reviewed files
 
@@ -432,13 +437,14 @@ None.
 | architecture/model.c4 | e1e57c0d14aa3fcfda301ec9ae2867776591857f |
 | crates/mu-cli/src/server.rs | 6a73114f704b108eca05c778b1bd15bd00a4c221 |
 | crates/mu-cli/src/world.rs | 7fd7ad3a231b514b4db47fc2a3d1cec4b61aaf78 |
-| crates/mu-cli/tests/client.rs | e3e5381781a6a21959ecefd2b6f0e92bc201b0c7 |
-| crates/mu-cli/tests/journal.rs | d870a1493d6aae284a32ca8ea9703a73ee56b0f7 |
+| crates/mu-cli/tests/client.rs | f39569330acf9c8eaf9dfda333907562aad1edc4 |
+| crates/mu-cli/tests/journal.rs | 46636c935301e08586fd4d0b40bd1f1e5de36ed3 |
 | crates/mu-cli/tests/layout.rs | 2ea69032328ff750e4c83987b97fa9813d807bb9 |
 | crates/mu-cli/tests/screen_text.rs | cce4d493ff33d33eaec8552e221a491c4be946f9 |
+| crates/mu-cli/tests/support/mod.rs | 6a37812f9bf6fc3bf2ba706070ef32268dcb2fc3 |
 | crates/mu-cli/tests/telemetry_engine.rs | 7a176ddee087240764cf6b4d37f5b2d71815b512 |
 | crates/mu-cli/tests/workspace_boundary.rs | 98b96861c6be969fafe899aedaf19b6b11ce9dd1 |
-| crates/mu-cli/tests/world_config.rs | 172fb0a00b53766b90d55d96f036de635aa57bc3 |
+| crates/mu-cli/tests/world_config.rs | bf210f7bc4814c2b971f7face21ce135b80dc418 |
 | crates/mu-config/Cargo.toml | adc953b9f6262b59b68944dc3b6f1f330cd9d55d |
 | crates/mu-config/src/ansi.rs | 06426ae82ea35faf9e6033798cd8344f03b1e607 |
 | crates/mu-config/src/filter.rs | d8da1e0e0623654141003277f0e3be8976409f1b |
@@ -446,7 +452,7 @@ None.
 | crates/mu-config/src/layout/builtin.rs | 45ae8a92d1d1b90f2344f0b329c506409ca36503 |
 | crates/mu-config/src/layout/change.rs | 464e9f5e8ff1d3346c84a73e448fb2631bf7612f |
 | crates/mu-config/src/layout/mod.rs | be975edc0cfdb67ff839e9cf254c7f3859f82dce |
-| crates/mu-config/src/layout/parse.rs | b300813e1f78a162b306a983bebbb4bc648d7633 |
+| crates/mu-config/src/layout/parse.rs | da25f5f859a061bb66440e1f2d788829e51be9ee |
 | crates/mu-config/src/layout/solve.rs | 83993e07875c05fca973d7134d8895e47c079d3a |
 | crates/mu-config/src/layout/step.rs | 185a7b33439e4e5dc4bdd134916cc5ea07c0f8c5 |
 | crates/mu-config/src/layout/tree.rs | cc13e135672d40ad751f03b7d104678a9bdcbc6e |
@@ -464,7 +470,7 @@ None.
 | crates/mu-core/src/journal.rs | 49051284c6990bae50a5294346e1205167dd8ad3 |
 | crates/mu-core/src/lib.rs | 247cfb3f9321be4490125e59c612d97243a1500e |
 | crates/mu-core/src/portal.rs | 3d4a3e2c33f17a5c8049e1b794383be7f7541ad8 |
-| crates/mu-core/src/rules.rs | ab8924332b9e8fcf7838852a9c2d19200f0db3d9 |
+| crates/mu-core/src/rules.rs | 21ef96109a31bf520895c77a4359bac6010fe2ab |
 | crates/mu-core/src/script.rs | 0a8a9cdeda54fcc701d485c5973bfb69700d6786 |
 | crates/mu-core/src/session.rs | 8c657b8744d6df33610c2b0d90774b418ffeb5fb |
 | crates/mu-core/src/world/check.rs | 86d01e37bf8bb0979cf5eb8cd1d8814fea99ed96 |
@@ -490,20 +496,20 @@ None.
 | crates/mu-tui/src/view.rs | a50353d18dfbc13f454b70956d17ae1f621658b3 |
 | crates/mu-tui/tests/app.rs | f7fe52ad6fc82ccc19d7d8118b3fcb44877aff0e |
 | crates/mu-tui/tests/arrange.rs | 5f9d4d8fc8895f517dabd9f1314bd9ae3e21dcd6 |
-| crates/mu-tui/tests/update.rs | 7c618c09ba3dfd894b021bc9bcb5864e4d5e188c |
+| crates/mu-tui/tests/update.rs | 94114059b993a42f685bb75a0abbb60a071bb5aa |
 | docs/src/content/docs/architecture/crate-layout.mdx | 91df8bc1eea234411533c387dd17efaf13eefcfc |
 | docs/src/content/docs/contributing/workspace.md | 29fdf59ff1e4cdfbe2b507b4bcaa30f80ff8c8a9 |
 | docs/src/content/docs/decisions/layout-model.md | b12c83b283c76466e26a56894f29a169d264ca9f |
 | docs/src/content/docs/guides/configuration.md | a3352be142ebffd380f4041f35e97854d71d11a6 |
 | docs/src/content/docs/guides/layouts.md | a26c3194ac99f5e3cf5133644d32a57d4b96efff |
 | openspec/changes/spawns/.openspec.yaml | b38535fe8ea362c909c7df3cf34b2b1224b77125 |
-| openspec/changes/spawns/design.md | d9df87aaff2725771ebe2586d0b255708fe3ff9b |
+| openspec/changes/spawns/design.md | a613639a0111c397341015554d7f338a6535dd34 |
 | openspec/changes/spawns/proposal.md | ed3f8f8c3593e906e44d65b160f362c223133771 |
 | openspec/changes/spawns/specs/client-layout/spec.md | 9c656982677a258e78e8557730c9af3386498f0d |
 | openspec/changes/spawns/specs/event-journal/spec.md | ebb2f3616778cd003c7971de45cd282126665276 |
 | openspec/changes/spawns/specs/line-rules/spec.md | a36e248a2a478f144411ad104a1e5fbaa6e3d6c0 |
 | openspec/changes/spawns/specs/world-sessions/spec.md | 40c4d71ed45dc9df8536a8a9a53c58b2343fcf32 |
-| openspec/changes/spawns/tasks.md | sha256:eb9a972cccfad2e2946020714e4ea3320570c68630cc49b499c9f73a43589793 |
+| openspec/changes/spawns/tasks.md | sha256:27c71c3adab26c4fdbdfc19676ac7a72644fe8768330fc30636209358b5e2adf |
 | openspec/review.json | absent |
 
 ## Plan review (2026-11-26)

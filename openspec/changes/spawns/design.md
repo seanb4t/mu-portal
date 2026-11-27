@@ -95,7 +95,7 @@ The session calls `route` after the hooks on each `Inbound::Line`, and only ther
 
 The core `NewEvent` gets `streams: Streams`, and the core `Event` gets `id: Ulid` and `streams`. At the numbering of an event, the journal makes its id with `ulid::Generator::generate()`, the monotonic generator of the `ulid` crate. So two events in one millisecond still sort in their order. The protocol `Event` gets `string id = 7` and `repeated string streams = 8`. `mu-server` maps both. A ULID holds 80 random bits, so ids stay unique across restarts without a store.
 
-The owner chose a ULID. Its text has 26 characters and sorts by time. `uuid` v7 was the alternative, because `uuid` is already a dependency. It was rejected, because it needs a new feature of `uuid` and its text has 36 characters. `generate()` returns `Err(Overflow)` when the random part of one millisecond runs out. The journal then calls `Overflow::commit_overflow_increment()`, which moves the id into the next millisecond, so the order holds.
+The owner chose a ULID. Its text has 26 characters and sorts by time. `uuid` v7 was the alternative, because `uuid` is already a dependency. It was rejected, because it needs a new feature of `uuid` and its text has 36 characters. `generate()` returns `Err(Overflow)` when the random part of one millisecond runs out. The journal then calls `Overflow::commit_overflow_increment()`, which moves the id into the next millisecond, so the order holds. The unit test `an_id_after_a_full_millisecond_keeps_the_order` fills the random part with one bits to reach that branch.
 
 ### D8. An output selects streams
 
@@ -150,7 +150,7 @@ The waiting notices go away, because each layout has an output for `notices`: th
 | The selection of an output, `!`, the defaults, lower case | Unit tests and a property test of `Selection` in `mu-config` |
 | A layout holds `main` and an output for `notices` | `Layout::from_steps`, unit tests, tests of `mu layout show`, and tests of `/pane hide` in the client |
 | A rewrite keeps the selection of each output | The `Selection` in `tree::Block`, and a unit test |
-| The writer and the parser agree on the scope and the patterns | The property test `any_layout_reads_back`, which compares trees that hold the `Selection` |
+| The writer and the parser agree on the scope and the patterns | The property test `a_line_reads_back`, which writes a step with a scope and patterns as text and parses it back |
 | A line shows one time in each output that matches it | Unit tests of the routing in `mu-tui`, and tests of `mu client` |
 | No narrating comments, no sleeps in tests | `/sb:review-lint` and review |
 
