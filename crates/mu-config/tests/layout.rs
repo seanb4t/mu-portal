@@ -253,13 +253,12 @@ fn ids(layout: &Layout) -> BTreeSet<String> {
         .collect()
 }
 
-const SIDEBAR: &[&str] = &[
-    "output as main showing main",
-    "tabs above main",
-    "editor below main",
-    "statusline below editor",
-    "output as notices right of main, 30%",
-];
+/// The lines of the built-in layout `sidebar`.
+fn sidebar_lines() -> &'static [&'static str] {
+    mu_config::layout::BuiltIn::named("sidebar")
+        .expect("mu ships the layout sidebar")
+        .lines
+}
 
 // The catalog.
 
@@ -657,7 +656,7 @@ fn an_insert_past_the_end() {
 
 #[test]
 fn a_line_by_its_number_or_its_id() {
-    let plan = layout(SIDEBAR);
+    let plan = layout(sidebar_lines());
     let by_number = plan
         .replace(
             &LineRef::Number(5),
@@ -677,7 +676,7 @@ fn a_line_by_its_number_or_its_id() {
 
 #[test]
 fn a_replace_of_line_zero() {
-    let text = layout(SIDEBAR)
+    let text = layout(sidebar_lines())
         .replace(&LineRef::Number(0), step_of("output"))
         .expect_err("0")
         .to_string();
@@ -686,7 +685,7 @@ fn a_replace_of_line_zero() {
 
 #[test]
 fn a_replace_of_a_line_past_the_end() {
-    let text = layout(SIDEBAR)
+    let text = layout(sidebar_lines())
         .replace(&LineRef::Number(6), step_of("output"))
         .expect_err("6")
         .to_string();
@@ -695,7 +694,7 @@ fn a_replace_of_a_line_past_the_end() {
 
 #[test]
 fn a_delete_of_line_zero() {
-    let text = layout(SIDEBAR)
+    let text = layout(sidebar_lines())
         .delete(&LineRef::Number(0))
         .expect_err("0")
         .to_string();
@@ -704,7 +703,7 @@ fn a_delete_of_line_zero() {
 
 #[test]
 fn a_delete_of_a_line_past_the_end() {
-    let text = layout(SIDEBAR)
+    let text = layout(sidebar_lines())
         .delete(&LineRef::Number(6))
         .expect_err("6")
         .to_string();
@@ -713,7 +712,7 @@ fn a_delete_of_a_line_past_the_end() {
 
 #[test]
 fn a_delete_of_an_anchor_names_its_lines() {
-    let text = layout(SIDEBAR)
+    let text = layout(sidebar_lines())
         .delete(&LineRef::Id(id_of("editor")))
         .expect_err("an anchor")
         .to_string();
@@ -724,7 +723,7 @@ fn a_delete_of_an_anchor_names_its_lines() {
 
 #[test]
 fn hide_refuses_the_editor() {
-    let text = layout(SIDEBAR)
+    let text = layout(sidebar_lines())
         .hide(&id_of("editor"))
         .expect_err("the editor")
         .to_string();
@@ -733,18 +732,18 @@ fn hide_refuses_the_editor() {
 
 #[test]
 fn a_resize_changes_one_line() {
-    let changed = layout(SIDEBAR)
+    let changed = layout(sidebar_lines())
         .resize(&id_of("notices"), Size::Percent(40))
         .expect("good");
     assert!(!changed.rewritten);
-    let mut wanted: Vec<String> = SIDEBAR.iter().map(ToString::to_string).collect();
+    let mut wanted: Vec<String> = sidebar_lines().iter().map(ToString::to_string).collect();
     wanted[4] = "output as notices right of main, 40%".to_owned();
     assert_eq!(changed.layout.lines(), wanted);
 }
 
 #[test]
 fn a_resize_out_of_range_is_refused() {
-    let text = layout(SIDEBAR)
+    let text = layout(sidebar_lines())
         .resize(&id_of("notices"), Size::Percent(95))
         .expect_err("95%")
         .to_string();
@@ -752,13 +751,17 @@ fn a_resize_out_of_range_is_refused() {
     // The reader of a sentence refuses these sizes too, but a caller can make any size.
     for size in [Size::Percent(9), Size::Percent(91), Size::Cells(0)] {
         assert!(
-            layout(SIDEBAR).resize(&id_of("notices"), size).is_err(),
+            layout(sidebar_lines())
+                .resize(&id_of("notices"), size)
+                .is_err(),
             "{size:?}"
         );
     }
     for size in [Size::Max(0), Size::Max(101)] {
         assert!(
-            layout(SIDEBAR).resize(&id_of("editor"), size).is_err(),
+            layout(sidebar_lines())
+                .resize(&id_of("editor"), size)
+                .is_err(),
             "{size:?}"
         );
     }
@@ -768,13 +771,17 @@ fn a_resize_out_of_range_is_refused() {
 fn a_resize_at_each_end_of_the_range_is_good() {
     for size in [Size::Percent(10), Size::Percent(90), Size::Cells(1)] {
         assert!(
-            layout(SIDEBAR).resize(&id_of("notices"), size).is_ok(),
+            layout(sidebar_lines())
+                .resize(&id_of("notices"), size)
+                .is_ok(),
             "{size:?}"
         );
     }
     for size in [Size::Max(1), Size::Max(100)] {
         assert!(
-            layout(SIDEBAR).resize(&id_of("editor"), size).is_ok(),
+            layout(sidebar_lines())
+                .resize(&id_of("editor"), size)
+                .is_ok(),
             "{size:?}"
         );
     }
@@ -783,7 +790,7 @@ fn a_resize_at_each_end_of_the_range_is_good() {
 #[test]
 fn a_size_of_the_first_block_is_refused() {
     assert!(
-        layout(SIDEBAR)
+        layout(sidebar_lines())
             .resize(&id_of("main"), Size::Percent(60))
             .is_err()
     );
@@ -791,7 +798,7 @@ fn a_size_of_the_first_block_is_refused() {
 
 #[test]
 fn a_size_of_the_first_block_names_the_sized_blocks() {
-    let text = layout(SIDEBAR)
+    let text = layout(sidebar_lines())
         .resize(&id_of("main"), Size::Percent(60))
         .expect_err("the first block")
         .to_string();
@@ -800,7 +807,7 @@ fn a_size_of_the_first_block_names_the_sized_blocks() {
 
 #[test]
 fn a_move_to_a_later_anchor_goes_to_the_end() {
-    let changed = layout(SIDEBAR)
+    let changed = layout(sidebar_lines())
         .place(step_of("tabs below notices"))
         .expect("good");
     assert!(!changed.rewritten);
@@ -834,7 +841,7 @@ fn a_hide_of_an_anchor_writes_the_plan_again() {
 
 #[test]
 fn a_border_gives_a_whole_percent() {
-    let changed = layout(SIDEBAR)
+    let changed = layout(sidebar_lines())
         .resize_border(&id_of("notices"), 40, 80)
         .expect("good");
     assert_eq!(
@@ -859,7 +866,7 @@ fn a_border_takes_the_smallest_percent_that_reaches_the_drag() {
 
 #[test]
 fn a_border_stops_at_the_smallest_pane() {
-    let changed = layout(SIDEBAR)
+    let changed = layout(sidebar_lines())
         .resize_border(&id_of("notices"), 2, 80)
         .expect("good");
     assert_eq!(
@@ -870,7 +877,7 @@ fn a_border_stops_at_the_smallest_pane() {
 
 #[test]
 fn a_border_stops_at_ten_percent() {
-    let changed = layout(SIDEBAR)
+    let changed = layout(sidebar_lines())
         .resize_border(&id_of("notices"), 5, 300)
         .expect("good");
     assert_eq!(
@@ -881,7 +888,7 @@ fn a_border_stops_at_ten_percent() {
 
 #[test]
 fn a_border_in_a_split_of_20_columns() {
-    let plan = layout(SIDEBAR);
+    let plan = layout(sidebar_lines());
     // No percent gives both panes 10 columns beside the divider.
     let text = plan
         .resize_border(&id_of("notices"), 12, 20)
@@ -1014,7 +1021,7 @@ fn rect(solved: &mu_config::layout::Solved, id: &str) -> (u16, u16, u16, u16) {
 
 #[test]
 fn the_sidebar_divider_is_in_column_56() {
-    let solved = solved(SIDEBAR, 80, 24);
+    let solved = solved(sidebar_lines(), 80, 24);
     assert_eq!(rect(&solved, "notices"), (57, 80, 2, 22));
     assert_eq!(rect(&solved, "main"), (1, 55, 2, 22));
     assert_eq!(
@@ -1108,7 +1115,7 @@ proptest! {
 
 #[test]
 fn the_picture_of_the_sidebar() {
-    let picture = preview(&layout(SIDEBAR), 40, 12).join("\n");
+    let picture = preview(&layout(sidebar_lines()), 40, 12).join("\n");
     println!("{picture}");
     assert!(
         picture.contains("notices") && picture.contains('┬'),
@@ -1236,7 +1243,7 @@ fn a_save_from_a_built_in_layout_gives_a_new_layout() {
 #[test]
 fn a_border_in_a_split_of_21_columns() {
     // 48 to 52 percent of 21 columns give 10 columns to each side of the divider.
-    let plan = layout(SIDEBAR);
+    let plan = layout(sidebar_lines());
     let low = plan.resize_border(&id_of("notices"), 2, 21).expect("good");
     assert_eq!(
         low.layout.lines()[4],
@@ -1251,7 +1258,7 @@ fn a_border_in_a_split_of_21_columns() {
 
 #[test]
 fn a_larger_block_in_80_columns_stops_at_87_percent() {
-    let plan = layout(SIDEBAR);
+    let plan = layout(sidebar_lines());
     let changed = plan.resize_by(&id_of("notices"), 20, 24, 80).expect("good");
     assert_eq!(
         changed.layout.lines()[4],
@@ -1687,7 +1694,7 @@ fn hide_refuses_main() {
 
 #[test]
 fn hide_refuses_the_last_output_of_the_notices() {
-    let text = layout(SIDEBAR)
+    let text = layout(sidebar_lines())
         .hide(&id_of("notices"))
         .expect_err("notices stay")
         .to_string();

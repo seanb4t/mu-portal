@@ -107,13 +107,12 @@ fn area_of(app: &Model, id: &str) -> (u16, u16, u16, u16) {
 }
 
 const CLASSIC: &[&str] = &["output", "tabs above main", "editor below main"];
-const SIDEBAR: &[&str] = &[
-    "output",
-    "tabs above main",
-    "editor below main",
-    "statusline below editor",
-    "output as notices right of main, 30%",
-];
+/// The lines of the built-in layout `sidebar`.
+fn sidebar_lines() -> &'static [&'static str] {
+    mu_config::layout::BuiltIn::named("sidebar")
+        .expect("mu ships the layout sidebar")
+        .lines
+}
 const NOTICES_BELOW: &[&str] = &[
     "output",
     "editor below main",
@@ -206,7 +205,7 @@ fn undo() {
 
 #[test]
 fn a_larger_and_a_smaller_block() {
-    let mut app = laptop_with(SIDEBAR);
+    let mut app = laptop_with(sidebar_lines());
     arrange(&mut app);
     // The letters follow the screen: tabs, output, notices, editor, statusline.
     keys(&mut app, "c>");
