@@ -110,7 +110,7 @@ A layout SHALL be bad in each of these cases, and its notice SHALL name the line
 #### Scenario: A block twice
 - **GIVEN** `clients/layouts/mine.toml` holds the lines `editor`, `output above editor` and `output at top`
 - **WHEN** the user runs `mu layout show mine`
-- **THEN** stderr holds one line that contains `line 3` and `output`
+- **THEN** stderr holds one line that contains `line 3`, `main` and `as`
 
 #### Scenario: A block that is not placed yet
 - **GIVEN** `clients/layouts/mine.toml` holds the lines `editor` and `tabs above main`
