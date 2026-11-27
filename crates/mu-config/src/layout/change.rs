@@ -135,13 +135,10 @@ impl Layout {
 
     /// `step` with the selection of the `output` with its id on the screen, if there is one.
     fn keeping(&self, mut step: Step) -> Step {
-        if let Some(shown) = self
-            .steps
-            .iter()
-            .find(|each| each.kind == BlockKind::Output && each.id == step.id)
-            && step.kind == BlockKind::Output
+        if step.kind == BlockKind::Output
+            && let Some(shown) = self.selection_of(&step.id)
         {
-            step.selection.clone_from(&shown.selection);
+            step.selection = Some(shown.clone());
         }
         step
     }

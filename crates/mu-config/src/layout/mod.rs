@@ -209,6 +209,15 @@ impl Layout {
         numbered(&self.lines())
     }
 
+    /// The selection of the `output` `id`, or none when the layout has no such output.
+    #[must_use]
+    pub fn selection_of(&self, id: &BlockId) -> Option<&Selection> {
+        self.steps
+            .iter()
+            .find(|step| step.kind == BlockKind::Output && &step.id == id)
+            .and_then(|step| step.selection.as_ref())
+    }
+
     /// The `output` blocks whose selection shows the stream `name`, in the order of the plan.
     pub fn showing<'a>(
         &'a self,

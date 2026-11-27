@@ -773,10 +773,7 @@ impl Model {
     pub(crate) fn key_of(&self, world: Option<&str>, id: &BlockId) -> PaneKey {
         let scope = self
             .layout_of(world)
-            .steps()
-            .iter()
-            .find(|step| step.kind == BlockKind::Output && &step.id == id)
-            .and_then(|step| step.selection.as_ref())
+            .selection_of(id)
             .map_or(Scope::World, |selection| selection.scope);
         PaneKey::new(Owner::of_output(scope, world), id.clone())
     }

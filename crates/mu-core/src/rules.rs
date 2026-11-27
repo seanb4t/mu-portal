@@ -316,6 +316,13 @@ struct Capture {
     streams: Streams,
 }
 
+impl Capture {
+    /// The capture holds its `lines` lines, so it ends.
+    fn full(&self) -> bool {
+        self.count >= self.lines
+    }
+}
+
 /// The state of the rules of one world: the capture that runs, and the errors already reported.
 #[derive(Clone, Debug, Default)]
 pub struct RuleState {
@@ -345,12 +352,7 @@ impl RuleState {
                 }
                 None => false,
             };
-            if ended
-                || self
-                    .capture
-                    .as_ref()
-                    .is_some_and(|capture| capture.count >= capture.lines)
-            {
+            if ended || self.capture.as_ref().is_some_and(Capture::full) {
                 self.capture = None;
             }
             return Route { streams, errors };
@@ -379,14 +381,15 @@ impl RuleState {
                     };
                 }
             };
-            if rule.matcher.until.is_some() && rule.matcher.lines > 1 {
-                self.capture = Some(Capture {
+            if rule.matcher.until.is_some() {
+                let capture = Capture {
                     rule: rule.id.clone(),
                     until: rule.matcher.until.clone(),
                     lines: rule.matcher.lines,
                     count: 1,
                     streams: streams.clone(),
-                });
+                };
+                self.capture = (!capture.full()).then_some(capture);
             }
             return Route { streams, errors };
         }
