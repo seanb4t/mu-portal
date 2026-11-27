@@ -37,7 +37,7 @@ pub const BUILT_IN: &[BuiltIn] = &[
     BuiltIn {
         name: "sidebar",
         lines: &[
-            "output",
+            "output as main showing main",
             "tabs above main",
             "editor below main",
             "statusline below editor",

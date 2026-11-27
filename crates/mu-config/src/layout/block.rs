@@ -3,6 +3,7 @@
 use std::fmt;
 
 use crate::names::by_name;
+use crate::stream::MAIN;
 
 /// One part of the screen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -47,10 +48,6 @@ pub struct BlockRow {
     pub stacks: bool,
 }
 
-/// The id of an `output` whose line has no `as`. The block with this id is the main output: it
-/// shows the lines of the world, and each stream that no other `output` shows.
-pub const MAIN: &str = "main";
-
 /// Every block, in the order of the catalog.
 pub const BLOCKS: &[BlockRow] = &[
     BlockRow {
@@ -66,7 +63,7 @@ pub const BLOCKS: &[BlockRow] = &[
         kind: BlockKind::Output,
         name: "output",
         id: MAIN,
-        min: 0,
+        min: 1,
         max: 8,
         size: SizeRule::Free,
         stacks: true,

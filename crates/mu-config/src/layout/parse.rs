@@ -3,13 +3,15 @@
 use std::fmt;
 
 use winnow::ascii::{space0, space1};
-use winnow::combinator::{alt, cut_err, eof, opt, preceded};
+use winnow::combinator::{alt, cut_err, eof, opt, peek, preceded};
 use winnow::error::ContextError;
 use winnow::token::take_while;
 use winnow::{ModalResult, Parser};
 
 use super::block::BlockKind;
+use super::change::Change;
 use super::step::{BlockId, EDITOR_MAX, Edge, PERCENT_MAX, PERCENT_MIN, Place, Side, Size, Step};
+use crate::stream::{Pattern, Scope, Selection};
 
 /// What is wrong with one line, before the line has a number.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -158,19 +160,147 @@ fn size(input: &mut &str) -> ModalResult<Size> {
     .parse_next(input)
 }
 
-fn line(input: &mut &str) -> ModalResult<Step> {
+/// A line as the reader takes it, before the checks of its scope and its patterns.
+struct Draft<'a> {
+    kind: BlockKind,
+    id: BlockId,
+    /// The word `of` of `of all worlds`.
+    all_worlds: Option<&'a str>,
+    /// The word `showing`, and each pattern after it.
+    showing: Option<(&'a str, Vec<&'a str>)>,
+    place: Place,
+    size: Option<Size>,
+}
+
+fn all_worlds<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
+    let (of, ..) = (
+        keyword("of"),
+        space1,
+        cut_err((keyword("all"), space1, keyword("worlds"))),
+    )
+        .parse_next(input)?;
+    Ok(of)
+}
+
+fn at_end(input: &mut &str) -> ModalResult<()> {
+    (space0, eof).void().parse_next(input)
+}
+
+fn place_next(input: &mut &str) -> ModalResult<()> {
+    (space1, place).void().parse_next(input)
+}
+
+/// The comma and the size at the end of a line.
+fn size_tail(input: &mut &str) -> ModalResult<Size> {
+    preceded(comma, cut_err(size)).parse_next(input)
+}
+
+/// A comma and a size that ends the line.
+fn size_next(input: &mut &str) -> ModalResult<()> {
+    (size_tail, at_end).void().parse_next(input)
+}
+
+fn comma(input: &mut &str) -> ModalResult<()> {
+    (space0, ',', space0).void().parse_next(input)
+}
+
+/// The word `showing` and the patterns after it. The list ends at a place, at a comma and a size
+/// that end the line, or at the end of the line.
+fn showing<'a>(input: &mut &'a str) -> ModalResult<(&'a str, Vec<&'a str>)> {
+    let at = keyword("showing").parse_next(input)?;
+    let mut patterns = Vec::new();
+    loop {
+        if peek(at_end).parse_next(input).is_ok() || peek(place_next).parse_next(input).is_ok() {
+            break;
+        }
+        if !patterns.is_empty() && peek(size_next).parse_next(input).is_ok() {
+            break;
+        }
+        let parted = if patterns.is_empty() {
+            space1.void().parse_next(input)
+        } else {
+            comma.parse_next(input)
+        };
+        if parted.is_err() {
+            break;
+        }
+        patterns.push(word.parse_next(input)?);
+    }
+    Ok((at, patterns))
+}
+
+fn line<'a>(input: &mut &'a str) -> ModalResult<Draft<'a>> {
     space0.parse_next(input)?;
     let kind = block.parse_next(input)?;
     let id = opt(preceded((space1, keyword("as"), space1), cut_err(id))).parse_next(input)?;
+    let (all_worlds, showing) = if id.is_some() {
+        (
+            opt(preceded(space1, all_worlds)).parse_next(input)?,
+            opt(preceded(space1, showing)).parse_next(input)?,
+        )
+    } else {
+        (None, None)
+    };
     let place = opt(preceded(space1, place)).parse_next(input)?;
-    let size = opt(preceded((space0, ',', space0), cut_err(size))).parse_next(input)?;
-    (space0, eof).parse_next(input)?;
-    Ok(Step {
+    let size = opt(size_tail).parse_next(input)?;
+    at_end.parse_next(input)?;
+    Ok(Draft {
         kind,
         id: id.unwrap_or_else(|| BlockId::of(kind)),
+        all_worlds,
+        showing,
         place: place.unwrap_or(Place::First),
         size,
     })
+}
+
+/// The column of `part`, a slice of `text`, from 1.
+fn column_of(text: &str, part: &str) -> usize {
+    let offset = (part.as_ptr() as usize).saturating_sub(text.as_ptr() as usize);
+    text.get(..offset)
+        .map_or(1, |before| before.chars().count() + 1)
+}
+
+impl Draft<'_> {
+    /// The step, with the checks of the scope and the patterns.
+    fn finish(self, text: &str) -> Result<Step, LineError> {
+        let bad = |part: &str, reason: &str| LineError {
+            word: part.to_owned(),
+            column: column_of(text, part),
+            reason: reason.to_owned(),
+        };
+        if self.kind != BlockKind::Output {
+            if let Some(of) = self.all_worlds {
+                return Err(bad(of, "only an `output` takes `of all worlds`"));
+            }
+            if let Some((at, _)) = self.showing {
+                return Err(bad(at, "only an `output` takes `showing`"));
+            }
+            return Ok(Step::new(self.kind, self.id, self.place, self.size));
+        }
+        let scope = if self.all_worlds.is_some() {
+            Scope::AllWorlds
+        } else {
+            Scope::World
+        };
+        let selection = match self.showing {
+            None => Selection::default_for(&self.id, scope),
+            Some((at, texts)) => {
+                let patterns = texts
+                    .iter()
+                    .map(|each| Pattern::new(each).map_err(|reason| bad(each, reason)))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Selection::new(scope, patterns).map_err(|reason| bad(at, reason))?
+            }
+        };
+        Ok(Step {
+            kind: self.kind,
+            id: self.id,
+            place: self.place,
+            size: self.size,
+            selection: Some(selection),
+        })
+    }
 }
 
 /// The most characters of one line of a plan.
@@ -202,6 +332,31 @@ impl Step {
     ///
     /// A [`LineError`] that names the word where the reader stopped, and its column.
     pub fn parse(text: &str) -> Result<Self, LineError> {
+        read(text).map(|(step, _)| step)
+    }
+}
+
+impl Change {
+    /// The change of the command `/place <text>`: [`Change::Move`] for an `output` with no
+    /// `of all worlds` and no `showing`, and [`Change::Place`] for each other line.
+    ///
+    /// # Errors
+    ///
+    /// A [`LineError`] as [`Step::parse`] gives it.
+    pub fn place(text: &str) -> Result<Self, LineError> {
+        read(text).map(|(step, named)| {
+            if step.kind == BlockKind::Output && !named {
+                Self::Move(step)
+            } else {
+                Self::Place(step)
+            }
+        })
+    }
+}
+
+/// The step of one line, and whether the line names the streams or the scope of an `output`.
+fn read(text: &str) -> Result<(Step, bool), LineError> {
+    {
         if text.trim().is_empty() {
             return Err(LineError {
                 word: String::new(),
@@ -216,7 +371,7 @@ impl Step {
                 reason: format!("a line has at most {LINE_MAX} characters"),
             });
         }
-        line.parse(text).map_err(|error| {
+        let draft = line.parse(text).map_err(|error| {
             let offset = error.offset();
             let rest = &text[offset..];
             let found: String = rest.chars().take_while(|c| is_word_char(*c)).collect();
@@ -241,6 +396,8 @@ impl Step {
                 column: text[..offset].chars().count() + 1,
                 reason,
             }
-        })
+        })?;
+        let named = draft.showing.is_some() || draft.all_worlds.is_some();
+        draft.finish(text).map(|step| (step, named))
     }
 }

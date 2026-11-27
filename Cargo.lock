@@ -303,6 +303,15 @@ dependencies = [
 
 [[package]]
 name = "bit-set"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08807e080ed7f9d5433fa9b275196cfc35414f66a0c79d864dc51a0d825231a3"
+dependencies = [
+ "bit-vec 0.8.0",
+]
+
+[[package]]
+name = "bit-set"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56d87354e4229f54a44f7bf2435906a4656dba36026ab6eaca629a2c436a691c"
@@ -315,6 +324,12 @@ name = "bit-vec"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "349f9b6a179ed607305526ca489b34ad0a41aed5f7980fa90eb03160b69598fb"
+
+[[package]]
+name = "bit-vec"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e764a1d40d510daf35e07be9eb06e75770908c27d411ee6c92109c9840eaaf7"
 
 [[package]]
 name = "bit-vec"
@@ -1002,6 +1017,17 @@ checksum = "b95f7c0680e4142284cf8b22c14a476e87d61b004a3a0861872b32ef7ead40a2"
 dependencies = [
  "bit-set 0.5.3",
  "regex",
+]
+
+[[package]]
+name = "fancy-regex"
+version = "0.20.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a2e16b9a584b602f1e0e5e22c30ca0906786088c27500653e432d086def8b53"
+dependencies = [
+ "bit-set 0.8.0",
+ "regex-automata",
+ "regex-syntax",
 ]
 
 [[package]]
@@ -1935,6 +1961,8 @@ dependencies = [
  "proptest",
  "serde",
  "toml",
+ "vte",
+ "wildmatch",
  "winnow",
 ]
 
@@ -1942,6 +1970,7 @@ dependencies = [
 name = "mu-core"
 version = "0.1.0"
 dependencies = [
+ "fancy-regex 0.20.2",
  "fastrand",
  "figment2",
  "futures",
@@ -1951,6 +1980,7 @@ dependencies = [
  "mu-config",
  "mu-fake-server",
  "proptest",
+ "rand_core 0.10.1",
  "secrecy",
  "serde",
  "serde_path_to_error",
@@ -1959,6 +1989,7 @@ dependencies = [
  "tokio",
  "toml",
  "tracing",
+ "ulid",
  "walkdir",
 ]
 
@@ -2019,7 +2050,6 @@ dependencies = [
  "tokio",
  "unicode-segmentation",
  "unicode-width",
- "vte",
 ]
 
 [[package]]
@@ -2679,6 +2709,7 @@ version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f6fa277c67e6ea590466f04c3fe82cb509f0864fe470643e5570de9514a9b11"
 dependencies = [
+ "chacha20",
  "getrandom 0.4.3",
  "rand_core 0.10.1",
 ]
@@ -3537,7 +3568,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "bitflags 2.13.2",
- "fancy-regex",
+ "fancy-regex 0.11.0",
  "filedescriptor",
  "finl_unicode",
  "fixedbitset",
@@ -3969,6 +4000,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f20bdbfc9915686faa18fb5bbe8b4552778505defbf9f12289beefbc44092a6"
 
 [[package]]
+name = "ulid"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "947dde63b6d514cc5e044edad4e0ca7261afd1099d16c83d942cb2b2f348689c"
+dependencies = [
+ "rand 0.10.4",
+ "web-time",
+]
+
+[[package]]
 name = "unarray"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4308,6 +4349,12 @@ dependencies = [
  "serde",
  "wezterm-dynamic",
 ]
+
+[[package]]
+name = "wildmatch"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f18219fbd41a807dec044965d4106bb4fdb1d3a4b70aac4e5510aacc80a9f140"
 
 [[package]]
 name = "winapi"

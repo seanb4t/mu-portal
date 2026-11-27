@@ -258,24 +258,20 @@ impl Model {
         good
     }
 
-    /// The step that places the pick with `place`.
-    fn arrange_step(&self, pick: &Pick, place: Place) -> Option<Step> {
-        let kind = match pick {
-            Pick::New(kind, _) => *kind,
+    /// The change that places the pick with `place`. A block on the screen keeps its selection.
+    fn arrange_step(&self, pick: &Pick, place: Place) -> Option<Change> {
+        match pick {
+            Pick::New(kind, _) => Some(Change::Place(Step::new(
+                *kind,
+                pick.id().clone(),
+                place,
+                None,
+            ))),
             Pick::Shown(id) => {
-                self.layout()
-                    .steps()
-                    .iter()
-                    .find(|step| &step.id == id)?
-                    .kind
+                let shown = self.layout().steps().iter().find(|step| &step.id == id)?;
+                Some(Change::Move(Step::new(shown.kind, id.clone(), place, None)))
             }
-        };
-        Some(Step {
-            kind,
-            id: pick.id().clone(),
-            place,
-            size: None,
-        })
+        }
     }
 
     /// A plain letter: it picks a block, or names the second block.
@@ -382,16 +378,16 @@ impl Model {
                         side,
                         anchors: vec![second],
                     };
-                    if let Some(step) = self.arrange_step(&pick, place) {
-                        self.arrange_change(Change::Place(step));
+                    if let Some(change) = self.arrange_step(&pick, place) {
+                        self.arrange_change(change);
                     }
                 }
             }
             KeyCode::Char('=') => {
                 if let (Some(pick), Some(second)) = (picked, second)
-                    && let Some(step) = self.arrange_step(&pick, Place::With(second))
+                    && let Some(change) = self.arrange_step(&pick, Place::With(second))
                 {
-                    self.arrange_change(Change::Place(step));
+                    self.arrange_change(change);
                 }
             }
             KeyCode::Char('>') => self.arrange_size(1),
@@ -469,8 +465,8 @@ impl Model {
                         anchors: vec![target],
                     },
                 };
-                if let Some(step) = self.arrange_step(&Pick::Shown(from), place) {
-                    self.arrange_change(Change::Place(step));
+                if let Some(change) = self.arrange_step(&Pick::Shown(from), place) {
+                    self.arrange_change(change);
                 }
             }
             _ => {}

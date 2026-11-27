@@ -25,7 +25,6 @@ impl Model {
             self.layout_name = name;
             self.layout = layout;
         }
-        self.show_unshown();
     }
 
     /// Puts `layout` on the screen under the new name `name`, and returns the effect that
@@ -105,8 +104,8 @@ impl Model {
 
     /// The change of `/place <sentence>`.
     pub(crate) fn place(&mut self, sentence: &str) -> Vec<Effect> {
-        match Step::parse(sentence) {
-            Ok(step) => self.change_layout(Change::Place(step)),
+        match Change::place(sentence) {
+            Ok(change) => self.change_layout(change),
             Err(error) => {
                 self.notice(&format!("{sentence}: {error}"));
                 Vec::new()

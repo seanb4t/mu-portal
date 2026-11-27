@@ -3,6 +3,7 @@
 use super::block::{BlockKind, SizeRule};
 use super::step::{BlockId, Dir, EDITOR_MAX, PERCENT_MAX, PERCENT_MIN, Place, Side, Size, Step};
 use super::{LEVELS_MAX, LayoutError};
+use crate::stream::Selection;
 
 /// One block in a pane.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -13,6 +14,8 @@ pub struct Block {
     pub id: BlockId,
     /// The `max` of an editor whose line gives one.
     pub max: Option<u16>,
+    /// The selection of an `output`. None for each other block.
+    pub selection: Option<Selection>,
 }
 
 /// The size of one part of a split.
@@ -184,6 +187,7 @@ fn made(step: &Step, line: usize) -> Result<(Block, Option<PartSize>), LayoutErr
         kind: step.kind,
         id: step.id.clone(),
         max: None,
+        selection: step.selection.clone(),
     };
     let in_range = match step.size {
         None => true,

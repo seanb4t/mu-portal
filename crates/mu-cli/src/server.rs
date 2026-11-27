@@ -152,6 +152,7 @@ fn serve_worlds(args: &ServerArgs, dir: Option<&Path>, snapshot: DirSnapshot) ->
     let Opened {
         store: config_store,
         worlds: configured,
+        global_rules,
         ..
     } = match Store::open(
         dir,
@@ -191,6 +192,7 @@ fn serve_worlds(args: &ServerArgs, dir: Option<&Path>, snapshot: DirSnapshot) ->
             autoconnect: true,
             reconnect: Reconnect::Off,
             line_break: Some(line_break.clone()),
+            rules: global_rules.clone(),
             ..ResolvedWorld::with_default_login(fake.id.clone(), fake.secret.clone())
         };
         worlds.push(WorldSetup::new(world, Some(password), Arc::new(transport)));

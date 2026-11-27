@@ -1,5 +1,7 @@
 //! The task of one world: its transport, framer, hooks and handlers.
 
+use mu_config::stream::Streams;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, VecDeque};
 use std::io;
 use std::num::NonZeroU32;
@@ -22,6 +24,7 @@ use crate::event::{Event, EventKind, NewEvent, Seq, Source};
 use crate::framer::{Framer, Inbound, NewFramer, has_line_break};
 use crate::id::WorldId;
 use crate::journal::Journal;
+use crate::rules::{RuleState, Rules};
 use crate::script::{DEPTH_LIMIT, Handler, Hook, RATE_PER_SECOND, run_hooks};
 use crate::secret::{MASK, Secret, SecretSource};
 use crate::transport::{ByteStream, Transport};
@@ -245,6 +248,9 @@ pub(crate) struct SessionParts {
     /// Whether and when the world connects again after a drop.
     pub(crate) reconnect: Reconnect,
     pub(crate) hooks: Vec<Arc<dyn Hook>>,
+    /// The line rules, which decide the streams of each line from the game that no hook gave
+    /// streams.
+    pub(crate) rules: Rules,
     pub(crate) handlers: Vec<Arc<dyn Handler>>,
     pub(crate) journal: Arc<dyn Journal>,
     pub(crate) router: Router,
@@ -401,6 +407,9 @@ struct Session {
     failed: u32,
     /// Whether the last connect was an attempt of the reconnect, not a `Connect` call.
     attempt: bool,
+    /// The capture of the rules and the errors already reported. A connect and a disconnect
+    /// reset it.
+    route: RuleState,
 }
 
 /// Runs the session of one world until the `Portal` drops its channel.
@@ -413,6 +422,7 @@ pub(crate) async fn run(parts: SessionParts) {
         password: None,
         failed: 0,
         attempt: false,
+        route: RuleState::default(),
     };
     if let Some(SecretSource::Fixed(password)) = &session.parts.secret {
         session.password = Some(password.clone());
@@ -513,18 +523,37 @@ impl Session {
         &self.parts.world
     }
 
+    /// `text` with the password of the world masked.
+    fn masked<'a>(&self, text: &'a str) -> Cow<'a, str> {
+        self.password
+            .as_ref()
+            .map_or(Cow::Borrowed(text), |password| {
+                Cow::Owned(password.mask(text))
+            })
+    }
+
     /// Masks, records and hands an event to the world handlers.
     fn record(&mut self, kind: EventKind, origin: Origin, text: &str, depth: u8) -> Event {
-        let text = self
-            .password
-            .as_ref()
-            .map_or_else(|| text.to_owned(), |password| password.mask(text));
+        self.record_in(kind, origin, text, depth, Streams::main())
+    }
+
+    /// Masks, records with `streams` and hands an event to the world handlers.
+    fn record_in(
+        &mut self,
+        kind: EventKind,
+        origin: Origin,
+        text: &str,
+        depth: u8,
+        streams: Streams,
+    ) -> Event {
+        let text = self.masked(text).into_owned();
         let event = self.parts.journal.append(NewEvent {
             world: self.world().clone(),
             kind,
             source: Source::of(kind, origin),
             text,
             depth,
+            streams,
         });
         tracing::event!(
             target: crate::METRICS_TARGET,
@@ -588,6 +617,7 @@ impl Session {
     /// connection and in the journal, and answers each waiting frame. Then the world waits for
     /// its next attempt, or stays down.
     fn down(&mut self, cause: Cause, reason: &str, depth: u8) {
+        self.route.reset();
         if matches!(self.parts.secret, Some(SecretSource::Store(..))) {
             self.password = None;
         }
@@ -757,6 +787,7 @@ impl Session {
         if let Some(password) = self.read_secret()? {
             self.password = Some(password);
         }
+        self.route.reset();
         self.attempt = attempt;
         if !attempt {
             self.failed = 0;
@@ -952,8 +983,28 @@ impl Session {
         for inbound in framer.feed(bytes) {
             match inbound {
                 Inbound::Line(line) => {
-                    if let Some(line) = run_hooks(&self.parts.hooks, &line, Hook::on_game_line) {
-                        self.record(EventKind::Line, Origin::System, &line, 0);
+                    let hooked = run_hooks(&self.parts.hooks, &line, Hook::on_game_line);
+                    // The rules see the masked line, so no stream name and no error holds the
+                    // password.
+                    let masked = self.masked(&hooked.text);
+                    // A capture counts each line from the game, a gagged one too.
+                    let mut route = self.route.route(&self.parts.rules, &masked);
+                    if let Some(streams) = hooked.streams {
+                        let checked = self.route.hooked(streams);
+                        route.errors.extend(checked.errors);
+                        route.streams = checked.streams;
+                    }
+                    for error in &route.errors {
+                        self.script_error(&error.text, 0);
+                    }
+                    if !hooked.gagged {
+                        self.record_in(
+                            EventKind::Line,
+                            Origin::System,
+                            &hooked.text,
+                            0,
+                            route.streams,
+                        );
                     }
                 }
                 Inbound::Prompt(prompt) => {
@@ -1008,9 +1059,11 @@ impl Session {
                 if !self.conn.is_connected() {
                     return Err(PortalError::NotConnected(self.world().clone()));
                 }
-                let Some(text) = run_hooks(&self.parts.hooks, &text, Hook::on_player_line) else {
+                let hooked = run_hooks(&self.parts.hooks, &text, Hook::on_player_line);
+                if hooked.gagged {
                     return Ok(None);
-                };
+                }
+                let text = hooked.text;
                 if has_line_break(&text) {
                     self.script_error(
                         "a hook replaced a line with text that holds a line break, so the engine dropped the line",

@@ -20,7 +20,7 @@ sidebar:
 | Crate | Holds |
 |---|---|
 | `mu-proto` | API schema and generated code |
-| `mu-config` | Client configuration: the fields of a client layer, the key names and the entry names |
+| `mu-config` | Shared configuration: the fields of a client layer, the key names, the entry names, the stream names and the walk of game text |
 | `mu-core` | Server engine, with no knowledge of the wire format |
 | `mu-server` | API server: the adapter between the engine and the schema |
 | `mu-client` | API client, with the resume of the event stream |

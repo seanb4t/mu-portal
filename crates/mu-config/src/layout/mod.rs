@@ -11,7 +11,9 @@ mod write;
 
 use std::fmt;
 
-pub use block::{BLOCKS, BlockKind, BlockRow, MAIN, SizeRule};
+use crate::stream::{MAIN, NOTICES, Scope, Selection, StreamName};
+
+pub use block::{BLOCKS, BlockKind, BlockRow, SizeRule};
 pub use builtin::{BUILT_IN, BuiltIn, DEFAULT_LAYOUT, LayoutFile};
 pub use change::{
     Change, Changed, FILL, LineRef, PANE_COLUMNS_MIN, PANE_ROWS_MIN, RESIZE_STEP, REWRITTEN,
@@ -19,14 +21,12 @@ pub use change::{
 pub use parse::{LINE_MAX, LineError};
 pub use solve::{Area, Border, Placed, Solved, preview, solve};
 pub use solve::{Described, describe};
+pub(crate) use step::is_id_byte;
 pub use step::{
     BlockId, Dir, EDITOR_MAX, EDITOR_MAX_DEFAULT, Edge, ID_MAX, PERCENT_MAX, PERCENT_MIN, Place,
     Side, Size, Step, WORDS,
 };
 pub use tree::{Block, Node, Part, PartSize};
-
-/// The name of the stream of the notices of the client.
-pub const NOTICES_STREAM: &str = "notices";
 
 /// The lines `lines` of a plan with their numbers from 1, as each listing of a plan shows them.
 #[must_use]
@@ -158,6 +158,7 @@ impl Layout {
             tree::apply(&mut root, step, line)?;
         }
         let tree = root.ok_or_else(|| LayoutError::whole("", "a layout has at least 1 line"))?;
+        check_streams(&steps)?;
         for row in BLOCKS {
             let held = steps.iter().filter(|step| step.kind == row.kind).count();
             if held < row.min {
@@ -208,25 +209,26 @@ impl Layout {
         numbered(&self.lines())
     }
 
-    /// The main `output`: the one with the id [`MAIN`], or the first `output` of the plan if
-    /// none has that id. It shows the lines of the world, and each stream that no other
-    /// `output` shows. None for a plan with no `output`.
+    /// The selection of the `output` `id`, or none when the layout has no such output.
     #[must_use]
-    pub fn main_output(&self) -> Option<&BlockId> {
-        self.route(MAIN)
+    pub fn selection_of(&self, id: &BlockId) -> Option<&Selection> {
+        self.steps
+            .iter()
+            .find(|step| step.kind == BlockKind::Output && &step.id == id)
+            .and_then(|step| step.selection.as_ref())
     }
 
-    /// The `output` that shows the stream `stream`: the one with that id, or the main one.
-    /// None for a plan with no `output`.
-    #[must_use]
-    pub fn route(&self, stream: &str) -> Option<&BlockId> {
-        let found = |wanted: &str| {
-            self.ids_of(BlockKind::Output)
-                .find(|id| id.as_str() == wanted)
-        };
-        found(stream)
-            .or_else(|| found(MAIN))
-            .or_else(|| self.ids_of(BlockKind::Output).next())
+    /// The `output` blocks whose selection shows the stream `name`, in the order of the plan.
+    pub fn showing<'a>(
+        &'a self,
+        name: &'a StreamName,
+    ) -> impl Iterator<Item = (&'a BlockId, &'a Selection)> + 'a {
+        self.steps.iter().filter_map(move |step| {
+            step.selection
+                .as_ref()
+                .filter(|selection| selection.shows(name))
+                .map(|selection| (&step.id, selection))
+        })
     }
 
     /// The same screen as a plan that mu writes from the tree. Each block keeps its id.
@@ -237,6 +239,43 @@ impl Layout {
     pub fn written(&self) -> Result<Self, LayoutError> {
         Self::from_steps(write::plan(&self.tree))
     }
+}
+
+/// The checks of the outputs as a whole: one `main` of the world in focus, and one output that
+/// shows the stream `notices`.
+fn check_streams(steps: &[Step]) -> Result<(), LayoutError> {
+    let main = steps
+        .iter()
+        .position(|step| step.kind == BlockKind::Output && step.id.as_str() == MAIN);
+    let Some(main) = main else {
+        return Err(LayoutError::whole(
+            MAIN,
+            "a layout holds an `output` with the id `main`",
+        ));
+    };
+    if steps[main]
+        .selection
+        .as_ref()
+        .is_some_and(|selection| selection.scope == Scope::AllWorlds)
+    {
+        return Err(LayoutError::at(
+            main + 1,
+            MAIN,
+            "the output `main` shows the world in focus, so it takes no `of all worlds`",
+        ));
+    }
+    let notices = StreamName::notices();
+    if !steps.iter().any(|step| {
+        step.selection
+            .as_ref()
+            .is_some_and(|selection| selection.shows(&notices))
+    }) {
+        return Err(LayoutError::whole(
+            NOTICES,
+            "a layout holds an `output` that shows the stream `notices`",
+        ));
+    }
+    Ok(())
 }
 
 fn count_lines(count: usize) -> Result<(), LayoutError> {

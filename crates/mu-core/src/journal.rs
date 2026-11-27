@@ -107,6 +107,8 @@ pub struct BadCapacity(pub usize);
 struct Inner {
     events: Vec<Event>,
     live: broadcast::Sender<Event>,
+    /// The maker of the ids, which keeps them in the order of the events.
+    ids: ulid::Generator,
 }
 
 /// A journal in memory. A restart of the server loses it.
@@ -130,6 +132,7 @@ impl MemoryJournal {
             inner: Mutex::new(Inner {
                 events: Vec::new(),
                 live,
+                ids: ulid::Generator::new(),
             }),
         })
     }
@@ -147,14 +150,21 @@ fn last_of(events: &[Event]) -> Seq {
 impl Journal for MemoryJournal {
     fn append(&self, event: NewEvent) -> Event {
         let mut inner = self.lock();
+        let time = SystemTime::now();
+        let id = match inner.ids.generate_from_datetime(time) {
+            Ok(id) => id,
+            Err(overflow) => overflow.commit_overflow_increment(),
+        };
         let event = Event {
             seq: last_of(&inner.events).next(),
+            id,
             world: event.world,
             kind: event.kind,
             source: event.source,
             text: event.text,
-            time: SystemTime::now(),
+            time,
             depth: event.depth,
+            streams: event.streams,
         };
         inner.events.push(event.clone());
         // No receiver is not an error: the event stays in the journal.
@@ -194,6 +204,7 @@ mod tests {
     use super::*;
     use crate::event::{EventKind, Source};
     use crate::id::WorldId;
+    use mu_config::stream::Streams;
 
     fn new_event(world: &str, text: &str) -> NewEvent {
         NewEvent {
@@ -202,7 +213,55 @@ mod tests {
             source: Source::Game,
             text: text.to_owned(),
             depth: 0,
+            streams: Streams::main(),
         }
+    }
+
+    /// A source of random bits that gives only one bits.
+    struct Ones;
+
+    impl rand_core::TryRng for Ones {
+        type Error = std::convert::Infallible;
+
+        fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+            Ok(u32::MAX)
+        }
+
+        fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+            Ok(u64::MAX)
+        }
+
+        fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
+            dst.fill(!0);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn an_id_has_the_time_of_its_event() {
+        let event = MemoryJournal::new(DEFAULT_CAPACITY)
+            .unwrap()
+            .append(new_event("alpha/aria", "one"));
+        let millis = event
+            .time
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        assert_eq!(u128::from(event.id.timestamp_ms()), millis);
+    }
+
+    #[test]
+    fn an_id_after_a_full_millisecond_keeps_the_order() {
+        let journal = MemoryJournal::new(DEFAULT_CAPACITY).unwrap();
+        let later = SystemTime::now() + std::time::Duration::from_secs(3600);
+        let full = journal
+            .lock()
+            .ids
+            .generate_from_datetime_with_source(later, &mut Ones)
+            .unwrap();
+        let first = journal.append(new_event("alpha/aria", "one")).id;
+        let second = journal.append(new_event("alpha/aria", "two")).id;
+        assert!(full < first && first < second, "{full} {first} {second}");
     }
 
     fn journal_of(n: u64) -> MemoryJournal {
@@ -361,6 +420,13 @@ mod tests {
     }
 
     proptest! {
+        #[test]
+        fn ids_sort_in_the_order_of_seq(count in 1_u64..2000) {
+            let journal = journal_of(count);
+            let events = journal.lock().events.clone();
+            prop_assert!(events.windows(2).all(|pair| pair[0].id < pair[1].id));
+        }
+
         #[test]
         fn resume_has_no_gap_for_any_cut(total in 0_u64..60, cut in 0_u64..60, later in 0_u64..10) {
             let cut = cut.min(total);

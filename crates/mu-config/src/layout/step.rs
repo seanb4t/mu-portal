@@ -3,6 +3,12 @@
 use std::fmt;
 
 use super::block::BlockKind;
+use crate::stream::{NOTICES, Scope, Selection};
+
+/// Whether `byte` can be in an id after its first letter: a to z, 0 to 9 or `-`.
+pub(crate) fn is_id_byte(byte: u8) -> bool {
+    matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'-')
+}
 
 /// The longest id of a block, in characters.
 pub const ID_MAX: usize = 32;
@@ -10,40 +16,47 @@ pub const ID_MAX: usize = 32;
 /// The words of a sentence. No id is one of them.
 pub const WORDS: &[&str] = &[
     "as", "above", "below", "left", "right", "of", "at", "top", "bottom", "with", "and", "max",
+    "all", "worlds", "showing",
 ];
 
 /// The id of a block: 1 to [`ID_MAX`] characters from `a` to `z`, `0` to `9` and `-`. It
-/// starts with a letter, and is no word of [`WORDS`].
+/// starts with a letter, and is no word of [`WORDS`]. It is always lower case.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BlockId(String);
 
 impl BlockId {
-    /// Checks `id`.
+    /// Checks `id`, after it turns each upper-case letter to lower case.
     ///
     /// # Errors
     ///
     /// The reason that `id` is no id.
     pub fn new(id: &str) -> Result<Self, &'static str> {
+        let id = id.to_ascii_lowercase();
         let mut bytes = id.bytes();
         if !bytes.next().is_some_and(|first| first.is_ascii_lowercase()) {
             return Err("an id starts with a letter from a to z");
         }
-        if !bytes.all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'-')) {
+        if !bytes.all(is_id_byte) {
             return Err("an id holds only a to z, 0 to 9 and -");
         }
         if id.len() > ID_MAX {
             return Err("an id has at most 32 characters");
         }
-        if WORDS.contains(&id) {
+        if WORDS.contains(&id.as_str()) {
             return Err("an id is not a word of the sentences");
         }
-        Ok(Self(id.to_owned()))
+        Ok(Self(id))
     }
 
     /// The id of a block of `kind` whose line has no `as`.
     #[must_use]
     pub fn of(kind: BlockKind) -> Self {
         Self(kind.default_id().to_owned())
+    }
+
+    /// The id [`NOTICES`].
+    pub(crate) fn notices() -> Self {
+        Self(NOTICES.to_owned())
     }
 
     /// The id.
@@ -217,13 +230,46 @@ pub struct Step {
     pub place: Place,
     /// The size after the comma.
     pub size: Option<Size>,
+    /// The streams that an `output` shows, and for which worlds. None for each other block.
+    pub selection: Option<Selection>,
+}
+
+impl Step {
+    /// The step of a block of `kind` with `id`, with the default selection of an `output`.
+    #[must_use]
+    pub fn new(kind: BlockKind, id: BlockId, place: Place, size: Option<Size>) -> Self {
+        let selection =
+            (kind == BlockKind::Output).then(|| Selection::default_for(&id, Scope::World));
+        Self {
+            kind,
+            id,
+            place,
+            size,
+            selection,
+        }
+    }
 }
 
 impl fmt::Display for Step {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.kind.name())?;
-        if self.id.as_str() != self.kind.default_id() {
+        let chosen = self.selection.as_ref().filter(|selection| {
+            selection.scope == Scope::AllWorlds || !selection.is_default_for(&self.id)
+        });
+        if self.id.as_str() != self.kind.default_id() || chosen.is_some() {
             write!(f, " as {}", self.id)?;
+        }
+        if let Some(selection) = chosen {
+            if selection.scope == Scope::AllWorlds {
+                f.write_str(" of all worlds")?;
+            }
+            if !selection.is_default_for(&self.id) {
+                f.write_str(" showing")?;
+                for (index, pattern) in selection.patterns().iter().enumerate() {
+                    let join = if index == 0 { " " } else { ", " };
+                    write!(f, "{join}{pattern}")?;
+                }
+            }
         }
         match &self.place {
             Place::First => {}

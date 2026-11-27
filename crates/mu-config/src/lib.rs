@@ -2,6 +2,7 @@
 //! names of the entries that a key can run, and the names of a client. The server checks a
 //! layer with this crate, and the terminal client applies it.
 
+pub mod ansi;
 mod entries;
 mod filter;
 mod key;
@@ -9,6 +10,7 @@ mod label;
 mod layer;
 pub mod layout;
 mod names;
+pub mod stream;
 mod world_id;
 
 pub use entries::{ENTRY_NAMES, EntryName};

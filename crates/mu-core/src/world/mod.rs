@@ -1,6 +1,7 @@
 //! The configuration of the worlds: the layers, their merge, and the resolved world that the
 //! sessions read.
 
+use crate::rules::Rules;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
@@ -30,7 +31,7 @@ pub use layer::{
 };
 pub use merge::merge_layers;
 pub use parse::{Hidden, parse as parse_toml};
-pub use resolve::{FIELD_PATHS, resolve};
+pub use resolve::{FIELD_PATHS, resolve, resolve_with_global};
 pub use snapshot::{CLIENTS_DIR, DirSnapshot, LINKED_DIRS_MAX, SnapEntry, is_under_clients};
 
 /// The login template of a world whose layers set none.
@@ -428,7 +429,7 @@ pub struct ResolvedWorld {
     pub reconnect: Reconnect,
     /// The rules, in the order that their ids were added. An override keeps its place, and an
     /// id that is disabled and added again moves to the end.
-    pub rules: Vec<Entry>,
+    pub rules: Rules,
     /// The scripts, in the same order as the rules.
     pub scripts: Vec<Entry>,
     /// The source of each field that the world has, by its path such as `login.name`.
@@ -454,7 +455,7 @@ impl ResolvedWorld {
             keepalive_mode: defaults.keepalive_mode,
             keepalive: None,
             reconnect: Reconnect::Backoff(defaults.reconnect),
-            rules: Vec::new(),
+            rules: Rules::default(),
             scripts: Vec::new(),
             sources: BTreeMap::new(),
         }

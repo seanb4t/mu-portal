@@ -225,6 +225,7 @@ fn line(journal: &MemoryJournal, text: &str) -> Event {
         source: Source::Game,
         text: text.to_owned(),
         depth: 0,
+        streams: mu_config::stream::Streams::main(),
     })
 }
 

@@ -1,6 +1,8 @@
 //! Hooks and handlers: code that changes lines and reacts to events. The binary registers
 //! none.
 
+use mu_config::stream::Streams;
+
 use crate::command::Command;
 use crate::event::Event;
 
@@ -15,8 +17,15 @@ pub const RATE_PER_SECOND: u32 = 20;
 pub enum HookAction {
     /// The line goes on as it is.
     Pass,
-    /// The line goes on with this text.
-    Replace(String),
+    /// The line goes on with a new text, new streams, or both. A field of none keeps what the
+    /// line has. The streams of a line from the game win over the rules. A line from the
+    /// player always has the one stream `main`, so the session drops its streams.
+    Change {
+        /// The new text.
+        text: Option<String>,
+        /// The new streams.
+        streams: Option<Streams>,
+    },
     /// The line stops here: it makes no event and does not reach the game.
     Gag,
 }
@@ -40,19 +49,44 @@ pub trait Handler: Send + Sync + 'static {
     fn on_event(&self, event: &Event) -> Vec<Command>;
 }
 
-/// Runs each hook in order. A replace changes the text for the next hook, and a gag stops.
+/// A line after the hooks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Hooked {
+    /// The text after the hooks. For a gagged line, the text that the gagging hook received.
+    pub(crate) text: String,
+    /// The streams that the hooks set, the last one winning, or none.
+    pub(crate) streams: Option<Streams>,
+    /// Whether a hook gagged the line.
+    pub(crate) gagged: bool,
+}
+
+/// Runs each hook in order. A change applies for the next hook, and a gag stops.
 pub(crate) fn run_hooks(
     hooks: &[std::sync::Arc<dyn Hook>],
     line: &str,
     apply: impl Fn(&dyn Hook, &str) -> HookAction,
-) -> Option<String> {
-    let mut line = line.to_owned();
+) -> Hooked {
+    let mut hooked = Hooked {
+        text: line.to_owned(),
+        streams: None,
+        gagged: false,
+    };
     for hook in hooks {
-        match apply(hook.as_ref(), &line) {
+        match apply(hook.as_ref(), &hooked.text) {
             HookAction::Pass => {}
-            HookAction::Replace(text) => line = text,
-            HookAction::Gag => return None,
+            HookAction::Change { text, streams } => {
+                if let Some(text) = text {
+                    hooked.text = text;
+                }
+                if streams.is_some() {
+                    hooked.streams = streams;
+                }
+            }
+            HookAction::Gag => {
+                hooked.gagged = true;
+                break;
+            }
         }
     }
-    Some(line)
+    hooked
 }

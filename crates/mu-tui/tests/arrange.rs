@@ -1,8 +1,6 @@
 //! Arrange mode: the keys, the letters and the drag.
 
-use mu_client::ClientEvent;
-use mu_config::layout::BlockId;
-use mu_proto::{Event, EventKind, GetClientConfigResponse, Source};
+use mu_proto::GetClientConfigResponse;
 use mu_tui::{Effect, Model, Msg, update, view};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -11,14 +9,12 @@ use ratatui::style::Modifier;
 use termina::Event as TermEvent;
 use termina::event::{KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
+use support::{block, game_line, run_command, sidebar_lines};
+
+mod support;
+
 fn game(world: &str, text: &str) -> Msg {
-    Msg::Client(ClientEvent::Event(Event {
-        world: world.to_owned(),
-        kind: EventKind::EVENT_KIND_LINE.into(),
-        source: Source::SOURCE_GAME.into(),
-        text: text.to_owned(),
-        ..Default::default()
-    }))
+    game_line(world, text, &[])
 }
 
 /// Two worlds on the device `laptop`, with the layout `classic`.
@@ -100,10 +96,6 @@ fn mouse(app: &mut Model, kind: MouseEventKind, column: u16, row: u16) -> Vec<Ef
     update(app, Msg::Terminal(TermEvent::Mouse(event)))
 }
 
-fn block(id: &str) -> BlockId {
-    BlockId::new(id).expect("an id")
-}
-
 /// The rectangle of the pane of `id` in arrange mode: the first column, the first row, the
 /// count of columns and the count of rows, the first two from 0.
 fn area_of(app: &Model, id: &str) -> (u16, u16, u16, u16) {
@@ -115,13 +107,6 @@ fn area_of(app: &Model, id: &str) -> (u16, u16, u16, u16) {
 }
 
 const CLASSIC: &[&str] = &["output", "tabs above main", "editor below main"];
-const SIDEBAR: &[&str] = &[
-    "output",
-    "tabs above main",
-    "editor below main",
-    "statusline below editor",
-    "output as notices right of main, 30%",
-];
 const NOTICES_BELOW: &[&str] = &[
     "output",
     "editor below main",
@@ -214,7 +199,7 @@ fn undo() {
 
 #[test]
 fn a_larger_and_a_smaller_block() {
-    let mut app = laptop_with(SIDEBAR);
+    let mut app = laptop_with(sidebar_lines());
     arrange(&mut app);
     // The letters follow the screen: tabs, output, notices, editor, statusline.
     keys(&mut app, "c>");
@@ -467,7 +452,7 @@ fn a_new_configuration_ends_arrange_mode() {
 #[test]
 fn a_border_that_cannot_move_says_why() {
     let mut app = laptop_with(&[
-        "output",
+        "output as main showing main",
         "editor below main",
         "output as notices right of main, 50%",
     ]);
@@ -547,9 +532,9 @@ fn a_failed_save_ends_arrange_mode_with_its_own_reason() {
     let effects = update(&mut app, Msg::LayoutSaved(Err("down".to_owned())));
     assert_eq!(effects, [Effect::FetchConfig]);
     assert!(!app.arranges());
-    let ended: Vec<&String> = app
+    let ended: Vec<&str> = app
         .notices()
-        .iter()
+        .into_iter()
         .filter(|line| line.contains("arrange mode ended"))
         .collect();
     assert_eq!(ended.len(), 1, "{:?}", app.notices());
@@ -581,5 +566,36 @@ fn a_focus_move_ends_arrange_mode_and_puts_the_layout_back() {
             .any(|line| line.contains("the focus moved") && line.contains("arrange mode ended")),
         "{:?}",
         app.notices()
+    );
+}
+
+#[test]
+fn a_move_keeps_the_selection() {
+    let mut app = laptop_with(&[
+        "output",
+        "editor below main",
+        "output as comms of all worlds showing chan-*, !chan-ooc below main",
+    ]);
+    arrange(&mut app);
+    let (x, y, width, height) = area_of(&app, "main");
+    drag_block(&mut app, "comms", (x + width - 1, y + height / 2));
+    assert_eq!(
+        app.layout().lines()[2],
+        "output as comms of all worlds showing chan-*, !chan-ooc right of main"
+    );
+}
+
+/// Types `text` and presses Enter.
+#[test]
+fn a_place_command_keeps_the_streams() {
+    let mut app = laptop_with(&[
+        "output",
+        "editor below main",
+        "output as comms of all worlds showing chan-* below main",
+    ]);
+    run_command(&mut app, "/place output as comms right of main");
+    assert_eq!(
+        app.layout().lines()[2],
+        "output as comms of all worlds showing chan-* right of main"
     );
 }

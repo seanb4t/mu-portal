@@ -4,7 +4,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
-use support::{BASE_GAME, ConfigDir as Config, fails_naming, mu_command, mu_with, stderr, stdout};
+use support::{
+    BASE_GAME, ConfigDir as Config, fails_naming, mu_command, mu_with, rule, stderr, stdout,
+};
 
 mod support;
 
@@ -1156,7 +1158,7 @@ mod parses_back {
                 port: 4201,
                 login: Some(Login::new(&template, &name, "env:ARIA_PW".parse().unwrap()).unwrap()),
                 keepalive: Some(Keepalive::new(&command, 60).unwrap()),
-                rules: entries(rules.clone()),
+                rules: mu_core::rules::Rules::new(entries(rules.clone())).unwrap(),
                 scripts: entries(scripts.clone()),
                 sources: BTreeMap::new(),
                 ..ResolvedWorld::new("alpha/aria".parse().unwrap())
@@ -1178,4 +1180,475 @@ mod parses_back {
             prop_assert_eq!(array("scripts"), scripts);
         }
     }
+}
+
+// The checks of a line rule.
+
+/// The game `alpha` with the rule of `rule`, the text of one `[[rules]]` table after its id.
+fn game_rule(fields: &str) -> Config {
+    Config::base().file("games/alpha.toml", &game(&[], &rule("chan", fields)))
+}
+
+#[test]
+fn a_rule_with_a_stream_loads() {
+    let config = Config::base().file(
+        "global.toml",
+        &rule("chan", "pattern = '^\\[(\\w+)\\] '\nstream = \"chan-$1\""),
+    );
+    let text = succeeds(&config.show("alpha/aria"));
+    assert_eq!(ids(&text, "rules"), ["chan"]);
+}
+
+#[test]
+fn a_rule_with_an_unknown_field() {
+    let config = game_rule("pattern = \"x\"\nstream = \"chat\"\ncolour = \"red\"");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "colour"]);
+}
+
+#[test]
+fn an_action_with_no_pattern() {
+    let config = game_rule("stream = \"chat\"");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "pattern"]);
+}
+
+#[test]
+fn a_pattern_that_does_not_compile() {
+    let config = Config::base().file(
+        "characters/alpha/aria.toml",
+        &rule("chan", "pattern = \"([\"\nstream = \"chat\""),
+    );
+    fails_naming(
+        &config.list(),
+        &["characters/alpha/aria.toml", "chan", "pattern"],
+    );
+}
+
+#[test]
+fn a_fixed_stream_that_is_not_a_name() {
+    let config = game_rule("pattern = \"x\"\nstream = [\"chat\", \"1chat\"]");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "1chat"]);
+}
+
+#[test]
+fn an_empty_list_of_streams() {
+    let config = game_rule("pattern = \"x\"\nstream = []");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "stream"]);
+}
+
+#[test]
+fn too_many_streams() {
+    let nine: Vec<String> = (1..=9).map(|n| format!("\"s{n}\"")).collect();
+    let config = game_rule(&format!("pattern = \"x\"\nstream = [{}]", nine.join(", ")));
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "stream"]);
+}
+
+#[test]
+fn lines_out_of_range() {
+    let config = game_rule("pattern = \"x\"\nstream = \"who\"\nuntil = \"y\"\nlines = 1001");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "lines"]);
+}
+
+#[test]
+fn lines_of_zero() {
+    let config = game_rule("pattern = \"x\"\nstream = \"who\"\nuntil = \"y\"\nlines = 0");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "lines"]);
+}
+
+#[test]
+fn lines_without_until() {
+    let config = game_rule("pattern = \"x\"\nstream = \"who\"\nlines = 5");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "lines"]);
+}
+
+#[test]
+fn a_fixed_stream_names_the_notices() {
+    let config = game_rule("pattern = \"x\"\nstream = \"notices\"");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "notices"]);
+}
+
+#[test]
+fn a_list_of_streams_names_the_notices() {
+    let config = game_rule("pattern = \"x\"\nstream = [\"NOTICES\", \"main\"]");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "NOTICES"]);
+}
+
+#[test]
+fn a_stream_name_that_is_a_word() {
+    let config = game_rule("pattern = \"x\"\nstream = \"showing\"");
+    fails_naming(&config.list(), &["games/alpha.toml", "chan", "showing"]);
+}
+
+#[test]
+fn an_overridden_rule_is_still_checked() {
+    let config = Config::base()
+        .file(
+            "global.toml",
+            &rule("chan", "pattern = \"([\"\nstream = \"chat\""),
+        )
+        .file(
+            "games/alpha.toml",
+            &game(&[], &rule("chan", "pattern = \"x\"\nstream = \"chat\"")),
+        );
+    fails_naming(&config.list(), &["global.toml", "chan", "pattern"]);
+}
+
+// The verb `mu world match`.
+
+/// `mu world match <id> --config <dir>` with `lines` on stdin, each with a line break.
+fn matched(config: &Config, id: &str, lines: &[&str]) -> Output {
+    let mut input = String::new();
+    for line in lines {
+        input.push_str(line);
+        input.push('\n');
+    }
+    matched_raw(config, id, input.as_bytes())
+}
+
+/// Runs `mu world match id` with stdin of exactly `input`.
+fn matched_raw(config: &Config, id: &str, input: &[u8]) -> Output {
+    use std::io::Write as _;
+    let mut command = mu_command(&["world", "match", id, "--config", config.arg()], &[]);
+    command
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = command.spawn().expect("mu starts");
+    child
+        .stdin
+        .take()
+        .expect("stdin")
+        .write_all(input)
+        .expect("stdin takes the input");
+    child.wait_with_output().expect("mu ends")
+}
+
+/// The configuration with `global.toml` of `rules`, a list of TOML rule tables.
+fn with_rules(rules: &str) -> Config {
+    Config::base().file("global.toml", rules)
+}
+
+/// The stdout of a match of `lines` for `alpha/aria`.
+fn match_lines(config: &Config, lines: &[&str]) -> String {
+    succeeds(&matched(config, "alpha/aria", lines))
+}
+
+/// The first field of each line of `text`.
+fn first_fields(text: &str) -> Vec<&str> {
+    text.lines()
+        .map(|line| line.split('\t').next().unwrap_or_default())
+        .collect()
+}
+
+#[test]
+fn match_drops_a_carriage_return_as_the_session_does() {
+    let config = with_rules(&rule("two", "pattern = \"^two$\"\nstream = \"x\""));
+    assert_eq!(match_lines(&config, &["t\rwo"]), "x\ttwo\n");
+}
+
+#[test]
+fn match_keeps_a_nul_after_a_carriage_return() {
+    let config = with_rules(&rule("ab", "pattern = \"^ab$\"\nstream = \"x\""));
+    assert_eq!(
+        succeeds(&matched_raw(&config, "alpha/aria", b"a\r\0b\n")),
+        "main\ta\0b\n"
+    );
+}
+
+#[test]
+fn match_cuts_a_long_line_as_the_session_does() {
+    let config = with_rules(&rule("a", "pattern = \"^a\"\nstream = \"x\""));
+    let long = "a".repeat(mu_core::framer::MAX_LINE + 3);
+    let out = match_lines(&config, &[&long]);
+    assert_eq!(first_fields(&out), ["x", "x"]);
+}
+
+#[test]
+fn match_counts_a_last_line_with_no_line_break() {
+    assert_eq!(
+        succeeds(&matched_raw(&Config::base(), "alpha/aria", b"hi")),
+        "main\thi\n"
+    );
+}
+
+#[test]
+fn match_of_an_empty_stdin() {
+    assert_eq!(
+        succeeds(&matched_raw(&Config::base(), "alpha/aria", b"")),
+        ""
+    );
+}
+
+#[test]
+fn a_rule_with_no_action() {
+    let config = with_rules(&rule("hl-page", "pattern = \"pages\"\ncolour = \"red\""));
+    assert_eq!(
+        match_lines(&config, &["Bob pages: hi"]),
+        "main\tBob pages: hi\n"
+    );
+}
+
+#[test]
+fn the_earlier_rule_wins() {
+    let config = with_rules(&format!(
+        "{}{}",
+        rule("pub", "pattern = '^\\[Public\\]'\nstream = \"public\""),
+        rule("chan", "pattern = '^\\['\nstream = \"chat\"")
+    ));
+    assert_eq!(
+        match_lines(&config, &["[Public] hi", "[Help] yo"]),
+        "public\t[Public] hi\nchat\t[Help] yo\n"
+    );
+}
+
+#[test]
+fn a_character_rule_after_a_global_rule() {
+    let config = with_rules(&rule("chan", "pattern = '^\\['\nstream = \"chat\"")).file(
+        "characters/alpha/aria.toml",
+        &rule("pub", "pattern = '^\\[Public\\]'\nstream = \"public\""),
+    );
+    assert_eq!(
+        match_lines(&config, &["[Public] hi"]),
+        "chat\t[Public] hi\n"
+    );
+}
+
+#[test]
+fn no_match() {
+    let config = with_rules(&rule("chan", "pattern = '^\\['\nstream = \"chat\""));
+    assert_eq!(
+        match_lines(&config, &["Bob says, \"hi\""]),
+        "main\tBob says, \"hi\"\n"
+    );
+}
+
+#[test]
+fn a_rule_that_names_main() {
+    let config = with_rules(&format!(
+        "{}{}",
+        rule("mine", "pattern = '^\\[Public\\] Aria'\nstream = \"main\""),
+        rule("chan", "pattern = '^\\['\nstream = \"chat\"")
+    ));
+    assert_eq!(
+        match_lines(&config, &["[Public] Aria says hi"]),
+        "main\t[Public] Aria says hi\n"
+    );
+}
+
+#[test]
+fn a_lookbehind_and_a_named_group() {
+    let config = with_rules(&rule(
+        "chan",
+        "pattern = '(?<=^\\[)(?<chan>\\w+)(?=\\] )'\nstream = \"chan-$chan\"",
+    ));
+    assert_eq!(match_lines(&config, &["[Ooc] hi"]), "chan-ooc\t[Ooc] hi\n");
+}
+
+#[test]
+fn a_back_reference() {
+    let config = with_rules(&rule(
+        "twice",
+        "pattern = '^(\\w+) \\1$'\nstream = \"echo\"",
+    ));
+    assert_eq!(
+        match_lines(&config, &["hey hey", "hey you"]),
+        "echo\they hey\nmain\they you\n"
+    );
+}
+
+#[test]
+fn case_counts() {
+    let config = with_rules(&rule(
+        "pub",
+        "pattern = '^\\[public\\]'\nstream = \"public\"",
+    ));
+    assert_eq!(
+        match_lines(&config, &["[Public] hi"]),
+        "main\t[Public] hi\n"
+    );
+}
+
+#[test]
+fn a_colored_line() {
+    let config = with_rules(&rule(
+        "pub",
+        "pattern = '^\\[Public\\] hi$'\nstream = \"public\"",
+    ));
+    let line = "\u{1b}[1m[Public]\u{1b}[0m hi";
+    assert_eq!(match_lines(&config, &[line]), format!("public\t{line}\n"));
+}
+
+#[test]
+fn a_fixed_stream_in_upper_case() {
+    let config = with_rules(&rule("chan", "pattern = '^\\['\nstream = \"Chat\""));
+    assert_eq!(
+        match_lines(&config, &["[Public] hi"]),
+        "chat\t[Public] hi\n"
+    );
+}
+
+#[test]
+fn one_stream_for_each_channel() {
+    let config = with_rules(&rule(
+        "chan",
+        "pattern = '^\\[([\\w-]+)\\] '\nstream = \"chan-$1\"",
+    ));
+    assert_eq!(
+        match_lines(&config, &["[Public] hi", "[RP-Help] yo"]),
+        "chan-public\t[Public] hi\nchan-rp-help\t[RP-Help] yo\n"
+    );
+}
+
+#[test]
+fn a_name_from_a_capture_that_is_not_valid() {
+    let config = with_rules(&rule(
+        "chan",
+        "pattern = '^\\[([^\\]]+)\\] '\nstream = \"chan-$1\"",
+    ));
+    assert_eq!(
+        match_lines(&config, &["[Role Play] hi"]),
+        "main\t[Role Play] hi\n"
+    );
+}
+
+#[test]
+fn a_line_in_two_streams() {
+    let config = with_rules(&rule(
+        "page",
+        "pattern = 'pages: '\nstream = [\"pages\", \"main\"]",
+    ));
+    assert_eq!(
+        match_lines(&config, &["Bob pages: hi"]),
+        "pages,main\tBob pages: hi\n"
+    );
+}
+
+#[test]
+fn a_who_list() {
+    let config = with_rules(&rule(
+        "who",
+        "pattern = '^Player Name'\nuntil = 'players are connected\\.$'\nstream = \"who\"",
+    ));
+    let text = match_lines(
+        &config,
+        &[
+            "Player Name  Idle",
+            "Aria  3m",
+            "2 players are connected.",
+            "Bob says, \"hi\"",
+        ],
+    );
+    assert_eq!(first_fields(&text), ["who", "who", "who", "main"]);
+}
+
+#[test]
+fn a_line_that_starts_and_could_end() {
+    let config = with_rules(&rule(
+        "who",
+        "pattern = '^WHO'\nuntil = 'WHO'\nstream = \"who\"",
+    ));
+    let text = match_lines(&config, &["WHO list", "Aria", "end of WHO"]);
+    assert_eq!(first_fields(&text), ["who", "who", "who"]);
+}
+
+#[test]
+fn another_rule_during_a_capture() {
+    let config = with_rules(&format!(
+        "{}{}",
+        rule(
+            "who",
+            "pattern = '^Player Name'\nuntil = '^End'\nstream = \"who\""
+        ),
+        rule("chan", "pattern = '^\\['\nstream = \"chat\"")
+    ));
+    let text = match_lines(
+        &config,
+        &["Player Name", "[Public] hi", "End", "[Public] yo"],
+    );
+    assert_eq!(first_fields(&text), ["who", "who", "who", "chat"]);
+}
+
+#[test]
+fn a_capture_that_never_sees_its_end() {
+    let config = with_rules(&rule(
+        "who",
+        "pattern = '^WHO'\nuntil = '^End'\nlines = 2\nstream = \"who\"",
+    ));
+    let text = match_lines(&config, &["WHO", "Aria", "Bob", "WHO"]);
+    assert_eq!(first_fields(&text), ["who", "who", "main", "who"]);
+}
+
+#[test]
+fn a_capture_of_one_line() {
+    let config = with_rules(&rule(
+        "who",
+        "pattern = '^WHO'\nuntil = '^End'\nlines = 1\nstream = \"who\"",
+    ));
+    let text = match_lines(&config, &["WHO", "Aria"]);
+    assert_eq!(first_fields(&text), ["who", "main"]);
+}
+
+#[test]
+fn the_default_limit() {
+    let config = with_rules(&rule(
+        "who",
+        "pattern = '^WHO'\nuntil = '^End'\nstream = \"who\"",
+    ));
+    let mut lines = vec!["WHO"];
+    lines.extend(std::iter::repeat_n("x", 100));
+    let text = match_lines(&config, &lines);
+    let fields = first_fields(&text);
+    assert_eq!(
+        (
+            fields.len(),
+            fields[..100].iter().all(|field| *field == "who"),
+            fields[100]
+        ),
+        (101, true, "main")
+    );
+}
+
+#[test]
+fn match_an_unknown_world() {
+    let output = matched(&Config::base(), "nowhere/nobody", &[]);
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+    assert!(
+        stderr(&output).contains("nowhere/nobody"),
+        "{}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn match_with_no_rules() {
+    assert_eq!(match_lines(&Config::base(), &["hi"]), "main\thi\n");
+}
+
+#[test]
+fn a_bad_name_on_stderr() {
+    let config = with_rules(&rule(
+        "chan",
+        "pattern = '^\\[([^\\]]+)\\] '\nstream = \"chan-$1\"",
+    ));
+    let output = matched(&config, "alpha/aria", &["[Role Play] hi"]);
+    let text = stderr(&output);
+    let matching = text
+        .lines()
+        .filter(|line| line.contains("chan") && line.contains("chan-role play"))
+        .count();
+    assert_eq!((matching, output.status.code()), (1, Some(0)), "{text}");
+}
+
+#[test]
+fn a_capture_names_the_notices() {
+    let config = with_rules(&rule("chan", "pattern = '^\\[(\\w+)\\] '\nstream = \"$1\""));
+    let output = matched(&config, "alpha/aria", &["[notices] hi"]);
+    let text = stderr(&output);
+    let named = text
+        .lines()
+        .any(|line| line.contains("chan") && line.contains("notices"));
+    assert_eq!(
+        (succeeds(&output), named),
+        ("main\t[notices] hi\n".to_owned(), true),
+        "{text}"
+    );
 }

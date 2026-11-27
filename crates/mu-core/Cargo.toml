@@ -12,6 +12,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+fancy-regex = { workspace = true }
 fastrand = { workspace = true }
 figment2 = { workspace = true }
 futures = { workspace = true }
@@ -25,11 +26,13 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 toml = { workspace = true }
 tracing = { workspace = true }
+ulid = { workspace = true }
 walkdir = { workspace = true }
 
 [dev-dependencies]
 hex = { workspace = true }
 mu-fake-server = { path = "../mu-fake-server" }
 proptest = { workspace = true }
+rand_core = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }

@@ -18,7 +18,9 @@ A block is one part of the screen. mu has four kinds of block:
 | `editor` | The text that you type | One to four |
 | `statusline` | One row of facts about the world in focus | None or one |
 
-Each block has an id. The id is the name of the block, with one exception: the id of `output` is `main`. So the line `output` makes the block `main`, and other lines name it as `main`. A second `output` or a second `editor` needs its own id, which you set with `as`: `output as notices`.
+Each block has an id. The id is the name of the block, with one exception: the id of `output` is `main`. So the line `output` makes the block `main`, and other lines name it as `main`. A second `output` or a second `editor` needs its own id, which you set with `as`: `output as notices`. mu turns each upper-case letter of an id to lower case.
+
+Each layout holds one `output` with the id `main`, and at least one `output` that shows the stream `notices`. A layout without them is bad. The client refuses a change that removes them, such as a hide of `main`.
 
 ## The sentences
 
@@ -36,6 +38,8 @@ A layout is a plan: a list of lines in order. Each line is one sentence that pla
 | `statusline at bottom` | The statusline takes the whole bottom edge of the screen. The other edges are `top`, `left` and `right` |
 | `output as channels with notices` | The two outputs share one pane as a stack. A title row shows a tab for each |
 | `output as notices right of main and editor` | The new block stands beside two neighbors |
+| `output as comms showing chan-*, pages right of main` | The output shows the streams that the patterns name |
+| `output as chat of all worlds right of main` | The output shows its streams for every world, in one pane |
 
 A line splits only the pane that its anchor has at that point. So the order of the lines decides the shape, and the same lines in another order can give another screen.
 
@@ -102,7 +106,7 @@ $ mu layout show status
 
 ```text
 $ mu layout show sidebar
-1. output
+1. output as main showing main
 2. tabs above main
 3. editor below main
 4. statusline below editor
@@ -198,12 +202,56 @@ If a layout file is bad, the server skips it and writes one notice. The notice n
 
 ## Several outputs
 
-An `output` shows the lines of the stream with its id, for the world in focus. A stream is a named set of lines.
+A stream is a named set of lines. The lines of a world are in the stream `main`, and the notices of the client are in the stream `notices`. The line rules of the server send a line of a game to other streams. The guide [The configuration](/guides/configuration/#line-rules) describes the rules.
 
-- The block `main` is the main output. It shows the lines of the world, and each stream that has no `output` of its own. If no block has the id `main`, the first `output` of the plan is the main output.
-- The notices of the client are the stream `notices`. With `output as notices` in the layout, the notices show there. Without it, they show in the main output.
-- A line stays with the lines of its stream. An output that you add later starts with the new lines only.
-- The lines of a world stay together. If you hide `main`, the next main output shows them, and a new `main` takes them back. The block that stands in keeps its own earlier lines, and shows them again when `main` is back. The client keeps them while the layout has no `output`.
+- An `output` with no `showing` shows the stream with the same name as its id. The output `main` with no `showing` shows the streams `main` and `notices`.
+- After `showing`, a list of patterns separated by commas names the streams of the output. A pattern is a glob: `*` matches any text and `?` matches one character. A pattern that starts with `!` excludes the streams that it matches, and an exclusion wins. The list holds at least one pattern without `!`. The client refuses a pattern that starts with `re:` or `/`, because mu keeps those forms for a later syntax.
+- The words `of all worlds` come right after the id, and before `showing`. They make one pane that shows the streams of every world. The output `main` cannot take them.
+- The words `all`, `worlds` and `showing` are words of the sentences, so they are not ids.
+- A line shows in each output that shows one of its streams, and one time in each such output. A line stays in the outputs where it arrived. An output that you add later starts with the new lines only.
+- A prompt of a world shows as the unfinished last line of each output of that world that shows its stream, which is `main`. An output of all worlds shows no prompt, because the worlds share it.
+- If no output of the layout of a world shows a stream of a line, the client shows one notice that names the stream and the world. The notice goes to the notices of that world. The client shows no other such notice for that stream and that world. It remembers at most 256 pairs of a stream and a world, and forgets the oldest pair past that limit. A forgotten pair gets the notice again. A Reset forgets every pair, so the replay of the journal shows the notice again. The line stays in the journal of the server.
+
+If a layout has its own output for `notices`, write `output as main showing main` as its first line. Without `showing`, the output `main` shows the notices too. `sidebar` writes `output as main showing main`, so its notices show only in the pane of `notices`.
+
+### An output for each channel
+
+An output that shows the streams of a rule is a spawn. This example sends each channel and each page of a game to a pane of its own. First, the rules in `global.toml` name the streams:
+
+```toml
+# global.toml
+[[rules]]
+id = "chan"
+pattern = '^\[([\w-]+)\] '
+stream = "chan-$1"
+
+[[rules]]
+id = "page"
+pattern = '^\w+ pages: '
+stream = "pages"
+```
+
+Then the layout places one output for the channels and one for the pages:
+
+```toml
+# clients/layouts/spawns.toml
+place = [
+  "output as main showing main",
+  "tabs above main",
+  "editor below main",
+  "output as comms showing chan-*, !chan-ooc right of main, 40%",
+  "output as pages of all worlds below comms",
+  "output as notices with comms",
+]
+```
+
+The pane of `comms` shows each channel except `chan-ooc`. No output shows `chan-ooc`, so its first line gives one notice. The pane of `pages` shows the pages of every world. The pane of `notices` shares one pane with `comms` as a stack.
+
+### The owner of a line
+
+In an output of all worlds, each line starts with its owner and `: `, in dim text. The owner of a line of a world is the id of the world, such as `alpha/aria: `. The owner of a notice is the world that the notice is about. A notice that is about no world has the owner `client`.
+
+An output of all worlds is one pane for every world. It keeps its lines when the focus moves. A line of a world goes only to the outputs that the layout of that world names. So if the world in focus has a layout with no such output, the pane does not show.
 
 With more than one `output` on the screen, each pane of outputs shows a title row with the id of each of its blocks. The id in square brackets is the block that shows.
 
@@ -264,7 +312,7 @@ You can change the layout while the client runs. The screen shows each change at
 
 | Command | Result |
 |---|---|
-| `/place <sentence>` | Puts a block on the screen. A block that is on the screen moves |
+| `/place <sentence>` | Puts a block on the screen. A block that is on the screen moves. An output that moves keeps its `of all worlds` and `showing` if the sentence has neither |
 | `/pane hide <id>` | Takes a block off the screen. The last editor stays |
 | `/pane size <id> <size>` | Sets the size of a block. The size `fill` removes it |
 | `/layout plan` | Shows the numbered lines of the layout |
@@ -349,7 +397,7 @@ A change keeps your other lines where it can. If no change of one line gives the
 
 ```text
 $ mu layout describe sidebar
-1. main (output): column 1, row 2, 55 by 21: the lines of the world in focus, and each stream with no output of its own
+1. main (output): column 1, row 2, 55 by 21: the stream main of the world in focus
 2. tabs (tabs): column 1, row 1, 80 by 1: one tab for each world of the server
 3. editor (editor): column 1, row 23, 80 by 1: the text that the player types for the world in focus
 4. statusline (statusline): column 1, row 24, 80 by 1: the segments of the world in focus

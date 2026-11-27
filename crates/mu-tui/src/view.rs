@@ -44,14 +44,10 @@ const fn rect(area: Area) -> Rect {
 /// `height` rows.
 #[must_use]
 pub fn solved(model: &Model, width: u16, height: u16) -> Solved {
-    let world = model.focused().map(str::to_owned);
     let rows_of = |id: &BlockId, columns: u16| {
-        model
-            .editors
-            .get(&(world.clone(), id.clone()))
-            .map_or(1, |state| {
-                u16::try_from(state.rows(columns)).unwrap_or(u16::MAX)
-            })
+        model.editor(id).map_or(1, |state| {
+            u16::try_from(state.rows(columns)).unwrap_or(u16::MAX)
+        })
     };
     solve(model.layout(), Area::new(width, height), &rows_of)
 }
@@ -191,7 +187,7 @@ fn draw_output(model: &mut Model, pane: &Placed, frame: &mut Frame) {
     };
     if let Some(state) = model
         .pane_of_block(&id)
-        .and_then(|pane| model.panes.get_mut(&pane))
+        .and_then(|pane| model.panes.get_mut(pane))
     {
         frame.render_stateful_widget(OutputPane, rect(content(pane)), state);
     }

@@ -1,5 +1,6 @@
 //! The changes of a plan: the edits of one line, and the changes of the screen.
 
+use super::block::BlockKind;
 use super::step::{BlockId, Dir, PERCENT_MAX, PERCENT_MIN, Place, Size, Step};
 use super::tree::{self, Node};
 use super::{Layout, LayoutError, write};
@@ -48,6 +49,8 @@ impl LineRef {
 pub enum Change {
     /// Put the block of this step on the screen. A block that is on the screen moves.
     Place(Step),
+    /// As `Place`, but an `output` that is on the screen keeps its streams and its scope.
+    Move(Step),
     /// Take this block off the screen.
     Hide(BlockId),
     /// Set the size on the line of this block.
@@ -120,6 +123,7 @@ impl Layout {
         };
         match change {
             Change::Place(step) => self.place(step),
+            Change::Move(step) => self.place(self.keeping(step)),
             Change::Hide(id) => self.hide(&id),
             Change::Size(id, size) => self.resize(&id, size),
             Change::Fill(id) => self.fill(&id),
@@ -127,6 +131,16 @@ impl Layout {
             Change::Replace(line, step) => self.replace(&line, step).map(edited),
             Change::Delete(line) => self.delete(&line).map(edited),
         }
+    }
+
+    /// `step` with the selection of the `output` with its id on the screen, if there is one.
+    fn keeping(&self, mut step: Step) -> Step {
+        if step.kind == BlockKind::Output
+            && let Some(shown) = self.selection_of(&step.id)
+        {
+            step.selection = Some(shown.clone());
+        }
+        step
     }
 
     fn index_of(&self, id: &BlockId) -> Result<usize, LayoutError> {

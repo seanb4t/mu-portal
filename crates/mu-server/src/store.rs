@@ -14,9 +14,10 @@ use mu_config::{
     check_fields, check_keys, filter, keyed_path, layout_for, save_target,
 };
 use mu_core::ResolvedWorld;
+use mu_core::rules::Rules;
 use mu_core::world::{
     CLIENTS_DIR, ConfigError, DirSnapshot, Hidden, SnapEntry, is_under_clients, merge_layers,
-    parse_toml, resolve, world_errors,
+    parse_toml, resolve_with_global, world_errors,
 };
 use sha2::{Digest as _, Sha256};
 use tokio::sync::{Mutex, watch};
@@ -626,6 +627,8 @@ pub struct Opened {
     pub store: Store,
     /// The resolved worlds.
     pub worlds: Vec<ResolvedWorld>,
+    /// The line rules of `global.toml` alone, which a fake world takes.
+    pub global_rules: Rules,
     /// One notice for each bad entry under `clients/`.
     pub notices: Vec<Notice>,
 }
@@ -676,7 +679,7 @@ impl Store {
         server_check: ServerCheck,
         report: NoticeSink,
     ) -> Result<Opened, ConfigError> {
-        let worlds = resolve(&[&snapshot])?;
+        let (worlds, global_rules) = resolve_with_global(&[&snapshot])?;
         let part = ClientPart::new(&snapshot);
         let notices = part.notices();
         for notice in &notices {
@@ -693,6 +696,7 @@ impl Store {
         Ok(Opened {
             store,
             worlds,
+            global_rules,
             notices,
         })
     }

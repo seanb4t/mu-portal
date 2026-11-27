@@ -195,7 +195,21 @@ fn check_fields(fields: &LayerFields) -> Result<(), FieldError> {
     if let Some(reconnect) = &fields.reconnect {
         check_reconnect(reconnect.initial, reconnect.max, reconnect.attempts)?;
     }
-    check_ids(fields)
+    check_ids(fields)?;
+    check_rules(fields)
+}
+
+/// Compiles each rule of the layer, so a bad rule fails at the load even if a later layer
+/// overrides it.
+fn check_rules(fields: &LayerFields) -> Result<(), FieldError> {
+    for table in &fields.rules {
+        let id = table
+            .get("id")
+            .and_then(toml::Value::as_str)
+            .unwrap_or_default();
+        crate::rules::Rule::compile(id, table)?;
+    }
+    Ok(())
 }
 
 /// Checks that each entry has a string id, and that no id repeats among the rules and the

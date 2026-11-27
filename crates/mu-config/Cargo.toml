@@ -13,6 +13,8 @@ workspace = true
 
 [dependencies]
 serde = { workspace = true }
+vte = { workspace = true }
+wildmatch = { workspace = true }
 winnow = { workspace = true }
 
 [dev-dependencies]

@@ -30,20 +30,13 @@ pub(crate) fn clean_paste(text: &str) -> String {
     out
 }
 
-/// The char of the kitty image placeholder. Only the pane draws it, for an image line.
-pub(crate) const PLACEHOLDER: char = '\u{10EEEE}';
+pub(crate) use mu_config::ansi::PLACEHOLDER;
 
 /// `c` as it shows on the screen: a space for a tab, U+FFFD for each other control character
 /// and for the image placeholder, and every other char as it is.
 pub(crate) fn printable(c: char) -> char {
-    SCREEN.map(c)
+    mu_config::ansi::SCREEN.map(c)
 }
-
-/// The map of [`printable`].
-const SCREEN: mu_config::ControlMap = mu_config::ControlMap {
-    keep: &[('\t', ' ')],
-    also: &[PLACEHOLDER],
-};
 
 /// `text` as [`clean`] gives it, and `spans` in the order of their start. Spans with the same
 /// start keep their order. If `text` has a char that [`clean`] replaces, each byte offset moves
@@ -60,7 +53,7 @@ pub(crate) fn clean_styled<'a>(
         sorted.sort_by_key(|&(start, _)| start);
         Cow::Owned(sorted)
     };
-    if text.chars().all(|c| printable(c) == c) {
+    if mu_config::ansi::SCREEN.keeps(text) {
         return (Cow::Borrowed(text), spans);
     }
     let mut out = String::with_capacity(text.len());
@@ -99,14 +92,17 @@ pub fn echo_rows(text: &str, line_break: Option<&str>) -> Vec<String> {
         .collect()
 }
 
+/// `text` with the mark `-- ` of a notice in front.
+pub(crate) fn marked(text: &str) -> String {
+    format!("-- {text}")
+}
+
 /// The text of an event on the screen with its control characters replaced: a line of the
 /// system or a credential after `-- `, and any other line alone. [`echo_rows`] gives the rows of
 /// a player line.
 pub(crate) fn line(event: &Event) -> String {
     match event.source.as_known() {
-        Some(Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => {
-            format!("-- {}", clean(&event.text))
-        }
+        Some(Source::SOURCE_SYSTEM | Source::SOURCE_CREDENTIAL) => marked(&clean(&event.text)),
         _ => clean(&event.text),
     }
 }

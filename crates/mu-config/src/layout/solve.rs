@@ -529,12 +529,30 @@ pub struct Described {
     pub source: String,
 }
 
+/// What an `output` with `selection` shows, in words.
+fn shown(selection: &crate::stream::Selection) -> String {
+    let patterns: Vec<String> = selection
+        .patterns()
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    let worlds = match selection.scope {
+        crate::stream::Scope::World => "the world in focus",
+        crate::stream::Scope::AllWorlds => "all worlds",
+    };
+    let streams = if patterns.len() == 1 {
+        "stream"
+    } else {
+        "streams"
+    };
+    format!("the {streams} {} of {worlds}", patterns.join(", "))
+}
+
 /// Each block of `layout` on a screen of `width` columns and `height` rows, in the order of
 /// the plan.
 #[must_use]
 pub fn describe(layout: &Layout, width: u16, height: u16) -> Vec<Described> {
     let solved = solve(layout, Area::new(width, height), &|_, _| 1);
-    let first_output = layout.main_output();
     layout
         .steps()
         .iter()
@@ -547,11 +565,7 @@ pub fn describe(layout: &Layout, width: u16, height: u16) -> Vec<Described> {
                     "the text that the player types for the world in focus".to_owned()
                 }
                 BlockKind::Statusline => "the segments of the world in focus".to_owned(),
-                BlockKind::Output if Some(&step.id) == first_output => {
-                    "the lines of the world in focus, and each stream with no output of its own"
-                        .to_owned()
-                }
-                BlockKind::Output => format!("the stream {} of the world in focus", step.id),
+                BlockKind::Output => step.selection.as_ref().map_or_else(String::new, shown),
             };
             Described {
                 id: step.id.clone(),

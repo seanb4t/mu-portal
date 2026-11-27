@@ -3,8 +3,8 @@
 use mu_proto::__buffa::oneof::subscribe_response::Message;
 use mu_proto::{EventKind, Source, SubscribeResponse};
 
-use support::process::{BOUND, PW, ServerBuilder, Session, TWO_WORLDS, wait_until};
-use support::stderr;
+use support::process::{BOUND, PW, ServerBuilder, Session, TWO_WORLDS, read_until, wait_until};
+use support::{rule, stderr};
 
 mod support;
 
@@ -202,4 +202,315 @@ async fn stream_past_the_end() {
     assert_ne!(instance, "");
     assert_eq!(last, 6);
     assert_eq!(stream.next().await.unwrap_err().code, "out_of_range");
+}
+
+// The ids and the streams of the events.
+
+fn ids_of(events: &[mu_proto::Event]) -> std::collections::BTreeSet<String> {
+    events.iter().map(|event| event.id.clone()).collect()
+}
+
+#[tokio::test]
+async fn ids_in_one_stream() {
+    let mut session = Session::with_worlds(&["alpha/aria"]).await;
+    for text in ["one", "two", "three"] {
+        session.client.send("alpha/aria", text).await.unwrap();
+    }
+    session.line("alpha/aria", "You say, \"three\"").await;
+    let seen = session.seen();
+    assert!(seen.iter().all(|event| event.id.len() == 26), "{seen:?}");
+    assert_eq!(ids_of(seen).len(), seen.len(), "{seen:?}");
+}
+
+#[tokio::test]
+async fn ids_after_a_restart() {
+    let dir = support::ConfigDir::empty();
+    let first = on_config(&dir).await;
+    let before = ids_of(first.seen());
+    drop(first);
+    let mut second = on_config(&dir).await;
+    second.client.send("alpha/aria", "hi").await.unwrap();
+    second.line("alpha/aria", "You say, \"hi\"").await;
+    let after = ids_of(second.seen());
+    assert!(
+        !before.is_empty() && before.is_disjoint(&after),
+        "{before:?} {after:?}"
+    );
+}
+
+#[tokio::test]
+async fn no_event_without_a_stream() {
+    let mut session = Session::with_worlds(&["alpha/aria"]).await;
+    session.client.send("alpha/aria", "hi").await.unwrap();
+    session.line("alpha/aria", "You say, \"hi\"").await;
+    session.client.send("alpha/aria", "@drop").await.unwrap();
+    session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, 0)
+        .await;
+    let seen = session.seen();
+    assert!(
+        seen.iter().all(|event| !event.streams.is_empty()),
+        "{seen:?}"
+    );
+}
+
+// The line rules on the events of a server.
+
+#[tokio::test]
+async fn a_bad_global_rule_stops_a_server_of_fake_worlds() {
+    let dir = support::ConfigDir::empty().file(
+        "global.toml",
+        &rule("bad", "pattern = \"^x\"\nstream = \"notices\""),
+    );
+    let builder = ServerBuilder::new()
+        .arg("--config")
+        .arg(dir.path())
+        .fake_worlds(&["alpha/aria"]);
+    let socket = builder.dir().join("s.sock");
+    let output = builder.output().await;
+    let text = stderr(&output);
+    assert_eq!(
+        (
+            output.status.code(),
+            text.contains("global.toml") && text.contains("bad"),
+            socket.exists()
+        ),
+        (Some(1), true, false),
+        "{text}"
+    );
+}
+
+/// A server with `global.toml` of `global` and the fake world `alpha/aria`, after its greeting.
+/// The directory lives as long as the session.
+async fn with_global(global: &str) -> (Session, support::ConfigDir) {
+    let dir = support::ConfigDir::empty().file("global.toml", global);
+    (on_config(&dir).await, dir)
+}
+
+/// A server on the configuration `dir` with the fake world `alpha/aria`, after its greeting.
+async fn on_config(dir: &support::ConfigDir) -> Session {
+    let builder = ServerBuilder::new()
+        .arg("--config")
+        .arg(dir.path())
+        .fake_worlds(&["alpha/aria"]);
+    let mut session = Session::start(builder).await;
+    session.welcome("alpha/aria").await;
+    session
+}
+
+fn streams_of(event: &mu_proto::Event) -> Vec<&str> {
+    event.streams.iter().map(String::as_str).collect()
+}
+
+fn script_errors(session: &Session) -> Vec<&mu_proto::Event> {
+    session
+        .seen()
+        .iter()
+        .filter(|event| event.kind == EventKind::EVENT_KIND_SCRIPT_ERROR)
+        .collect()
+}
+
+#[tokio::test]
+async fn the_line_that_the_player_sends() {
+    let (mut session, _dir) = with_global(&rule(
+        "chan",
+        "pattern = '\\[Public\\]'\nstream = \"public\"",
+    ))
+    .await;
+    session
+        .client
+        .send("alpha/aria", "[Public] hi")
+        .await
+        .unwrap();
+    let line = session.line("alpha/aria", "You say, \"[Public] hi\"").await;
+    let input = session
+        .until("the player event", |event| {
+            event.kind == EventKind::EVENT_KIND_INPUT && event.text == "[Public] hi"
+        })
+        .await;
+    assert_eq!(
+        (streams_of(&input), streams_of(&line)),
+        (vec!["main"], vec!["public"])
+    );
+}
+
+#[tokio::test]
+async fn two_bad_names() {
+    let (mut session, _dir) = with_global(&rule(
+        "chan",
+        "pattern = '^You say, \"\\[([^\\]]+)\\] '\nstream = \"chan-$1\"",
+    ))
+    .await;
+    session
+        .client
+        .send("alpha/aria", "[Role Play] one")
+        .await
+        .unwrap();
+    session
+        .client
+        .send("alpha/aria", "[Role Play] two")
+        .await
+        .unwrap();
+    let one = session
+        .line("alpha/aria", "You say, \"[Role Play] one\"")
+        .await;
+    let two = session
+        .line("alpha/aria", "You say, \"[Role Play] two\"")
+        .await;
+    let errors = script_errors(&session);
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(
+        errors[0].world == "alpha/aria"
+            && errors[0].text.contains("chan")
+            && errors[0].text.contains("chan-role play")
+            && errors[0].seq < one.seq,
+        "{errors:?}"
+    );
+    assert_eq!(
+        (streams_of(&one), streams_of(&two)),
+        (vec!["main"], vec!["main"])
+    );
+}
+
+#[tokio::test]
+async fn a_drop_during_a_capture() {
+    let (mut session, _dir) = with_global(&rule(
+        "who",
+        "pattern = '^You say, \"WHO'\nuntil = '^End'\nstream = \"who\"",
+    ))
+    .await;
+    session.client.send("alpha/aria", "WHO").await.unwrap();
+    let who = session.line("alpha/aria", "You say, \"WHO\"").await;
+    session.client.send("alpha/aria", "@drop").await.unwrap();
+    let gone = session
+        .kind("alpha/aria", EventKind::EVENT_KIND_DISCONNECTED, who.seq)
+        .await;
+    session.client.connect("alpha/aria").await.unwrap();
+    session
+        .until("the greeting after the connect", |event| {
+            event.seq > gone.seq && event.text == support::process::greeting("alpha/aria")
+        })
+        .await;
+    session.client.send("alpha/aria", "hi").await.unwrap();
+    let hi = session.line("alpha/aria", "You say, \"hi\"").await;
+    assert_eq!(
+        (streams_of(&who), streams_of(&hi)),
+        (vec!["who"], vec!["main"])
+    );
+}
+
+#[tokio::test]
+async fn a_pattern_that_backtracks_too_much() {
+    let global = format!(
+        "{}{}",
+        rule(
+            "slow",
+            "pattern = '^You say, \"(a|aa)+\\1b'\nstream = \"slow\""
+        ),
+        rule("all", "pattern = '^You say, \"a'\nstream = \"rest\"")
+    );
+    let (mut session, _dir) = with_global(&global).await;
+    let text = "a".repeat(40);
+    session.client.send("alpha/aria", &text).await.unwrap();
+    let line = session
+        .line("alpha/aria", &format!("You say, \"{text}\""))
+        .await;
+    let errors = script_errors(&session);
+    assert_eq!(streams_of(&line), ["rest"]);
+    assert!(
+        errors.len() == 1 && errors[0].text.contains("slow"),
+        "{errors:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_fake_world_with_a_rule() {
+    let (mut session, _dir) = with_global(&rule(
+        "chan",
+        "pattern = '^You say, \"\\['\nstream = \"chat\"",
+    ))
+    .await;
+    session
+        .client
+        .send("alpha/aria", "[Public] hi")
+        .await
+        .unwrap();
+    let line = session.line("alpha/aria", "You say, \"[Public] hi\"").await;
+    assert_eq!(streams_of(&line), ["chat"]);
+}
+
+#[tokio::test]
+async fn a_fake_world_with_no_rules() {
+    let (mut session, _dir) = with_global("").await;
+    session
+        .client
+        .send("alpha/aria", "[Public] hi")
+        .await
+        .unwrap();
+    let line = session.line("alpha/aria", "You say, \"[Public] hi\"").await;
+    assert_eq!(streams_of(&line), ["main"]);
+}
+
+/// Reads `stream` from its start to the game line `text`, and gives every event it read.
+async fn read_to(stream: &mut mu_client::EventStream, text: &str) -> Vec<mu_proto::Event> {
+    let messages = futures::stream::unfold(stream, |stream| async move {
+        let message = stream.next().await.unwrap()?;
+        Some((message, stream))
+    });
+    let events = futures::StreamExt::filter_map(messages, |message| {
+        std::future::ready(match message.message {
+            Some(Message::Event(event)) => Some(*event),
+            _ => None,
+        })
+    });
+    let mut read = Vec::new();
+    read_until(
+        std::pin::pin!(events),
+        text,
+        |event| event.kind == EventKind::EVENT_KIND_LINE && event.text == text,
+        &mut read,
+    )
+    .await;
+    read
+}
+
+#[tokio::test]
+async fn a_live_event_and_a_replay() {
+    let (mut session, _dir) = with_global(&rule(
+        "chan",
+        "pattern = '^You say, \"\\[Public\\]'\nstream = [\"public\", \"main\"]",
+    ))
+    .await;
+    session
+        .client
+        .send("alpha/aria", "[Public] hi")
+        .await
+        .unwrap();
+    let said = "You say, \"[Public] hi\"";
+    let live = session.line("alpha/aria", said).await;
+    let live_welcome = session.welcome("alpha/aria").await;
+    let other = session.server.client();
+    let mut stream = other.subscribe(1).await.unwrap();
+    let replay = read_to(&mut stream, said).await;
+    let find = |text: &str| {
+        replay
+            .iter()
+            .find(|event| event.kind == EventKind::EVENT_KIND_LINE && event.text == text)
+            .unwrap()
+            .clone()
+    };
+    let replayed = find(said);
+    let replayed_welcome = find(&support::process::greeting("alpha/aria"));
+    assert_eq!(
+        (
+            (streams_of(&live), streams_of(&replayed)),
+            live.id == replayed.id,
+            (streams_of(&live_welcome), streams_of(&replayed_welcome)),
+        ),
+        (
+            (vec!["public", "main"], vec!["public", "main"]),
+            true,
+            (vec!["main"], vec!["main"]),
+        )
+    );
 }
