@@ -28,12 +28,13 @@ The script runs with `uv run --script` and needs `gh`. It is read-only. It print
 | `change-without-proposal` | An empty folder in `openspec/changes/`. Look at it, then delete it |
 | `change-names-no-issue`, `change-issue-status` | Name the issue in the proposal, or set its status to In progress |
 | `archived-change-issue-open` | If the change is merged, close the issue |
+| `change-not-in-plan` | Add the change as a sub-issue of the plan, at its place in the order: `gh api -X POST repos/seanb4t/mu-portal/issues/<plan>/sub_issues -F sub_issue_id=<id>`, then `gh api -X PATCH repos/seanb4t/mu-portal/issues/<plan>/sub_issues/priority -F sub_issue_id=<id> -F after_id=<id of the change before it>`. The id is the `id` field of `gh api repos/seanb4t/mu-portal/issues/<n>`, not the number |
+| `next-out-of-order` | Ask the owner which change is next. Then move the other change back to Parked, or change the order or the blockers of the plan: `gh api -X POST repos/seanb4t/mu-portal/issues/<n>/dependencies/blocked_by -F issue_id=<id of the blocker>` |
 
 ## 2. Check what the script cannot check
 
-- The plan issue of the phase (label `kind:plan`) lists each change of the phase in order. Each archived change shows Done in its row.
+- Each blocker of a change in the plan matches what the change needs first.
 - Each `kind:followup` issue either has a parent issue or is Parked. At the end of a phase, group the follow-up issues into themed parent issues with sub-issues, so that no review row is lost.
-- The next item on the board (Status Next) is the item that the plan names next.
 
 ## 3. Repair
 

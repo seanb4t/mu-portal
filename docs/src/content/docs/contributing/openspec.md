@@ -34,7 +34,7 @@ The workflows of the Project set most of the status. You set the rest by hand.
 | A pull request links to the issue | In review |
 | The issue closes | Done |
 | The issue opens again | Next |
-| You choose the next item | Next, by hand |
+| You choose the next item. For a change, it is the next change of the plan | Next, by hand |
 | The work starts | In progress, by hand |
 
 A pull request names its issue with `Closes #<number>` in its body. The merge then closes the issue, and the Project moves it to Done. A pull request that belongs to an issue but does not finish it writes `Part of #<number>`. Examples are an archive and a follow-up to merged work. Only a trivial fix, such as a typo or a format change, writes `Closes: none` and the reason. Dependency updates from Renovate need no line, because the Dependency Dashboard tracks them.
@@ -48,7 +48,7 @@ Each issue has one kind label or one type label.
 
 The milestone of an issue is the phase that it serves. An issue with no milestone is not planned for a phase yet. A change that closes gets the milestone of its phase.
 
-Each phase has one plan issue with the label `kind:plan`. It lists the changes of the phase in order. When you archive a change, mark its row in the plan Done.
+Each phase has one plan issue with the label `kind:plan`. The sub-issues of the plan are the changes of the phase, in order. If a change needs another change first, the issue of the first change blocks the issue of the second, as a GitHub issue dependency. The next change is the first open sub-issue that no open issue blocks. The plan issue holds no status, because the Project holds it. So an archive does not edit the plan.
 
 ### Follow-up issues
 
